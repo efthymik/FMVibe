@@ -1756,7 +1756,7 @@ void View::paintSeq(Canvas &c) {
         // Full strength at full velocity, down to 40 % at none; a little dimmer while the sequencer is off.
         const float level = static_cast<float>(0.4 + 0.6 * std::clamp(n.velocity, 0.0, 1.0)) * (on ? 1.0f : 0.75f);
         if (const float glow = seqGlow(n); glow > 0.0f) // played just now: glowing, as the glow setting says
-            featherRect(c, r, kRadiusMark, 10.0f, ink.alpha(0.9f * glow));
+            featherRect(c, r, kRadiusMark, 8.0f, ink.alpha(0.6f * glow));
         if (n.mute) {
             c.strokeRect(r, kFaint, 1.0f, kRadiusMark, true);
         } else if (n.chance < 1.0) {
