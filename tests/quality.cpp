@@ -3640,6 +3640,47 @@ void stackChecks() {
         check(peak <= 2.0f, "a Stack curve's stack moved under a note stays finite, within the curve's reach");
     }
     {
+        // A shaper effect switched from Soft to Stack and back under a quiet sine, which either curve passes about as
+        // it is: the Stack path, at twice the rate, its half-bands a few samples late, fades in and out over the other
+        // rather than jumping to it, so no sample steps further than the sine's own do.
+        Effects fx;
+        fx.prepare(kSampleRate);
+        ParamValues p;
+        for (int i = 0; i < kParamCount; ++i)
+            p[i] = paramTable()[i].def;
+        p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+        p[paramIndex(0, FxParam::ShaperDrive)] = 0.0;
+        p[paramIndex(0, FxParam::ShaperLink)] = 0.0;
+        p[paramIndex(0, FxParam::ShaperOutput)] = 0.0;
+        p[paramIndex(0, FxParam::ShaperMix)] = 1.0;
+        p[paramIndex(0, FxParam::ShaperStack)] = 1.0;
+        chain(p, {0});
+        constexpr double kHz = 440.0, kLevel = 0.05;
+        const uint32_t each = static_cast<uint32_t>(kSampleRate / 4);
+        std::vector<float> left(kBlock), right(kBlock);
+        double most = 0.0, last = 0.0, peak = 0.0;
+        uint32_t t = 0;
+        for (ClipMode mode : {ClipMode::Soft, ClipMode::Stack, ClipMode::Soft, ClipMode::Stack, ClipMode::Soft}) {
+            p[paramIndex(0, FxParam::ShaperMode)] = static_cast<double>(mode);
+            for (uint32_t done = 0; done < each; done += kBlock, t += kBlock) {
+                for (uint32_t s = 0; s < kBlock; ++s)
+                    left[s] = right[s] =
+                        static_cast<float>(kLevel * std::sin(2.0 * std::numbers::pi * kHz * (t + s) / kSampleRate));
+                fx.process(left.data(), right.data(), kBlock, p, 120.0, 60.0);
+                for (uint32_t s = 0; s < kBlock; ++s) {
+                    if (t + s > kSampleRate / 10) { // past the effect's fading in
+                        most = std::max(most, static_cast<double>(std::abs(left[s] - last)));
+                        peak = std::max(peak, static_cast<double>(std::abs(left[s])));
+                    }
+                    last = left[s];
+                }
+            }
+        }
+        const double steepest = most / (peak * 2.0 * std::numbers::pi * kHz / kSampleRate);
+        std::printf("      Soft to Stack and back twice under a sine: steepest step x%.3f of the sine's\n", steepest);
+        check(steepest < 1.15, "a shaper effect switched to Stack and back under a sine crossfades rather than clicks");
+    }
+    {
         // The low end thumps: as the note ends, what the stages' high-passes hold the stages after them drive on, so
         // far more comes out between 10 and 60 Hz in the 150 ms after it stacked eight high than with one stage.
         auto thump = [&](int stack) {

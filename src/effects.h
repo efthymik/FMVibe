@@ -191,6 +191,12 @@ private:
         double mix = 1.0;
         double between = 1.0; // after each Stack stage but the last
     };
+    // A shaper's curve as a chunk ran it: what its path (at twice the rate for Stack, see runShaper()) is built from.
+    struct ShaperPath {
+        ClipMode mode = ClipMode::Soft;
+        bool symmetric = false;
+        int stack = 1;
+    };
 
     struct Delay {
         std::array<ZeroBuffer, 2> lines;
@@ -443,6 +449,15 @@ private:
         // designed in prepare(), and whether the last chunk ran there.
         std::array<HalfBand, 2> shaperUp, shaperDown;
         bool shaperDoubled = false;
+        // Whether the last chunk ran the shaper (start() clears it), and its curve then.
+        bool shaperRan = false;
+        ShaperPath shaperLast;
+        // For a moment after its curve goes to Stack or leaves it, the path it left, fading out as the new one fades
+        // in: at the rate it ran at, with its curve and its sides as they were. Only one of the two is ever at twice
+        // the rate, and it runs through shaperUp and shaperDown.
+        ShaperPath shaperWas;
+        std::array<ClipState, 2> shaperWasSides{};
+        double shaperWasFade = 0.0; // 1 .. 0
     };
 
     // A slot's effect in place on `io`, fading as it is switched; `keep` grows while it rings on.

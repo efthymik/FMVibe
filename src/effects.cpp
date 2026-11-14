@@ -549,6 +549,8 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
         s.shaper.output = settings.output;
         s.shaper.mix = settings.mix;
         s.shaper.between = settings.between;
+        s.shaperRan = false; // its path starts as it is, from silence, fading in from nothing it left
+        s.shaperWasFade = 0.0;
         break;
     }
     case FxType::Delay: {
@@ -1494,9 +1496,31 @@ void Effects::clearGraph() {
         sp.running = false;
 }
 
+namespace {
+
+// How long a shaper effect's path, going to Stack or leaving it, takes to fade over to the other (see runShaper()), as
+// the amp's settings do: long enough to hide the few samples the Stack path's half-bands are late by.
+constexpr double kShaperPathFade = 0.01; // seconds
+
+// One sample of a side of a shaper effect, at the host rate or, `doubled` (for Stack), at twice it: up through `up`,
+// both samples through the curve, and back down through `down`.
+double shapeSample(ClipState &side, const ClipCurve &curve, double x, double drive, double output, double mix,
+                   bool block, double pole, double between, bool doubled, HalfBand &up, HalfBand &down) {
+    if (!doubled)
+        return side.run(curve, x, drive, output, mix, block, pole, between);
+    double first, second;
+    up.processUp(x, first, second);
+    first = side.run(curve, first, drive, output, mix, block, pole, between);
+    second = side.run(curve, second, drive, output, mix, block, pole, between);
+    return down.process(first, second);
+}
+
+} // namespace
+
 // The voices' shapers run the same way (see Synth::renderBlock()), on what goes into them. The Stack stages run at
 // twice the rate, as the voices' do at their oversampling: the anti-aliasing's average over each step (see
-// kStackLift) would dull a stack's top at the host rate, 15 dB at 15 kHz stacked eight high at 48 kHz.
+// kStackLift) would dull a stack's top at the host rate, 15 dB at 15 kHz stacked eight high at 48 kHz. Going to Stack
+// or leaving it under sound, the path it leaves runs on for kShaperPathFade, fading out as the new one fades in.
 void Effects::runShaper(int slot, float *const *io, uint32_t n, const ParamValues &p) {
     Slot &place = slots_[slot];
     Shaper &sh = place.shaper;
@@ -1508,18 +1532,34 @@ void Effects::runShaper(int slot, float *const *io, uint32_t n, const ParamValue
         place.curve.advance(n / sampleRate_);
     }
     const bool doubled = settings.mode == ClipMode::Stack;
-    if (doubled && !place.shaperDoubled) // from silence, rather than from what they last held
+    if (place.shaperRan && doubled != place.shaperDoubled) {
+        // The path it leaves fades out from where it is (one already fading out, which this one replaces, goes).
+        place.shaperWas = place.shaperLast;
+        place.shaperWasSides = sh.sides;
+        place.shaperWasFade = 1.0;
+    }
+    if (doubled && (!place.shaperRan || !place.shaperDoubled)) // from silence, rather than from what they last held
         for (int ch = 0; ch < 2; ++ch) {
             place.shaperUp[ch].reset();
             place.shaperDown[ch].reset();
         }
     place.shaperDoubled = doubled;
+    place.shaperRan = true;
+    place.shaperLast = {settings.mode, settings.symmetric, settings.stack};
     const double rate = doubled ? 2.0 * sampleRate_ : sampleRate_;
     ClipCurve curve = place.curve.curve(settings.mode, settings.symmetric);
     curve.stack(settings.stack, rate);
     const double fadeStep = 1.0 / n;
     const bool block = clipNeedsBlocker(settings.mode);
     const double pole = clipBlockerPole(rate);
+    // The path it left, at the other rate.
+    const ShaperPath &was = place.shaperWas;
+    const double wasRate = doubled ? sampleRate_ : 2.0 * sampleRate_;
+    ClipCurve wasCurve = place.curve.curve(was.mode, was.symmetric);
+    wasCurve.stack(was.stack, wasRate);
+    const bool wasBlock = clipNeedsBlocker(was.mode);
+    const double wasPole = clipBlockerPole(wasRate);
+    const double wasStep = 1.0 / (kShaperPathFade * sampleRate_);
     const double driveStep = rampStep(sh.drive, settings.drive, n, rampShortest_);
     const double outputStep = rampStep(sh.output, settings.output, n, rampShortest_);
     const double mixStep = rampStep(sh.mix, settings.mix, n, rampShortest_);
@@ -1531,18 +1571,23 @@ void Effects::runShaper(int slot, float *const *io, uint32_t n, const ParamValue
         sh.between += betweenStep;
         if (curve.from)
             curve.fade = (s + 1) * fadeStep;
+        const bool fading = place.shaperWasFade > 0.0;
+        double w = 0.0; // the path it left's share, along a raised cosine
+        if (fading) {
+            if (wasCurve.from)
+                wasCurve.fade = (s + 1) * fadeStep;
+            place.shaperWasFade = std::max(place.shaperWasFade - wasStep, 0.0);
+            w = 0.5 - 0.5 * std::cos(std::numbers::pi * place.shaperWasFade);
+        }
         for (int ch = 0; ch < 2; ++ch) {
-            ClipState &side = sh.sides[ch];
-            if (doubled) {
-                double first, second;
-                place.shaperUp[ch].processUp(io[ch][s], first, second);
-                first = side.run(curve, first, sh.drive, sh.output, sh.mix, block, pole, sh.between);
-                second = side.run(curve, second, sh.drive, sh.output, sh.mix, block, pole, sh.between);
-                io[ch][s] = static_cast<float>(place.shaperDown[ch].process(first, second));
-            } else {
-                io[ch][s] = static_cast<float>(side.run(curve, io[ch][s], sh.drive, sh.output, sh.mix, block, pole,
-                                                        sh.between));
-            }
+            const double x = io[ch][s];
+            double y = shapeSample(sh.sides[ch], curve, x, sh.drive, sh.output, sh.mix, block, pole, sh.between,
+                                   doubled, place.shaperUp[ch], place.shaperDown[ch]);
+            if (fading)
+                y = y * (1.0 - w) + w * shapeSample(place.shaperWasSides[ch], wasCurve, x, sh.drive, sh.output,
+                                                    sh.mix, wasBlock, wasPole, sh.between, !doubled,
+                                                    place.shaperUp[ch], place.shaperDown[ch]);
+            io[ch][s] = static_cast<float>(y);
         }
     }
 }

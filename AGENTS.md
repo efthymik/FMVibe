@@ -261,7 +261,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     eight passing quiet sines from 1 to 15 kHz within a dB (no low-pass, the top lifted back), a stack of
     eight at full drive ringing on past a note longer than one stage does and then stopping (the effects too), and
     thumping far more between 10 and 60 Hz after the note, the stack turned up and down under a note in single frames
-    staying finite and within the curve's reach, and a voice's shaper stacked eight high ending with its voice;
+    staying finite and within the curve's reach, a shaper effect switched from Soft to Stack and back under a quiet
+    sine crossfading rather than clicking (no sample stepping further than the sine's own do), and a voice's shaper
+    stacked eight high ending with its voice;
   - a drawn shaper curve's points moved gliding in rather than clicking, in whole blocks and in single frames, and
     dragged up and down putting out no DC, made symmetric too;
   - a quiet, slow sine through a drawn shaper curve coming out as drawn, without spikes where it crosses the
