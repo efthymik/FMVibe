@@ -1753,6 +1753,10 @@ double Effects::runFilter(int slot, float *const *io, uint32_t n, const ParamVal
     // Worked out again only when its params, or the pitch it tracks, move. Without key tracking the pitch moves
     // nothing (2 to the power of 0 is exactly 1), and is left out.
     const double keyTrack = p[paramIndex(slot, FxParam::FilterKeyTrack)];
+    // The Formant type's vowel and the Morph type's place and mode go in for those types alone, as a voice filter's.
+    const int typeNumber = static_cast<int>(std::lround(p[paramIndex(slot, FxParam::FilterType)]));
+    const auto playing = static_cast<FilterType>(std::clamp(typeNumber, 0, static_cast<int>(FilterType::Count) - 1));
+    const bool formant = playing == FilterType::Formant, morph = playing == FilterType::Morph;
     const std::array<double, 10> inputs{p[paramIndex(slot, FxParam::FilterType)],
                                        p[paramIndex(slot, FxParam::FilterCutoff)],
                                        keyTrack,
@@ -1760,9 +1764,9 @@ double Effects::runFilter(int slot, float *const *io, uint32_t n, const ParamVal
                                        p[paramIndex(slot, FxParam::FilterSlope)],
                                        p[paramIndex(slot, FxParam::FilterResonance)],
                                        p[paramIndex(slot, FxParam::FilterDrive)],
-                                       p[paramIndex(slot, FxParam::FilterVowel)],
-                                       p[paramIndex(slot, FxParam::FilterMorph)],
-                                       p[paramIndex(slot, FxParam::FilterMorphMode)]};
+                                       formant ? p[paramIndex(slot, FxParam::FilterVowel)] : 0.0,
+                                       morph ? p[paramIndex(slot, FxParam::FilterMorph)] : 0.0,
+                                       morph ? p[paramIndex(slot, FxParam::FilterMorphMode)] : 0.0};
     if (std::memcmp(inputs.data(), filter.settingsFor.data(), sizeof inputs) != 0) {
         filter.settingsFor = inputs;
         const auto type = static_cast<FilterType>(

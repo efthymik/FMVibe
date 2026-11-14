@@ -230,8 +230,11 @@ inline FilterSettings filterSettings(FilterType type, int slope, double cutoffHz
     s.slope = playedSlope(type, slope);
     s.drive = 1.0 + 8.0 * std::clamp(drive, 0.0, 1.0);
     s.driveRoot = std::sqrt(s.drive);
-    // An integrator's or one-pole's rate for the cutoff, prewarped so it lands where the analog circuit's does.
-    const double g = std::tan(std::numbers::pi * std::clamp(cutoffHz, 10.0, 0.45 * sampleRate) / sampleRate);
+    // An integrator's or one-pole's rate for the cutoff, prewarped so it lands where the analog circuit's does: for the
+    // analog types (those that self-oscillate) alone, the others working out their own.
+    const double g = selfOscillates(type)
+                         ? std::tan(std::numbers::pi * std::clamp(cutoffHz, 10.0, 0.45 * sampleRate) / sampleRate)
+                         : 0.0;
     switch (type) {
     case FilterType::LowPass:
     case FilterType::HighPass:

@@ -2538,16 +2538,25 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         // The ladder, the diode and the Sallen-Key's self-oscillate at the top of their resonance, which would ring
         // on without end: once the voice's operators have faded (see Voice::tail), it is held below that, so their
         // ringing dies away as a loop's does.
+        const auto type = static_cast<FilterType>(
+            stepped(p[paramIndex(f, FilterParam::Type)], static_cast<int>(FilterType::Count) - 1));
         double resonance = p[paramIndex(f, FilterParam::Resonance)];
-        if (v.tail && selfOscillates(static_cast<FilterType>(
-                          stepped(p[paramIndex(f, FilterParam::Type)], static_cast<int>(FilterType::Count) - 1))))
+        if (v.tail && selfOscillates(type))
             resonance = std::min(resonance, kTailResonance);
+        // The Formant type's vowel and the Morph type's place and mode go in for those types alone: for the others,
+        // which don't play them, a modulation of one doesn't have the settings worked out again.
+        const bool formant = type == FilterType::Formant, morph = type == FilterType::Morph;
         const std::array<double, 10> inputs{
-            p[paramIndex(f, FilterParam::Cutoff)], keyTrack, keyTrack != 0.0 ? pitch : 0.0,
-            p[paramIndex(f, FilterParam::Type)],   p[paramIndex(f, FilterParam::Slope)],
-            resonance,                             p[paramIndex(f, FilterParam::Drive)],
-            p[paramIndex(f, FilterParam::Vowel)],  p[paramIndex(f, FilterParam::Morph)],
-            p[paramIndex(f, FilterParam::MorphMode)]};
+            p[paramIndex(f, FilterParam::Cutoff)],
+            keyTrack,
+            keyTrack != 0.0 ? pitch : 0.0,
+            p[paramIndex(f, FilterParam::Type)],
+            p[paramIndex(f, FilterParam::Slope)],
+            resonance,
+            p[paramIndex(f, FilterParam::Drive)],
+            formant ? p[paramIndex(f, FilterParam::Vowel)] : 0.0,
+            morph ? p[paramIndex(f, FilterParam::Morph)] : 0.0,
+            morph ? p[paramIndex(f, FilterParam::MorphMode)] : 0.0};
         filter[f] = &v.filterSettings[f].get(inputs, [&] {
             const double cutoffHz = cutoffFromNorm(inputs[0]) * std::exp2((pitch - 60.0) / 12.0 * inputs[1]);
             const auto type = static_cast<FilterType>(stepped(inputs[3], static_cast<int>(FilterType::Count) - 1));
