@@ -249,6 +249,8 @@ public:
     // Param `index` changed since the last render(), which is told sameParams: what render() works out from the
     // params is worked out again for that param alone, where that is all it touches (see changesShared()).
     void paramChanged(int index) {
+        if (isSeqParam(index))
+            seqStale_ = true;
         if (sharedStale_ || index < 0 || index >= kParamCount)
             return;
         if (changedCount_ < kMaxChanged)
@@ -291,6 +293,8 @@ private:
     // up, or a reset, choke or All Sound Off ends them. Whether any matched `match`; `report` reports their ends.
     bool releaseKeys(const NoteRef &match);
     Sequencer seq_;
+    // Whether a sequencer param changed since the last render() (see paramChanged()), so it reads its pattern again.
+    bool seqStale_ = true;
     std::array<SeqEvent, Sequencer::kMaxEvents> seqEvents_{};
     std::array<NoteRef, 64> keysTaken_{};
     int keysTakenCount_ = 0;
@@ -536,6 +540,10 @@ private:
     // Wheel param, as the host's modulation of it would; 0 while they don't.
     double seqBend_ = 0.0;
     double seqWheel_ = 0.0;
+    // Where a curve stands as the last plan()'s stretch starts, 0 where it does nothing; whether either stands elsewhere
+    // than the voices hear it; and the voices taking them up.
+    double seqCurveValue(SeqCurve c) const;
+    bool seqCurvesMoved() const;
     void followSeqCurves();
     std::array<double, 128> cc_{}; // the MIDI controllers' values, 0..1
     double channelPressure_ = 0.0;

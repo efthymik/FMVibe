@@ -192,6 +192,7 @@ void Synth::prepare(double sampleRate, int capacity, int oversampling) {
     bend_ = 0.0;
     globalMod_.fill(0.0);
     sharedStale_ = true;
+    seqStale_ = true;
     changedCount_ = 0;
     capacity_ = std::clamp(capacity, 1, kMaxVoices);
     voices_.assign(static_cast<size_t>(capacity_ + std::clamp(capacity_, kFadeSlots, kMaxFadeSlots)), Voice{});
@@ -734,9 +735,11 @@ void Synth::applyMacros(const ParamValues &params) {
 }
 
 void Synth::render(float *left, float *right, uint32_t frames, const ParamValues &params, bool sameParams) {
-    // The sequencer plans its notes a stretch at a time, and the voices render between them, each starting or ending at
-    // its sample.
-    seq_.configure(params);
+    // The sequencer plans its notes a stretch at a time, and the voices render up to each note it starts or ends, at
+    // its sample, and up to where its curves move on; through the stretches between, they run on. Its pattern is read
+    // again only when its params may have changed.
+    seq_.configure(params, seqStale_ || !sameParams);
+    seqStale_ = false;
     if (!seq_.enabled()) {
         if (seq_.sounding())
             applySeqEvents(seq_.stopAll(seqEvents_));
@@ -747,36 +750,48 @@ void Synth::render(float *left, float *right, uint32_t frames, const ParamValues
         return;
     }
     constexpr uint32_t kSeqStretch = 256;
+    uint32_t rendered = 0; // the frames the voices have rendered; those planned past it, they render on through
     for (uint32_t done = 0; done < frames;) {
         uint32_t covered = 0;
-        const int count = seq_.plan(std::min(frames - done, kSeqStretch), tempo_, playing_, songBeats_, seqEvents_,
-                                    covered);
-        followSeqCurves();
-        uint32_t at = 0;
-        for (int i = 0; i < count; ++i) {
-            const uint32_t frame = std::min(seqEvents_[i].frame, covered);
-            if (frame > at) {
-                renderSpan(left + done + at, right + done + at, frame - at, params, sameParams);
+        // Where the transport stands as the stretch starts: renderSpan() moves it on through the frames it renders.
+        const double beats = playing_ ? songBeats_ + (done - rendered) / sampleRate_ * tempo_ / 60.0 : songBeats_;
+        const int count =
+            seq_.plan(std::min(frames - done, kSeqStretch), tempo_, playing_, beats, seqEvents_, covered);
+        if (seqCurvesMoved()) { // the voices hear the curves where they stood up to here
+            if (done > rendered) {
+                renderSpan(left + rendered, right + rendered, done - rendered, params, sameParams);
                 sameParams = true;
-                at = frame;
+                rendered = done;
+            }
+            followSeqCurves();
+        }
+        for (int i = 0; i < count; ++i) {
+            const uint32_t frame = done + std::min(seqEvents_[i].frame, covered);
+            if (frame > rendered) {
+                renderSpan(left + rendered, right + rendered, frame - rendered, params, sameParams);
+                sameParams = true;
+                rendered = frame;
             }
             applySeqEvent(seqEvents_[i]);
         }
-        if (covered > at) {
-            renderSpan(left + done + at, right + done + at, covered - at, params, sameParams);
-            sameParams = true;
-        }
         done += std::max(covered, 1u);
     }
+    if (frames > rendered)
+        renderSpan(left + rendered, right + rendered, frames - rendered, params, sameParams);
+}
+
+double Synth::seqCurveValue(SeqCurve c) const {
+    const double v = seq_.curve(c);
+    return std::isfinite(v) ? v : 0.0;
+}
+
+bool Synth::seqCurvesMoved() const {
+    return seqCurveValue(SeqCurve::Bend) != seqBend_ || seqCurveValue(SeqCurve::ModWheel) != seqWheel_;
 }
 
 void Synth::followSeqCurves() {
-    auto now = [&](SeqCurve c) {
-        const double v = seq_.curve(c);
-        return std::isfinite(v) ? v : 0.0;
-    };
-    seqBend_ = now(SeqCurve::Bend);
-    const double wheel = now(SeqCurve::ModWheel);
+    seqBend_ = seqCurveValue(SeqCurve::Bend);
+    const double wheel = seqCurveValue(SeqCurve::ModWheel);
     if (wheel != seqWheel_) { // the mod wheel's knob moved, and what it moves with it
         seqWheel_ = wheel;
         paramChanged(paramIndex(GlobalParam::ModWheel));

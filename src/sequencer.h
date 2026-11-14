@@ -37,8 +37,9 @@ public:
     void prepare(double sampleRate) { sampleRate_ = sampleRate; }
     // Forgets the notes sounding (the synth ends them itself) and where it was.
     void reset();
-    // Takes the settings and the notes from the params, at the start of each render().
-    void configure(const ParamValues &params);
+    // Takes the settings from the params, at the start of each render(), and the notes and curves too where `changed`
+    // (a sequencer param may have) or the pattern to play isn't the one last read.
+    void configure(const ParamValues &params, bool changed = true);
 
     bool enabled() const { return enabled_; }
     // Whether keys go to the sequencer rather than playing notes: in Key and Latch, while it is on.
@@ -117,6 +118,7 @@ private:
     int loopStart_ = 0, loopEnd_ = kSeqStepsPerBar;
     std::array<Note, kSeqNotes> notes_{};
     int noteCount_ = 0;
+    int read_ = -1; // the pattern notes_ and curves_ were read from, -1 for none
     std::array<std::array<SeqCurvePoint, kSeqCurvePoints>, kSeqCurves> curves_{}; // the playing pattern's
     std::array<int, kSeqCurves> curveCount_{};
     std::array<double, kSeqCurves> curveNow_{std::numeric_limits<double>::quiet_NaN(),

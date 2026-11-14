@@ -40,13 +40,14 @@ void Sequencer::reset() {
     forgetCurves();
 }
 
-void Sequencer::configure(const ParamValues &params) {
+void Sequencer::configure(const ParamValues &params, bool changed) {
     params_ = &params;
     enabled_ = params[paramIndex(SeqParam::Enabled)] >= 0.5;
     if (!enabled_) { // nothing more to read: render() only ends what it holds
         keyRunning_ = false;
         running_ = false;
         noteCount_ = 0;
+        read_ = -1; // read again once it is on
         forgetCurves();
         return;
     }
@@ -69,11 +70,13 @@ void Sequencer::configure(const ParamValues &params) {
         keyRunning_ = false;
     if (!running_)
         pattern_ = patternWanted_;
-    readPattern(pattern_);
+    if (changed || read_ != pattern_)
+        readPattern(pattern_);
 }
 
 void Sequencer::readPattern(int pattern) {
     noteCount_ = 0;
+    read_ = params_ ? pattern : -1;
     if (!params_)
         return;
     const ParamValues &p = *params_;
