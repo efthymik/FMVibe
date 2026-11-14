@@ -1746,7 +1746,11 @@ one may have changed since it last did.
   carrier knocked by a 4:1 modulator, struck in sixteenths by the sequencer while a key is held, through octaves,
   fifths and sevenths, each note's velocity its accent, louder and harder) and SQ Hammer Gate
   (a fed-back pair growled by a sub-octave linear FM through a driven, resonant low-pass into a hard clipper whose
-  output a drawn LFO gates in accented sixteenths, a second jumping octaves in the riff).
+  output a drawn LFO gates in accented sixteenths, a second jumping octaves in the riff); and SQ Future Plucks (a
+  carrier knocked by a saw modulator through a low-pass an envelope plucks open, velocity brightening it and two
+  Random sources wandering the indexes, playing the sequencer's Phrygian riff while a key is held, an octave down,
+  humanized and with chords on some steps, through a chain of EQs, a disperser, compression, chorus, echoes and a
+  reverb).
   Then three that play through the Amp: PL Crunch Rhythm (a string-like FM pluck, two carriers a few cents apart,
   a feedback modulator for the saw's edge and a short bright one for the pick, velocity digging in, through the
   Crunch amp into a closed 4x12 and a small room: a rhythm guitar for chords); LD Overdrive Lead (a mono, gliding
