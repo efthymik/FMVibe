@@ -246,11 +246,17 @@ constexpr float kTopRowH = 24.0f; // the preset bar's and the toolbar's height, 
 // Tabs of the routing panel, one per RoutingView: folder tabs from the row's top down onto the panels' top edge,
 // the first one's left side over the panel's left edge, which it runs on into while it is shown.
 constexpr float kViewTabH = kPanelsTop - kTopRowY;
+// By RoutingView: SEQ's sits between FX's and MODS's.
 constexpr Rect kViewTabs[] = {{16.0f, kTopRowY, 96.0f, kViewTabH},
                                {116.0f, kTopRowY, 88.0f, kViewTabH},
                                {208.0f, kTopRowY, 64.0f, kViewTabH},
-                               {276.0f, kTopRowY, 76.0f, kViewTabH}};
+                               {344.0f, kTopRowY, 76.0f, kViewTabH},
+                               {276.0f, kTopRowY, 64.0f, kViewTabH}};
 constexpr float kViewTabRadius = kRadiusCard; // its top corners
+// The dot in a view tab's upper right while what it shows is at work (an effect switched on, the sequencer on).
+inline Point viewTabDot(int view) {
+    return {kViewTabs[view].x + kViewTabs[view].w - 9.0f, kViewTabs[view].y + kViewTabs[view].h * 0.5f - 4.0f};
+}
 constexpr float kViewTabFlare = 6.0f;  // the shown one's curves into the panel's edge
 // The FX view covers the routing panel and the inspector: one card per effect,
 // left to right in processing order, then a card to add one; kVisibleFx at a time.
@@ -261,6 +267,38 @@ constexpr float kFxGap = 22.0f; // room for the plus that adds an effect between
 constexpr float kFxRowLeft = 8.0f + kFxGap;
 constexpr float kFxCardW = (kFxPanel.w - kFxRowLeft - 16.0f - (kVisibleFx - 1) * kFxGap) / kVisibleFx;
 constexpr float kFxTop = kRouting.y + 48.0f;
+// The SEQ view covers them too: the sequencer's settings on a card where the inspector floats, and the roll of the
+// pattern picked in the rest, under a row of tools: the piano keys at its left, the bars over it, a lane of one value a
+// note under it and the lane's tabs under that. Its rows are kSeqRowH high, as many as fit.
+constexpr Rect kSeqCard = kInspector;
+constexpr float kSeqCardX = kSeqCard.x + 12.0f;       // the card's labels
+constexpr float kSeqCardControls = kSeqCard.x + 76.0f; // and the controls after them
+constexpr Rect kSeqTools{kRouting.x + 4.0f, kPanelsTop + 10.0f, 1172.0f - kRouting.x - 4.0f, 24.0f};
+constexpr Rect kSeqBox{kSeqTools.x, kSeqTools.y + kSeqTools.h + 8.0f, kSeqTools.w,
+                       kPanelsTop + 372.0f - 10.0f - (kSeqTools.y + kSeqTools.h + 8.0f)};
+constexpr float kSeqKeysW = 44.0f, kSeqRulerH = 20.0f, kSeqLaneH = 52.0f, kSeqLaneTabsH = 22.0f, kSeqRowH = 10.0f;
+constexpr float kSeqScrollW = 12.0f; // the rows' scroll bar, at the grid's right
+constexpr Rect kSeqKeys{kSeqBox.x, kSeqBox.y + kSeqRulerH, kSeqKeysW,
+                        kSeqBox.h - kSeqRulerH - kSeqLaneH - kSeqLaneTabsH};
+constexpr Rect kSeqGrid{kSeqKeys.x + kSeqKeys.w, kSeqKeys.y, kSeqBox.x + kSeqBox.w - kSeqKeys.x - kSeqKeys.w - kSeqScrollW,
+                        kSeqKeys.h};
+constexpr Rect kSeqScrollYTrack{kSeqGrid.x + kSeqGrid.w + 3.0f, kSeqGrid.y + 2.0f, 6.0f, kSeqGrid.h - 4.0f};
+constexpr Rect kSeqRuler{kSeqGrid.x, kSeqBox.y, kSeqGrid.w, kSeqRulerH};
+constexpr Rect kSeqLaneArea{kSeqGrid.x, kSeqGrid.y + kSeqGrid.h, kSeqGrid.w, kSeqLaneH};
+constexpr Rect kSeqLaneTabs{kSeqBox.x, kSeqLaneArea.y + kSeqLaneArea.h, kSeqBox.w, kSeqLaneTabsH};
+// The card's rows, from its top: its title, PATTERN, PLAY, two rows of knobs, ORDER and ROOT, SCALE and FOLD.
+constexpr float kSeqTitleY = kSeqCard.y + 12.0f;
+constexpr float kSeqPatternY = kSeqCard.y + 46.0f;
+constexpr float kSeqPlayY = kSeqCard.y + 76.0f;
+constexpr float kSeqKnobsY = kSeqCard.y + 130.0f; // the first row's knobs' centers
+constexpr float kSeqKnobStep = 62.0f;              // to the second row's
+constexpr float kSeqOrderY = kSeqCard.y + 252.0f;
+constexpr float kSeqScaleY = kSeqCard.y + 284.0f;
+inline Rect seqKnobCenterRect(int i) { // the place of knob `i` of the eight, as knobRect() takes it
+    return {kSeqCard.x + 16.0f + 268.0f / 4.0f * (static_cast<float>(i % 4) + 0.5f), kSeqKnobsY + (i / 4) * kSeqKnobStep,
+            0.0f, 0.0f};
+}
+
 // The MODS view covers them too: a row per modulation under the columns' names (the count at the right of their
 // row), scrolling with a bar at the right. Within a row, from its left: the bypass dot, the source and its polarity
 // switch, an arrow, the target, the depth bar with its value, the Amount bar with its value, the aux and the remove
@@ -1239,7 +1277,7 @@ inline double partialBarFromLevel(double level) {
 // The settings dialog, centered over the editor: OVERSAMPLING, then MPE (kSettingsMpeY down), then LOOK
 // (kSettingsLookY down), each with its heading, its buttons and its lines under them.
 constexpr float kSettingsW = 380.0f;
-constexpr float kSettingsH = 594.0f;
+constexpr float kSettingsH = 626.0f;
 constexpr float kSettingsMpeY = 184.0f;  // the divider above MPE
 constexpr float kSettingsLookY = 312.0f; // and above LOOK
 constexpr int kOversamplingFactors[] = {1, 2, 4, 8};
@@ -1277,9 +1315,13 @@ inline Rect settingsGlow(Rect panel) {
 inline Rect settingsLinks(Rect panel) {
     return {panel.x + 76.0f, panel.y + kSettingsLookY + 136.0f, 200.0f, 26.0f};
 }
+// Under it, the GRID slider, like it: how strongly the SEQ view's roll draws its grid.
+inline Rect settingsGrid(Rect panel) {
+    return {panel.x + 76.0f, panel.y + kSettingsLookY + 168.0f, 200.0f, 26.0f};
+}
 // Under that, HANDLES and the depth handles' sizes: small, medium and large.
 inline Rect settingsHandles(Rect panel, int size) {
-    return {panel.x + 76.0f + size * 68.0f, panel.y + kSettingsLookY + 170.0f, 64.0f, 28.0f};
+    return {panel.x + 76.0f + size * 68.0f, panel.y + kSettingsLookY + 202.0f, 64.0f, 28.0f};
 }
 inline Rect settingsClose(Rect panel) {
     return {panel.right() - 38.0f, panel.y + 14.0f, 24.0f, 24.0f};

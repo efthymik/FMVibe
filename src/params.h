@@ -322,6 +322,45 @@ enum class UniCurve { Linear, Center, Supersaw, Random, Count };
 // Where its copies sit across the stereo field: from left to right as their pitch rises, copies next to each other in
 // pitch on opposite sides, or anywhere, new for every note. Stored by number: only append.
 enum class UniPan { Ramp, Alternate, Random, Count };
+
+// The sequencer (see sequencer.h): a piano roll of kSeqPatterns patterns, each of up to kSeqNotes notes over up to
+// kSeqBars bars of kSeqStepsPerBar steps, one of which plays. Its settings (SeqParam), each pattern's length and loop
+// (SeqPatternParam) and each pattern's notes (SeqNoteParam), a block of fields a note, an empty slot's Length 0.
+constexpr int kSeqPatterns = 4;
+constexpr int kSeqNotes = 128;
+constexpr int kSeqBars = 8;
+constexpr int kSeqStepsPerBar = 16;
+constexpr int kSeqMaxSteps = kSeqBars * kSeqStepsPerBar;
+enum class SeqParam { Enabled, Pattern, Play, Rate, Swing, Gate, Velocity, Humanize, Octave, Transpose, Order, Root, Scale, Count };
+// Length in bars; the loop in steps, LoopEnd's 0 the pattern's end.
+enum class SeqPatternParam { Length, LoopStart, LoopEnd, Count };
+// Start and Length in steps, Pitch a MIDI note, Velocity and Chance 0..1, Slide and Mute 0 or 1.
+enum class SeqNoteParam { Start, Length, Pitch, Velocity, Chance, Slide, Mute, Count };
+// When it plays: with the host's transport, from a key held (transposed by it from Root) or from a key until stopped.
+// Stored by number: only append.
+enum class SeqPlay { Host, Key, Latch, Count };
+// How long a step is, slowest first. Stored by number: only append.
+enum class SeqRate { Quarter, EighthDotted, Eighth, SixteenthDotted, EighthTriplet, Sixteenth, SixteenthTriplet,
+                     ThirtySecond, Count };
+// Which way the steps run. Stored by number: only append.
+enum class SeqOrder { Forward, Reverse, PingPong, Random, Count };
+// The scale the roll snaps notes to and shades rows outside of. Stored by number: only append.
+enum class SeqScale { Chromatic, Major, Minor, Dorian, Phrygian, Lydian, Mixolydian, HarmonicMinor, MelodicMinor,
+                      PentatonicMajor, PentatonicMinor, Blues, Count };
+constexpr int kSeqParamCount = static_cast<int>(SeqParam::Count);
+constexpr int kSeqPatternParamCount = static_cast<int>(SeqPatternParam::Count);
+constexpr int kSeqNoteParamCount = static_cast<int>(SeqNoteParam::Count);
+// Steps a beat (a quarter note) at each rate.
+constexpr double kSeqStepsPerBeat[] = {1.0, 4.0 / 3.0, 2.0, 8.0 / 3.0, 3.0, 4.0, 6.0, 8.0};
+static_assert(std::size(kSeqStepsPerBeat) == static_cast<size_t>(SeqRate::Count));
+// The pitch classes of each scale, a bit each from its root (bit 0 the root).
+constexpr uint16_t kSeqScaleMasks[] = {0xfff, 0xab5, 0x5ad, 0x6ad, 0x5ab, 0xad5, 0x6b5, 0x9ad, 0xaad, 0x295, 0x4a9, 0x4e9};
+static_assert(std::size(kSeqScaleMasks) == static_cast<size_t>(SeqScale::Count));
+inline bool seqInScale(int scale, int root, int pitch) {
+    const int s = std::clamp(scale, 0, static_cast<int>(SeqScale::Count) - 1);
+    return (kSeqScaleMasks[s] >> (((pitch - root) % 12 + 12) % 12) & 1u) != 0;
+}
+
 // Stored in projects by number: only append.
 enum class FilterType { LowPass, HighPass, BandPass, Notch, Comb, Count };
 // How a route into an operator (from an operator, a filter or a shaper) acts on it; see routeModeIndex(). Phase adds
@@ -816,7 +855,12 @@ constexpr int kRouteModeBase = kSlotCurveBase + kAllSources * kSlots;
 // order they ran (see fxOrder()). Loading one wires them as the effects graph's line (see readParams()); since then the
 // graph's wires alone hold the order, and these do nothing.
 constexpr int kFxPositionBase = kRouteModeBase + kRouteSources * kOps;
-constexpr int kParamCount = kFxPositionBase + kFxSlots;
+// The sequencer: its settings, each pattern's length and loop, then each pattern's notes (see SeqParam). Only ever read
+// as set; the notes are hidden from hosts, like the drawn shapes.
+constexpr int kSeqBase = kFxPositionBase + kFxSlots;
+constexpr int kSeqPatternBase = kSeqBase + kSeqParamCount;
+constexpr int kSeqNoteBase = kSeqPatternBase + kSeqPatterns * kSeqPatternParamCount;
+constexpr int kParamCount = kSeqNoteBase + kSeqPatterns * kSeqNotes * kSeqNoteParamCount;
 // The params before the shapes: what LFOs, envelopes and hosts can modulate,
 // and what voices read with modulation applied. Shapes are only ever read as set.
 constexpr int kModulatedCount = kShapeBase;
@@ -824,6 +868,16 @@ constexpr int kModulatedCount = kShapeBase;
 constexpr int kVoiceParamCount = kFxBase;
 
 constexpr int paramIndex(GlobalParam p) { return static_cast<int>(p); }
+constexpr int paramIndex(SeqParam p) { return kSeqBase + static_cast<int>(p); }
+constexpr int paramIndex(int pattern, SeqPatternParam p) {
+    return kSeqPatternBase + pattern * kSeqPatternParamCount + static_cast<int>(p);
+}
+// Note `note` of pattern `pattern`.
+constexpr int seqNoteIndex(int pattern, int note, SeqNoteParam p) {
+    return kSeqNoteBase + (pattern * kSeqNotes + note) * kSeqNoteParamCount + static_cast<int>(p);
+}
+constexpr bool isSeqParam(int index) { return index >= kSeqBase && index < kParamCount; }
+constexpr bool isSeqNote(int index) { return index >= kSeqNoteBase && index < kParamCount; }
 constexpr int paramIndex(int op, OpParam p) { return kOpBase + op * kOpParamCount + static_cast<int>(p); }
 // Amount by which operator `from` modulates operator `to`; from == to is feedback.
 constexpr int matrixIndex(int from, int to) { return kMatrixBase + from * kOps + to; }
@@ -1258,10 +1312,10 @@ constexpr int slotCurveIndex(int source, int slot) { return kSlotCurveBase + sou
 constexpr int routeModeIndex(int from, int to) { return kRouteModeBase + from * kOps + to; }
 // The node a route's mode param comes from and the operator it goes into, or -1 for other params.
 constexpr int routeModeFrom(int index) {
-    return index >= kRouteModeBase && index < kParamCount ? (index - kRouteModeBase) / kOps : -1;
+    return index >= kRouteModeBase && index < kFxPositionBase ? (index - kRouteModeBase) / kOps : -1;
 }
 constexpr int routeModeTo(int index) {
-    return index >= kRouteModeBase && index < kParamCount ? (index - kRouteModeBase) % kOps : -1;
+    return index >= kRouteModeBase && index < kFxPositionBase ? (index - kRouteModeBase) % kOps : -1;
 }
 // The source an aux or Amount param belongs to; -1 for other params.
 constexpr int auxSourceOf(int index) {
@@ -1352,6 +1406,10 @@ constexpr Section kSections[] = {
     // Its sums, then the wires into them.
     {kFxSumBase, kFxSums, kSumParamCount, 35100, 20},
     {kFxSumInputBase, kFxSums, kFxSumInputs * kFxInputFields, 35200, 20},
+    // The sequencer: its settings, its patterns' lengths and loops, then their notes, pattern by pattern.
+    {kSeqBase, 1, kSeqParamCount, 40000, 100},
+    {kSeqPatternBase, kSeqPatterns, kSeqPatternParamCount, 40100, 10},
+    {kSeqNoteBase, kSeqPatterns * kSeqNotes, kSeqNoteParamCount, 41000, 10},
 };
 
 // Sources had kFirstSlots slots at first. Their fields keep the ids they had
@@ -1496,14 +1554,31 @@ constexpr bool idsRoundTrip(int from, int to) {
 }
 // (MSVC allows an expression 1,048,576 steps, fewer than GCC, so the parts are small.)
 static_assert(kParamCount <= 8 * 3000);
-static_assert(idsRoundTrip(0, 3000), "param id layout overlaps");
-static_assert(idsRoundTrip(3000, 6000), "param id layout overlaps");
-static_assert(idsRoundTrip(6000, 9000), "param id layout overlaps");
-static_assert(idsRoundTrip(9000, 12000), "param id layout overlaps");
-static_assert(idsRoundTrip(12000, 15000), "param id layout overlaps");
-static_assert(idsRoundTrip(15000, 18000), "param id layout overlaps");
-static_assert(idsRoundTrip(18000, 21000), "param id layout overlaps");
-static_assert(idsRoundTrip(21000, 24000), "param id layout overlaps");
+static_assert(idsRoundTrip(0, 1500), "param id layout overlaps");
+static_assert(idsRoundTrip(1500, 3000), "param id layout overlaps");
+static_assert(idsRoundTrip(3000, 4500), "param id layout overlaps");
+static_assert(idsRoundTrip(4500, 6000), "param id layout overlaps");
+static_assert(idsRoundTrip(6000, 7500), "param id layout overlaps");
+static_assert(idsRoundTrip(7500, 9000), "param id layout overlaps");
+static_assert(idsRoundTrip(9000, 10500), "param id layout overlaps");
+static_assert(idsRoundTrip(10500, 12000), "param id layout overlaps");
+static_assert(idsRoundTrip(12000, 13500), "param id layout overlaps");
+static_assert(idsRoundTrip(13500, 15000), "param id layout overlaps");
+static_assert(idsRoundTrip(15000, 16500), "param id layout overlaps");
+static_assert(idsRoundTrip(16500, 18000), "param id layout overlaps");
+static_assert(idsRoundTrip(18000, 19500), "param id layout overlaps");
+static_assert(idsRoundTrip(19500, 21000), "param id layout overlaps");
+static_assert(idsRoundTrip(21000, 22500), "param id layout overlaps");
+static_assert(idsRoundTrip(22500, 24000), "param id layout overlaps");
+// The sequencer's ids.
+static_assert(idOfIndex(paramIndex(SeqParam::Enabled)) == 40000 && idOfIndex(paramIndex(SeqParam::Scale)) == 40012 &&
+                  idOfIndex(paramIndex(0, SeqPatternParam::Length)) == 40100 &&
+                  idOfIndex(paramIndex(kSeqPatterns - 1, SeqPatternParam::LoopEnd)) == 40132 &&
+                  idOfIndex(seqNoteIndex(0, 0, SeqNoteParam::Start)) == 41000 &&
+                  idOfIndex(seqNoteIndex(1, 0, SeqNoteParam::Start)) == 42280 &&
+                  idOfIndex(seqNoteIndex(kSeqPatterns - 1, kSeqNotes - 1, SeqNoteParam::Mute)) == 46116 &&
+                  kSeqNoteParamCount <= 10 && kSeqParamCount <= 100,
+              "sequencer param ids moved");
 // Projects store params by id: effect fields keep theirs as later ones come (the 80th was the last in the
 // first section),
 static_assert(idOfIndex(paramIndex(1, FxParam::ReverbType)) == 1400 + 80 + 79 &&
@@ -1733,6 +1808,20 @@ static_assert(numberedInOrder({UniCurve::Linear, UniCurve::Center, UniCurve::Sup
               "UniCurve is stored by number: only append");
 static_assert(numberedInOrder({UniPan::Ramp, UniPan::Alternate, UniPan::Random, UniPan::Count}),
               "UniPan is stored by number: only append");
+static_assert(numberedInOrder({SeqPlay::Host, SeqPlay::Key, SeqPlay::Latch, SeqPlay::Count}),
+              "SeqPlay is stored by number: only append");
+static_assert(numberedInOrder({SeqRate::Quarter, SeqRate::EighthDotted, SeqRate::Eighth, SeqRate::SixteenthDotted,
+                               SeqRate::EighthTriplet, SeqRate::Sixteenth, SeqRate::SixteenthTriplet,
+                               SeqRate::ThirtySecond, SeqRate::Count}),
+              "SeqRate is stored by number: only append");
+static_assert(numberedInOrder({SeqOrder::Forward, SeqOrder::Reverse, SeqOrder::PingPong, SeqOrder::Random,
+                               SeqOrder::Count}),
+              "SeqOrder is stored by number: only append");
+static_assert(numberedInOrder({SeqScale::Chromatic, SeqScale::Major, SeqScale::Minor, SeqScale::Dorian,
+                               SeqScale::Phrygian, SeqScale::Lydian, SeqScale::Mixolydian, SeqScale::HarmonicMinor,
+                               SeqScale::MelodicMinor, SeqScale::PentatonicMajor, SeqScale::PentatonicMinor,
+                               SeqScale::Blues, SeqScale::Count}),
+              "SeqScale is stored by number: only append");
 static_assert(numberedInOrder({FilterType::LowPass, FilterType::HighPass, FilterType::BandPass, FilterType::Notch,
                                FilterType::Comb, FilterType::Count}),
               "FilterType is stored by number: only append");
@@ -2375,6 +2464,11 @@ enum class ParamKind {
     OpWarp,       // stepped: how an operator reads its wave's cycle (see OpWarp)
     UniCurve,     // stepped: how an operator's unison copies spread in pitch (see UniCurve)
     UniPan,       // stepped: where they sit across the stereo field (see UniPan)
+    SeqPattern,   // stepped: the sequencer's pattern playing, A to D
+    SeqPlay,      // stepped: when the sequencer plays (see SeqPlay)
+    SeqRate,      // stepped: how long its step is (see SeqRate)
+    SeqOrder,     // stepped: which way its steps run (see SeqOrder)
+    SeqBars,      // stepped: a pattern's length in bars, set in the editor and hidden from hosts
 };
 // A port's name: "In", "FX 3", "Split 1 Low"; "None" for -1.
 std::string fxPortName(int port);
@@ -2670,6 +2764,10 @@ const char *ampCabName(AmpCab cab);
 const char *ampMicName(AmpMic mic);
 const char *routeModeName(RouteMode mode);
 const char *midiInputName(MidiInput input);
+// The sequencer's scales, rates and patterns by number, as its settings show them.
+const char *seqScaleName(int scale);
+const char *seqRateName(int rate);
+const char *seqPatternName(int pattern);
 const char *sourceTypeName(SourceType type);
 const char *fxName(FxType fx);
 

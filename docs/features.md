@@ -643,6 +643,32 @@ What the plugin does and how its editor works, in full. Building and installing 
     covers 99 % of the interval in the glide time. Glide can be modulated like any knob. Patches saved when it
     reached 20 s (state version 6 and earlier) load a longer glide as 6 s, and a modulation's depth on it larger by
     as much as its range shrank, so it swings Glide as far as it did.
+- **Sequencer**, off to begin with: a piano roll that plays the synth's own notes, edited in the SEQ view (see
+  [Editor](#editor)). It holds four **patterns**, A to D, saved with the preset, each up to 8 bars of 16 steps and up
+  to 128 notes; the pattern picked plays, and another one picked while it plays takes over where the loop comes round.
+  Each note has its start and length in steps (anywhere, not only on the grid), its pitch, velocity, **chance** (how
+  likely it plays each time round, drawn the same way each time a step comes round again, so a render plays alike),
+  **Slide** (it holds on into the next note, a step at most, so mono legato and glide join them) and **Mute** (kept,
+  silent). A pattern's **loop**, from step to step within its length (all of it to begin with), is what plays.
+  - **Play**: **Host** plays with the host's transport, locked to its bars (and silent while it is stopped; keys still
+    play the synth on top). **Key** plays while a key is held, from the pattern's start, transposed by the newest key
+    from **Root**, and stops when the keys are let go; **Latch** starts with a key and plays on once they are let go, a
+    new key transposing it. In Key and Latch the keys play no notes of their own: the host is told each one has ended
+    as it is let go.
+  - **Rate** is a step's length: 1/4, 1/8 dotted, 1/8, 1/16 dotted, 1/8 triplet, 1/16 (to begin with), 1/16 triplet or
+    1/32, at the host's tempo. **Swing** (50–75 %) delays every other step; **Gate** (5–200 %) scales every note's
+    length; **Velocity** scales the notes' velocities (at 0 % every note plays at 100); **Humanize** delays the notes by
+    up to a quarter of a step and moves their velocity up to 30 % either way, the same way every time round;
+    **Octave** (±3) and **Transpose** (±24 semitones) move the whole pattern. **Order** runs the loop's steps forward,
+    backward, to and fro, or each one at random (the same way each time round), the notes starting in a step at the
+    same place in it.
+  - Its notes start and end at their sample, however the host splits its blocks, and go to the voices as notes do
+    (stealing, mono, legato and glide alike); the host is never told of their ends, and the keyboard strip lights only
+    the keys played (by the host, its own keys and the computer's), not the sequencer's notes. A jump of the transport, or a
+    change of Rate while it plays, ends what it holds and plays on from there. While it may start notes (in Host while
+    it is on; in Key and Latch while it runs), the plugin doesn't let the host put processing to sleep.
+  - Its settings but Root and Scale are given to hosts, for automation (not modulation); a pattern's length, loop and
+    notes are the editor's alone.
 - **Host modulation** (CLAP; VST3 has none, and VST3 hosts automate the parameters instead): all continuous
   parameters hosts are given accept CLAP modulation globally, the macros' knobs, the mod wheel, the note source's
   range and every modulation's depth and Amount among them (not the effects or the sources' own knobs, which hosts
@@ -680,15 +706,79 @@ sweeps and spectra the panels' row. What may show anywhere repaints the whole of
 changing, the first note or the last ending, and the host's tempo. It looks over the params for changes only when
 one may have changed since it last did.
 
-- **ROUTING / MATRIX / FX / MODS** tabs, under the header, pick what the panel below them shows: the routing graph
-  or the matrix (two views of the same connections) with the inspector floating over the panel's left end, or across
-  the whole panel the effects chain or every modulation. The
+- **ROUTING / MATRIX / FX / SEQ / MODS** tabs, under the header, pick what the panel below them shows: the routing
+  graph or the matrix (two views of the same connections) with the inspector floating over the panel's left end, or
+  across the whole panel the effects chain, the sequencer or every modulation. The
   choice is saved with the project, but loading a preset or Init leaves the tab shown (and the FX view's row or graph)
   as it is. They are folder tabs: the one shown is part of the panel under it, its outline
   curving into the panel's edge (ROUTING, in line with the panel's left edge, runs straight on down it), with the
   theme's accent along its top; the others are their names, a tab's shape
-  showing faintly under the mouse. While the full-size shape, shaper curve or partial editor has the panels, no tab
+  showing faintly under the mouse. FX shows a dot in its upper right while an effect in the line is switched on,
+  and SEQ while the sequencer is on. While the full-size shape, shaper curve or partial editor has the panels, no tab
   is shown, and clicking one closes the editor (a widened LFO card's shape stays in its card).
+- **SEQ** (the sequencer, see [Sound engine](#sound-engine)): its settings on a card where the inspector floats, and
+  the roll of the pattern picked in the rest.
+  - **The card**: the sequencer's power switch; **PATTERN** A to D (the one picked plays and shows in the roll) and a
+    button that copies it, its length, loop and notes, into the next empty pattern; **PLAY** Host | Key | Latch; the
+    knobs Rate, Swing, Gate, Length (the pattern's, in bars), Velocity, Humanize, Octave and Transpose; **ORDER** as
+    arrows (forward, back, to and fro, a die for random); **SCALE**: the root (dragged up and down or scrolled, a
+    semitone a step; a double-click puts it back on C4), the scale's list (Chromatic, Major, Minor, Dorian, Phrygian,
+    Lydian, Mixolydian, Harmonic Minor, Melodic Minor, Pentatonic Major and Minor, Blues; wider than its button, and
+    opening above it where the editor is too short for it below) and **FOLD**, which shows only the scale's rows (the
+    rows outside it are shaded otherwise). At its foot, what the play mode does. Its switches say what they do in their
+    tooltips.
+  - **The grid**: a line at every snap's length across the roll (a step with the snap off), the beats and bars
+    stronger, as strong as the settings dialog's **GRID** says (50 % to begin with).
+  - **The tools** over the roll: select | draw (select to begin with), **SNAP** and its list (Off, 1/4, 1/8, 1/16 to
+    begin with, 1/32, 1/64, 1/8 triplet, 1/16 triplet; the wheel steps it), **×2** and **÷2** (the notes picked, or
+    every note, twice or half as long and as far apart; the whole pattern twice as long takes twice the bars), the
+    field of the notes picked (its NOTE, VEL, CHANCE, LEN and OFFSET, the offset a note's start off the grid in
+    hundredths of a step; each dragged up and down or scrolled, moving every note picked, one undo step; a
+    double-click puts VEL back to 100, CHANCE to full and OFFSET to 0, on the grid), **SLIDE** and
+    **MUTE** (for the notes picked: on, or off if they all are) and the bin, which clears the pattern, asking first.
+    The roll's settings (the tool, the snap, the lane, the rows scrolled to and FOLD) belong to the editor: a preset
+    or Init leaves them as they are.
+  - **The roll**: the piano keys at its left (white keys across, the black ones shorter over them, every C named; with
+    FOLD, each row's name), a click playing the key, and the keys the sequencer plays lit as it plays them; the bars
+    and beats over it, with the loop as a bar in the accent (dragged by its ends to size it and by its middle to move
+    it, the cursor left and right or moving; across the bars outside it for a new loop; a double-click loops the whole
+    pattern again), the steps outside the loop shaded; and the playhead, while the sequencer plays the pattern shown. The wheel scrolls the
+    rows; over the roll, Ctrl+wheel zooms in and out across and Alt+wheel up and down, at the mouse, as the − and +
+    after the arrows at the lane tabs' right do (across from the whole pattern to two steps, the rows from 0.6 to 3
+    times as high). A bar at the roll's right scrolls the rows (dragged, a click on its track jumping there, or the
+    wheel). Zoomed in across, a bar after the lane tabs shows and scrolls what the roll shows, as Shift+wheel
+    and the wheel turned sideways do; the middle button (or two fingers) drags the roll across and up and down. The
+    zoom and what is scrolled across belong to the editor and aren't saved. Notes are brighter as they are louder, dashed with their chance at less than full, hollow while muted, a
+    hook off their end with Slide; those picked are ringed, a handle at their end.
+  - **Select**: a click picks a note (Shift adds it or takes it out), a drag moves the notes picked (the one grabbed
+    landing on the grid, up and down by rows; Alt off the grid, Ctrl carrying copies), a note's right end dragged sets
+    the length of every note picked and its left end their starts, their ends staying (on the grid; with Shift or Alt
+    held, off it, following the mouse) (the cursor left-right over
+    either end, a handle at each end of a note picked), a drag from an empty place picks the notes the box reaches (Shift adding to
+    them), and a double-click puts a note down a grid step long (on a note, deletes it). **Draw**: a click puts a note
+    down (the cursor a pen), and held, the mouse up or down sets its velocity, a step a pixel from 100; with Shift, a
+    drag paints a note in each grid step it crosses that has none; a note clicked is moved or stretched as in Select
+    (the cursor saying which over it). Each edit is one undo step.
+  - **The lane** under the roll: a stem for each note at its start, as high as its velocity or its chance, as the
+    **VELOCITY | CHANCE** tabs under it pick, a note picked ringed there too; dragged across, the notes there take
+    the height of the mouse (the cursor a pen, and up and down over a dot and while one is dragged), and a double-click puts them back
+    (velocity 100, chance full). With more than one note picked, a drag from one of their dots moves them all up or
+    down together, each from where it was. Where notes start together and any of them is picked, the lane sets the
+    picked ones alone (their dots drawn over the others').
+  - **Hearing notes**: a key clicked in the roll's keys, and a note clicked or drawn on the roll, sound alone while the
+    button is held (a note moved to another row sounding that row's), whatever Play is: never the sequencer's
+    pattern, which only the keyboard strip's keys and the host's notes start in Key and Latch.
+  - **Following what is dragged**: a note, a box or a paint stroke dragged to the roll's edge (or past it) scrolls the
+    roll that way, faster the further past it, what is dragged going along. A patch loaded (a preset, Init, a
+    project) fits the roll to its pattern's notes: the whole pattern across, and the rows about the notes, lower where
+    they don't all fit.
+  - **No two notes on one spot**: a note put down, moved, stretched or transposed onto another's start and pitch takes
+    its place, the one there removed in the same undo step.
+  - **Keys**, while the mouse is over the editor (as for undo): **Ctrl+A** picks every note of the pattern; **Left**
+    and **Right** move the notes picked a grid step (a step with the snap off), **Up** and **Down** a row (a degree of
+    the scale while folded), and **Shift+Up** and **Shift+Down** an octave, and **Delete** removes them, each an undo step. Moved up or down, the
+    rows follow only as far as shows every note moved, and not at all while they all show. With no note picked,
+    the arrows go on to the host.
 - **Routing panel**: the right of the panel the inspector floats over (see below); the graph shows only what is
   switched on, the matrix everything, greyed out where it is off.
   The inspector's tabs switch nodes on and off (see below); so does a node's right-click menu in the graph, and the
@@ -1743,9 +1833,11 @@ one may have changed since it last did.
   The editor shows it while it is dragged and keeps it when it is let go, as it does Hue and Lines; a double-click on
   any of the three sliders puts it back to where it starts (Hue to Default). **Lines**, a slider like it from Off to
   100 % (75 % to begin with), sets how strongly the dashed lines from a source's handle to what it modulates (and the
-  one a handle being dragged trails) are drawn: Off draws none, 100 % draws them opaque. **Handles**, Small (to begin
+  one a handle being dragged trails) are drawn: Off draws none, 100 % draws them opaque. **Grid**, a slider like it
+  from Off to 100 % (50 % to begin with, and a double-click puts it back), sets how strongly the SEQ view's roll draws
+  its grid lines: Off draws none, 100 % twice as strongly as 50 %. **Handles**, Small (to begin
   with), Medium or Large, draws the depth handles and their **+n** pills bigger, each step about half a pixel more in
-  radius and a pixel more across, in the same places (so on a label or cell, Large ones overlap a little). All five
+  radius and a pixel more across, in the same places (so on a label or cell, Large ones overlap a little). All six
   are yours rather than the
   project's: they are kept in `%APPDATA%\FMVibe\settings.txt`, every FMVibe editor uses them, and other open editors
   switch along. An editor writes only what it changed into that file, leaving what another one changed meanwhile. The dialog's bottom line shows the version number and that FMVibe is released under the MIT

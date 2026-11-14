@@ -46,6 +46,27 @@ STR(UniPanRamp, "Ramp")
 STR(UniPanAlternate, "Alternate")
 STR(UniPanRandom, "Random")
 
+// When the sequencer plays (its Play), which way its steps run (its Order) and the scales its roll snaps to.
+STR(SeqPlayHost, "Host")
+STR(SeqPlayKey, "Key")
+STR(SeqPlayLatch, "Latch")
+STR(SeqOrderForward, "Forward")
+STR(SeqOrderReverse, "Reverse")
+STR(SeqOrderPingPong, "Ping-Pong")
+STR(SeqOrderRandom, "Random")
+STR(SeqScaleChromatic, "Chromatic")
+STR(SeqScaleMajor, "Major")
+STR(SeqScaleMinor, "Minor")
+STR(SeqScaleDorian, "Dorian")
+STR(SeqScalePhrygian, "Phrygian")
+STR(SeqScaleLydian, "Lydian")
+STR(SeqScaleMixolydian, "Mixolydian")
+STR(SeqScaleHarmonicMinor, "Harmonic Minor")
+STR(SeqScaleMelodicMinor, "Melodic Minor")
+STR(SeqScalePentatonicMajor, "Pentatonic Major")
+STR(SeqScalePentatonicMinor, "Pentatonic Minor")
+STR(SeqScaleBlues, "Blues")
+
 STR(FilterLowPass, "Low-pass")
 STR(FilterHighPass, "High-pass")
 STR(FilterBandPass, "Band-pass")
@@ -154,6 +175,8 @@ STR(ValueOn, "On")
 STR(ValueOpen, "Open") // the delay's tone in the middle, filtering nothing
 STR(ValueNone, "None") // a modulation slot's target, when it has none
 STR(ValueKill, "Kill") // a DJ EQ band turned all the way down
+STR(ValueBar, "1 bar") // a sequencer pattern's length
+STR(ValueBars, "{1} bars")
 
 // --- Parameter names, as hosts show them, and in the editor's undo, menus and messages
 
@@ -166,6 +189,7 @@ STR(ModuleMacros, "Macros")
 STR(ModuleFx, "FX")
 STR(ModuleModulation, "Modulation")
 STR(ModuleMatrix, "Matrix")
+STR(ModuleSequencer, "Sequencer")
 
 STR(ParamVolume, "Volume")
 STR(ParamFmAmount, "FM Amount")
@@ -420,6 +444,32 @@ STR(ParamShiftMix, "Shift Mix")
 // A modulation slot's bypass, as the editor names it: the source, then the target it modulates.
 STR(ParamNameBypass, "{1} bypass")
 STR(ParamNameBypassOn, "{1} bypass on {2}")
+// The sequencer's settings, each pattern's (Pattern A Length) and each note's fields (Pattern A Note 3 Pitch).
+STR(ParamSeqOn, "Sequencer On")
+STR(ParamSeqPattern, "Sequencer Pattern")
+STR(ParamSeqPlay, "Sequencer Play")
+STR(ParamSeqRate, "Sequencer Rate")
+STR(ParamSeqSwing, "Sequencer Swing")
+STR(ParamSeqGate, "Sequencer Gate")
+STR(ParamSeqVelocity, "Sequencer Velocity")
+STR(ParamSeqHumanize, "Sequencer Humanize")
+STR(ParamSeqOctave, "Sequencer Octave")
+STR(ParamSeqTranspose, "Sequencer Transpose")
+STR(ParamSeqOrder, "Sequencer Order")
+STR(ParamSeqRoot, "Sequencer Root")
+STR(ParamSeqScale, "Sequencer Scale")
+STR(ParamSeqPatternName, "Pattern {1}")
+STR(ParamSeqLength, "Length")
+STR(ParamSeqLoopStart, "Loop Start")
+STR(ParamSeqLoopEnd, "Loop End")
+STR(ParamSeqNote, "Note {1}")
+STR(ParamSeqNoteStart, "Start")
+STR(ParamSeqNoteLength, "Length")
+STR(ParamSeqNotePitch, "Pitch")
+STR(ParamSeqNoteVelocity, "Velocity")
+STR(ParamSeqNoteChance, "Chance")
+STR(ParamSeqNoteSlide, "Slide")
+STR(ParamSeqNoteMute, "Mute")
 
 // --- The host's remote control pages, and the plugin's ports
 
@@ -477,6 +527,31 @@ STR(ViewRouting, "ROUTING")
 STR(ViewMatrix, "MATRIX")
 STR(ViewFx, "FX")
 STR(ViewMods, "MODS") // every modulation, as a table
+STR(ViewSeq, "SEQ") // the sequencer's settings and piano roll
+// The SEQ view: its settings card, the tools over its roll, the field of the notes picked and the lane's tabs.
+STR(HeadingSequencer, "SEQUENCER")
+STR(LabelSeqPattern, "PATTERN")
+STR(LabelSeqPlay, "PLAY")
+STR(LabelSeqOrder, "ORDER")
+STR(LabelSeqScale, "SCALE")
+STR(LabelSeqSnap, "SNAP")
+STR(LabelSwing, "Swing")
+STR(LabelGate, "Gate")
+STR(LabelLength, "Length")
+STR(LabelVelocity, "Velocity")
+STR(LabelHumanize, "Humanize")
+STR(LabelOctave, "Octave")
+STR(LabelTranspose, "Transpose")
+STR(SwitchFold, "FOLD") // the roll shows only the scale's rows
+STR(SwitchSlide, "SLIDE") // a note glides into the next one
+STR(SwitchMute, "MUTE") // a note kept but silent
+STR(SeqFieldNote, "NOTE")
+STR(SeqFieldVelocity, "VEL")
+STR(SeqFieldChance, "CHANCE")
+STR(SeqFieldLength, "LEN")
+STR(SeqFieldOffset, "OFFSET")
+STR(SeqLaneVelocity, "VELOCITY")
+STR(SeqLaneChance, "CHANCE")
 STR(ModListCount, "{1} modulations") // in a pill's list, after the name of what they modulate
 STR(ModListCountOne, "1 modulation")
 STR(TabUnison, "UNISON") // an operator's page: what its lower half shows
@@ -627,6 +702,7 @@ STR(BandButtonMid, "MID")
 STR(BandButtonHigh, "HIGH")
 STR(ButtonAddEffect, "ADD EFFECT")
 STR(ButtonClearFx, "Remove All") // the confirm dialog's button that removes every effect
+STR(ButtonClearSeq, "Clear") // the confirm dialog's button that removes every note of a pattern
 STR(ButtonAddSource, "ADD SOURCE") // the dashed card after the sources: opens the list of source types
 STR(ButtonEffect, "EFFECT") // + EFFECT and + SOURCE, after a drawn plus
 STR(ButtonSource, "SOURCE")
@@ -643,6 +719,10 @@ STR(HintMatrix, "rows feed columns  ·  drag to adjust  ·  double-click to togg
 STR(HintFx, "drag a title to reorder")
 STR(HintFxGraph, "click node: edit  ·  drag node: move  ·  click wire: insert")
 STR(HintFxInspector, "Click a node to edit it") // the graph's inspector, with no node to show
+STR(HintSeqEmpty, "Double-click to add a note") // the SEQ view's roll, with no notes
+STR(HintSeqHost, "Plays along with the host's transport") // what each play mode does, on the SEQ view's card
+STR(HintSeqKey, "Plays while a key is held, transposed from the root")
+STR(HintSeqLatch, "A key starts it, and it plays on, a new key transposing it")
 // A split's controls: the tabs that pick the band it shows, and its container's dashed card adding to that band.
 STR(TabBandLow, "Low")
 STR(TabBandHigh, "High")
@@ -686,6 +766,7 @@ STR(SettingsHue, "HUE") // the theme's main color, beside its slider
 STR(SettingsHueDefault, "Default") // the hue slider left at the theme's own color, after it
 STR(SettingsGlow, "GLOW")
 STR(SettingsLinks, "LINES") // how strongly a source's dashed lines to its targets are drawn, beside its slider
+STR(SettingsGrid, "GRID") // how strongly the SEQ view's roll draws its grid, beside its slider
 STR(SettingsHandles, "HANDLES") // the depth handles' size, beside its buttons
 STR(SettingsHandlesSmall, "Small")
 STR(SettingsHandlesMedium, "Medium")
@@ -711,6 +792,8 @@ STR(ConfirmOverwriteTitle, "Overwrite \"{1}\"?")
 STR(ConfirmOverwrite, "Replaces the preset file with the current patch.")
 STR(ConfirmFxClearTitle, "Really remove all FX?")
 STR(ConfirmFxClear, "All effects are removed.")
+STR(ConfirmSeqClearTitle, "Clear pattern {1}?")
+STR(ConfirmSeqClear, "Every note of the pattern is removed.")
 STR(ConfirmMidBandTitle, "Change to two bands?") // a three-band split switched to two, its middle band holding effects
 STR(ConfirmMidBand, "The mid band holds {1} effects. Where should they go?")
 STR(ConfirmMidBandOne, "The mid band holds an effect. Where should it go?")
@@ -810,6 +893,29 @@ STR(TipFxSlotBand, "Add an effect to this band")
 STR(TipFxGap, "Add an effect or a split here") // the middle of a wire in the effects graph
 STR(TipFxGapBand, "Add an effect to this band here")
 STR(TipFxClear, "Remove all effects")
+STR(TipSeqSelect, "Select: click a note to pick it, drag it to move it, drag its end for its length; double-click adds a note or deletes one")
+STR(TipSeqDraw, "Draw: click to put a note down and drag up or down for its velocity; Shift+drag paints notes")
+STR(TipSeqSnap, "The grid notes land on; Alt lets go of it")
+STR(TipSeqDouble, "Twice as long: the notes picked, or the whole pattern")
+STR(TipSeqHalve, "Half as long: the notes picked, or the whole pattern")
+STR(TipSeqClear, "Clear the pattern")
+STR(TipSeqCopy, "Copy into the next empty pattern")
+STR(TipSeqSlide, "Glide into the next note")
+STR(TipSeqMute, "Keep the note, but silent")
+STR(TipSeqFold, "Show only the scale's rows")
+STR(TipSeqKeys, "Click to hear a note")
+STR(TipSeqRuler, "Drag the loop by its ends or its middle, or across the bars outside it for a new one; double-click loops the whole pattern")
+STR(TipSeqField, "{1}: drag or scroll to change the notes picked, double-click to reset")
+STR(TipSeqLane, "Drag across the notes to set their {1}")
+STR(TipSeqRoot, "The note Key and Latch transpose from: drag or scroll")
+STR(TipSeqPower, "Sequencer on or off")
+STR(TipSeqZoomOutX, "Zoom out across (Ctrl+wheel)")
+STR(TipSeqZoomInX, "Zoom in across (Ctrl+wheel)")
+STR(TipSeqZoomOutY, "Zoom out up and down (Alt+wheel)")
+STR(TipSeqZoomInY, "Zoom in up and down (Alt+wheel)")
+STR(TipSeqScroll, "Drag to scroll across; Shift+wheel and the middle button scroll too")
+STR(TipSeqScrollY, "Drag to scroll the rows; the wheel and the middle button scroll them too")
+STR(TipSeqPattern, "Pattern {1}: plays, and shows in the roll")
 STR(TipRemoveSplit, "Remove split")
 STR(TipRemoveJoin, "Remove join")
 STR(TipRouteMode, "{1}. Click to pick how it modulates") // the mode part of a wire label's pill
@@ -986,6 +1092,9 @@ STR(MsgRouteExists, "{1} already routes to {2}")
 STR(MsgChainFull, "Only supports up to {1} effects in the chain")
 STR(MsgSplitsFull, "Only supports up to {1} splits")
 STR(MsgShapeFull, "Only supports up to {1} points per shape")
+STR(MsgSeqFull, "Only supports up to {1} notes per pattern")
+STR(MsgSeqNoEmpty, "No empty pattern to copy into")
+STR(MsgSeqCopied, "Pattern {1} copied into pattern {2}")
 STR(MsgShapeCopied, "{1} shape copied")
 STR(MsgNothingCopied, "Copy a shape first")
 STR(MsgNoteCurveEnds, "End points can't be deleted")

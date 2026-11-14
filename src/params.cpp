@@ -30,6 +30,20 @@ constexpr Str kUniCurveNames[] = {Str::UniCurveLinear, Str::UniCurveCenter, Str:
 static_assert(std::size(kUniCurveNames) == static_cast<size_t>(UniCurve::Count));
 constexpr Str kUniPanNames[] = {Str::UniPanRamp, Str::UniPanAlternate, Str::UniPanRandom};
 static_assert(std::size(kUniPanNames) == static_cast<size_t>(UniPan::Count));
+const char *const kSeqPatternNames[] = {"A", "B", "C", "D"};
+static_assert(std::size(kSeqPatternNames) == static_cast<size_t>(kSeqPatterns));
+constexpr Str kSeqPlayNames[] = {Str::SeqPlayHost, Str::SeqPlayKey, Str::SeqPlayLatch};
+static_assert(std::size(kSeqPlayNames) == static_cast<size_t>(SeqPlay::Count));
+const char *const kSeqRateNames[] = {"1/4", "1/8D", "1/8", "1/16D", "1/8T", "1/16", "1/16T", "1/32"};
+static_assert(std::size(kSeqRateNames) == static_cast<size_t>(SeqRate::Count));
+constexpr Str kSeqOrderNames[] = {Str::SeqOrderForward, Str::SeqOrderReverse, Str::SeqOrderPingPong,
+                                  Str::SeqOrderRandom};
+static_assert(std::size(kSeqOrderNames) == static_cast<size_t>(SeqOrder::Count));
+constexpr Str kSeqScaleNames[] = {Str::SeqScaleChromatic,       Str::SeqScaleMajor,           Str::SeqScaleMinor,
+                                  Str::SeqScaleDorian,          Str::SeqScalePhrygian,        Str::SeqScaleLydian,
+                                  Str::SeqScaleMixolydian,      Str::SeqScaleHarmonicMinor,   Str::SeqScaleMelodicMinor,
+                                  Str::SeqScalePentatonicMajor, Str::SeqScalePentatonicMinor, Str::SeqScaleBlues};
+static_assert(std::size(kSeqScaleNames) == static_cast<size_t>(SeqScale::Count));
 constexpr Str kFilterTypeNames[] = {Str::FilterLowPass, Str::FilterHighPass, Str::FilterBandPass, Str::FilterNotch,
                                     Str::FilterComb};
 constexpr Str kFilterTypeShortNames[] = {Str::FilterShortLowPass, Str::FilterShortHighPass, Str::FilterShortBandPass,
@@ -148,7 +162,7 @@ void buildTable(ParamTable &t) {
         // slots are bypassed there and the chain order is set by dragging; hosts aren't given them (see
         // hostParamCount()).
         const bool shape = kind == ParamKind::ShapeCount || kind == ParamKind::ShapePoint ||
-                           kind == ParamKind::SlotBypass || kind == ParamKind::SlotAux;
+                           kind == ParamKind::SlotBypass || kind == ParamKind::SlotAux || kind == ParamKind::SeqBars;
         const bool wiring = kind == ParamKind::ModTarget || kind == ParamKind::FxType ||
                             kind == ParamKind::SourceType || kind == ParamKind::FxOrder ||
                             kind == ParamKind::FxPosition || kind == ParamKind::FxPort;
@@ -169,7 +183,8 @@ void buildTable(ParamTable &t) {
             kind == ParamKind::PeqType || kind == ParamKind::ReverbType || kind == ParamKind::MidiInput ||
             kind == ParamKind::RouteMode || kind == ParamKind::AmpModel || kind == ParamKind::AmpCab ||
             kind == ParamKind::AmpMic || kind == ParamKind::AmpOversampling || kind == ParamKind::OpWarp ||
-            kind == ParamKind::UniCurve || kind == ParamKind::UniPan)
+            kind == ParamKind::UniCurve || kind == ParamKind::UniPan || kind == ParamKind::SeqPattern ||
+            kind == ParamKind::SeqPlay || kind == ParamKind::SeqRate || kind == ParamKind::SeqOrder)
             flags |= CLAP_PARAM_IS_ENUM;
         t[index] = {idOfIndex(index), std::move(name), std::move(module), kind, min, max, def, flags};
     };
@@ -911,6 +926,58 @@ void buildTable(ParamTable &t) {
             add(slotBypassIndex(source, slot), name + " " + trf(Str::ParamBypass, {std::to_string(slot + 1)}), module,
                 ParamKind::SlotBypass, 0.0, 1.0, 0.0);
     }
+
+    // The sequencer starts off, its patterns empty and a bar long, a new note at velocity 100. Its settings are plain
+    // automation, not modulated; its root, scale, patterns' lengths and loops and its notes are set in the editor only.
+    {
+        const char *const seq = tr(Str::ModuleSequencer);
+        auto setting = [&](SeqParam p, Str name, ParamKind kind, double min, double max, double def) {
+            add(paramIndex(p), tr(name), seq, kind, min, max, def);
+            t[paramIndex(p)].flags &= ~static_cast<clap_param_info_flags>(
+                CLAP_PARAM_IS_MODULATABLE | CLAP_PARAM_IS_MODULATABLE_PER_NOTE_ID | CLAP_PARAM_IS_MODULATABLE_PER_KEY);
+        };
+        setting(SeqParam::Enabled, Str::ParamSeqOn, ParamKind::Toggle, 0.0, 1.0, 0.0);
+        setting(SeqParam::Pattern, Str::ParamSeqPattern, ParamKind::SeqPattern, 0.0, kSeqPatterns - 1.0, 0.0);
+        setting(SeqParam::Play, Str::ParamSeqPlay, ParamKind::SeqPlay, 0.0, static_cast<double>(SeqPlay::Count) - 1.0,
+                0.0);
+        setting(SeqParam::Rate, Str::ParamSeqRate, ParamKind::SeqRate, 0.0, static_cast<double>(SeqRate::Count) - 1.0,
+                static_cast<double>(SeqRate::Sixteenth));
+        setting(SeqParam::Swing, Str::ParamSeqSwing, ParamKind::Percent, 0.5, 0.75, 0.5);
+        setting(SeqParam::Gate, Str::ParamSeqGate, ParamKind::Percent, 0.05, 2.0, 1.0);
+        setting(SeqParam::Velocity, Str::ParamSeqVelocity, ParamKind::Percent, 0.0, 1.0, 1.0);
+        setting(SeqParam::Humanize, Str::ParamSeqHumanize, ParamKind::Percent, 0.0, 1.0, 0.0);
+        setting(SeqParam::Octave, Str::ParamSeqOctave, ParamKind::Count, -3.0, 3.0, 0.0);
+        setting(SeqParam::Transpose, Str::ParamSeqTranspose, ParamKind::Semitones, -24.0, 24.0, 0.0);
+        setting(SeqParam::Order, Str::ParamSeqOrder, ParamKind::SeqOrder, 0.0,
+                static_cast<double>(SeqOrder::Count) - 1.0, 0.0);
+        setting(SeqParam::Root, Str::ParamSeqRoot, ParamKind::ShapeCount, 0.0, 127.0, 60.0);
+        setting(SeqParam::Scale, Str::ParamSeqScale, ParamKind::ShapeCount, 0.0,
+                static_cast<double>(SeqScale::Count) - 1.0, 0.0);
+        for (int pattern = 0; pattern < kSeqPatterns; ++pattern) {
+            const std::string name = trf(Str::ParamSeqPatternName, {kSeqPatternNames[pattern]});
+            const std::string module = std::string(seq) + "/" + name;
+            add(paramIndex(pattern, SeqPatternParam::Length), name + " " + tr(Str::ParamSeqLength), module,
+                ParamKind::SeqBars, 1.0, kSeqBars, 1.0);
+            add(paramIndex(pattern, SeqPatternParam::LoopStart), name + " " + tr(Str::ParamSeqLoopStart), module,
+                ParamKind::ShapeCount, 0.0, kSeqMaxSteps - 1.0, 0.0);
+            add(paramIndex(pattern, SeqPatternParam::LoopEnd), name + " " + tr(Str::ParamSeqLoopEnd), module,
+                ParamKind::ShapeCount, 0.0, kSeqMaxSteps, 0.0);
+            for (int slot = 0; slot < kSeqNotes; ++slot) {
+                const std::string n = name + " " + trf(Str::ParamSeqNote, {std::to_string(slot + 1)}) + " ";
+                auto field = [&](SeqNoteParam f, Str label, ParamKind kind, double min, double max, double def) {
+                    add(seqNoteIndex(pattern, slot, f), n + tr(label), module, kind, min, max, def);
+                };
+                field(SeqNoteParam::Start, Str::ParamSeqNoteStart, ParamKind::ShapePoint, 0.0, kSeqMaxSteps, 0.0);
+                field(SeqNoteParam::Length, Str::ParamSeqNoteLength, ParamKind::ShapePoint, 0.0, kSeqMaxSteps, 0.0);
+                field(SeqNoteParam::Pitch, Str::ParamSeqNotePitch, ParamKind::ShapeCount, 0.0, 127.0, 60.0);
+                field(SeqNoteParam::Velocity, Str::ParamSeqNoteVelocity, ParamKind::ShapePoint, 0.0, 1.0,
+                      100.0 / 127.0);
+                field(SeqNoteParam::Chance, Str::ParamSeqNoteChance, ParamKind::ShapePoint, 0.0, 1.0, 1.0);
+                field(SeqNoteParam::Slide, Str::ParamSeqNoteSlide, ParamKind::ShapeCount, 0.0, 1.0, 0.0);
+                field(SeqNoteParam::Mute, Str::ParamSeqNoteMute, ParamKind::ShapeCount, 0.0, 1.0, 0.0);
+            }
+        }
+    }
 }
 
 // snprintf cuts text that doesn't fit at the buffer's end, which can split a
@@ -1036,6 +1103,18 @@ const char *routeModeName(RouteMode mode) {
     return nameAt(kRouteModeNames, static_cast<double>(mode));
 }
 
+const char *seqScaleName(int scale) {
+    return nameAt(kSeqScaleNames, static_cast<double>(scale));
+}
+
+const char *seqRateName(int rate) {
+    return kSeqRateNames[std::clamp(rate, 0, static_cast<int>(SeqRate::Count) - 1)];
+}
+
+const char *seqPatternName(int pattern) {
+    return kSeqPatternNames[std::clamp(pattern, 0, kSeqPatterns - 1)];
+}
+
 const char *midiInputName(MidiInput input) {
     return nameAt(kMidiInputNames, static_cast<double>(input));
 }
@@ -1125,7 +1204,9 @@ bool isStepped(ParamKind kind) {
            kind == ParamKind::ReverbType || kind == ParamKind::FixedMult || kind == ParamKind::SlotAux ||
            kind == ParamKind::MidiInput || kind == ParamKind::RouteMode || kind == ParamKind::AmpModel ||
            kind == ParamKind::AmpCab || kind == ParamKind::AmpMic || kind == ParamKind::AmpOversampling ||
-           kind == ParamKind::OpWarp || kind == ParamKind::UniCurve || kind == ParamKind::UniPan;
+           kind == ParamKind::OpWarp || kind == ParamKind::UniCurve || kind == ParamKind::UniPan ||
+           kind == ParamKind::SeqPattern || kind == ParamKind::SeqPlay || kind == ParamKind::SeqRate ||
+           kind == ParamKind::SeqOrder || kind == ParamKind::SeqBars;
 }
 
 bool isBipolar(ParamKind kind) {
@@ -1270,6 +1351,24 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
     case ParamKind::UniPan:
         std::snprintf(out, capacity, "%s", nameAt(kUniPanNames, value));
         break;
+    case ParamKind::SeqPattern:
+        std::snprintf(out, capacity, "%s", seqPatternName(static_cast<int>(std::lround(value))));
+        break;
+    case ParamKind::SeqPlay:
+        std::snprintf(out, capacity, "%s", nameAt(kSeqPlayNames, value));
+        break;
+    case ParamKind::SeqRate:
+        std::snprintf(out, capacity, "%s", seqRateName(static_cast<int>(std::lround(value))));
+        break;
+    case ParamKind::SeqOrder:
+        std::snprintf(out, capacity, "%s", nameAt(kSeqOrderNames, value));
+        break;
+    case ParamKind::SeqBars: {
+        const long bars = std::lround(value);
+        std::snprintf(out, capacity, "%s",
+                      bars == 1 ? tr(Str::ValueBar) : trf(Str::ValueBars, {std::to_string(bars)}).c_str());
+        break;
+    }
     case ParamKind::FilterType:
         std::snprintf(out, capacity, "%s", nameAt(kFilterTypeNames, value));
         break;
@@ -1408,6 +1507,10 @@ bool parseParam(int index, const char *text, double *out) {
                       : def.kind == ParamKind::OpWarp       ? findName(kWarpNames, text)
                       : def.kind == ParamKind::UniCurve     ? findName(kUniCurveNames, text)
                       : def.kind == ParamKind::UniPan       ? findName(kUniPanNames, text)
+                      : def.kind == ParamKind::SeqPattern   ? findName(kSeqPatternNames, text)
+                      : def.kind == ParamKind::SeqPlay      ? findName(kSeqPlayNames, text)
+                      : def.kind == ParamKind::SeqRate      ? findName(kSeqRateNames, text)
+                      : def.kind == ParamKind::SeqOrder     ? findName(kSeqOrderNames, text)
                       : def.kind == ParamKind::FilterType   ? std::max(findName(kFilterTypeNames, text),
                                                                        findName(kFilterTypeShortNames, text))
                       : def.kind == ParamKind::SyncDivision ? findName(kDivisionNames, text)
@@ -1638,6 +1741,11 @@ bool parseParam(int index, const char *text, double *out) {
     case ParamKind::OpWarp:
     case ParamKind::UniCurve:
     case ParamKind::UniPan:
+    case ParamKind::SeqPattern:
+    case ParamKind::SeqPlay:
+    case ParamKind::SeqRate:
+    case ParamKind::SeqOrder:
+    case ParamKind::SeqBars:
     case ParamKind::FilterType:
         value = std::round(value);
         break;

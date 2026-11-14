@@ -3419,8 +3419,249 @@ void unisonModeChecks() {
 
 } // namespace
 
+// The sequencer: where its notes start and end, against the host's transport and from keys.
+void sequencerChecks() {
+    std::printf("sequencer:\n");
+    constexpr double kStep = kSampleRate * 60.0 / 120.0 / 4.0; // a 1/16 step at 120 bpm: 6000 samples
+    auto blank = [] {
+        ParamValues p{};
+        for (int i = 0; i < kParamCount; ++i)
+            p[i] = paramTable()[i].def;
+        p[paramIndex(SeqParam::Enabled)] = 1.0;
+        return p;
+    };
+    auto note = [](ParamValues &p, int slot, double start, double length, int pitch, int pattern = 0) {
+        p[seqNoteIndex(pattern, slot, SeqNoteParam::Start)] = start;
+        p[seqNoteIndex(pattern, slot, SeqNoteParam::Length)] = length;
+        p[seqNoteIndex(pattern, slot, SeqNoteParam::Pitch)] = pitch;
+    };
+    struct Event {
+        double frame;
+        bool on;
+        int key;
+    };
+    // Plans `frames` from the song's start with the transport playing at 120 bpm, in stretches of `piece`.
+    auto plan = [](const ParamValues &p, double frames, uint32_t piece = 512) {
+        Sequencer seq;
+        seq.prepare(kSampleRate);
+        seq.configure(p);
+        std::vector<Event> events;
+        std::array<SeqEvent, Sequencer::kMaxEvents> out;
+        for (double done = 0.0; done < frames;) {
+            uint32_t covered = 0;
+            const int n = seq.plan(piece, 120.0, true, done / kSampleRate * 2.0, out, covered);
+            for (int i = 0; i < n; ++i)
+                events.push_back({done + out[i].frame, out[i].on, out[i].key});
+            done += covered;
+        }
+        return events;
+    };
+    auto near = [](double a, double b) { return std::abs(a - b) <= 1.0; };
+
+    // Two notes, at steps 0 and 4, a step long each: on at their steps, off a step later, the bar over and again.
+    {
+        ParamValues p = blank();
+        note(p, 0, 0.0, 1.0, 60);
+        note(p, 1, 4.0, 1.0, 64);
+        const std::vector<Event> e = plan(p, 16.5 * kStep);
+        std::printf("      %zu events; the second note on at %.0f, off at %.0f; the first again at %.0f\n", e.size(),
+                    e.size() > 3 ? e[2].frame : -1.0, e.size() > 3 ? e[3].frame : -1.0, e.size() > 4 ? e[4].frame : -1.0);
+        check(e.size() == 5 && e[0].on && e[0].key == 60 && near(e[0].frame, 0.0) && !e[1].on &&
+                  near(e[1].frame, kStep) && e[2].on && e[2].key == 64 && near(e[2].frame, 4 * kStep) && !e[3].on &&
+                  near(e[3].frame, 5 * kStep) && e[4].on && near(e[4].frame, 16 * kStep),
+              "the sequencer plays its notes on their steps with the host's transport, the bar round again");
+        // Planned in other stretches, the same.
+        const std::vector<Event> odd = plan(p, 16.5 * kStep, 37);
+        bool same = odd.size() == e.size();
+        for (size_t i = 0; same && i < e.size(); ++i)
+            same = odd[i].on == e[i].on && odd[i].key == e[i].key && near(odd[i].frame, e[i].frame);
+        check(same, "the sequencer plans alike whatever the stretches");
+    }
+    // Swing at 75 % puts the step after the beat three quarters of the way to the next; Gate at 50 % halves a note.
+    {
+        ParamValues p = blank();
+        note(p, 0, 1.0, 1.0, 60);
+        p[paramIndex(SeqParam::Swing)] = 0.75;
+        p[paramIndex(SeqParam::Gate)] = 0.5;
+        const std::vector<Event> e = plan(p, 4 * kStep);
+        std::printf("      swung at 75 %%, gated at 50 %%: on at %.0f, off at %.0f\n", e.size() > 1 ? e[0].frame : -1.0,
+                    e.size() > 1 ? e[1].frame : -1.0);
+        check(e.size() == 2 && near(e[0].frame, 1.5 * kStep) && near(e[1].frame, 1.75 * kStep),
+              "Swing delays every other step and Gate shortens the notes");
+    }
+    // Reversed, the step a bar plays first is its last: a note on step 0 plays at step 15. Its loop from step 4 to 8
+    // leaves out a note on step 0, and plays one on step 5 every four steps.
+    {
+        ParamValues p = blank();
+        note(p, 0, 0.0, 0.5, 60);
+        p[paramIndex(SeqParam::Order)] = static_cast<double>(SeqOrder::Reverse);
+        const std::vector<Event> back = plan(p, 16 * kStep);
+        p[paramIndex(SeqParam::Order)] = static_cast<double>(SeqOrder::Forward);
+        note(p, 1, 5.0, 0.5, 62);
+        p[paramIndex(0, SeqPatternParam::LoopStart)] = 4.0;
+        p[paramIndex(0, SeqPatternParam::LoopEnd)] = 8.0;
+        const std::vector<Event> looped = plan(p, 8 * kStep);
+        int ons = 0;
+        bool only62 = true;
+        for (const Event &ev : looped)
+            if (ev.on) {
+                ++ons;
+                only62 = only62 && ev.key == 62;
+            }
+        check(!back.empty() && near(back[0].frame, 15 * kStep) && ons == 2 && only62 && near(looped[0].frame, kStep),
+              "Reverse plays the loop backward, and the loop plays only the notes in it");
+    }
+    // Muted or at no chance, a note doesn't play; at half, it plays some passes and not others, alike each time.
+    {
+        ParamValues p = blank();
+        note(p, 0, 0.0, 0.5, 60);
+        note(p, 1, 2.0, 0.5, 62);
+        note(p, 2, 4.0, 0.5, 64);
+        p[seqNoteIndex(0, 0, SeqNoteParam::Mute)] = 1.0;
+        p[seqNoteIndex(0, 1, SeqNoteParam::Chance)] = 0.0;
+        p[seqNoteIndex(0, 2, SeqNoteParam::Chance)] = 0.5;
+        const std::vector<Event> e = plan(p, 64 * 16 * kStep, 4096);
+        int played = 0, others = 0;
+        for (const Event &ev : e)
+            if (ev.on)
+                (ev.key == 64 ? played : others)++;
+        std::printf("      at half a chance, %d of 64 passes\n", played);
+        check(others == 0 && played > 16 && played < 48 && plan(p, 64 * 16 * kStep, 4096).size() == e.size(),
+              "a muted note or one at no chance doesn't play, and at half it plays about half the passes");
+    }
+    // Pattern B picked mid-bar takes over at the bar's end, and A's note on step 8 still plays before it.
+    {
+        ParamValues p = blank();
+        note(p, 0, 8.0, 0.5, 60);
+        note(p, 0, 0.0, 0.5, 72, 1);
+        Sequencer seq;
+        seq.prepare(kSampleRate);
+        seq.configure(p);
+        std::array<SeqEvent, Sequencer::kMaxEvents> out;
+        std::vector<Event> e;
+        double done = 0.0;
+        auto run = [&](double until) {
+            while (done < until) {
+                uint32_t covered = 0;
+                const int n = seq.plan(512, 120.0, true, done / kSampleRate * 2.0, out, covered);
+                for (int i = 0; i < n; ++i)
+                    e.push_back({done + out[i].frame, out[i].on, out[i].key});
+                done += covered;
+            }
+        };
+        run(4 * kStep);
+        p[paramIndex(SeqParam::Pattern)] = 1.0;
+        seq.configure(p);
+        run(17 * kStep);
+        check(e.size() == 4 && e[0].key == 60 && near(e[0].frame, 8 * kStep) && e[2].key == 72 &&
+                  near(e[2].frame, 16 * kStep) && seq.pattern() == 1,
+              "another pattern takes over where the loop comes round");
+    }
+    // In Key, a key starts the pattern from its first step, transposed by the key from Root, and letting it go stops
+    // it: through the synth, the key's end is reported, the sequencer's notes' never.
+    {
+        Engine e(1);
+        e.p[paramIndex(SeqParam::Enabled)] = 1.0;
+        e.p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Key);
+        note(e.p, 0, 0.0, 1.0, 60);
+        note(e.p, 1, 2.0, 1.0, 67);
+        e.synth().setTempo(120.0);
+        const std::vector<float> before = e.render(4800);
+        e.synth().noteOn({5, 0, 0, 64}, 1.0);
+        const std::vector<float> held = e.render(static_cast<size_t>(4 * kStep));
+        Telemetry t;
+        e.synth().telemetry(t);
+        const float position = t.seqPosition;
+        e.synth().noteOff({5, 0, 0, 64});
+        bool keyEnded = false, seqEnded = false;
+        for (const NoteRef &n : e.synth().endedNotes()) {
+            keyEnded = keyEnded || (n.noteId == 5 && n.port == 0);
+            seqEnded = seqEnded || n.port == kSeqPort;
+        }
+        e.synth().clearEndedNotes();
+        e.render(48000);
+        for (const NoteRef &n : e.synth().endedNotes())
+            seqEnded = seqEnded || n.port == kSeqPort;
+        const std::vector<float> after = e.render(4800);
+        auto peak = [](const std::vector<float> &x) {
+            float most = 0.0f;
+            for (float s : x)
+                most = std::max(most, std::abs(s));
+            return most;
+        };
+        // The second note (G4 + 4 = B4, 493.9 Hz) sounds two steps in.
+        const size_t from = static_cast<size_t>(2.2 * kStep);
+        auto at = [&](double hz) { // the power at `hz` over 4096 samples from there
+            std::complex<double> sum = 0.0;
+            for (size_t i = 0; i < 4096; ++i)
+                sum += static_cast<double>(held[from + i]) *
+                       std::polar(1.0, -2.0 * std::numbers::pi * hz * static_cast<double>(i) / kSampleRate);
+            return std::norm(sum);
+        };
+        std::printf("      Key: %.3f before, %.3f held, %.4f after; at its pattern's step %.2f\n", peak(before),
+                    peak(held), peak(after), position);
+        check(peak(before) == 0.0f && peak(held) > 0.1f && peak(after) == 0.0f && at(493.9) > 100.0 * at(392.0) &&
+                  keyEnded && !seqEnded && std::abs(position - 4.0f) < 0.1f,
+              "in Key, a key plays the pattern transposed by it and stops it when let go");
+    }
+    // In Key, with an empty pattern, a note the editor plays to be heard (on kAuditionPort) sounds as a note rather
+    // than starting the pattern (which would play nothing), and no end is reported for it.
+    {
+        Engine e(1);
+        e.p[paramIndex(SeqParam::Enabled)] = 1.0;
+        e.p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Key);
+        e.render(480);
+        e.synth().noteOn({-1, kAuditionPort, 0, 69}, 0.8);
+        const std::vector<float> heard = e.render(4800);
+        e.synth().noteOff({-1, kAuditionPort, 0, 69});
+        e.render(48000);
+        bool reported = false;
+        for (const NoteRef &n : e.synth().endedNotes())
+            reported = reported || n.port == kAuditionPort;
+        float peak = 0.0f;
+        for (float s : heard)
+            peak = std::max(peak, std::abs(s));
+        check(peak > 0.1f && !reported, "in Key, a note the editor auditions sounds alone, its end not reported");
+    }
+    // The keys the telemetry shows held (the keyboard strip's) leave out the sequencer's notes: with the transport
+    // playing its note, none, though a voice sounds; a key played shows.
+    {
+        Engine e(1);
+        e.p[paramIndex(SeqParam::Enabled)] = 1.0;
+        note(e.p, 0, 0.0, 4.0, 69);
+        e.synth().setTempo(120.0);
+        e.synth().setTransport(true, 0.0, 0.0);
+        e.render(static_cast<size_t>(kStep));
+        Telemetry t;
+        e.synth().telemetry(t);
+        const bool seqHidden = t.voices > 0 && !t.keyDown(69);
+        e.noteOn(50);
+        e.render(480);
+        e.synth().telemetry(t);
+        check(seqHidden && t.keyDown(50) && !t.keyDown(69),
+              "the keys shown held leave the sequencer's notes out and show a key played");
+    }
+    // With the host's transport, through the synth: silent until the note's step, then sounding at its sample.
+    {
+        Engine e(1);
+        e.p[paramIndex(SeqParam::Enabled)] = 1.0;
+        note(e.p, 0, 1.0, 1.0, 69);
+        e.synth().setTempo(120.0);
+        e.synth().setTransport(true, 0.0, 0.0);
+        const std::vector<float> out = e.render(static_cast<size_t>(2 * kStep), 100);
+        size_t first = out.size();
+        for (size_t i = 0; i < out.size() && first == out.size(); ++i)
+            if (out[i] != 0.0f)
+                first = i;
+        std::printf("      first sound at sample %zu (its step at %.0f)\n", first, kStep);
+        check(first >= static_cast<size_t>(kStep) && first < static_cast<size_t>(kStep) + 64,
+              "the sequencer's note sounds from its sample, however the blocks are split");
+    }
+}
+
 int main() {
     const int factors[] = {1, 2, 4, 8};
+    sequencerChecks();
     // --- The decimator: flat up to 20 kHz, and what would fold into the audible band gone.
     std::printf("decimator (dB):\n");
     for (int factor : {2, 4, 8}) {

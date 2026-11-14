@@ -59,6 +59,13 @@ public:
             lastNote = note;
     }
     int lastNote = -1; // the last key played
+    void auditionNote(int note, bool on) override {
+        if (on)
+            lastAudition = note;
+        auditioning += on ? 1 : -1;
+    }
+    int lastAudition = -1; // the last note the SEQ view played to be heard alone
+    int auditioning = 0;   // and how many of them it holds down
     void setScope(int op, int cycles) override {
         scopeOp = op;
         scopeCycles = cycles;
@@ -122,6 +129,9 @@ public:
     void setHandleSize(int size) override { handles = size; }
     double linkIntensity() const override { return links; }
     void setLinkIntensity(double amount) override { links = amount; }
+    double gridIntensity() const override { return grid; }
+    void setGridIntensity(double amount) override { grid = amount; }
+    double grid = Controller::kDefaultGridIntensity;
     bool hasTempo() const override { return offersTempo; }
     double tempo() const override { return bpm; }
     void setTempo(double v) override {
@@ -2141,7 +2151,7 @@ void testMiddleDrag(const std::filesystem::path &dir, Renderer &renderer) {
     mods.set(slotTargetIndex(kMaxSources, 0), slotTargetValue(paramIndex(0, FilterParam::Resonance)));
     mods.set(slotAmountIndex(kMaxSources, 0), 0.35);
     modsView.poll();
-    click(modsView, {314.0f, 116.0f}); // the MODS tab
+    click(modsView, {382.0f, 116.0f}); // the MODS tab
     auto removedOnly = [&](int slot) {
         click(modsView, {1144.0f, 182.0f}); // the top row's x
         bool ok = true;
@@ -2397,7 +2407,7 @@ void testFlatThemes(const std::filesystem::path &dir, Renderer &renderer) {
     model.set(slotAmountIndex(0, 0), 0.4);
     model.set(slotAuxIndex(0, 0), slotAuxValue(kMaxSources + 1)); // Macro 2
     view.poll();
-    click(view, {314.0f, 116.0f}); // the MODS tab
+    click(view, {382.0f, 116.0f}); // the MODS tab
     const Rect row = detail::modsRow(0.0f), cell = detail::modsCell(row, detail::kModsAux);
     const float y = row.center().y + 6.0f; // under the name's letters
     // How much of the chip's first 120 px is the row's own fill, its most common color along it.
@@ -2724,7 +2734,7 @@ void renderExample(const std::filesystem::path &dir, Renderer &renderer, const s
         click(view, detail::fxModeButton(0).center());
         view.mouseMove({600.0f, 600.0f}, {});
         shots = shots && renderer.save(view, dir / (prefix + "-fx-row.png"));
-        click(view, {314.0f, 116.0f});
+        click(view, {382.0f, 116.0f});
         view.mouseMove({600.0f, 600.0f}, {});
         shots = shots && renderer.save(view, dir / (prefix + "-mods.png"));
     }
@@ -5030,6 +5040,584 @@ void testFxGraphScroll(const std::filesystem::path &dir, Renderer &renderer) {
 // The bin at the FX panel's top right, in the chain and in the graph: with effects (or a split) it asks first, and a
 // click around the dialog keeps them; going ahead removes every one, a split and its join too, in one undo step;
 // with nothing to remove it asks nothing (read off the rendered pixels: the header isn't dimmed).
+// The SEQ tab: the sequencer's card and the roll of its pattern. A double-click puts a note down, and on a note takes it
+// away; a note is picked and moved by a drag, stretched by its end, notes picked by a box, and the field changes the
+// notes picked. The draw tool paints notes, the lane sets their chance, the ruler the loop; the rows fold to a scale,
+// the snap list picks the grid, the bin clears the pattern (asking first) and copying fills the next empty pattern.
+void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    using detail::kSeqGrid;
+    view.poll();
+    click(view, {308.0f, 116.0f}); // the SEQ tab, between FX and MODS
+    view.mouseMove({600.0f, 600.0f}, {});
+    const bool emptyShot = renderer.save(view, dir / "36-seq-empty.png");
+    // Its tab shows a dot while the sequencer is on, and none while it is off (read off the rendered pixels).
+    {
+        const Point dot = detail::viewTabDot(static_cast<int>(RoutingView::Seq));
+        const uint32_t off = renderer.pixel(dot);
+        model.set(paramIndex(SeqParam::Enabled), 1.0);
+        view.poll();
+        view.mouseMove({600.0f, 600.0f}, {});
+        renderer.save(view, dir / "36-seq-on.png");
+        const uint32_t on = renderer.pixel(dot);
+        model.set(paramIndex(SeqParam::Enabled), 0.0);
+        view.poll();
+        check(on != off, "the SEQ tab shows a dot while the sequencer is on");
+    }
+    check(model.ui.view == RoutingView::Seq && emptyShot, "the SEQ tab shows the sequencer's card and an empty roll");
+    // A bar of 16 steps across the grid, 22 rows from C3 (48) up.
+    const float rh = kSeqGrid.h / 22.0f;
+    auto at = [&](double step, int pitch) {
+        return Point{kSeqGrid.x + static_cast<float>(step) * kSeqGrid.w / 16.0f,
+                     kSeqGrid.y + kSeqGrid.h - (static_cast<float>(pitch - 48) + 0.5f) * rh};
+    };
+    auto field = [&](int slot, SeqNoteParam f) { return model.value(seqNoteIndex(0, slot, f)); };
+
+    // A double-click on the grid puts a note down on its step, a step long at 1/16; on the note, takes it away.
+    doubleClick(view, at(4.4, 60));
+    const bool added = field(0, SeqNoteParam::Length) == 1.0 && field(0, SeqNoteParam::Start) == 4.0 &&
+                       field(0, SeqNoteParam::Pitch) == 60.0;
+    doubleClick(view, at(4.4, 60));
+    check(added && field(0, SeqNoteParam::Length) == 0.0,
+          "a double-click on the roll puts a note down on its step, and on a note deletes it");
+
+    // A pattern: a note on each beat, one at 8 two steps long, and the sequencer on.
+    auto put = [&](int slot, double start, double length, int pitch) {
+        model.set(seqNoteIndex(0, slot, SeqNoteParam::Start), start);
+        model.set(seqNoteIndex(0, slot, SeqNoteParam::Length), length);
+        model.set(seqNoteIndex(0, slot, SeqNoteParam::Pitch), pitch);
+    };
+    put(0, 0.0, 1.0, 48);
+    put(1, 4.0, 1.0, 55);
+    put(2, 8.0, 2.0, 51);
+    put(3, 12.0, 1.0, 58);
+    model.set(seqNoteIndex(0, 3, SeqNoteParam::Chance), 0.5);
+    model.set(paramIndex(SeqParam::Enabled), 1.0);
+    model.live.seqPosition = 6.0f;
+    view.poll();
+    view.mouseMove({600.0f, 600.0f}, {});
+    const bool rollShot = renderer.save(view, dir / "36a-seq-roll.png");
+    // The playhead at step 6 lights the ruler there, and nowhere else (read off the rendered pixels).
+    auto bright = [&](Point p) {
+        const uint32_t c = renderer.pixel(p);
+        return ((c >> 16) & 0xFF) + ((c >> 8) & 0xFF) + (c & 0xFF) > 500;
+    };
+    const float rulerY = detail::kSeqRuler.y + 11.0f;
+    check(rollShot && bright({at(6.0, 48).x, rulerY}) && !bright({at(7.0, 48).x, rulerY}),
+          "the roll shows the pattern's notes and the playhead where the sequencer plays");
+
+    // A note dragged onto another's start and pitch takes its place: the one there goes, in the same undo step; and so
+    // does one a note lands on by the arrow keys.
+    {
+        drag(view, at(4.4, 55), at(0.4, 48));
+        const bool replaced = field(0, SeqNoteParam::Length) == 0.0 && field(1, SeqNoteParam::Start) == 0.0 &&
+                              field(1, SeqNoteParam::Pitch) == 48.0;
+        view.undo();
+        const bool back = field(0, SeqNoteParam::Length) == 1.0 && field(1, SeqNoteParam::Start) == 4.0;
+        model.set(seqNoteIndex(0, 20, SeqNoteParam::Start), 1.0);
+        model.set(seqNoteIndex(0, 20, SeqNoteParam::Length), 1.0);
+        model.set(seqNoteIndex(0, 20, SeqNoteParam::Pitch), 48.0);
+        view.poll();
+        click(view, at(15.5, 66)); // nothing picked
+        click(view, at(1.4, 48));  // the one on step 1
+        view.seqKey(View::Key::Left, false);
+        const bool keyed = field(0, SeqNoteParam::Length) == 0.0 && field(20, SeqNoteParam::Start) == 0.0;
+        view.undo();
+        model.set(seqNoteIndex(0, 20, SeqNoteParam::Length), 0.0);
+        model.set(seqNoteIndex(0, 20, SeqNoteParam::Start), 0.0);
+        model.set(seqNoteIndex(0, 20, SeqNoteParam::Pitch), 60.0);
+        view.poll();
+        check(replaced && back && keyed && field(0, SeqNoteParam::Length) == 1.0,
+              "a note landing on another's start and pitch takes its place, undoably");
+    }
+    // A note dragged above the roll's top scrolls the rows up as it is held there, the note going up with them.
+    {
+        const int lowBefore = model.ui.seqLow;
+        view.mouseDown(at(0.4, 48), {});
+        view.mouseMove({at(0.4, 48).x, kSeqGrid.y + 40.0f}, {});
+        view.mouseMove({at(0.4, 48).x, kSeqGrid.y - 20.0f}, {});
+        for (int i = 0; i < 12; ++i)
+            view.poll();
+        view.mouseUp({at(0.4, 48).x, kSeqGrid.y - 20.0f}, {});
+        const int lowScrolled = model.ui.seqLow;
+        const double pitch = field(0, SeqNoteParam::Pitch);
+        view.undo();
+        model.ui.seqLow = lowBefore;
+        std::printf("      dragged above the top: rows from %d, the note on %.0f\n", lowScrolled, pitch);
+        check(lowScrolled > lowBefore && pitch > 69.0 && field(0, SeqNoteParam::Pitch) == 48.0,
+              "a note dragged past the roll's edge scrolls it, the note going along");
+    }
+    // A patch loaded fits the roll to its notes: notes high up (C6 to G6), loaded, show.
+    {
+        const int lowBefore = model.ui.seqLow;
+        model.set(seqNoteIndex(0, 30, SeqNoteParam::Start), 2.0);
+        model.set(seqNoteIndex(0, 30, SeqNoteParam::Length), 1.0);
+        model.set(seqNoteIndex(0, 30, SeqNoteParam::Pitch), 100.0);
+        model.set(seqNoteIndex(0, 31, SeqNoteParam::Start), 6.0);
+        model.set(seqNoteIndex(0, 31, SeqNoteParam::Length), 1.0);
+        model.set(seqNoteIndex(0, 31, SeqNoteParam::Pitch), 30.0);
+        model.clearHistory(); // as a preset loaded has it
+        view.poll();
+        view.mouseMove({600.0f, 600.0f}, {});
+        const bool fitShot = renderer.save(view, dir / "36m-seq-fitted.png");
+        // C1 (24) to E7 (100) and the rest: the rows shrunk to show them all, from 30's down.
+        const int lowFitted = model.ui.seqLow;
+        for (int slot : {30, 31})
+            model.set(seqNoteIndex(0, slot, SeqNoteParam::Length), 0.0);
+        model.set(seqNoteIndex(0, 30, SeqNoteParam::Pitch), 60.0);
+        model.set(seqNoteIndex(0, 31, SeqNoteParam::Pitch), 60.0);
+        model.set(seqNoteIndex(0, 30, SeqNoteParam::Start), 0.0);
+        model.set(seqNoteIndex(0, 31, SeqNoteParam::Start), 0.0);
+        model.clearHistory();
+        view.poll();
+        const int lowRefit = model.ui.seqLow;
+        std::printf("      fitted to a patch loaded: rows from %d, then %d\n", lowFitted, lowRefit);
+        check(fitShot && lowFitted <= 30 && lowRefit > 30 && lowRefit <= 48,
+              "a patch loaded fits the roll to its notes");
+        model.ui.seqLow = lowBefore;
+    }
+    // Dragged two steps on and two rows up, a note moves there as one undo step.
+    drag(view, at(0.5, 48), at(2.5, 50));
+    const bool moved = field(0, SeqNoteParam::Start) == 2.0 && field(0, SeqNoteParam::Pitch) == 50.0;
+    view.undo();
+    check(moved && field(0, SeqNoteParam::Start) == 0.0 && field(0, SeqNoteParam::Pitch) == 48.0,
+          "a note dragged moves on the grid, undoably");
+    // Its end dragged two steps on: two steps longer.
+    drag(view, {at(10.0, 51).x - 2.0f, at(10.0, 51).y}, {at(12.0, 51).x - 2.0f, at(12.0, 51).y});
+    check(field(2, SeqNoteParam::Length) == 4.0, "a note's end dragged sets its length");
+    view.undo();
+    // Its start dragged a step on: a step shorter, its end where it was; the cursor over either end the left-right one.
+    view.mouseMove({at(8.0, 51).x + 2.0f, at(8.0, 51).y}, {});
+    const bool startCursor = view.cursor() == CursorKind::Horizontal;
+    view.mouseMove({at(10.0, 51).x - 2.0f, at(10.0, 51).y}, {});
+    const bool endCursor = view.cursor() == CursorKind::Horizontal;
+    drag(view, {at(8.0, 51).x + 2.0f, at(8.0, 51).y}, {at(9.0, 51).x + 2.0f, at(9.0, 51).y});
+    check(startCursor && endCursor && field(2, SeqNoteParam::Start) == 9.0 && field(2, SeqNoteParam::Length) == 1.0,
+          "a note's start dragged moves it, its end staying, and either end shows the left-right cursor");
+    view.undo();
+    // With Shift, its end follows the mouse off the grid: dragged a third of a step on, a third of a step longer; and
+    // its start, a quarter step on, a quarter shorter, both picking nothing else.
+    {
+        const Point end{at(10.0, 51).x - 2.0f, at(10.0, 51).y};
+        const Point endTo{end.x + kSeqGrid.w / 16.0f / 3.0f, end.y};
+        view.mouseDown(end, {true, false, false});
+        view.mouseMove({(end.x + endTo.x) * 0.5f, end.y}, {true, false, false});
+        view.mouseMove(endTo, {true, false, false});
+        view.mouseUp(endTo, {true, false, false});
+        const double longer = field(2, SeqNoteParam::Length);
+        view.undo();
+        const Point start{at(8.0, 51).x + 2.0f, at(8.0, 51).y};
+        const Point startTo{start.x + kSeqGrid.w / 16.0f / 4.0f, start.y};
+        view.mouseDown(start, {true, false, false});
+        view.mouseMove({(start.x + startTo.x) * 0.5f, start.y}, {true, false, false});
+        view.mouseMove(startTo, {true, false, false});
+        view.mouseUp(startTo, {true, false, false});
+        const double shorter = field(2, SeqNoteParam::Length), moved = field(2, SeqNoteParam::Start);
+        view.undo();
+        std::printf("      Shift-dragged: %.3f steps long by its end, %.3f from %.3f by its start\n", longer, shorter,
+                    moved);
+        check(std::abs(longer - 2.0 - 1.0 / 3.0) < 0.02 && std::abs(shorter - 1.75) < 0.02 &&
+                  std::abs(moved - 8.25) < 0.02,
+              "a note's end or start dragged with Shift sets its length off the grid");
+    }
+
+    // A box from an empty place over the first two notes picks them; the field's velocity dragged up turns both up.
+    drag(view, at(0.0, 57), at(5.5, 47));
+    view.mouseMove({600.0f, 600.0f}, {});
+    const bool boxShot = renderer.save(view, dir / "36b-seq-picked.png");
+    const double before0 = field(0, SeqNoteParam::Velocity), before1 = field(1, SeqNoteParam::Velocity);
+    const float velX = detail::kSeqTools.x + detail::kSeqTools.w - 26.0f - 8.0f - 104.0f - 8.0f - 84.0f - 58.0f - 92.0f -
+                       58.0f + 20.0f; // the VEL field (see seq.cpp's seqFieldRect())
+    const Point velPoint{velX, detail::kSeqTools.y + 12.0f};
+    view.mouseDown(velPoint, {});
+    view.mouseMove({velPoint.x, velPoint.y - 15.0f}, {});
+    view.mouseUp({velPoint.x, velPoint.y - 15.0f}, {});
+    const bool louder = std::lround((field(0, SeqNoteParam::Velocity) - before0) * 127.0) == 5 &&
+                        std::lround((field(1, SeqNoteParam::Velocity) - before1) * 127.0) == 5 &&
+                        field(2, SeqNoteParam::Velocity) == before0;
+    view.undo();
+    check(boxShot && louder, "a box picks the notes it reaches, and the field changes every one picked");
+    // A double-click on the field's VEL puts the notes picked back to velocity 100, and on OFFSET back on the grid.
+    {
+        click(view, at(15.5, 66)); // nothing picked
+        click(view, at(0.5, 48));  // the first note
+        model.set(seqNoteIndex(0, 0, SeqNoteParam::Velocity), 64.0 / 127.0);
+        model.set(seqNoteIndex(0, 0, SeqNoteParam::Start), 0.3);
+        view.poll();
+        const float right = detail::kSeqTools.x + detail::kSeqTools.w - 26.0f - 8.0f - 104.0f - 8.0f;
+        doubleClick(view, {right - 84.0f - 58.0f - 92.0f - 58.0f + 20.0f, detail::kSeqTools.y + 12.0f}); // VEL
+        doubleClick(view, {right - 84.0f + 20.0f, detail::kSeqTools.y + 12.0f});                         // OFFSET
+        const bool reset = field(0, SeqNoteParam::Velocity) == 100.0 / 127.0 && field(0, SeqNoteParam::Start) == 0.0;
+        model.set(seqNoteIndex(0, 0, SeqNoteParam::Velocity), 100.0 / 127.0);
+        model.set(seqNoteIndex(0, 0, SeqNoteParam::Start), 0.0);
+        view.poll();
+        check(reset, "a double-click on the field's VEL or OFFSET puts the notes picked back to 100 or onto the grid");
+    }
+    // A key the sequencer plays lights in the roll's keys (read off the rendered pixels).
+    {
+        const Point key{detail::kSeqKeys.x + detail::kSeqKeys.w - 4.0f, at(0.0, 55).y};
+        view.mouseMove({600.0f, 600.0f}, {});
+        renderer.save(view, dir / "36l-seq-key-off.png");
+        const uint32_t dark = renderer.pixel(key);
+        model.live.seqKeys[55 / 32] |= 1u << (55 % 32);
+        view.poll();
+        renderer.save(view, dir / "36l-seq-key-played.png");
+        const uint32_t lit = renderer.pixel(key);
+        model.live.seqKeys = {};
+        view.poll();
+        check(lit != dark, "a key the sequencer plays lights in the roll's keys");
+    }
+
+    // Keys: with nothing picked the arrows go on to the host; Ctrl+A picks every note, Right moves them a grid step
+    // (a step at 1/16), Up a semitone and Shift+Up an octave, each an undo step.
+    click(view, at(15.5, 66)); // nothing there: nothing picked
+    const bool passed = !view.seqKey(View::Key::Right, false);
+    const bool all = view.seqKey(View::Key::SelectAll, false);
+    view.seqKey(View::Key::Right, false);
+    const bool right = field(0, SeqNoteParam::Start) == 1.0 && field(2, SeqNoteParam::Start) == 9.0;
+    view.seqKey(View::Key::Up, false);
+    const bool up = field(0, SeqNoteParam::Pitch) == 49.0 && field(1, SeqNoteParam::Pitch) == 56.0;
+    view.seqKey(View::Key::Up, true);
+    const bool octave = field(0, SeqNoteParam::Pitch) == 61.0 && field(3, SeqNoteParam::Pitch) == 71.0;
+    view.undo();
+    view.undo();
+    view.undo();
+    model.ui.seqLow = 48; // the rows went up with the octave: back where they were
+    // Delete removes the notes picked, undoably; with none picked, it goes on to the host.
+    view.seqKey(View::Key::SelectAll, false);
+    const bool deleted = view.seqKey(View::Key::Delete, false) && field(0, SeqNoteParam::Length) == 0.0 &&
+                         field(2, SeqNoteParam::Length) == 0.0;
+    const bool deletePassed = !view.seqKey(View::Key::Delete, false);
+    view.undo();
+    check(deleted && deletePassed && field(2, SeqNoteParam::Length) == 2.0,
+          "Delete removes the notes picked, undoably, and with none picked goes on to the host");
+    check(passed && all && right && up && octave && field(0, SeqNoteParam::Start) == 0.0 &&
+              field(0, SeqNoteParam::Pitch) == 48.0,
+          "Ctrl+A picks every note, and the arrows move them a step, a semitone and with Shift an octave, undoably");
+    // Shift+Up moves the rows only as far as shows every note moved: every note picked (C3 to A#3), up an octave to
+    // C4 to A#4, past the top row (A4), takes them up a row; the first alone, to C4, leaves them where they are.
+    {
+        view.seqKey(View::Key::SelectAll, false);
+        const int lowBefore = model.ui.seqLow;
+        view.seqKey(View::Key::Up, true);
+        const int lowAll = model.ui.seqLow;
+        view.undo();
+        model.ui.seqLow = lowBefore;
+        click(view, at(15.5, 66)); // nothing picked
+        click(view, at(0.5, 48));  // the first note
+        view.seqKey(View::Key::Up, true);
+        const int lowOne = model.ui.seqLow;
+        view.undo();
+        model.ui.seqLow = lowBefore;
+        std::printf("      rows from %d: an octave up from %d with every note, %d with one\n", lowBefore, lowAll, lowOne);
+        check(lowAll == lowBefore + 1 && lowOne == lowBefore,
+              "an octave's move takes the rows only as far as shows every note moved");
+    }
+
+    // The lane: a picked note's dot ringed, an unpicked one's not (read off the rendered pixels).
+    auto laneDot = [&](double step, double velocity) {
+        return Point{at(step, 48).x + 1.5f, detail::kSeqLaneArea.y + detail::kSeqLaneArea.h - 6.0f -
+                                                static_cast<float>(velocity) * (detail::kSeqLaneArea.h - 12.0f)};
+    };
+    click(view, at(15.5, 66)); // nothing there: nothing picked
+    model.lastAudition = -1;
+    model.lastNote = -1;
+    click(view, at(4.4, 55)); // the note on step 4, alone: heard alone, and let go
+    const bool heard = model.lastAudition == 55 && model.lastNote < 0 && model.auditioning == 0;
+    view.mouseDown(at(4.4, 55), {}); // dragged up two rows, held: the row it is on heard
+    view.mouseMove(at(4.4, 57), {});
+    const bool follows = model.lastAudition == 57 && model.auditioning == 1;
+    view.mouseUp(at(4.4, 57), {});
+    view.undo();
+    model.lastAudition = -1;
+    view.mouseDown({detail::kSeqKeys.x + 30.0f, at(0.0, 60).y}, {}); // a key: heard alone, not played as the keyboard
+    const bool keyHeard = model.lastAudition == 60 && model.lastNote < 0;
+    view.mouseUp({detail::kSeqKeys.x + 30.0f, at(0.0, 60).y}, {});
+    check(heard && follows && keyHeard && model.auditioning == 0,
+          "a note or key clicked in the roll is heard alone while held, a note moved heard on its new row");
+    click(view, at(4.4, 55)); // the note on step 4, alone
+    view.mouseMove({600.0f, 600.0f}, {});
+    renderer.save(view, dir / "36i-seq-lane-ring.png");
+    const Point dot1 = laneDot(4.0, 100.0 / 127.0), dot0 = laneDot(0.0, 100.0 / 127.0);
+    const bool ringed = bright({dot1.x + 6.0f, dot1.y}) && !bright({dot0.x + 6.0f, dot0.y});
+    check(ringed, "a picked note's dot in the lane is ringed");
+    // Every note picked, the first's dot dragged 4 px up takes each one's velocity a tenth up from its own (the first
+    // from 64, the others from 100), as one undo step.
+    model.set(seqNoteIndex(0, 0, SeqNoteParam::Velocity), 64.0 / 127.0);
+    view.poll();
+    view.seqKey(View::Key::SelectAll, false);
+    const Point grab = laneDot(0.0, 64.0 / 127.0);
+    view.mouseMove(grab, {});
+    const bool dotCursor = view.cursor() == CursorKind::Vertical;
+    view.mouseMove({at(2.5, 48).x, detail::kSeqLaneArea.y + 10.0f}, {});
+    const bool penCursor = view.cursor() == CursorKind::Pen;
+    view.mouseDown(grab, {});
+    view.mouseMove({grab.x, grab.y - 2.0f}, {});
+    view.mouseMove({grab.x, grab.y - 4.0f}, {});
+    const bool groupDragCursor = view.cursor() == CursorKind::Vertical;
+    view.mouseUp({grab.x, grab.y - 4.0f}, {});
+    // A single note's dot dragged keeps the up and down cursor too; a drag from an empty place, the pen.
+    click(view, at(15.5, 66)); // nothing picked
+    const Point single = laneDot(4.0, 100.0 / 127.0);
+    view.mouseDown(single, {});
+    view.mouseMove({single.x, single.y - 3.0f}, {});
+    const bool singleDragCursor = view.cursor() == CursorKind::Vertical;
+    view.mouseUp({single.x, single.y - 3.0f}, {});
+    view.undo();
+    view.mouseDown({at(2.5, 48).x, detail::kSeqLaneArea.y + 30.0f}, {});
+    view.mouseMove({at(2.5, 48).x, detail::kSeqLaneArea.y + 28.0f}, {});
+    const bool emptyDragCursor = view.cursor() == CursorKind::Pen;
+    view.mouseUp({at(2.5, 48).x, detail::kSeqLaneArea.y + 28.0f}, {});
+    view.seqKey(View::Key::SelectAll, false); // as before, for the checks below
+    const long v0 = std::lround(field(0, SeqNoteParam::Velocity) * 127.0);
+    const long v1 = std::lround(field(1, SeqNoteParam::Velocity) * 127.0);
+    view.undo();
+    model.set(seqNoteIndex(0, 0, SeqNoteParam::Velocity), 100.0 / 127.0);
+    view.poll();
+    std::printf("      the picked notes' velocities moved together: %ld and %ld\n", v0, v1);
+    check(v0 == 77 && v1 == 113 && dotCursor && penCursor && groupDragCursor && singleDragCursor && emptyDragCursor,
+          "the picked notes' velocities move together in the lane, its cursor a pen and up and down over a dot");
+    // Two notes starting together on step 12, one picked: the lane dragged there sets the picked one's velocity alone.
+    {
+        model.set(seqNoteIndex(0, 20, SeqNoteParam::Start), 12.0);
+        model.set(seqNoteIndex(0, 20, SeqNoteParam::Length), 1.0);
+        model.set(seqNoteIndex(0, 20, SeqNoteParam::Pitch), 62.0);
+        view.poll();
+        click(view, at(15.5, 66)); // nothing picked
+        click(view, at(12.4, 62)); // the new one picked
+        drag(view, {laneDot(12.0, 100.0 / 127.0).x, detail::kSeqLaneArea.y + 30.0f},
+             {laneDot(12.0, 100.0 / 127.0).x, detail::kSeqLaneArea.y + 6.0f});
+        const bool alone = field(20, SeqNoteParam::Velocity) == 1.0 && field(3, SeqNoteParam::Velocity) == 100.0 / 127.0;
+        view.undo();
+        model.set(seqNoteIndex(0, 20, SeqNoteParam::Length), 0.0);
+        model.set(seqNoteIndex(0, 20, SeqNoteParam::Start), 0.0);
+        model.set(seqNoteIndex(0, 20, SeqNoteParam::Pitch), 60.0);
+        view.poll();
+        check(alone, "where notes start together, the lane sets the picked ones' alone");
+    }
+
+    // Selecting, the cursor over the empty grid is the arrow; drawing, a pen, and over a note what a drag does to it.
+    view.mouseMove(at(6.5, 62), {});
+    const bool arrow = view.cursor() == CursorKind::Arrow;
+    click(view, {detail::kSeqTools.x + 45.0f, detail::kSeqTools.y + 12.0f});
+    view.mouseMove(at(6.5, 62), {});
+    const bool pen = view.cursor() == CursorKind::Pen;
+    view.mouseMove(at(4.4, 55), {});
+    const bool overNote = view.cursor() == CursorKind::Move;
+    check(model.ui.seqDraw && arrow && pen && overNote,
+          "the draw tool's cursor is a pen over the empty grid, and over a note what a drag does to it");
+    // The draw tool: a click puts a note down, and held, the mouse 20 px up takes its velocity from 100 to 120, as one
+    // undo step with the note.
+    auto slotAt = [&](double start, int pitch) {
+        for (int slot = 0; slot < kSeqNotes; ++slot)
+            if (field(slot, SeqNoteParam::Length) > 0.0 && field(slot, SeqNoteParam::Start) == start &&
+                field(slot, SeqNoteParam::Pitch) == pitch)
+                return slot;
+        return -1;
+    };
+    view.mouseDown(at(6.5, 62), {});
+    view.mouseMove({at(6.5, 62).x, at(6.5, 62).y - 10.0f}, {});
+    view.mouseMove({at(6.5, 62).x, at(6.5, 62).y - 20.0f}, {});
+    const bool vertical = view.cursor() == CursorKind::Vertical;
+    view.mouseUp({at(6.5, 62).x, at(6.5, 62).y - 20.0f}, {});
+    const int drawn = slotAt(6.0, 62);
+    const bool drawnLouder = drawn >= 0 && std::lround(field(drawn, SeqNoteParam::Velocity) * 127.0) == 120;
+    view.undo();
+    check(drawnLouder && vertical && slotAt(6.0, 62) < 0,
+          "a note drawn and held takes the velocity the mouse sets up and down, undone with it");
+    // With Shift, a drag along a row paints a note in each step it crosses that has none.
+    view.mouseDown(at(1.5, 65), {true, false, false});
+    view.mouseMove(at(2.5, 65), {true, false, false});
+    view.mouseMove(at(3.5, 65), {true, false, false});
+    view.mouseUp(at(3.5, 65), {true, false, false});
+    int painted = 0;
+    for (int slot = 0; slot < kSeqNotes; ++slot)
+        if (field(slot, SeqNoteParam::Length) > 0.0 && field(slot, SeqNoteParam::Pitch) == 65.0)
+            ++painted;
+    check(painted == 3, "the draw tool with Shift paints a note in each step dragged across");
+    click(view, {detail::kSeqTools.x + 15.0f, detail::kSeqTools.y + 12.0f}); // select again
+
+    // The card's switches have tooltips of their own: KEY's under it (read off the rendered pixels).
+    const Point keyChip{detail::kSeqCardControls + 62.0f + 30.0f, detail::kSeqPlayY + 11.0f};
+    const Point underKey{keyChip.x, detail::kSeqPlayY + 22.0f + 6.0f + 11.0f};
+    view.mouseMove({600.0f, 600.0f}, {});
+    renderer.save(view, dir / "36g-seq-no-tip.png");
+    const uint32_t bare = renderer.pixel(underKey);
+    view.mouseMove(keyChip, {});
+    const bool tipShot = renderer.save(view, dir / "36g-seq-tip.png");
+    check(tipShot && renderer.pixel(underKey) != bare, "the SEQ card's switches show tooltips of their own");
+
+    // The lane on CHANCE: dragged to its top over the note at step 4, that note's chance goes to all of it.
+    click(view, {kSeqGrid.x + 84.0f + 39.0f, detail::kSeqLaneTabs.y + 11.0f});
+    model.set(seqNoteIndex(0, 1, SeqNoteParam::Chance), 0.2);
+    view.poll();
+    drag(view, {at(4.0, 48).x + 1.0f, detail::kSeqLaneArea.y + 40.0f}, {at(4.0, 48).x + 1.0f, detail::kSeqLaneArea.y + 2.0f});
+    check(model.ui.seqLane == SeqLane::Chance && field(1, SeqNoteParam::Chance) == 1.0,
+          "the lane on CHANCE sets a note's chance by its height");
+
+    // The ruler: the loop's ends dragged in (the cursor left and right over them) make it steps 4 to 12; its middle
+    // dragged two steps on (the cursor moving over it) takes it to 6 to 14; a drag across the bars outside it, from
+    // step 1 to 3, makes that the loop; and a double-click loops the whole bar again.
+    auto loopIs = [&](double start, double end) {
+        return model.value(paramIndex(0, SeqPatternParam::LoopStart)) == start &&
+               model.value(paramIndex(0, SeqPatternParam::LoopEnd)) == end;
+    };
+    view.mouseMove({at(0.0, 48).x + 2.0f, rulerY}, {});
+    const bool loopStartCursor = view.cursor() == CursorKind::Horizontal;
+    drag(view, {at(0.0, 48).x + 2.0f, rulerY}, {at(4.0, 48).x, rulerY});
+    drag(view, {at(16.0, 48).x - 2.0f, rulerY}, {at(12.0, 48).x, rulerY});
+    const bool looped = loopIs(4.0, 12.0);
+    view.mouseMove({at(8.0, 48).x, rulerY}, {});
+    const bool middleCursor = view.cursor() == CursorKind::Move;
+    drag(view, {at(8.0, 48).x, rulerY}, {at(10.0, 48).x, rulerY});
+    const bool movedLoop = loopIs(6.0, 14.0);
+    drag(view, {at(1.0, 48).x, rulerY}, {at(3.0, 48).x, rulerY});
+    const bool newLoop = loopIs(1.0, 3.0);
+    check(loopStartCursor && middleCursor && movedLoop && newLoop,
+          "the loop drags by its ends and its middle, a new one across the bars outside it, each with its cursor");
+    view.mouseMove({600.0f, 600.0f}, {});
+    const bool loopShot = renderer.save(view, dir / "36c-seq-loop.png");
+    doubleClick(view, {at(8.0, 48).x, rulerY});
+    check(looped && loopShot && model.value(paramIndex(0, SeqPatternParam::LoopStart)) == 0.0 &&
+              model.value(paramIndex(0, SeqPatternParam::LoopEnd)) == 0.0,
+          "the ruler sets the loop, and a double-click loops the whole pattern");
+
+    // The scale's list picks Minor, and FOLD shows only its rows.
+    const Rect scaleButton{detail::kSeqCardControls + 52.0f, detail::kSeqScaleY, 102.0f, 22.0f};
+    click(view, rectCenter(scaleButton));
+    click(view, rectCenter(detail::listMenuItem(scaleButton, static_cast<int>(SeqScale::Count),
+                                                static_cast<int>(SeqScale::Minor))));
+    click(view, {detail::kSeqCard.x + detail::kSeqCard.w - 12.0f - 27.0f, detail::kSeqScaleY + 11.0f});
+    view.mouseMove({600.0f, 600.0f}, {});
+    const bool foldShot = renderer.save(view, dir / "36d-seq-fold.png");
+    check(foldShot && model.value(paramIndex(SeqParam::Scale)) == static_cast<double>(SeqScale::Minor) &&
+              model.ui.seqFold,
+          "the scale's list picks a scale, and FOLD shows only its rows");
+    click(view, {detail::kSeqCard.x + detail::kSeqCard.w - 12.0f - 27.0f, detail::kSeqScaleY + 11.0f});
+
+    // With the modulation panel and the keyboard collapsed, the editor too short for the list under its button: it opens
+    // above it, all of it inside the editor, and its last entry picks Blues.
+    model.ui.sourcesCollapsed = true;
+    model.ui.keysCollapsed = true;
+    click(view, rectCenter(scaleButton));
+    view.mouseMove({600.0f, 100.0f}, {});
+    const bool shortShot = renderer.save(view, dir / "36d-seq-scale-short.png");
+    const Point blues{scaleButton.x + 60.0f, scaleButton.y - 4.0f - 4.0f - 22.0f + 11.0f}; // its last row, just above
+    click(view, blues);
+    check(shortShot && view.height() < scaleButton.y + 22.0f + 4.0f + 8.0f + 12.0f * 22.0f &&
+              model.value(paramIndex(SeqParam::Scale)) == static_cast<double>(SeqScale::Blues),
+          "the scale's list opens above its button where it would reach past the editor's bottom");
+    model.ui.sourcesCollapsed = false;
+    model.ui.keysCollapsed = false;
+
+    // Zoomed in across by its + twice (2.25 times, about the middle step 8), the roll shows from step 4.4: a
+    // double-click at its left edge puts a note on step 4. The middle button dragged half the roll to the right shows
+    // from step 0.9, where a double-click there puts one on step 0; and dragged three rows down, the rows start three
+    // higher. Shift+wheel scrolls across too, and the bar under the roll shows while it is zoomed in.
+    {
+        const Rect zoomInX{detail::kSeqBox.x + detail::kSeqBox.w - 6.0f - 60.0f - 22.0f, detail::kSeqLaneTabs.y + 2.0f,
+                           18.0f, detail::kSeqLaneTabs.h - 4.0f};
+        const Rect zoomOutX{zoomInX.x - 20.0f, zoomInX.y, zoomInX.w, zoomInX.h};
+        click(view, rectCenter(zoomInX));
+        click(view, rectCenter(zoomInX));
+        view.mouseMove({600.0f, 600.0f}, {});
+        const bool zoomShot = renderer.save(view, dir / "36h-seq-zoomed.png");
+        const Point left{kSeqGrid.x + 2.0f, at(0.0, 60).y};
+        doubleClick(view, left);
+        const int zoomed = slotAt(4.0, 60);
+        view.undo();
+        view.middleDown({kSeqGrid.x + 100.0f, at(0.0, 52).y});
+        view.mouseMove({kSeqGrid.x + 100.0f + kSeqGrid.w * 0.5f, at(0.0, 52).y}, {});
+        view.middleUp({kSeqGrid.x + 100.0f + kSeqGrid.w * 0.5f, at(0.0, 52).y});
+        doubleClick(view, left);
+        const int panned = slotAt(0.0, 60);
+        view.undo();
+        const int lowBefore = model.ui.seqLow;
+        view.middleDown({kSeqGrid.x + 100.0f, at(0.0, 52).y});
+        view.mouseMove({kSeqGrid.x + 100.0f, at(0.0, 52).y + 3.0f * rh}, {});
+        view.middleUp({kSeqGrid.x + 100.0f, at(0.0, 52).y + 3.0f * rh});
+        const int lowPanned = model.ui.seqLow;
+        model.ui.seqLow = lowBefore;
+        check(zoomShot && zoomed >= 0 && panned >= 0 && lowPanned == lowBefore + 3,
+              "the roll zooms in across, and the middle button pans it across and up and down");
+        for (int i = 0; i < 4; ++i) // back to the whole pattern across
+            click(view, rectCenter(zoomOutX));
+        // Alt+wheel at the bottom row zooms in up and down from there: that row stays, and the point five old rows up
+        // falls on a lower row than the fifth.
+        const Point bottom{kSeqGrid.x + 300.0f, kSeqGrid.y + kSeqGrid.h - 2.0f};
+        view.wheel(bottom, 3.0f, {false, false, true});
+        const Point fiveUp{at(9.4, 48).x, kSeqGrid.y + kSeqGrid.h - 5.5f * rh};
+        doubleClick(view, fiveUp);
+        int pitch = -1;
+        for (int slot = 0; slot < kSeqNotes; ++slot)
+            if (field(slot, SeqNoteParam::Length) > 0.0 && field(slot, SeqNoteParam::Start) >= 9.0 &&
+                field(slot, SeqNoteParam::Start) < 10.0 && field(slot, SeqNoteParam::Pitch) != 51.0)
+                pitch = static_cast<int>(field(slot, SeqNoteParam::Pitch));
+        view.undo();
+        check(model.ui.seqLow == lowBefore && pitch > lowBefore && pitch < lowBefore + 5,
+              "Alt+wheel zooms the rows in, the row under the mouse staying");
+        view.wheel(bottom, -3.0f, {false, false, true}); // back as it was
+        // The rows' bar at the roll's right: its thumb dragged up a twelfth of the 128 rows' track shows them from an
+        // octave higher (read off the rendered pixels: the thumb lit at its new place).
+        const Rect track = detail::kSeqScrollYTrack;
+        const float thumbY = track.y + track.h - (static_cast<float>(lowBefore) + 11.0f) / 128.0f * track.h;
+        view.mouseDown({track.x + 3.0f, thumbY}, {});
+        view.mouseMove({track.x + 3.0f, thumbY - track.h * 6.0f / 128.0f}, {});
+        view.mouseMove({track.x + 3.0f, thumbY - track.h * 12.0f / 128.0f}, {});
+        const bool barShot = renderer.save(view, dir / "36j-seq-rows-bar.png");
+        view.mouseUp({track.x + 3.0f, thumbY - track.h * 12.0f / 128.0f}, {});
+        const int barLow = model.ui.seqLow;
+        model.ui.seqLow = lowBefore;
+        check(barShot && barLow == lowBefore + 12, "the rows' bar scrolls the rows up and down");
+    }
+
+    // The snap's list picks 1/8.
+    const Rect snapButton{detail::kSeqTools.x + 108.0f, detail::kSeqTools.y, 76.0f, detail::kSeqTools.h};
+    click(view, rectCenter(snapButton));
+    const bool snapOpen = renderer.save(view, dir / "36e-seq-snap.png");
+    click(view, rectCenter(detail::listMenuItem(snapButton, kSeqSnapCount, 2)));
+    check(snapOpen && model.ui.seqSnap == 2, "the snap's list picks the grid");
+
+    // The roll's lines fall at the snap's length: at 1/32 one between two steps that 1/16 hasn't; and with GRID at 0
+    // there are none (read off the rendered pixels).
+    {
+        const Point between{at(0.5, 66).x, at(0.5, 66).y};
+        auto lineAt = [&](int snap) {
+            model.ui.seqSnap = snap;
+            view.mouseMove({600.0f, 600.0f}, {});
+            renderer.save(view, dir / "36k-seq-grid.png");
+            return renderer.pixel(between);
+        };
+        const uint32_t at32 = lineAt(4), at16 = lineAt(3);
+        model.grid = 0.0;
+        const uint32_t none32 = lineAt(4), none16 = lineAt(3);
+        model.grid = Controller::kDefaultGridIntensity;
+        model.ui.seqSnap = 2;
+        check(at32 != at16 && none32 == none16, "the roll's lines fall at the snap's length, as strong as GRID says");
+    }
+
+    // Copied, the pattern fills B; picked, B shows in the roll.
+    click(view, {detail::kSeqCard.x + detail::kSeqCard.w - 12.0f - 13.0f, detail::kSeqPatternY + 11.0f});
+    const bool copied = model.value(seqNoteIndex(1, 2, SeqNoteParam::Length)) == 2.0 &&
+                        model.value(seqNoteIndex(1, 2, SeqNoteParam::Pitch)) == 51.0;
+    click(view, {detail::kSeqCardControls + 30.0f + 14.0f, detail::kSeqPatternY + 11.0f});
+    check(copied && model.value(paramIndex(SeqParam::Pattern)) == 1.0, "a pattern copies into the next empty one");
+    click(view, {detail::kSeqCardControls + 14.0f, detail::kSeqPatternY + 11.0f});
+
+    // The bin asks, then clears the pattern; undo brings it back.
+    const Point bin{detail::kSeqTools.x + detail::kSeqTools.w - 13.0f, detail::kSeqTools.y + 12.0f};
+    const Rect confirm{420.0f, std::round((view.height() - 150.0f) * 0.5f), 360.0f, 150.0f};
+    click(view, bin);
+    const bool asked = renderer.save(view, dir / "36f-seq-clear.png");
+    click(view, {confirm.right() - 64.0f, confirm.bottom() - 38.0f});
+    bool empty = true;
+    for (int slot = 0; slot < kSeqNotes; ++slot)
+        empty = empty && field(slot, SeqNoteParam::Length) == 0.0;
+    view.undo();
+    check(asked && empty && field(2, SeqNoteParam::Length) == 2.0, "the bin clears the pattern, asking first, undoably");
+}
+
 void testFxClear(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -5045,6 +5633,24 @@ void testFxClear(const std::filesystem::path &dir, Renderer &renderer) {
     const Point header{600.0f, 20.0f}; // the editor's title bar, which the dialog's backdrop dims
     renderer.save(view, dir / "40s-fx-clear-before.png");
     const uint32_t clear = renderer.pixel(header);
+
+    // The FX tab's dot while an effect in the line is switched on, and none with them switched off (read off the
+    // rendered pixels).
+    {
+        const Point dot = detail::viewTabDot(static_cast<int>(RoutingView::Fx));
+        const uint32_t lit = renderer.pixel(dot);
+        model.values[paramIndex(0, FxParam::Enabled)] = 0.0;
+        model.values[paramIndex(1, FxParam::Enabled)] = 0.0;
+        view.poll();
+        renderer.save(view, dir / "40s-fx-tab-off.png");
+        const uint32_t unlit = renderer.pixel(dot);
+        model.values[paramIndex(0, FxParam::Enabled)] = 1.0;
+        model.values[paramIndex(1, FxParam::Enabled)] = 1.0;
+        view.poll();
+        renderer.save(view, dir / "40s-fx-clear-before.png");
+        check(lit != unlit && renderer.pixel(dot) == lit,
+              "the FX tab shows a dot while an effect in the line is switched on, and none with them all off");
+    }
 
     // The chain: asked, kept by a click around the dialog, then removed, and back by undo.
     click(view, bin);
@@ -6703,7 +7309,7 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     model.set(slotAmountIndex(kMaxSources, 0), 0.35);
     view.poll();
     // The tab, after FX; the first row's middle at y 154, its cells across from x 28 (see layout.h's kMods...).
-    click(view, {314.0f, 116.0f});
+    click(view, {382.0f, 116.0f});
     view.mouseMove({600.0f, 468.0f}, {});
     const bool shot = renderer.save(view, dir / "35-mods.png");
     check(model.ui.view == RoutingView::Mods && shot, "the MODS tab shows every modulation as a row");
@@ -6929,7 +7535,7 @@ void testModsLive(const std::filesystem::path &dir, Renderer &renderer) {
     model.set(paramIndex(0, MacroParam::Bipolar), 0.0);
     model.set(paramIndex(0, MacroParam::Value), 0.0);
     view.poll();
-    click(view, {314.0f, 116.0f}); // the MODS tab
+    click(view, {382.0f, 116.0f}); // the MODS tab
     auto shoot = [&](const char *name, float y) {
         view.poll();
         view.mouseMove({600.0f, 468.0f}, {});
@@ -7172,7 +7778,7 @@ void testModsMoveDepth(const std::filesystem::path &dir, Renderer &renderer) {
     model.set(slotTargetIndex(1, 0), slotTargetValue(slotAmountIndex(0, 0)));
     model.set(slotAmountIndex(1, 0), 0.25);
     view.poll();
-    click(view, {314.0f, 116.0f}); // MODS
+    click(view, {382.0f, 116.0f}); // MODS
     auto moveTo = [&](int category) {
         const float y = 202.0f + 22.0f * static_cast<float>(category) + 11.0f;
         click(view, {90.0f, 182.0f});
@@ -7340,7 +7946,7 @@ void testModsEmpty(const std::filesystem::path &dir, Renderer &renderer) {
     View view(model);
     // The columns' names, their middle at y 126: along it, under SOURCE (from x 54), the text's pixels differ from
     // the panel's (read off the rendered pixels).
-    click(view, {314.0f, 116.0f}); // the MODS tab
+    click(view, {382.0f, 116.0f}); // the MODS tab
     view.mouseMove({600.0f, 468.0f}, {});
     const bool noneShot = renderer.save(view, dir / "35e2-mods-none.png");
     bool headed = false;
@@ -7352,7 +7958,7 @@ void testModsEmpty(const std::filesystem::path &dir, Renderer &renderer) {
     model.set(slotTargetIndex(0, 0), slotTargetValue(paramIndex(0, OpParam::Ratio)));
     model.set(slotAmountIndex(0, 0), 0.4);
     view.poll();
-    click(view, {314.0f, 116.0f}); // the MODS tab
+    click(view, {382.0f, 116.0f}); // the MODS tab
     // Under LFO 1's row (its middle at y 154), the button adds a second: its source's menu opens under its source,
     // at x 54 and y 200. Over Macros, the second entry, the macros show beside it; Macro 1 is picked.
     const float y = 212.0f;
@@ -7445,7 +8051,7 @@ void testModsSearch(const std::filesystem::path &dir, Renderer &renderer) {
     for (auto [source, slot] : {std::pair{0, 0}, {0, 1}, {1, 0}, {kMaxSources, 0}})
         model.set(slotAmountIndex(source, slot), 0.3);
     view.poll();
-    click(view, {314.0f, 116.0f}); // the MODS tab
+    click(view, {382.0f, 116.0f}); // the MODS tab
     auto slotIs = [&](int source, int slot, int target) {
         return slotTarget(model.value(slotTargetIndex(source, slot))) == target;
     };
@@ -7718,7 +8324,7 @@ void renderLfoOnLfo(const std::filesystem::path &dir, Renderer &renderer) {
     view.poll();
     // In the MODS view, LFO 1's row the top one: with Shift a depth bar moves from where it is, a hundredth as fast; half
     // its width (164 px from x 474) is 1 % then.
-    click(view, {314.0f, 116.0f});
+    click(view, {382.0f, 116.0f});
     const Point bar{474.0f + 82.0f, 182.0f};
     view.mouseDown(bar, {true, false});
     view.mouseMove({bar.x + 82.0f, bar.y}, {true, false});
@@ -10058,6 +10664,17 @@ void run(const std::filesystem::path &dir, float scale) {
     view.mouseUp({linesAt(1.0f).x + 40.0f, linesAt(1.0f).y}, {});
     check(linesStart && linesKept && linesShot && linesSet && model.links == 1.0 && model.glowLevel == 0.0,
           "the settings dialog's LINES slider sets how strongly the sources' lines are drawn, and only that");
+    // GRID, under LINES: at 50 % to begin with, dragged to its end, double-clicked back to 50 %.
+    auto gridAt = [&](float amount) { return Point{dialog.x + 76.0f + 200.0f * amount, dialog.y + 312.0f + 181.0f}; };
+    const bool gridStart = model.grid == Controller::kDefaultGridIntensity;
+    view.mouseDown(gridAt(0.5f), {});
+    view.mouseMove({gridAt(1.0f).x + 40.0f, gridAt(1.0f).y}, {});
+    const bool gridShot = renderer.save(view, dir / "14j-settings-grid.png");
+    view.mouseUp({gridAt(1.0f).x + 40.0f, gridAt(1.0f).y}, {});
+    const bool gridSet = model.grid == 1.0 && model.links == 1.0;
+    doubleClick(view, gridAt(0.9f)); // inside its track, short of its right end
+    check(gridStart && gridShot && gridSet && model.grid == Controller::kDefaultGridIntensity,
+          "the settings dialog's GRID slider sets how strongly the roll's grid is drawn, a double-click putting it back");
     // HUE, under the themes, turns the theme's main color round the color wheel once it is let go, the theme's own to
     // begin with; the accent then takes it (read off the rendered pixels: the slider's knob, in the accent).
     auto hueAt = [&](float hue) { return Point{dialog.x + 76.0f + 200.0f * hue, dialog.y + 312.0f + 85.0f}; };
@@ -10081,7 +10698,7 @@ void run(const std::filesystem::path &dir, float scale) {
     model.glowLevel = 0.0;
     model.links = 0.75;
     // HANDLES picks the depth handles' size, Small to begin with, leaving the patch alone.
-    auto handlesButton = [&](int size) { return Point{dialog.x + 76.0f + size * 68.0f + 32.0f, dialog.y + 312.0f + 184.0f}; };
+    auto handlesButton = [&](int size) { return Point{dialog.x + 76.0f + size * 68.0f + 32.0f, dialog.y + 312.0f + 216.0f}; };
     const ParamValues handlesBefore = model.values;
     const bool startsSmall = model.handles == 0;
     click(view, handlesButton(2));
@@ -10131,6 +10748,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testModsEmpty(dir, renderer);
     testNewSources(dir, renderer);
     testMods(dir, renderer);
+    testSeq(dir, renderer);
     testModsMoveDepth(dir, renderer);
     testModsLive(dir, renderer);
     testNodeSwitchOnPlace(dir, renderer);

@@ -58,7 +58,7 @@ float follow(float shown, float target) {
 }
 
 constexpr Str kMcBandNames[kMcBands] = {Str::BandButtonLow, Str::BandButtonMid, Str::BandButtonHigh};
-constexpr Str kViewNames[] = {Str::ViewRouting, Str::ViewMatrix, Str::ViewFx, Str::ViewMods};
+constexpr Str kViewNames[] = {Str::ViewRouting, Str::ViewMatrix, Str::ViewFx, Str::ViewMods, Str::ViewSeq};
 static_assert(std::size(kViewNames) == std::size(kViewTabs));
 
 // A tempo as the title bar shows it, and as typing it starts: whole, or with the hundredths it holds ("92.5").
@@ -187,7 +187,8 @@ bool isMidiInput(int param) {
 // algorithm, a filter's slope): how many values it offers (an LFO's shapes kLfoShapesOffered, in their order), and
 // their names.
 int listCount(int param) {
-    return routeModeFrom(param) >= 0                  ? static_cast<int>(RouteMode::Count)
+    return param == paramIndex(SeqParam::Scale)       ? static_cast<int>(SeqScale::Count)
+           : routeModeFrom(param) >= 0                ? static_cast<int>(RouteMode::Count)
            : isSlopeList(param)                       ? kFilterSlopes
            : isLfoShape(param)                        ? kLfoShapeItems
            : isMidiInput(param)                       ? static_cast<int>(MidiInput::Count)
@@ -197,6 +198,8 @@ int listCount(int param) {
                                                       : static_cast<int>(ClipMode::Count);
 }
 std::string listItemName(int param, int value) {
+    if (param == paramIndex(SeqParam::Scale))
+        return seqScaleName(value);
     if (routeModeFrom(param) >= 0)
         return routeModeName(static_cast<RouteMode>(value));
     if (isSlopeList(param))
@@ -449,6 +452,7 @@ float View::heightFor(const UiLayout &layout) {
 }
 
 View::View(Controller &controller) : controller_(controller), table_(paramTable()) {
+    seqLoadsSeen_ = controller_.patchLoads(); // the roll as the layout saved it: fitted only to a patch loaded from now
     poll();
 }
 
@@ -714,6 +718,8 @@ Color View::fxColor(int slot) const {
 }
 
 Color View::listColor(int param) const {
+    if (isSeqParam(param))
+        return kAccent;
     if (routeModeFrom(param) >= 0)
         return routeColor(routeModeFrom(param), routeModeTo(param));
     if (isLfoShape(param) || isMidiInput(param))
@@ -745,7 +751,7 @@ Color View::clipColor(int unit) const {
 
 bool View::inspectorCovered() const {
     const int shape = shapeEditing();
-    return fxWide() || modsWide() || (shape >= 0 && !isStripCurve(shape) && !isShaperCurve(shape));
+    return fxWide() || modsWide() || seqWide() || (shape >= 0 && !isStripCurve(shape) && !isShaperCurve(shape));
 }
 
 bool View::fxWide() const {
@@ -1533,6 +1539,10 @@ bool View::poll() {
     // the host's tempo shows in the synced effects' and LFOs' captions, and the title bar, whether notes play or not.
     if (t.fxReduction != telemetry_.fxReduction)
         in(panels);
+    // The sequencer's playhead, while the SEQ view shows.
+    if (seqWide() && (t.seqPosition != telemetry_.seqPosition || t.seqPattern != telemetry_.seqPattern ||
+                      t.seqKeys != telemetry_.seqKeys))
+        in(panels);
     if (t.tempo != telemetry_.tempo)
         everywhere = true;
     if (t.keys != telemetry_.keys) {
@@ -1664,6 +1674,14 @@ bool View::poll() {
         everywhere = true;
         if (drag_.kind == DragKind::FxMove && drag_.moved) // where it lands follows the row scrolling under it
             retargetRowDrag(drag_.now);
+    }
+    if (seqEdgeScroll())
+        everywhere = true;
+    // A patch loaded (a preset, Init, the host's state): the roll fitted to its notes.
+    if (controller_.patchLoads() != seqLoadsSeen_) {
+        seqLoadsSeen_ = controller_.patchLoads();
+        seqFit();
+        everywhere = true;
     }
     // An envelope's display zooming: pushed out by a handle, which changes its params (anywhere they show), or easing
     // back to filling the display, on the inspector's ENVELOPE tab or its card.
@@ -2020,6 +2038,8 @@ std::vector<View::Widget> View::widgets() const {
         add(Kind::SearchField, filter, -1, static_cast<int>(Field::ModsFilter));
         if (!modsFilter_.text.empty())
             add(Kind::SearchClear, fieldClear(filter), -1, static_cast<int>(Field::ModsFilter));
+    } else if (view == RoutingView::Seq) {
+        seqWidgets(list);
     } else if (view == RoutingView::Fx) {
         add(Kind::FxMenuButton, fxMenuButton());
         if (scrollLength(ScrollArea::Fx) > kVisibleFx + 0.01f && !fxGraph())
@@ -3096,6 +3116,7 @@ std::vector<View::Widget> View::widgets() const {
                 add(Kind::ListItem, listMenuItem(button, items, item), listMenu_, -1, item);
         }
     }
+    seqMenus(list); // the SEQ view's scale and snap lists
     // An LFO's list of shapes, under its button on its card, cut off at the row's ends like the card, though
     // reaching past its bottom.
     if (lfoList.w > 0.0f) {
@@ -3343,6 +3364,9 @@ void View::paint(Canvas &c, Rect area) {
         break;
     case RoutingView::Mods:
         paintMods(c);
+        break;
+    case RoutingView::Seq:
+        paintSeq(c);
         break;
     }
     if (!inspectorCovered() && panelsShown)
@@ -7038,6 +7062,8 @@ void View::paintButtonFace(Canvas &c, const Widget &w, bool lit, bool hot, Color
 void View::paintWidget(Canvas &c, const Widget &w) {
     const bool hovered = isHovered(w);
     const bool active = isActive(w);
+    if (paintSeqWidget(c, w, hovered)) // the SEQ view's own (see seq.cpp)
+        return;
     switch (w.kind) {
     case Kind::Knob:
         if (isRatioDisplay(w))
@@ -7178,6 +7204,19 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             c.fillPolygon(outline.data(), outline.size(), kPanel.alpha(0.6f));
         }
         c.text(w.rect, tr(kViewNames[w.a]), kTextBody, selected || hovered ? kText : kDim, Align::Center, true);
+        // A dot in its upper right while what it shows is at work: FX while an effect in the line is switched on, SEQ
+        // while the sequencer is.
+        const auto shows = static_cast<RoutingView>(w.a);
+        bool working = false;
+        if (shows == RoutingView::Fx) {
+            const std::vector<int> chain = fxChain();
+            working = std::any_of(chain.begin(), chain.end(),
+                                  [&](int slot) { return value(paramIndex(slot, FxParam::Enabled)) >= 0.5; });
+        } else if (shows == RoutingView::Seq) {
+            working = value(paramIndex(SeqParam::Enabled)) >= 0.5;
+        }
+        if (working)
+            c.fillCircle(viewTabDot(w.a), 2.5f, kAccent);
         break;
     }
     case Kind::OpTab: {
@@ -8222,9 +8261,12 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break;
     }
     case Kind::SettingsGlow:
-    case Kind::SettingsLinks: {
+    case Kind::SettingsLinks:
+    case Kind::SettingsGrid: {
         // A track filled up to the amount, and a knob to drag along it.
-        const float amount = w.kind == Kind::SettingsLinks ? shownLinks() : shownGlow();
+        const float amount = w.kind == Kind::SettingsLinks ? shownLinks()
+                             : w.kind == Kind::SettingsGrid ? shownGrid()
+                                                            : shownGlow();
         const float x = w.rect.x + amount * w.rect.w, y = w.rect.center().y;
         c.fillRect({w.rect.x, y - 2.0f, w.rect.w, 4.0f}, kTrack, kRadiusMark);
         c.fillRect({w.rect.x, y - 2.0f, x - w.rect.x, 4.0f}, kAccent, kRadiusMark);
@@ -8386,6 +8428,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                                : bands                                            ? Str::ButtonMidRemove
                                : confirm_ == kConfirmSplitRemove                  ? Str::ButtonSplitKeep
                                : confirm_ == kConfirmFxClear                      ? Str::ButtonClearFx
+                               : confirm_ == kConfirmSeqClear                     ? Str::ButtonClearSeq
                                : confirm_ == static_cast<int>(PresetAction::Init) ? Str::ButtonInit
                                : confirm_ == static_cast<int>(PresetAction::Save) ? Str::ButtonOverwrite
                                                                                   : Str::ButtonLoad);
@@ -8906,6 +8949,18 @@ void View::paintRatio(Canvas &c, const Widget &w) {
 
 // What the play switches do, below the one under the mouse.
 void View::paintTooltip(Canvas &c) {
+    if (hover_ && drag_.kind == DragKind::None) // the SEQ view's own (see seqTip())
+        if (const std::string seq = seqTip(*hover_); !seq.empty()) {
+            const float width = std::min(std::ceil(c.textWidth(seq, kTextBody)) + 24.0f, View::kWidth - 16.0f);
+            const float x = std::clamp(hover_->rect.center().x - width * 0.5f, 8.0f, View::kWidth - 8.0f - width);
+            const float below = hover_->kind == Kind::SeqKeys || hover_->kind == Kind::SeqRuler
+                                    ? hoverPoint_.y + 18.0f // a tall widget: under the mouse
+                                    : hover_->rect.bottom() + 6.0f;
+            const Rect tip{x, below, width, 22.0f};
+            paintMenuPanel(c, tip);
+            c.text(tip, seq, kTextBody, kText);
+            return;
+        }
     if (!hover_ || drag_.kind != DragKind::None || (cascade_ && modsWide()) ||
         (hover_->kind != Kind::Choice && hover_->kind != Kind::Toggle && hover_->kind != Kind::NodeTab &&
          hover_->kind != Kind::FxRemove && hover_->kind != Kind::SourceRemove &&
@@ -9592,6 +9647,9 @@ void View::applyDrag(Point p) {
             controller_.setValue(index, v);
     };
     switch (drag_.kind) {
+    case DragKind::Seq:
+        seqDrag(p);
+        break;
     case DragKind::Key: {
         // Sliding across keys moves the note; off the keys, the last one keeps sounding.
         const auto hit = hitTest(p);
@@ -9977,6 +10035,10 @@ bool View::mouseMove(Point p, Modifiers mods) {
         if (mods.ctrl) // a card or node carried with Ctrl held: a copy of it
             copyDragged();
     }
+    // A note's end in the SEQ view's roll follows the mouse off the grid while Shift or Alt is held.
+    if (drag_.kind == DragKind::Seq &&
+        (seqDrag_.mode == SeqDrag::Mode::Resize || seqDrag_.mode == SeqDrag::Mode::ResizeStart))
+        seqDrag_.free = mods.shift || mods.alt;
     if ((drag_.kind == DragKind::Connect || drag_.kind == DragKind::Reroute) && !drag_.leftNode)
         drag_.leftNode = clearOfNode(drag_.widget.a, nodeCenter(drag_.widget.a), p);
     // A value moves only once the mouse has: the jitter of a click, or between a double-click's presses, leaves it
@@ -10051,6 +10113,8 @@ void View::mouseDown(Point p, Modifiers mods) {
     drag_.fine = mods.shift;
     UiLayout &layout = controller_.layout();
     if (fxGraphPress(w, p)) // the effects graph's own
+        return;
+    if (seqPress(w, p, mods)) // the SEQ view's own
         return;
 
     switch (w.kind) {
@@ -10571,9 +10635,11 @@ void View::mouseDown(Point p, Modifiers mods) {
         break;
     case Kind::SettingsGlow: // dragged; the amount is kept when it is let go
     case Kind::SettingsLinks:
+    case Kind::SettingsGrid:
     case Kind::SettingsHue:
         drag_.kind = DragKind::Glow;
         drag_.startValue = sliderDragged() = w.kind == Kind::SettingsLinks ? shownLinks()
+                                             : w.kind == Kind::SettingsGrid ? shownGrid()
                                              : w.kind == Kind::SettingsHue
                                                  ? static_cast<float>(shownHue() >= 0.0 ? shownHue()
                                                                                         : hueOf(kThemes[theme_].accent))
@@ -10764,6 +10830,8 @@ void View::mouseUp(Point p, Modifiers) {
     case DragKind::Glow:
         if (w.kind == Kind::SettingsLinks)
             controller_.setLinkIntensity(linksDragged_);
+        else if (w.kind == Kind::SettingsGrid)
+            controller_.setGridIntensity(gridDragged_);
         else if (w.kind == Kind::SettingsHue)
             controller_.setAccentHue(hueDragged_);
         else
@@ -10791,6 +10859,10 @@ void View::mouseUp(Point p, Modifiers) {
         dropFxNode(true);
         break;
     case DragKind::Tempo: // each move set it already
+        break;
+    case DragKind::Seq:
+        drag_.now = p;
+        seqRelease(p);
         break;
     case DragKind::SplitPoint:
     case DragKind::Value:
@@ -10944,7 +11016,7 @@ void View::finishDrag() {
         controller_.endEdit(paramIndex(GlobalParam::PitchBend));
         break;
     case DragKind::Glow: // the amount it was dragged to is kept only once it is let go (see mouseUp())
-        glowDragged_ = linksDragged_ = hueDragged_ = -1.0f;
+        glowDragged_ = linksDragged_ = gridDragged_ = hueDragged_ = -1.0f;
         break;
     case DragKind::Partials: // its undo step closes below
     case DragKind::ShapeStep:
@@ -10965,6 +11037,10 @@ void View::finishDrag() {
     case DragKind::FxNodeMove:
     case DragKind::Tempo:
     case DragKind::None:
+        break;
+    case DragKind::Seq: // a note still heard stops (a release that never came)
+        seqHear(-1);
+        seqDrag_ = SeqDrag{};
         break;
     }
     if (drag_.step)
@@ -11116,6 +11192,8 @@ std::optional<std::pair<View::PanArea, float>> View::panAt(Point p) const {
         return std::pair{PanArea::Fx, fxGraphScroll(fxGridLayout(fxLine()))};
     if (fxWide() && !fxGraph() && kFxPanel.contains(p))
         return std::pair{PanArea::Fx, fxScroll()};
+    if (seqWide() && Rect{kSeqBox.x, kSeqRuler.y, kSeqBox.w, kSeqLaneArea.y + kSeqLaneArea.h - kSeqRuler.y}.contains(p))
+        return std::pair{PanArea::Seq, seqScroll()}; // the roll, across and up and down
     return std::nullopt;
 }
 
@@ -11144,6 +11222,8 @@ void View::middleDown(Point p) {
     drag_.widget.a = static_cast<int>(area);
     drag_.start = drag_.now = p;
     drag_.startValue = first;
+    if (area == PanArea::Seq)
+        seqPanStart_ = {seqScroll(), static_cast<float>(seqFirstRow())};
 }
 
 void View::middleUp(Point p) {
@@ -11204,6 +11284,7 @@ bool View::dragsOnTouch(const Widget &w) const {
     case Kind::SearchField:
     case Kind::SettingsGlow:
     case Kind::SettingsLinks:
+    case Kind::SettingsGrid:
     case Kind::SettingsHue:
     case Kind::ModWheel:
     case Kind::BendWheel:
@@ -11304,6 +11385,9 @@ void View::wheelAcross(Point p, float steps) {
     } else if (fxWide() && !fxGraph() && kFxPanel.contains(p)) {
         setScroll(ScrollArea::Fx, fxScroll() + steps * 0.4f);
         closeGoneLists();
+    } else if (seqWide() && kSeqBox.contains(p)) { // the roll, an eighth of what it shows a notch
+        seqScrollX_ = seqScroll() + steps * seqShownSteps() * 0.125f;
+        seqScrollX_ = seqScroll();
     }
 }
 
@@ -11343,6 +11427,11 @@ void View::applyPan(Point p) {
     case PanArea::ModList:
         modListScroll_ = hold(first - down / kModListRowStep, modListEnd());
         break;
+    case PanArea::Seq: // what was under the mouse follows it, across and up and down
+        seqScrollX_ = seqPanStart_.x - across / kSeqGrid.w * seqShownSteps();
+        seqScrollX_ = seqScroll();
+        seqShowFromRow(seqPanStart_.y + down / seqRowH());
+        break;
     case PanArea::Browser: { // in whole rows
         const int rows = static_cast<int>(browserRows().size()) - browserVisibleRows(browserPanel(height()));
         browserScroll_ = static_cast<int>(std::lround(hold(first - down / kBrowserRowH, static_cast<float>(rows))));
@@ -11361,6 +11450,8 @@ void View::doubleClick(Point p, Modifiers mods) {
     const bool paired = std::hypot(p.x - pressPoint_.x, p.y - pressPoint_.y) <= kDoubleClickSlop;
     if (paired && !(hit && pressed_ && hit->same(*pressed_)) &&
         !(hit && (hit->kind == Kind::Key || drawsStep(*hit, mods))))
+        return;
+    if (hit && seqDoubleClick(*hit, p)) // the SEQ view's own
         return;
     if (hit && (hit->kind == Kind::Key || hit->kind == Kind::Octave || hit->kind == Kind::UndoButton ||
                 hit->kind == Kind::PresetStep || hit->kind == Kind::FxPower || hit->kind == Kind::FxNodePower ||
@@ -11400,6 +11491,10 @@ void View::doubleClick(Point p, Modifiers mods) {
     }
     if (hit && hit->kind == Kind::SettingsLinks) {
         controller_.setLinkIntensity(Controller::kDefaultLinkIntensity);
+        return;
+    }
+    if (hit && hit->kind == Kind::SettingsGrid) {
+        controller_.setGridIntensity(Controller::kDefaultGridIntensity);
         return;
     }
     if (hit && hit->kind == Kind::UtilityHandle) { // back where it starts
@@ -11526,6 +11621,8 @@ void View::wheel(Point p, float steps, Modifiers mods) {
     }
     keepRoutes(); // as in mouseDown(): scrolling can take a route down to 0 % too
     const auto hit = hitTest(p);
+    if (hit && !hit->popup && seqWheel(*hit, p, steps, mods)) // the SEQ view's own
+        return;
     // Over a pill's list, its depth bars take the wheel and elsewhere it scrolls the rows, a row a notch, when they are
     // more than it shows: nothing under the list scrolls.
     if (hit && (hit->popup || hit->kind == Kind::ModPill) && hit->kind != Kind::SlotBar && hit->kind != Kind::ValueText) {
@@ -12215,6 +12312,8 @@ CursorKind View::cursor() const {
     const Widget *w = drag_.kind != DragKind::None ? &drag_.widget : (hover_ ? &*hover_ : nullptr);
     if (!w)
         return CursorKind::Arrow;
+    if (const std::optional<CursorKind> seq = seqCursor(*w))
+        return *seq;
     switch (w->kind) {
     case Kind::DynZone:
     case Kind::Knob:

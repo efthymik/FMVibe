@@ -218,6 +218,7 @@ void Synth::prepare(double sampleRate, int capacity, int oversampling) {
     held_.clear();
     held_.reserve(256);
     limit_ = capacity_;
+    seq_.prepare(sampleRate);
     reset();
 }
 
@@ -233,6 +234,8 @@ void Synth::reset() {
     for (const HeldNote &held : held_) // a mono note a later one took over
         reportEnded(held.note);
     held_.clear();
+    releaseKeys({-1, -1, -1, -1});
+    seq_.reset();
     lastKey_ = -1.0;
     freeLfos_ = {};
     cc_ = {};
@@ -274,6 +277,18 @@ void Synth::advanceLfo(Lfo &lfo, double hz, uint32_t frames, uint32_t &rng, bool
 void Synth::noteOn(const NoteRef &note, double velocity) {
     if (note.key < 0 || note.key > 127 || voices_.empty())
         return;
+    // In Key and Latch, the sequencer takes the host's keys: they start and transpose its pattern, and no voice plays
+    // them (their ends are reported as they come up).
+    if (note.port != kSeqPort && note.port != kAuditionPort && seq_.takesKeys()) {
+        if (keysTakenCount_ == static_cast<int>(keysTaken_.size())) { // forget the oldest, reporting its end
+            reportEnded(keysTaken_[0]);
+            std::copy(keysTaken_.begin() + 1, keysTaken_.end(), keysTaken_.begin());
+            --keysTakenCount_;
+        }
+        keysTaken_[keysTakenCount_++] = note;
+        seq_.keyDown(note.key);
+        return;
+    }
     // A velocity that isn't a number plays as 0, so the note still plays out and ends.
     const HeldNote played{note, std::isfinite(velocity) ? std::clamp(velocity, 0.0, 1.0) : 0.0};
     // Another key is still down, or the pedal holds a note: played legato.
@@ -370,10 +385,45 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
     }
 }
 
+bool Synth::releaseKeys(const NoteRef &match) {
+    bool any = false;
+    for (int i = keysTakenCount_; i-- > 0;) {
+        if (!matches(match, keysTaken_[i]))
+            continue;
+        const NoteRef note = keysTaken_[i];
+        std::copy(keysTaken_.begin() + i + 1, keysTaken_.begin() + keysTakenCount_, keysTaken_.begin() + i);
+        --keysTakenCount_;
+        reportEnded(note);
+        seq_.keyUp(note.key);
+        any = true;
+    }
+    // Let go of every key, the sequencer stops (in Key) and what it plays ends.
+    if (any && !seq_.wantsProcessing())
+        applySeqEvents(seq_.stopAll(seqEvents_));
+    return any;
+}
+
+void Synth::applySeqEvent(const SeqEvent &e) {
+    const NoteRef note{e.id, kSeqPort, 0, static_cast<int16_t>(e.key)};
+    if (e.on)
+        noteOn(note, e.velocity);
+    else
+        noteOff(note);
+}
+
+void Synth::applySeqEvents(int count) {
+    for (int i = 0; i < count; ++i)
+        applySeqEvent(seqEvents_[i]);
+}
+
 void Synth::noteOff(const NoteRef &match) {
+    if (match.port != kSeqPort)
+        releaseKeys(match);
+    // The sequencer's notes end only as it ends them: a host's note-off with wildcards leaves them alone.
+    auto hits = [&](const NoteRef &note) { return matches(match, note) && (note.port != kSeqPort || match.port == kSeqPort); };
     // Let go of the matching keys.
     for (size_t i = held_.size(); i-- > 0;) {
-        if (!matches(match, held_[i].note))
+        if (!hits(held_[i].note))
             continue;
         const NoteRef note = held_[i].note;
         held_.erase(held_.begin() + static_cast<std::ptrdiff_t>(i));
@@ -388,7 +438,7 @@ void Synth::noteOff(const NoteRef &match) {
         // notes off leaves none, and the voice releases where it is). A key another voice plays already (notes held
         // in poly as mono came on) isn't played twice: this voice releases instead.
         const auto down = std::find_if(held_.rbegin(), held_.rend(),
-                                       [&](const HeldNote &held) { return !matches(match, held.note); });
+                                       [&](const HeldNote &held) { return !hits(held.note); });
         if (mono_ && down != held_.rend() && !voicePlaying(down->note)) {
             reportEnded(note);
             moveVoice(*v, *down, !legato_, true);
@@ -397,7 +447,7 @@ void Synth::noteOff(const NoteRef &match) {
     // Release what is left, including voices whose keys weren't tracked (e.g.
     // started before a play-mode change); the pedal holds them instead while it is down.
     for (Voice *v : active_)
-        if (live(*v) && !v->released && !v->sustained && matches(match, v->note))
+        if (live(*v) && !v->released && !v->sustained && hits(v->note))
             letGo(*v);
 }
 
@@ -436,6 +486,7 @@ void Synth::allNotesOff(int channel) {
 
 void Synth::allSoundOff(int channel) {
     const NoteRef match = channelMatch(channel);
+    releaseKeys(match);
     for (size_t i = held_.size(); i-- > 0;) {
         if (!matches(match, held_[i].note))
             continue;
@@ -453,6 +504,8 @@ void Synth::allSoundOff(int channel) {
 }
 
 void Synth::choke(const NoteRef &match) {
+    if (match.port != kSeqPort)
+        releaseKeys(match);
     for (size_t i = held_.size(); i-- > 0;) {
         if (!matches(match, held_[i].note))
             continue;
@@ -681,6 +734,41 @@ void Synth::applyMacros(const ParamValues &params) {
 }
 
 void Synth::render(float *left, float *right, uint32_t frames, const ParamValues &params, bool sameParams) {
+    // The sequencer plans its notes a stretch at a time, and the voices render between them, each starting or ending at
+    // its sample.
+    seq_.configure(params);
+    if (!seq_.enabled()) {
+        if (seq_.sounding())
+            applySeqEvents(seq_.stopAll(seqEvents_));
+        if (keysTakenCount_ > 0 && !seq_.takesKeys()) // switched off: the keys it took are over
+            releaseKeys({-1, -1, -1, -1});
+        renderSpan(left, right, frames, params, sameParams);
+        return;
+    }
+    constexpr uint32_t kSeqStretch = 256;
+    for (uint32_t done = 0; done < frames;) {
+        uint32_t covered = 0;
+        const int count = seq_.plan(std::min(frames - done, kSeqStretch), tempo_, playing_, songBeats_, seqEvents_,
+                                    covered);
+        uint32_t at = 0;
+        for (int i = 0; i < count; ++i) {
+            const uint32_t frame = std::min(seqEvents_[i].frame, covered);
+            if (frame > at) {
+                renderSpan(left + done + at, right + done + at, frame - at, params, sameParams);
+                sameParams = true;
+                at = frame;
+            }
+            applySeqEvent(seqEvents_[i]);
+        }
+        if (covered > at) {
+            renderSpan(left + done + at, right + done + at, covered - at, params, sameParams);
+            sameParams = true;
+        }
+        done += std::max(covered, 1u);
+    }
+}
+
+void Synth::renderSpan(float *left, float *right, uint32_t frames, const ParamValues &params, bool sameParams) {
     std::fill_n(left, frames, 0.0f);
     std::fill_n(right, frames, 0.0f);
     bendSet_ = params[paramIndex(GlobalParam::PitchBend)];
@@ -1224,6 +1312,9 @@ void Synth::telemetry(Telemetry &out) const {
     // thread about 60 times a second while the editor is open) and copy it.
     static_assert(std::is_trivially_destructible_v<Telemetry>);
     std::construct_at(&out);
+    out.seqPosition = seq_.position();
+    out.seqPattern = seq_.pattern();
+    out.seqKeys = seq_.soundingKeys();
     if (scope_.op >= 0 && scope_.live) {
         // A slow span (or the first one, before it is whole) shows as it fills; a quicker one a whole span at a time,
         // blending into the next (see kScopeBlendSpan).
@@ -1249,8 +1340,13 @@ void Synth::telemetry(Telemetry &out) const {
     out.clipHold = static_cast<float>(clipHold_);
     if (analyzing_)
         outScope_.blend.show(outScope_.frame, kOutScopeBins, out.outScope);
+    // The keys played: the host's and the editor's keyboard's, those the sequencer takes as keys among them; not the
+    // sequencer's own notes, nor those the editor plays to be heard.
     for (const HeldNote &held : held_)
-        out.keys[held.note.key / 32] |= 1u << (held.note.key % 32);
+        if (held.note.port != kSeqPort && held.note.port != kAuditionPort)
+            out.keys[held.note.key / 32] |= 1u << (held.note.key % 32);
+    for (int i = 0; i < keysTakenCount_; ++i)
+        out.keys[keysTaken_[i].key / 32] |= 1u << (keysTaken_[i].key % 32);
     for (int slot = 0; slot < kFxSlots; ++slot) { // effects keep working on echoes after the voices end
         for (int band = 0; band < kMcBands; ++band) {
             out.fxReduction[slot][band] = effects_.reduction(slot, band);
@@ -1409,6 +1505,8 @@ void Synth::endVoice(Voice &v) {
 }
 
 void Synth::reportEnded(const NoteRef &note) {
+    if (note.port == kSeqPort || note.port == kAuditionPort) // the sequencer's own, or the editor's: no host waits
+        return;
     if (std::find(ended_.begin(), ended_.end(), note) == ended_.end() && ended_.size() < ended_.capacity())
         ended_.push_back(note); // capacity was reserved in prepare(), so this never allocates
 }

@@ -78,6 +78,7 @@ public:
     gui::UiLayout &layout() override { return layout_; }
     void layoutChanged() override;
     void playNote(int note, bool on) override;
+    void auditionNote(int note, bool on) override;
     void setScope(int op, int cycles) override {
         scopeOp_.store(op, std::memory_order_relaxed);
         scopeCycles_.store(cycles, std::memory_order_relaxed);
@@ -123,6 +124,11 @@ public:
     double linkIntensity() const override { return userSettings.links; }
     void setLinkIntensity(double amount) override {
         userSettings.links = std::clamp(amount, 0.0, 1.0);
+        writeUserSettings();
+    }
+    double gridIntensity() const override { return userSettings.grid; }
+    void setGridIntensity(double amount) override {
+        userSettings.grid = std::clamp(amount, 0.0, 1.0);
         writeUserSettings();
     }
 
@@ -251,6 +257,7 @@ private:
     struct KeyEvent {
         int note;
         bool on;
+        bool audition = false; // heard on its own (see Controller::auditionNote())
     };
 
     Synth synth_;

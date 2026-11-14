@@ -189,11 +189,17 @@ void PluginCore::playNote(int note, bool on) {
     hostRequestProcess();
 }
 
-// Audio thread: notes from the virtual keyboard play like MIDI notes without a note id.
+void PluginCore::auditionNote(int note, bool on) {
+    keys_.push({note, on, true});
+    hostRequestProcess();
+}
+
+// Audio thread: notes from the virtual keyboard play like MIDI notes without a note id; those the SEQ view plays to be
+// heard on a port of their own, which the sequencer leaves be.
 void PluginCore::playKeys() {
     KeyEvent ev;
     while (keys_.pop(ev)) {
-        const NoteRef note{-1, 0, 0, static_cast<int16_t>(ev.note)};
+        const NoteRef note{-1, ev.audition ? kAuditionPort : int16_t{0}, 0, static_cast<int16_t>(ev.note)};
         if (ev.on)
             synth_.noteOn(note, kKeyVelocity);
         else

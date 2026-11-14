@@ -22,7 +22,7 @@ struct Modifiers {
     bool alt = false;
 };
 
-enum class CursorKind { Arrow, Hand, Vertical, Horizontal, Move, Text };
+enum class CursorKind { Arrow, Hand, Vertical, Horizontal, Move, Text, Pen }; // Pen: drawing notes in the SEQ view's roll
 
 struct MenuItem {
     int command = 0; // 0 is a separator
@@ -150,6 +150,11 @@ public:
     // Ctrl going down or up, from the keyboard while the window has it (mouse messages bring it too): while it is held
     // over a graph, its grid's points show, and a node dragged snaps to them. True if a repaint is due.
     bool setCtrl(bool held);
+    // The SEQ view's keys, while it shows (the window sends them while the mouse is over the editor): Select All picks
+    // every note of the pattern; Left and Right move the notes picked a grid step (a step with the snap off), Up and
+    // Down a row (a degree of the scale while folded), with Shift an octave; Delete removes them. Each is an undo step.
+    // Whether it took the key: the arrows and Delete only while notes are picked, so the host keeps them otherwise.
+    bool seqKey(Key key, bool shift);
 
 private:
     enum class Kind {
@@ -303,6 +308,7 @@ private:
         SettingsGlow,   // the slider for how strongly the graphs' curves glow
         SettingsHue,    // the slider for the theme's main color
         SettingsLinks,  // the slider for how strongly the sources' dashed lines are drawn
+        SettingsGrid,   // the slider for how strongly the SEQ view's roll draws its grid
         SettingsClose,
         ModWheel,     // param = mod wheel: drag or scroll
         BendWheel,    // drag; springs back to center on release
@@ -332,6 +338,26 @@ private:
         FxBoxFold,    // a = split: folds its container to a strip, or unfolds it
         FxBoxAdd,     // a = lane (1 the high band, 2 the low band, 3 the middle band), b = item: a container's dashed
                       // card, for the list
+        // The SEQ view (see seq.cpp).
+        SeqTool,      // b = 0 select, 1 draw: what a click on the roll does
+        SeqSnap,      // the snap's button: opens its list
+        SeqSnapMenu,  // a = 1 on the open list, 0 around it (a click there closes it)
+        SeqSnapItem,  // b = the snap it picks (see kSeqSnaps)
+        SeqStretch,   // b = 2 twice as long, -2 half as long: the notes picked, or the whole pattern
+        SeqField,     // b = 0 pitch, 1 velocity, 2 chance, 3 length, 4 offset: a value of the notes picked, dragged
+        SeqFlag,      // b = 0 Slide, 1 Mute: switches it for the notes picked
+        SeqClear,     // removes every note of the pattern, asking first
+        SeqCopy,      // copies the pattern into the next empty one
+        SeqRoot,      // param = Root: dragged up and down, or scrolled, a semitone a step
+        SeqFold,      // shows only the scale's rows, or every row
+        SeqRuler,     // the bars over the roll: drag the loop's ends, or across it for a new loop
+        SeqKeys,      // the piano keys at the roll's left: a click plays the note
+        SeqGrid,      // the roll itself: the notes on it are picked, moved, stretched, drawn and deleted here
+        SeqLane,      // the lane under the roll: drag across the notes to set its value
+        SeqLaneTab,   // b = SeqLane: picks what the lane shows
+        SeqZoom,      // b = 0 zooms out across, 1 in across, 2 out up and down, 3 in up and down
+        SeqScroll,    // the bar under the roll while it is zoomed in across: drag the thumb, or click the track there
+        SeqScrollY,   // the bar at the roll's right, for its rows: drag the thumb, or click the track there
     };
 
     // Save writes the patch over its preset's file (asking first), and is only on while a preset with a file has
@@ -399,6 +425,7 @@ private:
         Tempo,      // the title bar's tempo, up and down (drag_.startValue: the tempo it started at)
         AmpMic,     // an amp's mic, across and away from its cabinet's cone
         UtilityHandle, // a handle on the utility's display: Gain and Mono Bass up and down, Pan and Width across
+        Seq,        // the SEQ view's roll, ruler, lane or a value of its field (see seqDrag_)
     };
 
     struct Drag {
@@ -871,6 +898,121 @@ private:
     int routingHoveredNode() const;
     // Where the inspector's lens is joined to the node it shows: that node's left side, while the graph shows it.
     std::optional<Point> lensLeaderStart() const;
+    // The SEQ view (see seq.cpp): the sequencer's settings on a card in the inspector's place, and the roll of the
+    // pattern picked beside it. A note is a slot of the pattern with a length; the roll picks notes by their slots.
+    struct SeqNote {
+        int slot;
+        double start, length;
+        int pitch;
+        double velocity, chance;
+        bool slide, mute;
+    };
+    bool seqWide() const; // the SEQ view shows, with no shape editor over it
+    int seqPattern() const;
+    std::vector<SeqNote> seqNotes() const; // the pattern's, in slot order
+    int seqSteps() const;                  // how long it is, in steps
+    // The pitches the roll's rows show, bottom first: every one from layout's seqLow up, or only the scale's, as many
+    // as fit.
+    std::vector<int> seqRows() const;
+    float seqStepX(double step) const;
+    double seqStepAt(float x) const;
+    float seqRowY(int pitch) const; // its row's top; below the grid for a pitch not shown
+    int seqPitchAt(float y) const;  // the row's pitch at `y`, the nearest shown
+    float seqRowH() const;
+    double seqSnapped(double step, bool free) const; // onto the snap's grid, unless it is off or `free`
+    Rect seqNoteRect(const SeqNote &note) const;
+    // The note under `p` (its slot), the last drawn first, -1 for none; and whether `p` is at its right end, or its
+    // left one (its start), either of which stretches it.
+    int seqNoteAt(Point p, bool *atEnd = nullptr, bool *atStart = nullptr) const;
+    int seqFreeSlot() const;
+    bool seqSelected(int slot) const;
+    // The notes the field and the tools act on: those picked, still in the pattern.
+    std::vector<int> seqPicked() const;
+    void seqWidgets(std::vector<Widget> &list) const;
+    void seqMenus(std::vector<Widget> &list) const; // the scale's and the snap's lists, over everything
+    // A list of `count` entries under `button`, `width` wide: above it where it would reach past the editor's bottom.
+    Rect seqList(Rect button, int count, float width) const;
+    // The cursor over the roll (a pen while drawing, moving and stretching over a note), none elsewhere.
+    std::optional<CursorKind> seqCursor(const Widget &w) const;
+    bool seqPress(const Widget &w, Point p, Modifiers mods);
+    void seqDrag(Point p);
+    void seqRelease(Point p);
+    bool seqDoubleClick(const Widget &w, Point p);
+    bool seqWheel(const Widget &w, Point p, float steps, Modifiers mods);
+    // The roll's zoom and scroll, the editor's alone (not saved): across, how many times the whole pattern it is
+    // zoomed in and the step it shows from; up and down, how many times the rows are as high. And what they come to:
+    // the steps it shows, the step it shows from (held to the pattern), every pitch its rows can show (only the
+    // scale's while folded), and the index in them of its lowest row.
+    float seqZoomX_ = 1.0f, seqScrollX_ = 0.0f, seqZoomY_ = 1.0f;
+    Point seqPanStart_; // a pan's start: the step shown from, and the lowest row's index
+    float seqShownSteps() const;
+    float seqScroll() const;
+    std::vector<int> seqPitchList() const;
+    int seqFirstRow() const;
+    void seqShowFromRow(float row); // the rows from that index up, held to the list
+    // The rows moved just as far as shows every note of `slots` (`up`: the highest first, where they don't all fit),
+    // and not at all while they show.
+    void seqReveal(const std::vector<int> &slots, bool up);
+    // Zoomed by `factor` across (the step at `at.x` staying where it is) or up and down (the row at `at.y`).
+    void zoomSeq(bool across, float factor, Point at);
+    // Where a note's dot shows in the lane (at its start, as high as its velocity or chance), and the note whose dot or
+    // stem is under `p` (its slot, the last drawn first), -1 for none.
+    Point seqLaneDot(const SeqNote &note) const;
+    int seqLaneNoteAt(Point p) const; // a picked one first, where notes start together
+    // The notes whose stems stand at `x` in the lane: of those starting together there, only the picked ones while
+    // any of them is.
+    std::vector<SeqNote> seqLaneNotesAt(float x) const;
+    Rect seqScrollTrack() const;
+    Rect seqScrollThumb() const;
+    Rect seqScrollYThumb() const; // the rows' bar's thumb: high up for high rows
+    // The roll fitted to the pattern's notes, after a patch loaded: across the whole pattern, the rows about the notes
+    // (lower, down to the smallest, where they don't fit).
+    void seqFit();
+    uint64_t seqLoadsSeen_ = 0; // the patch loads the roll was fitted to (see Controller::patchLoads())
+    // A note, a box or a paint stroke dragged to the roll's edge (or past it) scrolls it that way, a step of it each
+    // poll: whether it did.
+    bool seqEdgeScroll();
+    float seqEdgeRows_ = 0.0f; // the rows scrolled so far by part, until a whole one
+    void paintSeq(Canvas &c);
+    bool paintSeqWidget(Canvas &c, const Widget &w, bool hovered); // false: not one of the SEQ view's
+    std::string seqTip(const Widget &w) const;                    // empty: none
+    std::string seqFieldText(int field) const;
+    // One undo step each: a note put down (its slot, -1 when the pattern is full), notes removed, the picked notes'
+    // field `field` moved by `steps` of it, Slide or Mute switched, the picked notes (or every one) stretched.
+    int addSeqNote(double start, int pitch, double length);
+    void removeSeqNotes(const std::vector<int> &slots);
+    // No two notes start together on one pitch: the notes that do with one of `kept` (just put down or moved) go, in
+    // the undo step open.
+    void seqDropCovered(const std::vector<int> &kept);
+    void stepSeqField(int field, double steps);
+    void flipSeqFlag(int flag);
+    void stretchSeq(double factor);
+    void clearSeqPattern();
+    void copySeqPattern();
+    // A drag on the roll, its ruler, its lane or the field: what it moves, and what it started from.
+    struct SeqDrag {
+        enum class Mode { None, Move, Resize, ResizeStart, Box, Paint, Velocity, Lane, LaneGroup, Loop, LoopStart,
+                          LoopEnd, LoopMove, Field, Audition, Scroll, ScrollY };
+        Mode mode = Mode::None;
+        int anchor = -1;                 // the note grabbed (Move, Resize), the field (Field), the key (Audition)
+        double grabStep = 0.0;           // where it was grabbed: in steps,
+        int grabPitch = 0;               // and its row
+        std::vector<SeqNote> origin;     // the notes moved, as they were
+        bool free = false;               // Alt held: off the snap's grid
+        std::vector<int> painted;        // the notes painted so far (Paint)
+        std::vector<int> boxBase;        // the notes picked before the box, which Shift adds to
+        double loopFrom = 0.0;           // Loop: the step it started at
+        int sounding = -1;               // the note heard while it is held (see Controller::auditionNote()), -1 for none
+    };
+    void seqHear(int pitch); // that note heard from now on in the drag, the one before let go; -1 lets it go
+    SeqDrag seqDrag_;
+    // The pattern's loop, in steps, as its params have it (the end, 0 for the pattern's, as the pattern's end), and
+    // what a press on the ruler at `x` drags: an end of it, the whole of it, or a new one across the bars.
+    std::pair<int, int> seqLoop() const;
+    SeqDrag::Mode seqRulerMode(float x) const;
+    std::vector<int> seqSelection_; // the slots picked (of the pattern shown)
+    int seqSelectionPattern_ = 0;   // and which pattern that was: another one's picks are forgotten
+    bool seqSnapMenu_ = false;
 public:
     // The routing graph's glow behind it (see paintRouting()): its shape at this zoom, over the part of the panel it
     // reaches, and its pixels for the strength and accent it was filled with last.
@@ -1011,7 +1153,7 @@ private:
     // effects graph, by pixels. How long each is, how much of it shows, where it is scrolled to and its thumb.
     enum class ScrollArea { Fx, Sources, FxGraph };
     // What the middle button drags along: those rows, the MODS view's rows or the preset browser's list.
-    enum class PanArea { Fx, Sources, Mods, Browser, Inputs, ModList };
+    enum class PanArea { Fx, Sources, Mods, Browser, Inputs, ModList, Seq };
     void applyPan(Point p);
     // What the middle button (or a finger) would pan at `p`, and where it is scrolled to now; none over a dialog, an
     // open list or menu that doesn't scroll, or while a drag goes on.
@@ -1609,21 +1751,27 @@ private:
     float shownLinks() const {
         return linksDragged_ >= 0.0f ? linksDragged_ : static_cast<float>(controller_.linkIntensity());
     }
+    float gridDragged_ = -1.0f;              // the GRID slider's amount while it is dragged, else -1
+    float shownGrid() const {
+        return gridDragged_ >= 0.0f ? gridDragged_ : static_cast<float>(controller_.gridIntensity());
+    }
     // The amount of the settings slider being dragged (DragKind::Glow): the glow's, or the lines'.
     float hueDragged_ = -1.0f;               // the hue slider's hue while it is dragged, else -1
     // The hue the theme's main color shows now, 0 to 1, or below 0 for the theme's own.
     double shownHue() const { return hueDragged_ >= 0.0f ? hueDragged_ : controller_.accentHue(); }
     double hue_ = -1.0;                      // the hue painted last
     float &sliderDragged() {
-        return drag_.widget.kind == Kind::SettingsLinks ? linksDragged_
-               : drag_.widget.kind == Kind::SettingsHue ? hueDragged_
-                                                        : glowDragged_;
+        return drag_.widget.kind == Kind::SettingsLinks  ? linksDragged_
+               : drag_.widget.kind == Kind::SettingsGrid ? gridDragged_
+               : drag_.widget.kind == Kind::SettingsHue  ? hueDragged_
+                                                         : glowDragged_;
     }
     bool ctrlHeld_ = false; // see setCtrl()
     int confirm_ = -1; // the PresetAction the confirm dialog asks about, kConfirmFxClear, or -1
     static constexpr int kConfirmFxClear = 4; // asking before every effect goes
     static constexpr int kConfirmMidBand = 5; // asking where a split's middle band's effects go, back in two bands
     static constexpr int kConfirmSplitRemove = 6; // asking whether a split's bands' effects stay, as it is removed
+    static constexpr int kConfirmSeqClear = 7;    // asking before every note of the sequencer's pattern goes
     int confirmSplit_ = -1; // the split kConfirmMidBand or kConfirmSplitRemove asks about
     size_t confirmEffects_ = 0; // how many effects it asks about, counted as it opens
     int pendingPreset_ = -1;                 // the library preset a confirmed Load loads, or -1 for a file
