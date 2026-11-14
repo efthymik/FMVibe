@@ -70,6 +70,9 @@ public:
     // Where it plays, in the playing pattern's steps (fractions between), and which pattern; -1 while it doesn't.
     float position() const { return position_; }
     int pattern() const { return pattern_; }
+    // Where the playing pattern's curve stands as the last plan()'s stretch starts, where it plays: the pitch bend
+    // (-1..1) or the mod wheel (0..1). NaN while it doesn't play, or the curve has no points: nothing to add then.
+    double curve(SeqCurve c) const { return curveNow_[static_cast<size_t>(c)]; }
 
 private:
     struct Note {
@@ -93,6 +96,10 @@ private:
     int sourceStep(int64_t step) const;
     bool backward(int64_t step) const; // whether a played step runs through its pattern step backward
     double swung(double t) const;
+    // Where played step `t` (fractions between) is in the pattern: as position() says, back through a step played
+    // backward.
+    double patternPlace(double t) const;
+    void forgetCurves() { curveNow_.fill(std::numeric_limits<double>::quiet_NaN()); }
     static double unit(int64_t step, int note, int salt); // 0..1, the same for the same inputs
     int pushOff(std::span<SeqEvent> out, int count, uint32_t frame, const Sounding &s) const;
 
@@ -110,6 +117,10 @@ private:
     int loopStart_ = 0, loopEnd_ = kSeqStepsPerBar;
     std::array<Note, kSeqNotes> notes_{};
     int noteCount_ = 0;
+    std::array<std::array<SeqCurvePoint, kSeqCurvePoints>, kSeqCurves> curves_{}; // the playing pattern's
+    std::array<int, kSeqCurves> curveCount_{};
+    std::array<double, kSeqCurves> curveNow_{std::numeric_limits<double>::quiet_NaN(),
+                                             std::numeric_limits<double>::quiet_NaN()};
 
     // From keys: those held, newest last, and the one transposing; whether it runs, and its own clock (played steps).
     std::array<int, 16> keys_{};

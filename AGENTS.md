@@ -321,7 +321,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     no chance silent and one at half playing about half the passes (alike each time), another pattern taking over where
     the loop comes round, in Key a key playing the pattern transposed from Root and stopping it when let go (its end
     reported, the sequencer's notes' never, the playhead in the telemetry), the keys the telemetry shows held leaving
-    its notes out, and through the synth a note sounding from its sample however the blocks are split;
+    its notes out, and through the synth a note sounding from its sample however the blocks are split; its curves
+    standing where the playhead is (back through a step played reversed, a bent segment off the straight line, held
+    before the first point), doing nothing without points or while it doesn't play, and through the synth a bend curve
+    bending what it plays by Bend Range and a mod wheel curve moving the mod wheel's slot;
   - the CPU cost of each factor.
 - **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`, in Midnight,
   the theme its pixel checks were written in, but for the checks and examples that pick another (the README's
@@ -669,7 +672,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the SEQ tab, between FX and MODS: its card and an empty roll, and a dot on the tab while the sequencer is on (read
     off the rendered pixels), as on FX's while an effect in the line is switched on; a double-click putting a note down on its step (a
     step long at 1/16) and on the note deleting it; the notes and the playhead where the telemetry puts it (read off
-    the rendered pixels); a note landing on another's start and pitch (dragged, or by the arrows) taking its place,
+    the rendered pixels); a note the playhead reaches glowing, and not with the glow setting off (read off the rendered
+    pixels); a note landing on another's start and pitch (dragged, or by the arrows) taking its place,
     undoably; a note dragged past the roll's top scrolling the rows, the note going along; a patch loaded fitting the
     roll to its notes; a note dragged moving on the grid by steps and rows, undoably, its end dragged setting
     its length and its start moving it with its end staying (the cursor left-right over either end), and either with Shift set off the
@@ -687,8 +691,14 @@ the plain CMake commands and installing into a host are in the [README](README.m
     lane's cursor a pen and up and down over a dot and while one is dragged; Delete removing the notes picked; a note or key clicked in the
     roll heard alone while held (not played as the keyboard's), a note moved heard on its new row; the middle button
     panning it across and up and down, and Alt+wheel zooming the rows
-    in about the row under the mouse, the rows' bar at its right scrolling them; the scale's list opening above its button with both panels collapsed; the lane
-    on CHANCE setting a note's chance; a double-click on the ruler looping the whole pattern; the scale's list picking Minor and FOLD showing
+    in about the row under the mouse, the rows' bar at its right scrolling them; the scale's list opening above its button with both panels collapsed; a note put down by a double-click heard
+    while the button is held; the lane
+    on CHANCE setting a note's chance; on BEND the lane's grid lines (read off the rendered pixels), with Select a
+    click doing nothing (no pen) and a Ctrl+double-click putting a point down on the grid and a Ctrl+drag moving it
+    onto the grid (the cursor moving over it), undoably, with Draw a click putting one down where the mouse is (a pen)
+    and a double-click there leaving it, a segment's middle dragged up bending it (the cursor up and down) and
+    double-clicked straightening it, with Select a point double-clicked going, and the curve drawn where the lane was
+    bare (read off the rendered pixels); on MOD WHEEL Draw's Shift+drag drawing a point a step; a double-click on the ruler looping the whole pattern; the scale's list picking Minor and FOLD showing
     only its rows, and a note off it keeping its row, hatched (read off the rendered pixels); the snap's list, and the roll's lines falling at its length and as strong as the GRID setting
     says (read off the rendered pixels); copying the pattern into the next empty one; and the bin clearing the pattern,
     asking first, undoably.
@@ -1031,12 +1041,14 @@ itself.
   is a line of it (the output's first wire comes from the input to begin with), and the FX view's row and graph are
   two views of it, the view a layout field (`UiLayout::fxGraphView`). The chain's places (33400 + place) are only
   read when loading a state from before version 9. The sequencer's settings are 40000+, each pattern's length and
-  loop 40100 + 10·pattern, and each pattern's notes 41000 + 10·(128·pattern + note) (see `SeqParam`).
+  loop 40100 + 10·pattern, each pattern's notes 41000 + 10·(128·pattern + note), and each pattern's curves
+  47000 + 200·(2·pattern + curve), the bend's then the mod wheel's, a point count and 64 (x, y, curve) points each
+  (see `SeqParam`, `SeqCurveParam`).
   Once released, new fields go at the end of their section's
   enum and fields are never reordered. The same goes for the wave, filter type, effect type, source type, route
   mode, slot aux field, split field, wire field, port, amp model, cabinet, mic, fixed Mult, operator sync (`OpSync`),
   warp (`OpWarp`), unison curve (`UniCurve`), unison pan (`UniPan`) and the sequencer's play mode, rate, order and scale
-  (`SeqPlay`, `SeqRate`, `SeqOrder`, `SeqScale`) lists, the routing views and the operator page's tabs,
+  (`SeqPlay`, `SeqRate`, `SeqOrder`, `SeqScale`) and curve (`SeqCurve`) lists, the routing views and the operator page's tabs,
   which are stored by number. `src/params.h` pins each section's first and last ids, the counts they come from and
   the stored lists' members with static_asserts, so a change that renumbers them doesn't compile; a field added to
   `FxParam` also needs its effect type in `kFxFieldRuns`. A retired type keeps its number and fields: the
@@ -1057,12 +1069,12 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 1,309 of the 23,250 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 1,309 of the 24,794 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 896 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain's retired order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'
   fields, the effects graph (its splits, joins and wires), the source places' own fields (a place's slot
-  depths are listed, whatever it holds) and the sequencer's root, scale, patterns' lengths and loops and notes. Nothing hosts
+  depths are listed, whatever it holds) and the sequencer's root, scale, patterns' lengths and loops, notes and curves. Nothing hosts
   see changes with an effect's or a source's type: the CLAP and VST3 plugins hide none of their params. The remote
   pages follow the sources and the operators switched fixed. CLAP's `count()`/`get_info()` and VST3's
   `getParameterCount()`/`getParameterInfo()` index that list; a value sent for any known id is still taken. The

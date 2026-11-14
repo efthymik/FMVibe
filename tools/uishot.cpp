@@ -5106,6 +5106,25 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
     const float rulerY = detail::kSeqRuler.y + 11.0f;
     check(rollShot && bright({at(6.0, 48).x, rulerY}) && !bright({at(7.0, 48).x, rulerY}),
           "the roll shows the pattern's notes and the playhead where the sequencer plays");
+    // The playhead reaching a note (two steps long, on step 8) makes it glow round its edge, just after, as the glow
+    // setting says: none with it off (read off the rendered pixels).
+    {
+        const double glowWas = model.glowLevel;
+        const Point beside{at(9.5, 51).x, at(9.5, 51).y - rh * 0.5f - 3.0f}; // just over its top edge
+        model.live.seqPosition = 8.1f;
+        view.poll();
+        model.glowLevel = 1.0;
+        view.mouseMove({600.0f, 600.0f}, {});
+        const bool glowShot = renderer.save(view, dir / "36a-seq-glow.png");
+        const uint32_t glowing = renderer.pixel(beside);
+        model.glowLevel = 0.0;
+        renderer.save(view, dir / "36a-seq-no-glow.png");
+        const uint32_t plain = renderer.pixel(beside);
+        model.glowLevel = glowWas;
+        model.live.seqPosition = 6.0f;
+        view.poll();
+        check(glowShot && glowing != plain, "a note the playhead reaches glows, as the glow setting says");
+    }
 
     // A note dragged onto another's start and pitch takes its place: the one there goes, in the same undo step; and so
     // does one a note lands on by the arrow keys.
@@ -5362,6 +5381,18 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseUp({detail::kSeqKeys.x + 30.0f, at(0.0, 60).y}, {});
     check(heard && follows && keyHeard && model.auditioning == 0,
           "a note or key clicked in the roll is heard alone while held, a note moved heard on its new row");
+    // A note put down by a double-click (with Select) is heard while the button is held, and let go as it comes up.
+    {
+        model.lastAudition = -1;
+        const Point empty = at(14.3, 62);
+        click(view, empty);
+        view.doubleClick(empty, {});
+        const bool held = model.lastAudition == 62 && model.auditioning == 1 && model.lastNote < 0;
+        view.mouseUp(empty, {});
+        const bool put = model.auditioning == 0;
+        view.undo();
+        check(held && put, "a note put down by a double-click is heard while the button is held");
+    }
     click(view, at(4.4, 55)); // the note on step 4, alone
     view.mouseMove({600.0f, 600.0f}, {});
     renderer.save(view, dir / "36i-seq-lane-ring.png");
@@ -5481,6 +5512,103 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
     drag(view, {at(4.0, 48).x + 1.0f, detail::kSeqLaneArea.y + 40.0f}, {at(4.0, 48).x + 1.0f, detail::kSeqLaneArea.y + 2.0f});
     check(model.ui.seqLane == SeqLane::Chance && field(1, SeqNoteParam::Chance) == 1.0,
           "the lane on CHANCE sets a note's chance by its height");
+
+    // The lane on BEND: its grid's lines, a quarter of the range apart (read off the rendered pixels). With Select, a
+    // click does nothing (no pen), and a Ctrl+double-click puts a point down on the grid (step 2, at 0.5) and a
+    // Ctrl+drag moves it onto the grid (step 6, at -0.5), each an undo step; with Draw (a pen), a click puts one down
+    // where the mouse is (step 10.3, at 1) and a double-click there leaves it; the middle of the segment between them
+    // dragged up bends it, and double-clicked straightens it again; with Select, a point double-clicked goes; the curve
+    // shows in the bend's color where the lane was bare (read off the rendered pixels).
+    {
+        const float laneTop = detail::kSeqLaneArea.y + 6.0f, laneH = detail::kSeqLaneArea.h - 12.0f;
+        auto bendAt = [&](double step, double v) {
+            return Point{at(step, 48).x, laneTop + laneH - static_cast<float>((v + 1.0) * 0.5) * laneH};
+        };
+        auto curveField = [&](SeqCurve curve, int i, PointField f) { return model.value(seqCurveIndex(0, curve, i, f)); };
+        auto count = [&](SeqCurve curve) { return model.value(seqCurveCountIndex(0, curve)); };
+        const Modifiers ctrl{false, true, false}, shift{true, false, false};
+        const Point selectTool = rectCenter(Rect{detail::kSeqTools.x, detail::kSeqTools.y, 30.0f, detail::kSeqTools.h});
+        const Point drawTool = {selectTool.x + 30.0f, selectTool.y};
+        click(view, {kSeqGrid.x + 2.0f * 76.0f + 36.0f, detail::kSeqLaneTabs.y + 11.0f}); // BEND
+        view.mouseMove({600.0f, 600.0f}, {});
+        renderer.save(view, dir / "36h-seq-bend-empty.png");
+        const bool grid = renderer.pixel(bendAt(14.5, 0.5)) != renderer.pixel(bendAt(14.5, 0.75));
+        const Point bare = bendAt(14.5, 0.75); // between the grid's lines, in what the curve will fill
+        const uint32_t bareInk = renderer.pixel(bare);
+        view.mouseMove(bendAt(2.2, 0.4), {});
+        const bool noPen = view.cursor() != CursorKind::Pen;
+        click(view, bendAt(2.2, 0.4));
+        const bool nothing = count(SeqCurve::Bend) == 0.0;
+        view.mouseDown(bendAt(2.2, 0.4), ctrl);
+        view.mouseUp(bendAt(2.2, 0.4), ctrl);
+        view.doubleClick(bendAt(2.2, 0.4), ctrl);
+        view.mouseUp(bendAt(2.2, 0.4), ctrl);
+        const bool put = model.ui.seqLane == SeqLane::Bend && count(SeqCurve::Bend) == 1.0 &&
+                         curveField(SeqCurve::Bend, 0, PointField::X) == 2.0 &&
+                         curveField(SeqCurve::Bend, 0, PointField::Y) == 0.5;
+        view.mouseMove(bendAt(2.0, 0.5), {});
+        const bool pointCursor = view.cursor() == CursorKind::Move;
+        view.mouseDown(bendAt(2.0, 0.5), ctrl);
+        view.mouseMove(bendAt(4.0, 0.0), ctrl);
+        view.mouseMove(bendAt(6.2, -0.4), ctrl);
+        view.mouseUp(bendAt(6.2, -0.4), ctrl);
+        const bool moved = curveField(SeqCurve::Bend, 0, PointField::X) == 6.0 &&
+                           curveField(SeqCurve::Bend, 0, PointField::Y) == -0.5;
+        view.undo();
+        const bool undone = curveField(SeqCurve::Bend, 0, PointField::X) == 2.0;
+        view.redo();
+        click(view, drawTool);
+        view.mouseMove(bendAt(12.5, 0.25), {});
+        const bool pen = view.cursor() == CursorKind::Pen;
+        doubleClick(view, bendAt(10.3, 1.0)); // its click puts the point down, and the double-click leaves it
+        const bool kept = count(SeqCurve::Bend) == 2.0 &&
+                          std::abs(curveField(SeqCurve::Bend, 1, PointField::X) - 10.3) < 0.02 &&
+                          curveField(SeqCurve::Bend, 1, PointField::Y) == 1.0;
+        // The segment from (6, -0.5) to (10.3, 1), its middle a quarter up, dragged 20 px up: a bend of -0.5.
+        const double middleStep = (6.0 + curveField(SeqCurve::Bend, 1, PointField::X)) * 0.5;
+        const Point middle = bendAt(middleStep, -0.5 + 1.5 * 0.5);
+        view.mouseMove(middle, {});
+        const bool bendCursor = view.cursor() == CursorKind::Vertical;
+        drag(view, middle, {middle.x, middle.y - 20.0f});
+        const double bent = curveField(SeqCurve::Bend, 0, PointField::Curve);
+        view.mouseMove({600.0f, 600.0f}, {});
+        const bool bentShot = renderer.save(view, dir / "36h-seq-bend.png");
+        const bool drawn = renderer.pixel(bare) != bareInk; // held at 1 past its last point, filled down to 0
+        doubleClick(view, bendAt(middleStep, -0.5 + 1.5 * shapeBend(0.5, bent)));
+        const bool straight = curveField(SeqCurve::Bend, 0, PointField::Curve) == 0.0;
+        click(view, selectTool);
+        doubleClick(view, bendAt(6.0, -0.5));
+        const bool gone = count(SeqCurve::Bend) == 1.0 && std::abs(curveField(SeqCurve::Bend, 0, PointField::X) - 10.3) < 0.02;
+        std::printf("      bend lane: bent by %.2f\n", bent);
+        check(grid && noPen && nothing && put && pointCursor && moved && undone && pen && kept && bendCursor &&
+                  std::abs(bent + 0.5) < 0.05 && bentShot && drawn && straight && gone,
+              "the BEND lane's grid, and its points put down, moved, bent and deleted as notes are, Ctrl on the grid");
+
+        // On MOD WHEEL with Draw, Shift+drag across steps 0 to 4 at the middle draws a point a step, at 0.5; the BEND
+        // curve left as it was.
+        click(view, {kSeqGrid.x + 3.0f * 76.0f + 36.0f, detail::kSeqLaneTabs.y + 11.0f}); // MOD WHEEL
+        click(view, drawTool);
+        const float middleY = laneTop + laneH * 0.5f;
+        view.mouseDown({at(0.1, 48).x, middleY}, shift);
+        view.mouseMove({at(2.1, 48).x, middleY}, shift);
+        view.mouseMove({at(4.2, 48).x, middleY}, shift);
+        view.mouseUp({at(4.2, 48).x, middleY}, shift);
+        view.mouseMove({600.0f, 600.0f}, {});
+        const bool wheelShot = renderer.save(view, dir / "36h-seq-wheel.png");
+        bool level = count(SeqCurve::ModWheel) == 5.0;
+        for (int i = 0; level && i < 5; ++i)
+            level = curveField(SeqCurve::ModWheel, i, PointField::X) == i &&
+                    std::abs(curveField(SeqCurve::ModWheel, i, PointField::Y) - 0.5) < 0.03;
+        std::printf("      mod wheel lane: %.0f points drawn\n", count(SeqCurve::ModWheel));
+        check(wheelShot && level && count(SeqCurve::Bend) == 1.0 && model.ui.seqLane == SeqLane::ModWheel,
+              "the MOD WHEEL lane's Shift+drag with Draw draws its curve a point a step");
+        // Back as it was: no curves, the select tool, the lane on CHANCE.
+        click(view, rectCenter(Rect{detail::kSeqTools.x, detail::kSeqTools.y, 30.0f, detail::kSeqTools.h}));
+        for (SeqCurve curve : {SeqCurve::Bend, SeqCurve::ModWheel})
+            model.set(seqCurveCountIndex(0, curve), 0.0);
+        click(view, {kSeqGrid.x + 84.0f + 39.0f, detail::kSeqLaneTabs.y + 11.0f});
+        view.poll();
+    }
 
     // The ruler: the loop's ends dragged in (the cursor left and right over them) make it steps 4 to 12; its middle
     // dragged two steps on (the cursor moving over it) takes it to 6 to 14; a drag across the bars outside it, from

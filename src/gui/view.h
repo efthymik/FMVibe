@@ -937,7 +937,7 @@ private:
     bool seqPress(const Widget &w, Point p, Modifiers mods);
     void seqDrag(Point p);
     void seqRelease(Point p);
-    bool seqDoubleClick(const Widget &w, Point p);
+    bool seqDoubleClick(const Widget &w, Point p, Modifiers mods = {});
     bool seqWheel(const Widget &w, Point p, float steps, Modifiers mods);
     // The roll's zoom and scroll, the editor's alone (not saved): across, how many times the whole pattern it is
     // zoomed in and the step it shows from; up and down, how many times the rows are as high. And what they come to:
@@ -962,6 +962,30 @@ private:
     // The notes whose stems stand at `x` in the lane: of those starting together there, only the picked ones while
     // any of them is.
     std::vector<SeqNote> seqLaneNotesAt(float x) const;
+    // The lane on a curve (BEND or MOD WHEEL): which, its points as stored, and those written back (the points past
+    // them back to their defaults, so a preset saved sparse leaves them out), in the undo step open.
+    bool seqCurveLane() const;
+    SeqCurve seqLaneCurve() const;
+    std::vector<SeqCurvePoint> seqCurvePoints(SeqCurve curve) const;
+    void setSeqCurve(SeqCurve curve, const std::vector<SeqCurvePoint> &points);
+    // Where a curve's value sits in the lane, up and down (the bend's 0 in the middle, the mod wheel's at the bottom),
+    // and the value at `y`, in the curve's range.
+    float seqCurveY(SeqCurve curve, double v) const;
+    double seqCurveValueAt(SeqCurve curve, float y) const;
+    // A point put where the mouse is: at its step and value, or with `snap` (Ctrl held) on the grid, across on the
+    // snap's lines and up and down on the lane's (quarters of the curve's range), held to the pattern.
+    SeqCurvePoint seqCurvePointFor(SeqCurve curve, Point p, bool snap) const;
+    // Puts it in among the curve's points (after those at its step); its index, -1 where the curve is full.
+    int addSeqCurvePoint(SeqCurve curve, SeqCurvePoint point);
+    // The point of the lane's curve under `p`, and the segment whose middle (its bend handle) is, -1 for none.
+    int seqCurvePointAt(Point p) const;
+    int seqCurveBendAt(Point p) const;
+    Point seqCurveBendPos(const std::vector<SeqCurvePoint> &points, SeqCurve curve, int segment) const;
+    // Painting the curve, from `from` (at `fromValue`) on to `step` (at `v`): a point on every line of the grid
+    // (`unit` steps apart) past `from` up to `step`, the values between in a straight line, in place of the points
+    // there.
+    void paintSeqCurve(double from, double fromValue, double step, double v, double unit);
+    int seqCurveJustAdded_ = -1; // the point the last press put down, which a double-click leaves
     Rect seqScrollTrack() const;
     Rect seqScrollThumb() const;
     Rect seqScrollYThumb() const; // the rows' bar's thumb: high up for high rows
@@ -969,6 +993,18 @@ private:
     // (lower, down to the smallest, where they don't fit).
     void seqFit();
     uint64_t seqLoadsSeen_ = 0; // the patch loads the roll was fitted to (see Controller::patchLoads())
+    // Notes glowing as the sequencer plays them: a note starts glowing as the playhead (in the telemetry `t`) reaches
+    // its first step, and fades over as long as it lasts at the tempo. Whether any glows, or just stopped, to paint.
+    bool seqTrackGlows(const Telemetry &t);
+    float seqGlow(const SeqNote &note) const; // 0..1
+    std::array<double, kSeqNotes> seqGlowFrom_ = [] {
+        std::array<double, kSeqNotes> a{};
+        a.fill(-1.0);
+        return a;
+    }(); // when each slot's note started glowing, in seconds (see seqNow()), -1 for never
+    std::array<bool, kSeqNotes> seqInFirstStep_{}; // whether the playhead was in each note's first step at the last poll
+    bool seqGlowed_ = false;
+    static double seqNow(); // seconds on a steady clock
     // A note, a box or a paint stroke dragged to the roll's edge (or past it) scrolls it that way, a step of it each
     // poll: whether it did.
     bool seqEdgeScroll();
@@ -984,6 +1020,7 @@ private:
     // No two notes start together on one pitch: the notes that do with one of `kept` (just put down or moved) go, in
     // the undo step open.
     void seqDropCovered(const std::vector<int> &kept);
+    bool seqPatternEmpty(int pattern) const; // no notes, and no points on its curves
     void stepSeqField(int field, double steps);
     void flipSeqFlag(int flag);
     void stretchSeq(double factor);
@@ -992,7 +1029,7 @@ private:
     // A drag on the roll, its ruler, its lane or the field: what it moves, and what it started from.
     struct SeqDrag {
         enum class Mode { None, Move, Resize, ResizeStart, Box, Paint, Velocity, Lane, LaneGroup, Loop, LoopStart,
-                          LoopEnd, LoopMove, Field, Audition, Scroll, ScrollY };
+                          LoopEnd, LoopMove, Field, Audition, Scroll, ScrollY, CurvePoint, CurveBend, CurvePaint };
         Mode mode = Mode::None;
         int anchor = -1;                 // the note grabbed (Move, Resize), the field (Field), the key (Audition)
         double grabStep = 0.0;           // where it was grabbed: in steps,
@@ -1002,7 +1039,9 @@ private:
         bool unpick = false;             // Shift-pressed on a note picked: let go unmoved, it is no longer picked
         std::vector<int> painted;        // the notes painted so far (Paint)
         std::vector<int> boxBase;        // the notes picked before the box, which Shift adds to
-        double loopFrom = 0.0;           // Loop: the step it started at
+        double loopFrom = 0.0;           // Loop: the step it started at; CurvePaint: the step it painted last
+        double startCurve = 0.0;         // CurveBend: the segment's bend as it was grabbed; CurvePaint: the value
+                                         // painted last
         int sounding = -1;               // the note heard while it is held (see Controller::auditionNote()), -1 for none
     };
     void seqHear(int pitch); // that note heard from now on in the drag, the one before let go; -1 lets it go

@@ -1539,9 +1539,11 @@ bool View::poll() {
     // the host's tempo shows in the synced effects' and LFOs' captions, and the title bar, whether notes play or not.
     if (t.fxReduction != telemetry_.fxReduction)
         in(panels);
-    // The sequencer's playhead, while the SEQ view shows.
+    // The sequencer's playhead, while the SEQ view shows, and the notes it plays glowing.
     if (seqWide() && (t.seqPosition != telemetry_.seqPosition || t.seqPattern != telemetry_.seqPattern ||
                       t.seqKeys != telemetry_.seqKeys))
+        in(panels);
+    if (seqWide() && seqTrackGlows(t))
         in(panels);
     if (t.tempo != telemetry_.tempo)
         everywhere = true;
@@ -10039,6 +10041,10 @@ bool View::mouseMove(Point p, Modifiers mods) {
     if (drag_.kind == DragKind::Seq && (seqDrag_.mode == SeqDrag::Mode::Move || seqDrag_.mode == SeqDrag::Mode::Resize ||
                                         seqDrag_.mode == SeqDrag::Mode::ResizeStart))
         seqDrag_.free = mods.shift || mods.alt;
+    // A point of the lane's curve, or a stroke drawing it, on the grid while Ctrl is held.
+    if (drag_.kind == DragKind::Seq &&
+        (seqDrag_.mode == SeqDrag::Mode::CurvePoint || seqDrag_.mode == SeqDrag::Mode::CurvePaint))
+        seqDrag_.free = !mods.ctrl;
     if ((drag_.kind == DragKind::Connect || drag_.kind == DragKind::Reroute) && !drag_.leftNode)
         drag_.leftNode = clearOfNode(drag_.widget.a, nodeCenter(drag_.widget.a), p);
     // A value moves only once the mouse has: the jitter of a click, or between a double-click's presses, leaves it
@@ -11451,7 +11457,7 @@ void View::doubleClick(Point p, Modifiers mods) {
     if (paired && !(hit && pressed_ && hit->same(*pressed_)) &&
         !(hit && (hit->kind == Kind::Key || drawsStep(*hit, mods))))
         return;
-    if (hit && seqDoubleClick(*hit, p)) // the SEQ view's own
+    if (hit && seqDoubleClick(*hit, p, mods)) // the SEQ view's own
         return;
     if (hit && (hit->kind == Kind::Key || hit->kind == Kind::Octave || hit->kind == Kind::UndoButton ||
                 hit->kind == Kind::PresetStep || hit->kind == Kind::FxPower || hit->kind == Kind::FxNodePower ||

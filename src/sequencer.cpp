@@ -37,6 +37,7 @@ void Sequencer::reset() {
     keyRunning_ = keyStarted_ = false;
     keyClock_ = 0.0;
     position_ = -1.0f;
+    forgetCurves();
 }
 
 void Sequencer::configure(const ParamValues &params) {
@@ -46,6 +47,7 @@ void Sequencer::configure(const ParamValues &params) {
         keyRunning_ = false;
         running_ = false;
         noteCount_ = 0;
+        forgetCurves();
         return;
     }
     play_ = static_cast<SeqPlay>(stepped(params[paramIndex(SeqParam::Play)], static_cast<int>(SeqPlay::Count) - 1));
@@ -96,6 +98,29 @@ void Sequencer::readPattern(int pattern) {
                                 p[seqNoteIndex(pattern, n, SeqNoteParam::Slide)] >= 0.5,
                                 n};
     }
+    // Its curves, their points held to their ranges and in order.
+    auto get = [&](int index) { return p[index]; };
+    for (int c = 0; c < kSeqCurves; ++c) {
+        const SeqCurve curve = static_cast<SeqCurve>(c);
+        const int count = seqCurvePointCount(get, pattern, curve);
+        double last = 0.0;
+        for (int i = 0; i < count; ++i) {
+            auto field = [&](PointField f, double lo, double hi) {
+                const double v = p[seqCurveIndex(pattern, curve, i, f)];
+                return std::isfinite(v) ? std::clamp(v, lo, hi) : lo;
+            };
+            last = std::max(last, field(PointField::X, 0.0, kSeqMaxSteps));
+            curves_[static_cast<size_t>(c)][static_cast<size_t>(i)] = {
+                last, field(PointField::Y, curve == SeqCurve::ModWheel ? 0.0 : -1.0, 1.0), field(PointField::Curve, -1.0, 1.0)};
+        }
+        curveCount_[static_cast<size_t>(c)] = count;
+    }
+}
+
+double Sequencer::patternPlace(double t) const {
+    const int64_t at = floorStep(t);
+    const double into = t - static_cast<double>(at);
+    return sourceStep(at) + (backward(at) ? 1.0 - into : into);
 }
 
 void Sequencer::keyDown(int key) {
@@ -197,6 +222,7 @@ int Sequencer::plan(uint32_t frames, double tempo, bool playing, double songBeat
     if (!enabled_ || frames == 0) {
         running_ = false;
         position_ = -1.0f;
+        forgetCurves();
         return 0;
     }
     const double perFrame = std::max(tempo, 1.0) / 60.0 * kSeqStepsPerBeat[rate_] / sampleRate_;
@@ -221,6 +247,7 @@ int Sequencer::plan(uint32_t frames, double tempo, bool playing, double songBeat
         count += stopAll(out.subspan(static_cast<size_t>(count)));
         running_ = false;
         position_ = -1.0f;
+        forgetCurves();
         if (pattern_ != patternWanted_) {
             pattern_ = patternWanted_;
             readPattern(pattern_);
@@ -246,6 +273,10 @@ int Sequencer::plan(uint32_t frames, double tempo, bool playing, double songBeat
     }
     const double to = from + covered * perFrame;
     const int length = loopLength();
+    // The curves where the stretch starts.
+    const double place = patternPlace(from);
+    for (size_t c = 0; c < curveNow_.size(); ++c)
+        curveNow_[c] = seqCurveAt(curveCount_[c], [&](int i) { return curves_[c][static_cast<size_t>(i)]; }, place);
 
     // The notes starting in this stretch, in order.
     struct Start {
@@ -334,9 +365,7 @@ int Sequencer::plan(uint32_t frames, double tempo, bool playing, double songBeat
         keyClock_ = to;
     // The playhead along the step played, from its end back to its start where the pattern runs backward (Reverse, and
     // Ping-Pong on its way back), so it moves on smoothly either way.
-    const int64_t at = floorStep(to);
-    const double into = to - static_cast<double>(at);
-    position_ = static_cast<float>(sourceStep(at) + (backward(at) ? 1.0 - into : into));
+    position_ = static_cast<float>(patternPlace(to));
     return count;
 }
 

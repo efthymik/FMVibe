@@ -742,6 +742,7 @@ void Synth::render(float *left, float *right, uint32_t frames, const ParamValues
             applySeqEvents(seq_.stopAll(seqEvents_));
         if (keysTakenCount_ > 0 && !seq_.takesKeys()) // switched off: the keys it took are over
             releaseKeys({-1, -1, -1, -1});
+        followSeqCurves();
         renderSpan(left, right, frames, params, sameParams);
         return;
     }
@@ -750,6 +751,7 @@ void Synth::render(float *left, float *right, uint32_t frames, const ParamValues
         uint32_t covered = 0;
         const int count = seq_.plan(std::min(frames - done, kSeqStretch), tempo_, playing_, songBeats_, seqEvents_,
                                     covered);
+        followSeqCurves();
         uint32_t at = 0;
         for (int i = 0; i < count; ++i) {
             const uint32_t frame = std::min(seqEvents_[i].frame, covered);
@@ -765,6 +767,19 @@ void Synth::render(float *left, float *right, uint32_t frames, const ParamValues
             sameParams = true;
         }
         done += std::max(covered, 1u);
+    }
+}
+
+void Synth::followSeqCurves() {
+    auto now = [&](SeqCurve c) {
+        const double v = seq_.curve(c);
+        return std::isfinite(v) ? v : 0.0;
+    };
+    seqBend_ = now(SeqCurve::Bend);
+    const double wheel = now(SeqCurve::ModWheel);
+    if (wheel != seqWheel_) { // the mod wheel's knob moved, and what it moves with it
+        seqWheel_ = wheel;
+        paramChanged(paramIndex(GlobalParam::ModWheel));
     }
 }
 
@@ -1336,7 +1351,8 @@ void Synth::telemetry(Telemetry &out) const {
     const int pitchBend = paramIndex(GlobalParam::PitchBend);
     out.bendSet = static_cast<float>(bendSet_);
     out.bend = static_cast<float>(std::clamp(
-        bend_ + std::clamp(bendSet_ + globalMod_[pitchBend], table_[pitchBend].min, table_[pitchBend].max), -1.0, 1.0));
+        bend_ + seqBend_ + std::clamp(bendSet_ + globalMod_[pitchBend], table_[pitchBend].min, table_[pitchBend].max),
+        -1.0, 1.0));
     out.clipHold = static_cast<float>(clipHold_);
     if (analyzing_)
         outScope_.blend.show(outScope_.frame, kOutScopeBins, out.outScope);
@@ -1836,7 +1852,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     // with MPE on, a note on a member channel bends with its channel too. The bend is the host's MIDI pitch bend and the
     // Pitch Bend param (the editor's bend wheel) together, the param with the host's modulation of it for this voice
     // (a modulator per note bends each note its own way).
-    const double bend = std::clamp(bend_ + p[paramIndex(GlobalParam::PitchBend)], -1.0, 1.0);
+    const double bend = std::clamp(bend_ + seqBend_ + p[paramIndex(GlobalParam::PitchBend)], -1.0, 1.0);
     const double memberBend =
         mpe_ && memberChannel(v.note.channel) ? channelBend_[v.note.channel] * mpeBendRange_ : 0.0;
     auto pitchNow = [&] {

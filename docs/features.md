@@ -662,13 +662,19 @@ What the plugin does and how its editor works, in full. Building and installing 
     **Octave** (±3) and **Transpose** (±24 semitones) move the whole pattern. **Order** runs the loop's steps forward,
     backward, to and fro, or each one at random (the same way each time round), the notes starting in a step at the
     same place in it.
+  - **Curves**: each pattern also has a **bend** curve and a **mod wheel** curve, drawn in the lane under the roll:
+    up to 64 points each, at any step, each segment straight or bent. As the pattern plays, the bend curve (±1, a share
+    of Bend Range) adds to the pitch bend, on top of the bend wheel's and the host's, and the mod wheel curve (0–1) to
+    the Mod Wheel param, as the host's modulation of it would, moving what the mod wheel modulates. Before its first
+    point a curve holds that point's value, and after its last that one's; played backward, it runs back with the
+    playhead. A curve without points does nothing, nor does either while the sequencer doesn't play.
   - Its notes start and end at their sample, however the host splits its blocks, and go to the voices as notes do
     (stealing, mono, legato and glide alike); the host is never told of their ends, and the keyboard strip lights only
     the keys played (by the host, its own keys and the computer's), not the sequencer's notes. A jump of the transport, or a
     change of Rate while it plays, ends what it holds and plays on from there. While it may start notes (in Host while
     it is on; in Key and Latch while it runs), the plugin doesn't let the host put processing to sleep.
-  - Its settings but Root and Scale are given to hosts, for automation (not modulation); a pattern's length, loop and
-    notes are the editor's alone.
+  - Its settings but Root and Scale are given to hosts, for automation (not modulation); a pattern's length, loop,
+    notes and curves are the editor's alone.
 - **Host modulation** (CLAP; VST3 has none, and VST3 hosts automate the parameters instead): all continuous
   parameters hosts are given accept CLAP modulation globally, the macros' knobs, the mod wheel, the note source's
   range and every modulation's depth and Amount among them (not the effects or the sources' own knobs, which hosts
@@ -719,7 +725,8 @@ one may have changed since it last did.
 - **SEQ** (the sequencer, see [Sound engine](#sound-engine)): its settings on a card where the inspector floats, and
   the roll of the pattern picked in the rest.
   - **The card**: the sequencer's power switch; **PATTERN** A to D (the one picked plays and shows in the roll) and a
-    button that copies it, its length, loop and notes, into the next empty pattern; **PLAY** Host | Key | Latch; the
+    button that copies it, its length, loop, notes and curves, into the next empty pattern (no notes, and no points
+    on its curves); **PLAY** Host | Key | Latch; the
     knobs Rate, Swing, Gate, Length (the pattern's, in bars), Velocity, Humanize, Octave and Transpose; **ORDER** as
     arrows (forward, back, to and fro, a die for random); **SCALE**: the root (dragged up and down or scrolled, a
     semitone a step; a double-click puts it back on C4), the scale's list (Chromatic, Major, Minor, Dorian, Phrygian,
@@ -736,7 +743,7 @@ one may have changed since it last did.
     field of the notes picked (its NOTE, VEL, CHANCE, LEN and OFFSET, the offset a note's start off the grid in
     hundredths of a step; each dragged up and down or scrolled, moving every note picked, one undo step; a
     double-click puts VEL back to 100, CHANCE to full and OFFSET to 0, on the grid), **SLIDE** and
-    **MUTE** (for the notes picked: on, or off if they all are) and the bin, which clears the pattern, asking first.
+    **MUTE** (for the notes picked: on, or off if they all are) and the bin, which clears the pattern, its notes and curves, asking first.
     The roll's settings (the tool, the snap, the lane, the rows scrolled to and FOLD) belong to the editor: a preset
     or Init leaves them as they are.
   - **The roll**: the piano keys at its left (white keys across, the black ones shorter over them, every C named; with
@@ -750,8 +757,11 @@ one may have changed since it last did.
     times as high). A bar at the roll's right scrolls the rows (dragged, a click on its track jumping there, or the
     wheel). Zoomed in across, a bar after the lane tabs shows and scrolls what the roll shows, as Shift+wheel
     and the wheel turned sideways do; the middle button (or two fingers) drags the roll across and up and down. The
-    zoom and what is scrolled across belong to the editor and aren't saved. Notes are brighter as they are louder, dashed with their chance at less than full, hollow while muted, a
-    hook off their end with Slide; those picked are ringed, a handle at their end.
+    zoom and what is scrolled across belong to the editor and aren't saved. Notes are brighter as they are louder (at full velocity
+    at full strength, and a little dimmer while the sequencer is off), dashed with their chance at less than full,
+    hollow while muted, a hook off their end with Slide; those picked are ringed, a handle at their end. As the
+    sequencer plays, a note glows as the playhead reaches it, fading over as long as the note lasts at the tempo, as
+    strongly as the glow setting says (not at all with it off).
   - **Select**: a click picks a note (Shift adds it or takes it out, once let go without a drag), a drag moves the notes picked (the one grabbed
     landing on the grid, up and down by rows; with Shift or Alt held, off it, following the mouse, its OFFSET saying how
     far off; Ctrl carrying copies), a note's right end dragged sets
@@ -763,13 +773,25 @@ one may have changed since it last did.
     drag paints a note in each grid step it crosses that has none; a note clicked is moved or stretched as in Select
     (the cursor saying which over it). Each edit is one undo step.
   - **The lane** under the roll: a stem for each note at its start, as high as its velocity or its chance, as the
-    **VELOCITY | CHANCE** tabs under it pick, a note picked ringed there too; dragged across, the notes there take
+    **VELOCITY | CHANCE | BEND | MOD WHEEL** tabs under it pick, a note picked ringed there too; dragged across, the notes there take
     the height of the mouse (the cursor a pen, and up and down over a dot and while one is dragged), and a double-click puts them back
     (velocity 100, chance full). With more than one note picked, a drag from one of their dots moves them all up or
     down together, each from where it was. Where notes start together and any of them is picked, the lane sets the
     picked ones alone (their dots drawn over the others').
-  - **Hearing notes**: a key clicked in the roll's keys, and a note clicked or drawn on the roll, sound alone while the
-    button is held (a note moved to another row sounding that row's), whatever Play is: never the sequencer's
+    On **BEND** and **MOD WHEEL**, the lane shows the pattern's curve instead (see Sequencer), across the pattern as
+    the roll is zoomed and scrolled, in the bend's or the mod wheel's color, filled down to where it rests (the bend's
+    middle, the mod wheel's bottom), with its points and, on each segment that rises or falls and has room, a handle
+    at its middle; behind it a grid, the roll's lines running on down through the lane and a line at each quarter of
+    the curve's range, as strong as the GRID setting says. As with notes, a point dragged moves between its
+    neighbors and a segment's middle dragged up or down bends it, with either tool; with **Select** a double-click
+    puts a point down (and on a point deletes it), and with **Draw** a click puts one down and moves it while the
+    button is held, and Shift+drag draws the curve, a point on every line of the grid across it crosses (a step apart
+    with the snap off), in place of the points there. A double-click straightens a bend (and leaves a point its own
+    first click put down). Points go where the mouse is; with **Ctrl** held, onto the grid, across on the snap's lines
+    and up and down on the lane's. Each is an undo step. The cursor moves over a point, goes up and down over a bend,
+    and is a pen where Draw puts a point down. The whole pattern twice or half as long takes its curves along.
+  - **Hearing notes**: a key clicked in the roll's keys, and a note clicked, drawn or put down by a double-click on
+    the roll, sound alone while the button is held (a note moved to another row sounding that row's), whatever Play is: never the sequencer's
     pattern, which only the keyboard strip's keys and the host's notes start in Key and Latch.
   - **Following what is dragged**: a note, a box or a paint stroke dragged to the roll's edge (or past it) scrolls the
     roll that way, faster the further past it, what is dragged going along. A patch loaded (a preset, Init, a

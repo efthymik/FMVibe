@@ -3546,6 +3546,88 @@ void sequencerChecks() {
                     wrongWay);
         check(jumps <= expected && wrongWay == 0, "the playhead moves on steadily the way the pattern plays");
     }
+    // The curves read where the playhead is: a bend from -1 at step 0 to 1 at step 16 stands at -0.5 on step 4 (and at
+    // 0.5 played reversed, back through step 12), a segment bent by 1 lower than straight, a mod wheel of one point at
+    // 0.75 everywhere, and a curve without points, or a sequencer not playing, nothing.
+    {
+        auto curveAt = [&](const ParamValues &p, double step, SeqCurve curve) {
+            Sequencer seq;
+            seq.prepare(kSampleRate);
+            seq.configure(p);
+            std::array<SeqEvent, Sequencer::kMaxEvents> out;
+            uint32_t covered = 0;
+            seq.plan(64, 120.0, true, step / 4.0, out, covered); // a 1/16 step is a quarter of a beat
+            return seq.curve(curve);
+        };
+        auto point = [](ParamValues &p, SeqCurve curve, int i, double x, double y, double bend = 0.0) {
+            p[seqCurveIndex(0, curve, i, PointField::X)] = x;
+            p[seqCurveIndex(0, curve, i, PointField::Y)] = y;
+            p[seqCurveIndex(0, curve, i, PointField::Curve)] = bend;
+            p[seqCurveCountIndex(0, curve)] = std::max(p[seqCurveCountIndex(0, curve)], i + 1.0);
+        };
+        ParamValues p = blank();
+        const double none = curveAt(p, 4.0, SeqCurve::Bend);
+        point(p, SeqCurve::Bend, 0, 0.0, -1.0);
+        point(p, SeqCurve::Bend, 1, 16.0, 1.0);
+        point(p, SeqCurve::ModWheel, 0, 3.0, 0.75);
+        const double bend = curveAt(p, 4.0, SeqCurve::Bend), wheel = curveAt(p, 9.0, SeqCurve::ModWheel);
+        const double before = curveAt(p, 1.0, SeqCurve::ModWheel); // before its only point: that point's value
+        p[paramIndex(SeqParam::Order)] = static_cast<double>(SeqOrder::Reverse);
+        const double reversed = curveAt(p, 4.0, SeqCurve::Bend);
+        p[paramIndex(SeqParam::Order)] = static_cast<double>(SeqOrder::Forward);
+        p[seqCurveIndex(0, SeqCurve::Bend, 0, PointField::Curve)] = 1.0;
+        const double bent = curveAt(p, 8.0, SeqCurve::Bend);
+        p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Key); // no key held: not playing
+        const double idle = curveAt(p, 4.0, SeqCurve::Bend);
+        std::printf("      curves: bend %.3f on step 4, %.3f reversed, %.3f bent on step 8; mod wheel %.3f, %.3f\n", bend,
+                    reversed, bent, wheel, before);
+        check(std::isnan(none) && std::abs(bend + 0.5) < 1e-3 && std::abs(reversed - 0.5) < 1e-3 && bent < -0.5 &&
+                  std::abs(wheel - 0.75) < 1e-9 && std::abs(before - 0.75) < 1e-9 && std::isnan(idle),
+              "the sequencer's curves stand where the playhead is, and do nothing without points");
+    }
+    // Through the synth, in Key: a bend curve at 1 bends an A4 the sequencer plays up by Bend Range (two semitones, to
+    // B4); a mod wheel curve at 1 takes the mod wheel's slot on A's level all the way, silencing it.
+    {
+        auto play = [&](double bend, double wheel) {
+            Engine e(1);
+            e.p[paramIndex(SeqParam::Enabled)] = 1.0;
+            e.p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Key);
+            note(e.p, 0, 0.0, 16.0, 69);
+            e.p[slotTargetIndex(kWheelSource, 0)] = slotTargetValue(paramIndex(0, OpParam::Out));
+            e.p[slotAmountIndex(kWheelSource, 0)] = -1.0;
+            for (const auto &[curve, v] : {std::pair{SeqCurve::Bend, bend}, std::pair{SeqCurve::ModWheel, wheel}})
+                if (std::isfinite(v)) {
+                    e.p[seqCurveCountIndex(0, curve)] = 1.0;
+                    e.p[seqCurveIndex(0, curve, 0, PointField::Y)] = v;
+                }
+            e.synth().setTempo(120.0);
+            e.render(256); // the sequencer on, taking keys
+            e.synth().noteOn({1, 0, 0, 60}, 1.0);
+            e.render(4800);
+            return e.render(8192);
+        };
+        auto power = [](const std::vector<float> &x, double hz) {
+            std::complex<double> sum = 0.0;
+            for (size_t i = 0; i < x.size(); ++i)
+                sum += static_cast<double>(x[i]) *
+                       std::polar(1.0, -2.0 * std::numbers::pi * hz * static_cast<double>(i) / kSampleRate);
+            return std::norm(sum);
+        };
+        auto rms = [](const std::vector<float> &x) {
+            double sum = 0.0;
+            for (float s : x)
+                sum += static_cast<double>(s) * s;
+            return std::sqrt(sum / static_cast<double>(x.size()));
+        };
+        const double nan = std::numeric_limits<double>::quiet_NaN();
+        const std::vector<float> plain = play(nan, nan), bent = play(1.0, nan), quiet = play(nan, 1.0);
+        const double b4 = 440.0 * std::pow(2.0, 2.0 / 12.0);
+        std::printf("      through the synth: bent, B4 %.1f dB over A4; the mod wheel curve leaving %.4f of %.4f\n",
+                    10.0 * std::log10(power(bent, b4) / power(bent, 440.0)), rms(quiet), rms(plain));
+        check(power(plain, 440.0) > 100.0 * power(plain, b4) && power(bent, b4) > 100.0 * power(bent, 440.0) &&
+                  rms(quiet) < 0.01 * rms(plain),
+              "the bend curve bends what the sequencer plays, and the mod wheel curve moves the mod wheel");
+    }
     // Muted or at no chance, a note doesn't play; at half, it plays some passes and not others, alike each time.
     {
         ParamValues p = blank();

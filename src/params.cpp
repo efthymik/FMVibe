@@ -976,6 +976,23 @@ void buildTable(ParamTable &t) {
                 field(SeqNoteParam::Slide, Str::ParamSeqNoteSlide, ParamKind::ShapeCount, 0.0, 1.0, 0.0);
                 field(SeqNoteParam::Mute, Str::ParamSeqNoteMute, ParamKind::ShapeCount, 0.0, 1.0, 0.0);
             }
+            // Its curves, empty to begin with.
+            for (int c = 0; c < kSeqCurves; ++c) {
+                const SeqCurve curve = static_cast<SeqCurve>(c);
+                const std::string n =
+                    name + " " + tr(curve == SeqCurve::Bend ? Str::ParamSeqBendCurve : Str::ParamSeqWheelCurve) + " ";
+                add(seqCurveCountIndex(pattern, curve), n + tr(Str::ParamPoints), module, ParamKind::ShapeCount, 0.0,
+                    kSeqCurvePoints, 0.0);
+                for (int point = 0; point < kSeqCurvePoints; ++point) {
+                    const std::string at = n + std::to_string(point + 1) + " ";
+                    add(seqCurveIndex(pattern, curve, point, PointField::X), at + "X", module, ParamKind::ShapePoint,
+                        0.0, kSeqMaxSteps, 0.0);
+                    add(seqCurveIndex(pattern, curve, point, PointField::Y), at + "Y", module, ParamKind::ShapePoint,
+                        -1.0, 1.0, 0.0);
+                    add(seqCurveIndex(pattern, curve, point, PointField::Curve), at + tr(Str::ParamCurve), module,
+                        ParamKind::ShapePoint, -1.0, 1.0, 0.0);
+                }
+            }
         }
     }
 }

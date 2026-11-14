@@ -531,6 +531,11 @@ private:
     int capacity_ = 0;      // voices that may play; voices_ has as many more (4 to 32) for stolen ones to fade out in
     double bend_ = 0.0;
     double bendSet_ = 0.0; // the Pitch Bend param as the last render() had it (see Telemetry::bendSet)
+    // What the sequencer's curves add as its pattern plays (see Sequencer::curve()): to the pitch bend, and to the Mod
+    // Wheel param, as the host's modulation of it would; 0 while they don't.
+    double seqBend_ = 0.0;
+    double seqWheel_ = 0.0;
+    void followSeqCurves();
     std::array<double, 128> cc_{}; // the MIDI controllers' values, 0..1
     double channelPressure_ = 0.0;
     // MPE (see setMpe()): whether it is on, its bend range, and each member channel's bend (-1..1), pressure (0..1, or
@@ -592,7 +597,8 @@ private:
     // A param as set with the host's modulation for every voice, in its range: how the macros, the mod wheel and the
     // note source read their knobs, depths and range.
     double hostValue(const ParamValues &params, int index) const {
-        return std::clamp(params[index] + globalMod_[index], table_[index].min, table_[index].max);
+        const double wheel = index == paramIndex(GlobalParam::ModWheel) ? seqWheel_ : 0.0;
+        return std::clamp(params[index] + globalMod_[index] + wheel, table_[index].min, table_[index].max);
     }
     // The params the voices read, with the host's modulation for every voice and the macros' added: as summed
     // (voiceBase_), and in their ranges (voiceClamped_). None of it changes during a render(), so it is worked out
