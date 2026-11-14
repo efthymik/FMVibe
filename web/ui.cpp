@@ -50,7 +50,7 @@ EM_JS(void, js_set_setting, (const char *key, const char *value),
       { Module.fmvHost.setSetting(UTF8ToString(key), UTF8ToString(value)); });
 
 constexpr int kDefaultOversampling = 2;
-constexpr char kFirstPreset[] = "PD Crystal Motion"; // the patch whose effects docs/fx-chain.png shows
+constexpr char kFirstPreset[] = "SQ Future Plucks"; // a sequenced patch: a held key plays its riff
 
 std::string setting(const char *key) {
     char buffer[256];
@@ -262,6 +262,7 @@ private:
     double hue_ = -1.0; // the theme's own
     int handleSize_ = 0;
     double links_ = 0.75;
+    double grid_ = kDefaultGridIntensity;
     double tempo_ = kDefaultTempo;
 };
 
