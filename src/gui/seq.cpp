@@ -109,8 +109,21 @@ std::vector<int> View::seqPitchList() const {
     std::vector<int> pitches;
     const int scale = stepped(value(paramIndex(SeqParam::Scale)), 0, static_cast<int>(SeqScale::Count) - 1);
     const int root = stepped(value(paramIndex(SeqParam::Root)), 0, 127);
+    const bool fold = controller_.layout().seqFold;
+    // Folded, the rows of the scale, and those of notes off it all the same (marked as off it): the pattern's notes,
+    // and while notes are dragged, where they were, so the rows don't change under the mouse.
+    std::array<bool, 128> noted{};
+    if (fold && scale != 0) {
+        const int pattern = seqPattern();
+        for (int slot = 0; slot < kSeqNotes; ++slot)
+            if (value(seqNoteIndex(pattern, slot, SeqNoteParam::Length)) > 0.0)
+                noted[static_cast<size_t>(stepped(value(seqNoteIndex(pattern, slot, SeqNoteParam::Pitch)), 0, 127))] = true;
+        if (drag_.kind == DragKind::Seq)
+            for (const SeqNote &n : seqDrag_.origin)
+                noted[static_cast<size_t>(n.pitch)] = true;
+    }
     for (int p = 0; p < 128; ++p)
-        if (!controller_.layout().seqFold || seqInScale(scale, root, p))
+        if (!fold || seqInScale(scale, root, p) || noted[static_cast<size_t>(p)])
             pitches.push_back(p);
     return pitches;
 }
@@ -930,18 +943,19 @@ bool View::seqPress(const Widget &w, Point p, Modifiers mods) {
             return true;
         }
         const bool edge = atEnd || atStart;
-        if (mods.shift && !mods.ctrl && !edge) { // Shift+click adds it to the notes picked, or takes it out
-            if (seqSelected(hit)) {
-                std::erase(seqSelection_, hit);
-                return true;
-            }
+        // Shift+click adds it to the notes picked, or takes it out (once let go, unless it was dragged).
+        bool unpick = false;
+        if (mods.shift && !mods.ctrl && !edge && seqSelected(hit))
+            unpick = true;
+        else if (mods.shift && !mods.ctrl && !edge)
             seqSelection_.push_back(hit);
-        } else if (!seqSelected(hit)) {
+        else if (!seqSelected(hit))
             seqSelection_ = {hit};
-        }
         startDrag(atEnd ? SeqDrag::Mode::Resize : atStart ? SeqDrag::Mode::ResizeStart : SeqDrag::Mode::Move, true);
-        // An end dragged with Shift (as with Alt) follows the mouse, off the grid: the length set finely.
-        seqDrag_.free = mods.alt || (edge && mods.shift);
+        // Dragged with Shift (or Alt) held, it follows the mouse off the grid: an end sets the length finely, and the
+        // note moved lands anywhere, its OFFSET saying how far off the grid.
+        seqDrag_.free = mods.alt || mods.shift;
+        seqDrag_.unpick = unpick;
         seqDrag_.anchor = hit;
         if (mods.ctrl && !atEnd && !atStart) { // Ctrl: the notes picked copied, and the copies carried
             std::vector<int> copies;
@@ -1139,6 +1153,8 @@ void View::seqDrag(Point p) {
 void View::seqRelease(Point) {
     seqHear(-1);
     const SeqDrag::Mode mode = seqDrag_.mode;
+    if (seqDrag_.unpick && !drag_.moved) // a Shift+click on a note picked: no longer picked
+        std::erase(seqSelection_, seqDrag_.anchor);
     if (mode == SeqDrag::Mode::Move || mode == SeqDrag::Mode::ResizeStart ||
         (mode == SeqDrag::Mode::Field && (seqDrag_.anchor == 0 || seqDrag_.anchor == 4)))
         seqDropCovered(seqPicked()); // in the drag's undo step, which closes after this
@@ -1362,7 +1378,7 @@ void View::paintSeq(Canvas &c) {
         const int pitch = rows[i];
         const float y = kSeqGrid.y + kSeqGrid.h - (i + 1) * rh;
         const bool black = !fold && isBlackKey(pitch);
-        const bool outside = !fold && scale != 0 && !seqInScale(scale, root, pitch);
+        const bool outside = scale != 0 && !seqInScale(scale, root, pitch); // folded, a row a note off it has
         if (black || outside)
             c.fillRect({kSeqGrid.x, y, kSeqGrid.w, rh}, kBackground.alpha(outside ? 0.55f : 0.35f));
         c.line({kSeqGrid.x, y + rh}, {kSeqGrid.x + kSeqGrid.w, y + rh},
@@ -1434,6 +1450,13 @@ void View::paintSeq(Canvas &c) {
         } else {
             c.fillRect(r, ink.alpha(level), kRadiusMark);
         }
+        if (scale != 0 && !seqInScale(scale, root, n.pitch)) { // off the scale: hatched across
+            c.pushClip(r);
+            const Color hatch = kBackground.alpha(0.55f);
+            for (float x = r.x - r.h; x < r.right(); x += 5.0f)
+                c.line({x, r.bottom()}, {x + r.h, r.y}, hatch, 1.5f);
+            c.popClip();
+        }
         if (picked) {
             c.strokeRect(r.inset(-1.0f), kText, 1.5f, kRadiusMark + 1.0f);
             c.fillRect({r.right() - 3.0f, r.y + 2.0f, 2.0f, r.h - 4.0f}, kText, 1.0f);
@@ -1465,8 +1488,11 @@ void View::paintSeq(Canvas &c) {
         c.fillRect(kSeqKeys, kPanel);
         for (size_t i = 0; i < rows.size(); ++i) {
             const float y = kSeqKeys.y + kSeqKeys.h - (i + 1) * rh;
+            const bool outside = scale != 0 && !seqInScale(scale, root, rows[i]); // a row a note off the scale has
+            if (outside)
+                c.fillRect({kSeqKeys.x, y, kSeqKeys.w, rh}, kBackground.alpha(0.55f));
             c.text({kSeqKeys.x, y, kSeqKeys.w - 6.0f, rh}, pitchName(rows[i]), kTextSmall,
-                   rows[i] % 12 == root % 12 ? kText : kDim, Align::Right);
+                   outside ? kFaint : rows[i] % 12 == root % 12 ? kText : kDim, Align::Right);
         }
     } else {
         const Color white = lightTheme() ? Color::hex(0xFFFFFF) : Color::hex(0xD6D9E4);

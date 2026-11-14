@@ -5221,6 +5221,32 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
                   std::abs(moved - 8.25) < 0.02,
               "a note's end or start dragged with Shift sets its length off the grid");
     }
+    // With Shift held from the press, the note moved lands off the grid: a third of a step on, its length kept; and a
+    // Shift+click on it, picked, without a drag, no longer picks it (Delete then leaving it).
+    {
+        const Point grab = at(9.0, 51);
+        const Point to{grab.x + kSeqGrid.w / 16.0f / 3.0f, grab.y};
+        view.mouseDown(grab, {true, false, false});
+        view.mouseMove({(grab.x + to.x) * 0.5f, grab.y}, {true, false, false});
+        view.mouseMove(to, {true, false, false});
+        view.mouseUp(to, {true, false, false});
+        const double moved = field(2, SeqNoteParam::Start), length = field(2, SeqNoteParam::Length);
+        const bool stillPicked = view.seqKey(View::Key::Delete, false) && field(2, SeqNoteParam::Length) == 0.0;
+        view.undo(); // the delete
+        view.undo(); // the move
+        const bool back = field(2, SeqNoteParam::Start) == 8.0;
+        click(view, at(15.5, 66)); // nothing picked
+        click(view, at(9.0, 51));  // it alone
+        view.mouseDown(at(9.0, 51), {true, false, false});
+        view.mouseUp(at(9.0, 51), {true, false, false});
+        view.seqKey(View::Key::Delete, false);
+        const bool unpicked = field(2, SeqNoteParam::Length) == 2.0;
+        if (!unpicked)
+            view.undo();
+        std::printf("      Shift-dragged a third of a step on: from %.3f, %.3f long\n", moved, length);
+        check(std::abs(moved - 8.0 - 1.0 / 3.0) < 0.02 && length == 2.0 && stillPicked && back && unpicked,
+              "a note dragged with Shift lands off the grid, and Shift+click unpicks a picked note");
+    }
 
     // A box from an empty place over the first two notes picks them; the field's velocity dragged up turns both up.
     drag(view, at(0.0, 57), at(5.5, 47));
@@ -5494,6 +5520,35 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
     check(foldShot && model.value(paramIndex(SeqParam::Scale)) == static_cast<double>(SeqScale::Minor) &&
               model.ui.seqFold,
           "the scale's list picks a scale, and FOLD shows only its rows");
+    // A note off the scale (C#4) keeps its row folded, between C4's and D4's, the note hatched across (read off the
+    // rendered pixels) where one on the scale (C3, at 0) is filled plain.
+    {
+        model.set(seqNoteIndex(0, 40, SeqNoteParam::Start), 2.0);
+        model.set(seqNoteIndex(0, 40, SeqNoteParam::Length), 1.5);
+        model.set(seqNoteIndex(0, 40, SeqNoteParam::Pitch), 61.0);
+        view.poll();
+        view.mouseMove({600.0f, 600.0f}, {});
+        const bool offShot = renderer.save(view, dir / "36d-seq-fold-off-scale.png");
+        // Folded from C3: C3 D3 D#3 F3 G3 G#3 A#3 C4, then C#4 at the 9th row.
+        auto rowY = [&](int index) { return kSeqGrid.y + kSeqGrid.h - (static_cast<float>(index) + 0.5f) * rh; };
+        auto colors = [&](float x0, float x1, float y) {
+            std::vector<uint32_t> seen;
+            for (float x = x0; x < x1; x += 1.0f) {
+                const uint32_t c = renderer.pixel({x, y});
+                if (std::find(seen.begin(), seen.end(), c) == seen.end())
+                    seen.push_back(c);
+            }
+            return seen.size();
+        };
+        const size_t off = colors(at(2.2, 48).x, at(3.3, 48).x, rowY(8));
+        const size_t plain = colors(at(0.15, 48).x, at(0.85, 48).x, rowY(0));
+        model.set(seqNoteIndex(0, 40, SeqNoteParam::Length), 0.0);
+        model.set(seqNoteIndex(0, 40, SeqNoteParam::Start), 0.0);
+        model.set(seqNoteIndex(0, 40, SeqNoteParam::Pitch), 60.0);
+        view.poll();
+        std::printf("      folded, a note off the scale in %zu colors across, one on it in %zu\n", off, plain);
+        check(offShot && off >= 3 && plain <= 2, "folded, a note off the scale keeps its row, marked");
+    }
     click(view, {detail::kSeqCard.x + detail::kSeqCard.w - 12.0f - 27.0f, detail::kSeqScaleY + 11.0f});
 
     // With the modulation panel and the keyboard collapsed, the editor too short for the list under its button: it opens

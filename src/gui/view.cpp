@@ -10035,9 +10035,9 @@ bool View::mouseMove(Point p, Modifiers mods) {
         if (mods.ctrl) // a card or node carried with Ctrl held: a copy of it
             copyDragged();
     }
-    // A note's end in the SEQ view's roll follows the mouse off the grid while Shift or Alt is held.
-    if (drag_.kind == DragKind::Seq &&
-        (seqDrag_.mode == SeqDrag::Mode::Resize || seqDrag_.mode == SeqDrag::Mode::ResizeStart))
+    // A note moved, or its end, in the SEQ view's roll follows the mouse off the grid while Shift or Alt is held.
+    if (drag_.kind == DragKind::Seq && (seqDrag_.mode == SeqDrag::Mode::Move || seqDrag_.mode == SeqDrag::Mode::Resize ||
+                                        seqDrag_.mode == SeqDrag::Mode::ResizeStart))
         seqDrag_.free = mods.shift || mods.alt;
     if ((drag_.kind == DragKind::Connect || drag_.kind == DragKind::Reroute) && !drag_.leftNode)
         drag_.leftNode = clearOfNode(drag_.widget.a, nodeCenter(drag_.widget.a), p);

@@ -150,6 +150,15 @@ int Sequencer::sourceStep(int64_t step) const {
     }
 }
 
+bool Sequencer::backward(int64_t step) const {
+    const int64_t length = std::max(loopLength(), 1);
+    if (order_ == SeqOrder::Reverse)
+        return true;
+    if (order_ == SeqOrder::PingPong && length > 1)
+        return wrap(step, 2 * length - 2) >= length;
+    return false;
+}
+
 double Sequencer::swung(double t) const {
     const double pair = 2.0 * std::floor(t * 0.5);
     const double x = t - pair;
@@ -323,8 +332,11 @@ int Sequencer::plan(uint32_t frames, double tempo, bool playing, double songBeat
     running_ = true;
     if (play_ != SeqPlay::Host)
         keyClock_ = to;
+    // The playhead along the step played, from its end back to its start where the pattern runs backward (Reverse, and
+    // Ping-Pong on its way back), so it moves on smoothly either way.
     const int64_t at = floorStep(to);
-    position_ = static_cast<float>(sourceStep(at) + (to - static_cast<double>(at)));
+    const double into = to - static_cast<double>(at);
+    position_ = static_cast<float>(sourceStep(at) + (backward(at) ? 1.0 - into : into));
     return count;
 }
 

@@ -725,7 +725,8 @@ one may have changed since it last did.
     semitone a step; a double-click puts it back on C4), the scale's list (Chromatic, Major, Minor, Dorian, Phrygian,
     Lydian, Mixolydian, Harmonic Minor, Melodic Minor, Pentatonic Major and Minor, Blues; wider than its button, and
     opening above it where the editor is too short for it below) and **FOLD**, which shows only the scale's rows (the
-    rows outside it are shaded otherwise). At its foot, what the play mode does. Its switches say what they do in their
+    rows outside it are shaded otherwise), and those of notes off it all the same, shaded, their names faint. Notes off
+    the scale are hatched across, folded or not. At its foot, what the play mode does. Its switches say what they do in their
     tooltips.
   - **The grid**: a line at every snap's length across the roll (a step with the snap off), the beats and bars
     stronger, as strong as the settings dialog's **GRID** says (50 % to begin with).
@@ -742,7 +743,8 @@ one may have changed since it last did.
     FOLD, each row's name), a click playing the key, and the keys the sequencer plays lit as it plays them; the bars
     and beats over it, with the loop as a bar in the accent (dragged by its ends to size it and by its middle to move
     it, the cursor left and right or moving; across the bars outside it for a new loop; a double-click loops the whole
-    pattern again), the steps outside the loop shaded; and the playhead, while the sequencer plays the pattern shown. The wheel scrolls the
+    pattern again), the steps outside the loop shaded; and the playhead, while the sequencer plays the pattern shown (running backward through the steps it plays
+    backward, reversed or on Ping-Pong's way back). The wheel scrolls the
     rows; over the roll, Ctrl+wheel zooms in and out across and Alt+wheel up and down, at the mouse, as the − and +
     after the arrows at the lane tabs' right do (across from the whole pattern to two steps, the rows from 0.6 to 3
     times as high). A bar at the roll's right scrolls the rows (dragged, a click on its track jumping there, or the
@@ -750,8 +752,9 @@ one may have changed since it last did.
     and the wheel turned sideways do; the middle button (or two fingers) drags the roll across and up and down. The
     zoom and what is scrolled across belong to the editor and aren't saved. Notes are brighter as they are louder, dashed with their chance at less than full, hollow while muted, a
     hook off their end with Slide; those picked are ringed, a handle at their end.
-  - **Select**: a click picks a note (Shift adds it or takes it out), a drag moves the notes picked (the one grabbed
-    landing on the grid, up and down by rows; Alt off the grid, Ctrl carrying copies), a note's right end dragged sets
+  - **Select**: a click picks a note (Shift adds it or takes it out, once let go without a drag), a drag moves the notes picked (the one grabbed
+    landing on the grid, up and down by rows; with Shift or Alt held, off it, following the mouse, its OFFSET saying how
+    far off; Ctrl carrying copies), a note's right end dragged sets
     the length of every note picked and its left end their starts, their ends staying (on the grid; with Shift or Alt
     held, off it, following the mouse) (the cursor left-right over
     either end, a handle at each end of a note picked), a drag from an empty place picks the notes the box reaches (Shift adding to
@@ -1740,8 +1743,8 @@ one may have changed since it last did.
   opening it as it is held); PL Koto Pluck (a fed-back 1:1 pair and a 7:1 snap on one carrier, a 2:3 pair ringing an
   octave up) and PL Razor Pluck (a fed-back pair driven by a 2:1 modulator through a snapping resonant low-pass over
   a sub and a noise click, hard-clipped, squashed OTT-style and echoed); and SQ Mallet Steps (a marimba, a 1:1
-  carrier knocked by a 4:1 modulator, struck every sixteenth by a drawn LFO with its own accent each step while a
-  second steps the pitch through octaves, fifths and sevenths; its Melody macro flattens the tune) and SQ Hammer Gate
+  carrier knocked by a 4:1 modulator, struck in sixteenths by the sequencer while a key is held, through octaves,
+  fifths and sevenths, each note's velocity its accent, louder and harder) and SQ Hammer Gate
   (a fed-back pair growled by a sub-octave linear FM through a driven, resonant low-pass into a hard clipper whose
   output a drawn LFO gates in accented sixteenths, a second jumping octaves in the riff).
   Then three that play through the Amp: PL Crunch Rhythm (a string-like FM pluck, two carriers a few cents apart,

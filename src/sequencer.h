@@ -91,6 +91,7 @@ private:
     int loopLength() const { return loopEnd_ - loopStart_; }
     // The pattern step a played step plays.
     int sourceStep(int64_t step) const;
+    bool backward(int64_t step) const; // whether a played step runs through its pattern step backward
     double swung(double t) const;
     static double unit(int64_t step, int note, int salt); // 0..1, the same for the same inputs
     int pushOff(std::span<SeqEvent> out, int count, uint32_t frame, const Sounding &s) const;

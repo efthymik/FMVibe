@@ -998,7 +998,8 @@ private:
         double grabStep = 0.0;           // where it was grabbed: in steps,
         int grabPitch = 0;               // and its row
         std::vector<SeqNote> origin;     // the notes moved, as they were
-        bool free = false;               // Alt held: off the snap's grid
+        bool free = false;               // Shift or Alt held: off the snap's grid
+        bool unpick = false;             // Shift-pressed on a note picked: let go unmoved, it is no longer picked
         std::vector<int> painted;        // the notes painted so far (Paint)
         std::vector<int> boxBase;        // the notes picked before the box, which Shift adds to
         double loopFrom = 0.0;           // Loop: the step it started at

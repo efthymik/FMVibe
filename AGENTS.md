@@ -316,7 +316,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     middle one, in what a modulator's carrier plays too;
   - the sequencer: its notes on their steps with the host's transport, the bar round again and alike whatever the
     stretches it plans, Swing at 75 % delaying the step after the beat by half a step and Gate at 50 % halving a note,
-    Reverse playing a note on the first step on the last, a loop playing only the notes in it, a muted note and one at
+    Reverse playing a note on the first step on the last (the playhead moving steadily backward, as on Ping-Pong's way
+    back, and forward otherwise), a loop playing only the notes in it, a muted note and one at
     no chance silent and one at half playing about half the passes (alike each time), another pattern taking over where
     the loop comes round, in Key a key playing the pattern transposed from Root and stopping it when let go (its end
     reported, the sequencer's notes' never, the playhead in the telemetry), the keys the telemetry shows held leaving
@@ -672,7 +673,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     undoably; a note dragged past the roll's top scrolling the rows, the note going along; a patch loaded fitting the
     roll to its notes; a note dragged moving on the grid by steps and rows, undoably, its end dragged setting
     its length and its start moving it with its end staying (the cursor left-right over either end), and either with Shift set off the
-    grid; a box picking the notes it reaches and the field's VEL dragged up turning every one picked up; the
+    grid, as a note moved with Shift lands (a Shift+click on a note picked, not dragged, unpicking it); a box picking the notes it reaches and the field's VEL dragged up turning every one picked up; the
     field's VEL and OFFSET double-clicked back to 100 and onto the grid; a key the sequencer plays lit in the roll's
     keys (read off the rendered pixels); the loop dragged by its ends and its middle (with their cursors) and a new
     one drawn across the bars outside it; the draw tool's cursor a pen over the empty grid (and over a note what a drag does to it), a note it draws and holds
@@ -688,7 +689,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     panning it across and up and down, and Alt+wheel zooming the rows
     in about the row under the mouse, the rows' bar at its right scrolling them; the scale's list opening above its button with both panels collapsed; the lane
     on CHANCE setting a note's chance; a double-click on the ruler looping the whole pattern; the scale's list picking Minor and FOLD showing
-    only its rows; the snap's list, and the roll's lines falling at its length and as strong as the GRID setting
+    only its rows, and a note off it keeping its row, hatched (read off the rendered pixels); the snap's list, and the roll's lines falling at its length and as strong as the GRID setting
     says (read off the rendered pixels); copying the pattern into the next empty one; and the bin clearing the pattern,
     asking first, undoably.
 

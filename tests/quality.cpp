@@ -3511,6 +3511,41 @@ void sequencerChecks() {
         check(!back.empty() && near(back[0].frame, 15 * kStep) && ons == 2 && only62 && near(looped[0].frame, kStep),
               "Reverse plays the loop backward, and the loop plays only the notes in it");
     }
+    // The playhead moves on steadily, backward through each step reversed (and on Ping-Pong's way back), forward
+    // otherwise: from one stretch of 512 frames to the next, never further than a stretch's share of a step (but where
+    // the loop comes round, or Ping-Pong turns, by a step).
+    for (SeqOrder order : {SeqOrder::Forward, SeqOrder::Reverse, SeqOrder::PingPong}) {
+        ParamValues p = blank();
+        note(p, 0, 0.0, 0.5, 60);
+        p[paramIndex(SeqParam::Order)] = static_cast<double>(order);
+        Sequencer seq;
+        seq.prepare(kSampleRate);
+        seq.configure(p);
+        std::array<SeqEvent, Sequencer::kMaxEvents> out;
+        const double share = 512.0 / kStep;
+        float last = -1.0f;
+        int jumps = 0, wrongWay = 0;
+        for (double done = 0.0; done < 40 * kStep;) {
+            uint32_t covered = 0;
+            seq.plan(512, 120.0, true, done / kSampleRate * 2.0, out, covered);
+            done += covered;
+            const float now = seq.position();
+            if (last >= 0.0f) {
+                const double moved = now - last;
+                if (std::abs(moved) > share + 1e-3)
+                    ++jumps;
+                else if ((order == SeqOrder::Reverse) != (moved < 0.0) && order != SeqOrder::PingPong)
+                    ++wrongWay;
+            }
+            last = now;
+        }
+        // 40 steps: the loop round twice (Forward, Reverse at steps 16 and 32), or Ping-Pong turning twice (15 and 30).
+        const int expected = 2;
+        std::printf("      playhead, %s: %d jumps, %d the wrong way\n",
+                    order == SeqOrder::Forward ? "forward" : order == SeqOrder::Reverse ? "reversed" : "ping-pong", jumps,
+                    wrongWay);
+        check(jumps <= expected && wrongWay == 0, "the playhead moves on steadily the way the pattern plays");
+    }
     // Muted or at no chance, a note doesn't play; at half, it plays some passes and not others, alike each time.
     {
         ParamValues p = blank();
