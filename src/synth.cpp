@@ -2521,11 +2521,15 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     bool shaperShapes = false; // whether any shaper that runs hears one (itself among them)
     for (int sh = 0; sh < kShapers; ++sh) {
         if (!shaperOn[sh]) {
-            v.shapers[sh] = {};
+            if (v.shaperHeld[sh]) { // when it runs again, it starts from silence
+                v.shapers[sh] = {};
+                v.shaperHeld[sh] = false;
+            }
             v.shaperOut[sh] = 0.0;
             v.shaperLast[sh] = {};
             continue;
         }
+        v.shaperHeld[sh] = true;
         for (int from = 0; from < kShapers; ++from)
             shaperShapes = shaperShapes ||
                            (shaperOn[from] && routed(target.shaperShaper[from][sh], current.shaperShaper[from][sh]));
@@ -2537,13 +2541,17 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     bool filterBack = false; // whether any filter that runs hears itself or a later one
     for (int f = 0; f < kFilters; ++f) {
         if (!filterOn[f]) { // when it runs again, it starts from silence
-            v.filters[f] = {};
+            if (v.filterHeld[f]) {
+                v.filters[f] = {};
+                v.filterHeld[f] = false;
+            }
             v.combDirty[f] = {true, true};
             v.filterRing[f] = 0;
             v.filterHeard[f] = 0;
             v.filterLast[f] = {};
             continue;
         }
+        v.filterHeld[f] = true;
         combs[f] = {combLine(v, f, 0), combLine(v, f, 1)};
         for (int from = f; from < kFilters; ++from)
             filterBack = filterBack || (filterOn[from] && routed(target.link[from][f], current.link[from][f]));

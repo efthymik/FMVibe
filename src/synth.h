@@ -426,6 +426,11 @@ private:
         std::array<std::array<ClipState, 2>, kShapers> shapers{}; // [shaper][channel]
         std::array<double, kShapers> shaperOut{};               // latest mono shaper output (what operators hear)
         std::array<std::array<double, 2>, kShapers> shaperLast{}; // latest shaper output per channel (what shapers hear)
+        // Whether a filter's or shaper's state above may hold anything since it last ran: one that stops is cleared
+        // once, as it stops, rather than every block it stays off (a Filter and a ClipState are large, see
+        // renderBlock()).
+        std::array<bool, kFilters> filterHeld{};
+        std::array<bool, kShapers> shaperHeld{};
         // Channel 1 of the filters and shapers stood still through a block without stereo spread: it takes channel 0's
         // state before it runs again, rather than carrying on from where it stopped (a comb would ring again).
         bool rightStale = false;
