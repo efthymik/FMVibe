@@ -1448,7 +1448,7 @@ bool View::seqPress(const Widget &w, Point p, Modifiers mods) {
         const int hit = seqLaneNoteAt(p);
         if (!layout.seqDraw) {
             // With Select, the dots are picked as their notes are in the roll: a box from empty space picking the notes
-            // whose dots or stems it reaches (Shift or Ctrl adding them to those picked), a dot clicked picking its
+            // whose dots it holds, not their stems (Shift or Ctrl adding them to those picked), a dot clicked picking its
             // note alone, or with Shift or Ctrl along with the others (or letting it go, once let go unmoved); and a dot
             // dragged moves every note picked up or down together, each from where it was.
             const bool adds = mods.shift || mods.ctrl;
@@ -1702,14 +1702,13 @@ void View::seqDrag(Point p) {
         setSeqCurve(curve, points);
         break;
     }
-    case SeqDrag::Mode::LaneBox: { // the notes whose dots, or stems under them, it reaches, and those picked before it
+    case SeqDrag::Mode::LaneBox: { // the notes whose dots it holds (not their stems), and those picked before it
         const float x0 = std::min(drag_.start.x, p.x), x1 = std::max(drag_.start.x, p.x);
         const float y0 = std::min(drag_.start.y, p.y), y1 = std::max(drag_.start.y, p.y);
-        const float bottom = kSeqLaneArea.y + kSeqLaneArea.h - 6.0f;
         seqSelection_ = d.boxBase;
         for (const SeqNote &n : seqNotes()) {
             const Point dot = seqLaneDot(n);
-            if (dot.x >= x0 && dot.x <= x1 && dot.y <= y1 && bottom >= y0 && !seqSelected(n.slot))
+            if (dot.x >= x0 && dot.x <= x1 && dot.y >= y0 && dot.y <= y1 && !seqSelected(n.slot))
                 seqSelection_.push_back(n.slot);
         }
         break;
@@ -2315,7 +2314,7 @@ void View::paintSeq(Canvas &c) {
         if (picked) // ringed, as the note is
             c.strokeCircle(dot, 6.0f, kText, 1.5f);
     }
-    // The box being dragged across the lane, picking the notes whose dots it reaches.
+    // The box being dragged across the lane, picking the notes whose dots it holds.
     if (drag_.kind == DragKind::Seq && seqDrag_.mode == SeqDrag::Mode::LaneBox) {
         const Rect box{std::min(drag_.start.x, drag_.now.x), std::min(drag_.start.y, drag_.now.y),
                        std::abs(drag_.now.x - drag_.start.x), std::abs(drag_.now.y - drag_.start.y)};

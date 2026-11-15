@@ -745,7 +745,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     ringed in the lane (read off the rendered pixels) and, with Draw, the picked notes' velocities dragged together
     there (where notes start together, the picked one's alone), the
     lane's cursor a pen and up and down over a dot and while one is dragged; with Select, a box from the lane's empty
-    space picking the notes whose dots or stems it reaches (ringed, read off the rendered pixels), a dot dragged moving
+    space picking the notes whose dots it holds (ringed, read off the rendered pixels; over their stems alone, none), a dot dragged moving
     every one picked together, one undo step, Shift+click adding a dot's note and Ctrl+click letting it go, a click on
     one of several picked picking it alone, and the arrow over empty space; Delete removing the notes picked; a note or key clicked in the
     roll heard alone while held (not played as the keyboard's), a note moved heard on its new row; the middle button

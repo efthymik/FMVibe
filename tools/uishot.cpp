@@ -6108,8 +6108,9 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
     model.ui.seqDraw = false;
     check(v0 == 77 && v1 == 113 && dotCursor && penCursor && groupDragCursor && singleDragCursor && emptyDragCursor,
           "with Draw, the picked notes' velocities move together in the lane, its cursor a pen and up and down over a dot");
-    // With Select, the lane's dots are picked as their notes are: a box from empty space along the lane's foot back
-    // over steps 4 and 0 picks those two notes (ringed, read off the rendered pixels), the 8th's left out; a dot dragged up
+    // With Select, the lane's dots are picked as their notes are: a box over their stems alone picks nothing, and one
+    // from empty space back over the dots of steps 4 and 0 picks those two notes (ringed, read off the rendered
+    // pixels), the 8th's left out; a dot dragged up
     // moves both, each from its own, one undo step; Shift+click adds the 8th's and Ctrl+click lets it go again; a click
     // on one of those picked, let go unmoved, picks it alone; the arrow, not a pen, over empty space.
     {
@@ -6123,12 +6124,20 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         const float foot = detail::kSeqLaneArea.y + detail::kSeqLaneArea.h - 8.0f;
         view.mouseMove({at(2.5, 48).x, detail::kSeqLaneArea.y + 10.0f}, {});
         const bool arrow = view.cursor() == CursorKind::Arrow;
-        view.mouseDown({at(5.5, 48).x, foot}, {}); // from right of step 4 back past the lane's left end
-        view.mouseMove({at(2.0, 48).x, foot - 10.0f}, {});
-        view.mouseMove({at(0.0, 48).x - 6.0f, foot - 20.0f}, {});
+        // Along the lane's foot, over the stems alone, it picks nothing.
+        view.mouseDown({at(5.5, 48).x, foot}, {});
+        view.mouseMove({at(2.0, 48).x, foot - 6.0f}, {});
+        view.mouseMove({at(0.0, 48).x - 6.0f, foot - 12.0f}, {});
+        view.mouseUp({at(0.0, 48).x - 6.0f, foot - 12.0f}, {});
+        const bool stemsLeft = !view.seqKey(View::Key::Delete, false);
+        // Over the dots of steps 0 and 4, from right of step 4 back past the lane's left end, it picks those two.
+        const float dots = laneDot(0.0, 100.0 / 127.0).y;
+        view.mouseDown({at(5.5, 48).x, dots + 8.0f}, {});
+        view.mouseMove({at(2.0, 48).x, dots}, {});
+        view.mouseMove({at(0.0, 48).x - 6.0f, dots - 8.0f}, {});
         const bool boxCursor = view.cursor() == CursorKind::Arrow;
         const bool boxShot = renderer.save(view, dir / "36i2-seq-lane-box.png");
-        view.mouseUp({at(0.0, 48).x - 6.0f, foot - 20.0f}, {});
+        view.mouseUp({at(0.0, 48).x - 6.0f, dots - 8.0f}, {});
         view.mouseMove({600.0f, 600.0f}, {});
         renderer.save(view, dir / "36i2-seq-lane-picked.png");
         const Point d0 = laneDot(0.0, 100.0 / 127.0), d4 = laneDot(4.0, 100.0 / 127.0), d8 = laneDot(8.0, 100.0 / 127.0);
@@ -6153,7 +6162,7 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         view.undo();
         std::printf("      the lane picked with Select: box %d (%d), together %d, undone %d, added %d, alone %d\n", boxed,
                     boxShot, together, undone, added, alone);
-        check(arrow && boxCursor && boxShot && boxed && together && undone && added && alone,
+        check(arrow && stemsLeft && boxCursor && boxShot && boxed && together && undone && added && alone,
               "with Select, a box, Shift+click and Ctrl+click pick the lane's dots, which move up and down together");
         for (int slot = 0; slot < 4; ++slot)
             model.set(seqNoteIndex(0, slot, SeqNoteParam::Velocity), was[slot]);

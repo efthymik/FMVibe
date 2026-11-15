@@ -837,8 +837,8 @@ one may have changed since it last did.
     across, the notes there take the height of the mouse (the cursor a pen, and up and down over a dot and while one is
     dragged); with more than one note picked, a drag from one of their dots moves them all up or down together, each
     from where it was. With **Select**, the dots are picked as their notes are in the roll, picking the notes: a drag
-    from empty space draws a box that picks the notes whose dots, or the stems under them, it reaches (with Shift or
-    Ctrl, adding them to those picked); a dot clicked picks its note alone, and with Shift or Ctrl along with the others
+    from empty space draws a box that picks the notes whose dots it holds (their stems alone don't count; with Shift or
+    Ctrl, it adds them to those picked); a dot clicked picks its note alone, and with Shift or Ctrl along with the others
     (or lets it go, once let go unmoved); a click on one of several picked, let go unmoved, picks it alone; and a dot
     dragged moves every note picked up or down together, each from where it was, one undo step (the cursor up and down
     over a dot, the arrow elsewhere). Either way a double-click puts the notes there back (velocity 100, chance full).
