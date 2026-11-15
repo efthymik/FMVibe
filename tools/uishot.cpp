@@ -744,6 +744,11 @@ Point scopeCycleButton(int choice) {
 }
 const Point kMoreWavesButton = waveButton(5);
 
+// The arrows in a list's button that step its choice along the list (-1 back, 1 on).
+Point listStep(Rect button, int dir) {
+    return detail::listStepButton(button, dir).center();
+}
+
 // The type's list button on a filter's page (where a shaper's curve's is), and its entries, which open under it.
 const Point kTypeButton = detail::kFilterTypeButton.center();
 Point typeItem(FilterType type) {
@@ -3336,6 +3341,23 @@ void testShapers(const std::filesystem::path &dir, Renderer &renderer) {
         view.wheel(kShaperList, -1.0f, {});
         check(wheeledToStack && wheeledToCustom && at(ShaperParam::Mode) == static_cast<double>(ClipMode::Stack),
               "the wheel over a shaper's list steps along it, Stack between Fold and Custom");
+        // The arrows in the list's button step along it too, round its ends: from Stack on to Custom, then on round
+        // to the first curve offered and back to Custom, each click an undo step.
+        {
+            const Rect button = detail::shaperModeButton(false);
+            click(view, listStep(button, 1));
+            const bool onToCustom = at(ShaperParam::Mode) == static_cast<double>(ClipMode::Custom);
+            const Rect custom = detail::shaperModeButton(true); // narrower now, beside SYM
+            click(view, listStep(custom, 1));
+            const bool round = at(ShaperParam::Mode) == static_cast<double>(detail::kClipModesOffered[0]);
+            click(view, listStep(button, -1));
+            const bool back = at(ShaperParam::Mode) == static_cast<double>(ClipMode::Custom);
+            view.undo();
+            view.undo();
+            check(onToCustom && round && back && at(ShaperParam::Mode) == static_cast<double>(ClipMode::Custom),
+                  "the arrows in a shaper's list step its curve, round the list's ends, each an undo step");
+            view.undo();
+        }
         click(view, kShaperList);
         click(view, shaperListItem(ClipMode::Hard));
         check(picked && stacked > 1.0 && stacked == std::round(stacked) && shot && undone &&
@@ -6917,6 +6939,30 @@ void testAmp(const std::filesystem::path &dir, Renderer &renderer) {
     view.undo();
     check(cabsShot && bass && model.value(at(FxParam::AmpCab)) == static_cast<double>(AmpCab::Closed4x12),
           "the amp's cabinet list picks a cabinet, undoably");
+    {
+        // The arrows in the model's list: on through every model and round to Crunch again, a change and an undo step
+        // each click; back from Clean round to Fuzz. The cabinet's: on to the next cabinet, and back.
+        const int amp = at(FxParam::AmpModel), cab = at(FxParam::AmpCab);
+        bool each = true;
+        for (int k = 1; k <= kModels; ++k) {
+            click(view, listStep(detail::ampModelButton(card), 1));
+            each = each && std::lround(model.value(amp)) == (static_cast<int>(AmpModel::Crunch) + k) % kModels;
+        }
+        view.undo();
+        const bool undone = std::lround(model.value(amp)) == static_cast<long>(AmpModel::Blues);
+        model.set(amp, static_cast<double>(AmpModel::Clean));
+        click(view, listStep(detail::ampModelButton(card), -1));
+        const bool fuzz = std::lround(model.value(amp)) == static_cast<long>(AmpModel::Fuzz);
+        model.set(amp, static_cast<double>(AmpModel::Crunch));
+        click(view, listStep(detail::ampCabButton(card), 1));
+        const bool onCab = std::lround(model.value(cab)) == static_cast<long>(AmpCab::Bass4x10);
+        view.mouseMove(away, {});
+        const bool stepsShot = renderer.save(view, dir / "9f3-amp-steps.png");
+        click(view, listStep(detail::ampCabButton(card), -1));
+        check(each && undone && fuzz && onCab && stepsShot &&
+                  std::lround(model.value(cab)) == static_cast<long>(AmpCab::Closed4x12),
+              "the arrows in the amp's model and cabinet lists step them round the lists' ends, undoably");
+    }
     // The mic's three under the cabinet's display.
     click(view, centerOf(detail::ampMicChoice(card, static_cast<int>(AmpMic::Ribbon))));
     const bool ribbon = model.value(at(FxParam::AmpMic)) == static_cast<double>(AmpMic::Ribbon);
@@ -10149,6 +10195,33 @@ void run(const std::filesystem::path &dir, float scale) {
         model.set(type, static_cast<double>(FilterType::LowPass));
         check(typeListShot && icons && ladder && ladderShot && stepped && undone && held,
               "the type's list shows each type with its icon and picks Ladder, and the wheel steps it");
+        // Its arrows: back from the first type round to the last, on round to the first again and on to the second,
+        // each click an undo step; the arrow under the mouse lit (read off the rendered pixels, in its corner, clear
+        // of its glyph).
+        const Rect button = detail::kFilterTypeButton;
+        const Rect next = detail::listStepButton(button, 1);
+        const Point corner{next.x + 2.5f, next.y + 3.0f};
+        view.mouseMove({button.x - 8.0f, button.center().y}, {});
+        renderer.save(view, dir / "4e-type-steps.png");
+        const uint32_t idle = lit(renderer.pixel(corner));
+        view.mouseMove(next.center(), {});
+        const bool stepsShot = renderer.save(view, dir / "4e-type-steps-hover.png");
+        const uint32_t hovered = lit(renderer.pixel(corner));
+        click(view, listStep(button, -1));
+        const bool wrapped = std::lround(model.value(type)) == static_cast<long>(kTypes - 1);
+        click(view, listStep(button, 1));
+        const bool round = std::lround(model.value(type)) == static_cast<long>(FilterType::LowPass);
+        click(view, listStep(button, 1));
+        const bool on = std::lround(model.value(type)) == static_cast<long>(FilterType::HighPass);
+        view.undo();
+        const bool stepUndone = std::lround(model.value(type)) == static_cast<long>(FilterType::LowPass);
+        view.undo();
+        if (hovered <= idle + 8)
+            std::printf("      the arrow's corner: %u idle, %u under the mouse\n", idle, hovered);
+        check(stepsShot && hovered > idle + 8 && wrapped && round && on && stepUndone &&
+                  std::lround(model.value(type)) == static_cast<long>(kTypes - 1),
+              "the arrows in a filter's type list step it round the list's ends, undoably, lit under the mouse");
+        model.set(type, static_cast<double>(FilterType::LowPass));
     }
     // A morph's slope's list and notch switch, side by side where the slope's list is: 24 dB picked from the list
     // (18 refused), the switch going through the notch and back; its six knobs, its Morph's after Resonance turning;
@@ -10591,6 +10664,16 @@ void run(const std::filesystem::path &dir, float scale) {
     }
     check(std::lround(model.value(paramIndex(3, FxParam::FilterType))) == static_cast<long>(FilterType::Comb),
           "the filter card's type list picks the filter type");
+    {
+        // Its arrows step the type, back to the type before Comb and on again.
+        const Rect button{fxCardX(model, 3) + 14.0f, 180.0f + 44.0f, fxCardW(model, 3) - 28.0f, 22.0f};
+        const int type = paramIndex(3, FxParam::FilterType);
+        click(view, listStep(button, -1));
+        const bool back = std::lround(model.value(type)) == static_cast<long>(FilterType::Comb) - 1;
+        click(view, listStep(button, 1));
+        check(back && std::lround(model.value(type)) == static_cast<long>(FilterType::Comb),
+              "the arrows in the filter card's type list step the type");
+    }
 
     // The parametric EQ's first band: dragging its handle 30 px up is +10 dB.
     const float peqW = fxCardW(model, 2) - 44.0f; // its display's plot, inside the wider card
@@ -10714,6 +10797,17 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, clipItem(ClipMode::Asymmetric));
     check(std::lround(model.value(paramIndex(0, FxParam::ShaperMode))) == static_cast<long>(ClipMode::Asymmetric),
           "the shaper's list picks its curve");
+    {
+        // Its arrows step the curve along the list's order, on and back.
+        const Rect button{fxCardX(model, 0) + 14.0f, 180.0f + 44.0f, fxCardW(model, 0) - 28.0f, 22.0f};
+        const int mode = paramIndex(0, FxParam::ShaperMode);
+        click(view, listStep(button, 1));
+        const bool on = std::lround(model.value(mode)) ==
+                        static_cast<long>(detail::kClipModesOffered[clipRow(ClipMode::Asymmetric) + 1]);
+        click(view, listStep(button, -1));
+        check(on && std::lround(model.value(mode)) == static_cast<long>(ClipMode::Asymmetric),
+              "the arrows in the shaper card's curve list step the curve along the list");
+    }
     {
         // The Stack curve, before Custom in the list, puts its Stack knob after Drive, four knobs across the card:
         // dragged up, it runs more stages, whole ones, undoably, the display drawing the stages' curve.

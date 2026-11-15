@@ -1762,6 +1762,12 @@ one may have changed since it last did.
 - **Menus and lists**: every list and menu (the effects', the source types', the waves', a list button's, a Param EQ
   band's shapes, the MODS view's cascading menus) marks the row under the mouse, and the one picked, in the same
   neutral tones; only a row's icon takes a color (the effect's, the band's, the source's).
+- **Stepping lists**: a voice filter's and the filter effect's type, a voice shaper's and the shaper effect's curve, and
+  the amp's model and cabinet have an arrow at each end of their list's button, in place of the chevron: ‹ steps to
+  the entry before the one shown and › to the one after, in the list's order, round its ends (from the last on to the
+  first), skipping an entry the list can't pick; each click is an undo step, as a pick from the list is, and closes the
+  list if it is open. The arrow under the mouse lights in the list's color and says what it steps to (Previous type,
+  Next curve, ...). A click on the rest of the button opens the list.
 - **Button rows**: buttons that pick one of a few (Poly | Mono, an operator's waves, a voice filter's and the filter
   effect's types, an LFO's clock modes, the partial counts, Points | Steps, the phaser's and flanger's + | −, the
   chorus's voices) and

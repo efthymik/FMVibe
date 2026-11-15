@@ -872,6 +872,14 @@ inline Rect filterTypeListButton(Rect card) {
     return {card.x + 14.0f, card.y + 44.0f, card.w - 28.0f, 22.0f};
 }
 
+// A list button's arrows, which step its choice along the list (see View::stepList()): `dir` -1 the one before, at its
+// left end, and 1 the one after, at its right end, where other lists' chevron is. Its name goes between them.
+constexpr float kListStepW = 18.0f;
+inline Rect listStepButton(Rect button, int dir) {
+    return {dir > 0 ? button.right() - 1.0f - kListStepW : button.x + 1.0f, button.y + 1.0f, kListStepW,
+            button.h - 2.0f};
+}
+
 inline Rect listMenu(Rect button, int count) {
     return {button.x, button.bottom() + 4.0f, button.w, 8.0f + count * 22.0f};
 }
