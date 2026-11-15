@@ -300,13 +300,17 @@ public:
     virtual bool writesPresetFiles() const { return true; }
     // Whether the patch is a preset file (not Init), and writing the patch over that file, as Save does.
     bool presetHasFile() const { return !preset_.empty(); }
+    // Whether Save can write over that file: not a factory preset's, which is built into the plugin, so Save saves
+    // it as a new preset, as Save As does.
+    virtual bool presetWritable() const { return presetHasFile(); }
     bool overwritePreset() {
         const std::wstring file = preset_; // savePreset() sets preset_ again
-        return !file.empty() && savePreset(file);
+        return presetWritable() && savePreset(file);
     }
 
-    // The preset library: the presets in the preset folder (Documents\FMVibe\presets), by subfolder and
-    // then by name, as the last scan found them. The first scan makes the folder, with a few examples.
+    // The preset library: the factory presets, built in, and the presets in the preset folder
+    // (Documents\FMVibe\presets), by subfolder (the factory presets as Factory's) and then by name, as the last
+    // scan found them.
     virtual void rescanPresets() = 0;
     virtual const std::vector<PresetEntry> &presets() const = 0;
     // The entry loaded or saved last, or -1 after Init or for a file from elsewhere.

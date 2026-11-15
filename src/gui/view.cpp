@@ -214,6 +214,14 @@ bool isFilterTypeList(int param) {
     return false;
 }
 
+// A list whose button has arrows that step along it (see View::stepList()): a filter's type and a shaper's curve (a
+// voice's or an effect's), an amp's model and cabinet, the reverb's algorithm and an LFO's shape.
+bool isSteppableList(int param) {
+    const FxParam field = fxFieldOf(param);
+    return isFilterTypeList(param) || isClipMode(param) || field == FxParam::AmpModel || field == FxParam::AmpCab ||
+           field == FxParam::ReverbType || isLfoShape(param);
+}
+
 // A voice filter's morph mode, or the filter effect's: whether its Morph type goes through the notch (a switch).
 bool isMorphMode(int param) {
     const int filter = filterOfParam(param);
@@ -889,6 +897,30 @@ bool View::listItemFits(int param, int item) const {
     if (isSplitSlope(param)) // 6, 12 or 24 dB; three bands 12 or 24
         return item != 2 && !(item == 0 && splitThree(splitOf(param)));
     return !isFilterSlope(param) || slopeFits(static_cast<FilterType>(std::lround(value(slopeTypeParam(param)))), item);
+}
+
+void View::stepList(int param, int dir) {
+    // From the entry shown (from the list's end, for a value it doesn't offer) to the next one it can pick that way,
+    // round its ends, as a pick from the list would: one undo step, the list closed.
+    const int items = listCount(param);
+    const int shown = listShown(param);
+    int at = dir > 0 ? -1 : items;
+    for (int item = 0; item < items; ++item)
+        if (listItemValue(param, item) == shown)
+            at = item;
+    listMenu_ = -1;
+    for (int k = 1; k <= items; ++k) {
+        const int item = ((at + dir * k) % items + items) % items;
+        const int to = listItemValue(param, item);
+        if (!listItemFits(param, to))
+            continue;
+        if (to != shown)
+            edit(param, to);
+        // An LFO holding the retired Custom shape (a state can) goes back to its size as it takes another, as a pick does.
+        if (isLfoShape(param) && sourceOf(param) == wideLfo_)
+            wideLfo_ = -1;
+        return;
+    }
 }
 
 Color View::clipColor(int unit) const {
@@ -2061,6 +2093,13 @@ std::vector<View::Widget> View::widgets() const {
         w.a = a;
         w.b = b;
         list.push_back(w);
+        if (kind == Kind::ListButton && isSteppableList(param)) // its arrows, over it
+            for (int dir : {-1, 1}) {
+                w.kind = Kind::ListStep;
+                w.rect = listStepButton(rect, dir);
+                w.b = dir;
+                list.push_back(w);
+            }
     };
     auto merge = [&list](size_t from) { mergeButtons(list, from); };
     // A wire's or OUT label in the graph: the label, then, while it is a pill (see labelPill()), its mode's part and its
@@ -2083,7 +2122,8 @@ std::vector<View::Widget> View::widgets() const {
         add(Kind::Knob, knobRect(center, diameter), param);
         list.back().label = label;
     };
-    // A drawn shaper curve is edited right in its display, as in the big editor its edit button opens.
+    // A drawn shaper curve is edited right in its display, as in the big editor its edit button (beside its curve's
+    // list, ClipDisplay) opens.
     auto drawnCurve = [&](int unit, Rect display) {
         const int shape = kMaxSources + unit;
         add(Kind::ShapeArea, display, -1, shape);
@@ -2103,8 +2143,6 @@ std::vector<View::Widget> View::widgets() const {
             add(Kind::ShapePoint, {c.x - 6.0f, c.y - 6.0f, 12.0f, 12.0f}, -1, shape, point);
             list.back().compact = true;
         }
-        // The edit button in the corner a curve leaves empty
-        add(Kind::ClipDisplay, clipEditButton(display), -1, unit);
     };
 
     // Header.
@@ -2297,8 +2335,10 @@ std::vector<View::Widget> View::widgets() const {
             };
             switch (type) {
             case FxType::Shaper: {
-                add(Kind::ListButton, clipModeButton(card), at(FxParam::ShaperMode));
                 const bool custom = clipMode(value(at(FxParam::ShaperMode))) == ClipMode::Custom;
+                add(Kind::ListButton, clipModeButton(card, custom), at(FxParam::ShaperMode));
+                if (custom)
+                    add(Kind::ClipDisplay, clipEditButton(card), -1, slot);
                 const size_t switches = list.size();
                 if (custom)
                     add(Kind::Toggle, clipSymButton(card), at(FxParam::ShaperSymmetric));
@@ -2804,6 +2844,8 @@ std::vector<View::Widget> View::widgets() const {
         const int shaper = shaperOfNode(node);
         const bool custom = clipMode(value(paramIndex(shaper, ShaperParam::Mode))) == ClipMode::Custom;
         add(Kind::ListButton, shaperModeButton(custom), paramIndex(shaper, ShaperParam::Mode));
+        if (custom)
+            add(Kind::ClipDisplay, kShaperEditButton, -1, kFxSlots + shaper);
         const size_t switches = list.size();
         if (custom)
             add(Kind::Toggle, kShaperSymButton, paramIndex(shaper, ShaperParam::Symmetric));
@@ -3424,7 +3466,8 @@ std::vector<View::Widget> View::widgets() const {
                                            : slopeButton(fxDisplayIn(card, FxType::Filter)))
                                 : listField == FxParam::AmpModel    ? ampModelButton(card)
                                 : listField == FxParam::AmpCab      ? ampCabButton(card)
-                                                                    : clipModeButton(card);
+                                                                    : clipModeButton(card, clipMode(value(listMenu_)) ==
+                                                                                                    ClipMode::Custom);
             const int items = listCount(listMenu_);
             add(Kind::ListMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
             add(Kind::ListMenu, listMenu(button, items), -1, 1);
@@ -3939,9 +3982,10 @@ void View::paint(Canvas &c, Rect area) {
         paintTyping(c);
     if (browserOpen_)
         paintBrowser(c);
-    if (settingsOpen_)
+    if (settingsOpen_) {
         paintSettings(c);
-    else if (confirm_ >= 0)
+        paintTooltip(c); // its sliders'
+    } else if (confirm_ >= 0)
         paintConfirm(c);
     else
         paintTooltip(c);
@@ -6308,12 +6352,19 @@ void View::paintInspector(Canvas &c) {
                 c.popLayer();
         }
     };
+    // A filter's response and a shaper's curve are drawn in the lens's own shade of the displays (inspectorDisplay()).
+    struct LensDisplay {
+        Color saved = look.display;
+        LensDisplay() { look.display = inspectorDisplay(); }
+        ~LensDisplay() { look.display = saved; }
+    };
 
     if (isShaperNode(node)) {
         const int shaper = shaperOfNode(node);
         paintPageTitle(c, node, summaryRect, clipModeName(clipMode(value(paramIndex(shaper, ShaperParam::Mode)))),
                        boxRoutes(node));
         const PageDim page(c, !nodeOn(node));
+        const LensDisplay display;
         paintShaperPage(c, shaper);
         return;
     }
@@ -6388,6 +6439,7 @@ void View::paintInspector(Canvas &c) {
                 " dB";
     paintPageTitle(c, node, summaryRect, head, boxRoutes(node));
     const PageDim page(c, !nodeOn(node));
+    const LensDisplay display;
     // A voice filter tracks the newest voice's note; with none, the curve is back at the knob's C4.
     paintFilterResponse(c, kFilterDisplay, paramIndex(filter, FilterParam::Type),
                         paramIndex(filter, FilterParam::Slope), paramIndex(filter, FilterParam::Cutoff),
@@ -7976,8 +8028,17 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         }
         break;
     }
+    case Kind::ShapeArea: // the box dragged across it, picking points; the rest is drawn with its editor or card
+        if (drag_.kind == DragKind::ShapeBox && drag_.widget.a == w.a) {
+            const Rect box{std::min(drag_.start.x, drag_.now.x), std::min(drag_.start.y, drag_.now.y),
+                           std::abs(drag_.now.x - drag_.start.x), std::abs(drag_.now.y - drag_.start.y)};
+            c.pushClip(w.rect);
+            c.fillRect(box, shapeColor(w.a).alpha(0.12f));
+            c.strokeRect(box, shapeColor(w.a).alpha(0.7f), 1.0f);
+            c.popClip();
+        }
+        break;
     case Kind::FxGrip:
-    case Kind::ShapeArea:
     case Kind::MatrixLabel:
     case Kind::NoteDisplay:
     case Kind::Wire:
@@ -8346,8 +8407,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::PartialEdit: // a Custom wave's, lit while its partial editor is open
         editButton(c, w.rect, kAccent, hovered, partialEditing() == w.a);
         break;
-    case Kind::ClipDisplay: // the edit button on a drawn curve's display
-        editButton(c, w.rect, clipColor(w.a), hovered, false);
+    case Kind::ClipDisplay: // a drawn curve's edit button, beside its list; lit while its big editor is open
+        editButton(c, w.rect, clipColor(w.a), hovered, shapeEditing() == kMaxSources + w.a);
         break;
     case Kind::ListButton: {
         // A slope shows as it plays (a band-pass's 6 dB as 12), and faintly for a comb, which has none.
@@ -8368,16 +8429,34 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // An LFO's shape and a filter's type show their icons before their names.
         const bool filterType = isFilterTypeList(w.param);
         const float indent = isLfoShape(w.param) ? 24.0f : filterType ? 30.0f : 0.0f;
+        // A list with arrows has them at its ends (see the ListStep widgets), and no chevron.
+        const bool steps = isSteppableList(w.param);
+        const float left = w.rect.x + (steps ? kListStepW + 2.0f : 10.0f);
         if (isLfoShape(w.param))
-            lfoShapeIcon(c, {w.rect.x + 10.0f, w.rect.center().y - 5.0f, 16.0f, 10.0f}, static_cast<LfoShape>(shown),
-                         color);
-        if (filterType)
-            filterIcon(c, filterTypeIconRect(w.rect), static_cast<FilterType>(shown), color);
-        c.text({w.rect.x + 10.0f + indent, w.rect.y, w.rect.w - 30.0f - indent, w.rect.h}, listItemName(w.param, shown),
+            lfoShapeIcon(c, {left, w.rect.center().y - 5.0f, 16.0f, 10.0f}, static_cast<LfoShape>(shown), color);
+        if (filterType) {
+            const Rect icon = filterTypeIconRect(w.rect);
+            filterIcon(c, {icon.x + left - (w.rect.x + 10.0f), icon.y, icon.w, icon.h}, static_cast<FilterType>(shown),
+                       color);
+        }
+        const float right = w.rect.right() - (steps ? kListStepW + 2.0f : 20.0f);
+        c.text({left + indent, w.rect.y, right - left - indent, w.rect.h}, listItemName(w.param, shown),
                kTextBody, text, Align::Left, true);
-        const Point m{w.rect.right() - 13.0f, w.rect.center().y};
-        const Point chevron[] = {{m.x - 4.0f, m.y - 2.0f}, {m.x, m.y + 2.5f}, {m.x + 4.0f, m.y - 2.0f}};
-        c.polyline(chevron, 3, text, 1.5f);
+        if (!steps) {
+            const Point m{w.rect.right() - 13.0f, w.rect.center().y};
+            const Point chevron[] = {{m.x - 4.0f, m.y - 2.0f}, {m.x, m.y + 2.5f}, {m.x + 4.0f, m.y - 2.0f}};
+            c.polyline(chevron, 3, text, 1.5f);
+        }
+        break;
+    }
+    case Kind::ListStep: { // an arrow pointing the way it steps, lit under the mouse
+        const Color color = listColor(w.param);
+        if (hovered)
+            c.fillRect(w.rect, color.alpha(look.flat ? 0.24f : 0.18f), kRadiusMark);
+        const Point m = w.rect.center();
+        const float d = w.b > 0 ? 1.0f : -1.0f;
+        const Point arrow[] = {{m.x - 1.5f * d, m.y - 4.0f}, {m.x + 2.0f * d, m.y}, {m.x - 1.5f * d, m.y + 4.0f}};
+        c.polyline(arrow, 3, hovered ? kText : kDim, 1.5f);
         break;
     }
     case Kind::ListMenu:
@@ -8461,12 +8540,15 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                kTextBody, !fits ? kFaint : hovered || selected ? kText : kDim, Align::Left, selected);
         break;
     }
-    case Kind::ShapePoint: { // compact: smaller, in a shaper's card
+    case Kind::ShapePoint: { // compact: smaller, in a shaper's card; picked: filled, and ringed
         const bool focused = hovered || active;
+        const bool picked = shapePointPicked(w.a, w.b);
         const Color color = shapeColor(w.a);
         const float radius = w.compact ? (focused ? 5.0f : 3.8f) : (focused ? 6.5f : 5.0f);
-        c.fillCircle(w.rect.center(), radius, focused ? color : kPanel);
+        c.fillCircle(w.rect.center(), radius, focused || picked ? color : kPanel);
         c.strokeCircle(w.rect.center(), radius, color, w.compact ? 1.5f : 2.0f);
+        if (picked)
+            c.strokeCircle(w.rect.center(), radius + (w.compact ? 2.5f : 3.0f), color.alpha(0.6f), 1.0f);
         break;
     }
     case Kind::ShapeCurve: {
@@ -9488,6 +9570,8 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::PresetStep && hover_->kind != Kind::PresetNameBox &&
          hover_->kind != Kind::TempoBox && hover_->kind != Kind::BrowserFolder &&
          hover_->kind != Kind::SettingsButton && hover_->kind != Kind::UndoButton &&
+         hover_->kind != Kind::SettingsHue && hover_->kind != Kind::SettingsGlow &&
+         hover_->kind != Kind::SettingsLinks && hover_->kind != Kind::SettingsGrid &&
          !(hover_->kind == Kind::AlgorithmButton && !algorithmMenuOpen_) &&
          hover_->kind != Kind::ShapeReset && hover_->kind != Kind::PartialReset &&
          hover_->kind != Kind::PartialRandom &&
@@ -9508,7 +9592,7 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::FxInsert && hover_->kind != Kind::DynBand && hover_->kind != Kind::FxMode &&
          hover_->kind != Kind::FxNode && hover_->kind != Kind::FxSlot && hover_->kind != Kind::FxGap &&
          hover_->kind != Kind::FxNodeRemove && hover_->kind != Kind::FxNodeDelete && hover_->kind != Kind::FxClear &&
-         hover_->kind != Kind::NodeDelete &&
+         hover_->kind != Kind::NodeDelete && hover_->kind != Kind::ListStep &&
          hover_->kind != Kind::WireStart &&
          hover_->kind != Kind::DynGrip && hover_->kind != Kind::DynZone && !(hover_->kind == Kind::Knob && dynKnobTip(hover_->param) != Str::Count) &&
          !(hover_->kind == Kind::ListButton && (isSlopeList(hover_->param) || isMidiInput(hover_->param))) &&
@@ -9631,9 +9715,10 @@ void View::paintTooltip(Canvas &c) {
             text = tr(Str::TipLoad);
             break;
         case PresetAction::Save:
-            text = !controller_.presetHasFile() ? tr(Str::TipSaveNoFile)
-                   : controller_.patchEdited()  ? trf(Str::TipSave, {controller_.presetName()})
-                                                : tr(Str::TipSaveUnchanged);
+            text = !controller_.presetHasFile()                         ? tr(Str::TipSaveNoFile)
+                   : !controller_.patchEdited()                         ? tr(Str::TipSaveUnchanged)
+                   : controller_.writesPresetFiles() && !controller_.presetWritable() ? tr(Str::TipSaveAs)
+                                                                        : trf(Str::TipSave, {controller_.presetName()});
             break;
         case PresetAction::SaveAs:
             text = tr(presetActionOn(PresetAction::SaveAs) ? Str::TipSaveAs : Str::TipSaveUnchanged);
@@ -9641,6 +9726,14 @@ void View::paintTooltip(Canvas &c) {
         }
     else if (hover_->kind == Kind::SettingsButton)
         text = tr(Str::TipSettings);
+    else if (hover_->kind == Kind::SettingsHue)
+        text = tr(Str::TipSettingsHue);
+    else if (hover_->kind == Kind::SettingsGlow)
+        text = tr(Str::TipSettingsGlow);
+    else if (hover_->kind == Kind::SettingsLinks)
+        text = tr(Str::TipSettingsLinks);
+    else if (hover_->kind == Kind::SettingsGrid)
+        text = tr(Str::TipSettingsGrid);
     else if (hover_->kind == Kind::SlotBypass)
         text = tr(slotBypassed(hover_->a, hover_->b) ? Str::TipBypassed : Str::TipBypass);
     else if (hover_->kind == Kind::SourcePolarity)
@@ -9730,6 +9823,15 @@ void View::paintTooltip(Canvas &c) {
         text = tr(value(param) >= 0.5 ? Str::TipFxOn : Str::TipFxOff);
     else if (isLfoSync(param))
         text = tr(Str::TipLfoSync);
+    else if (hover_->kind == Kind::ListStep) {
+        const bool next = hover_->b > 0;
+        text = tr(isClipMode(param)                 ? (next ? Str::TipNextCurve : Str::TipPrevCurve)
+                  : isLfoShape(param)               ? (next ? Str::TipNextShape : Str::TipPrevShape)
+                  : field == FxParam::ReverbType    ? (next ? Str::TipNextAlgorithm : Str::TipPrevAlgorithm)
+                  : field == FxParam::AmpModel      ? (next ? Str::TipNextModel : Str::TipPrevModel)
+                  : field == FxParam::AmpCab        ? (next ? Str::TipNextCabinet : Str::TipPrevCabinet)
+                                                    : (next ? Str::TipNextType : Str::TipPrevType));
+    }
     else if (hover_->kind == Kind::ListButton && isSplitSlope(param))
         text = tr(Str::TipSlope);
     else if (hover_->kind == Kind::ListButton && isFilterSlope(param))
@@ -10377,6 +10479,10 @@ void View::applyDrag(Point p) {
             const double half = 0.5 * layout.shapeGridY; // lines per unit of height
             y = std::round((y + 1.0) * half) / half - 1.0;
         }
+        if (!drag_.points.empty()) { // the points picked, after it
+            moveShapePoints(shape, point, x, y);
+            break;
+        }
         const int count = shapePointCount(shape);
         // Symmetric, the middle point stays in the middle, and the others right of it.
         if (point > 0 && !(isCurve(shape) && point + 1 == count) && !middlePoint(shape, point)) {
@@ -10392,6 +10498,16 @@ void View::applyDrag(Point p) {
         if (!inMirroredHalf(w.a, p)) // held over the mirrored half, the step stays where it was
             addShapeStep(w.a, p, drag_.snap, drag_.shapeBefore);
         break;
+    case DragKind::ShapeBox: { // the points shown inside it, and those picked before it
+        const Rect box{std::min(drag_.start.x, p.x), std::min(drag_.start.y, p.y), std::abs(p.x - drag_.start.x),
+                       std::abs(p.y - drag_.start.y)};
+        std::vector<int> picked = drag_.boxBase;
+        for (int point = 0; point < shapePointCount(w.a); ++point)
+            if (pointShown(w.a, point) && box.contains(shapePointPos(w.a, point)))
+                picked.push_back(point);
+        setShapePick(w.a, std::move(picked));
+        break;
+    }
     case DragKind::Partials: {
         // A quick sweep sets every bar it passed, along a line (in bar heights) from where the last move was.
         const int op = w.a;
@@ -10601,6 +10717,13 @@ void View::mouseDown(Point p, Modifiers mods) {
     // state load may have replaced the layout since it last ran.
     keepRoutes();
     const auto hit = hitTest(p);
+    // The points picked in a shape editor are let go of at a click anywhere but on that shape.
+    if (shapePick_.shape >= 0 && !(hit && (hit->kind == Kind::ShapeArea || hit->kind == Kind::ShapePoint ||
+                                           hit->kind == Kind::ShapeCurve) &&
+                                   hit->a == shapePick_.shape))
+        clearShapePick();
+    if (!(hit && hit->kind == Kind::SeqLane)) // and those on the SEQ view's lane's curve, at a click off the lane
+        seqCurvePick_ = SeqCurvePick{};
     // The MODS view's filter lets the keyboard go at a click anywhere else.
     if (!(hit && (hit->kind == Kind::SearchField || hit->kind == Kind::SearchClear) &&
           hit->a == static_cast<int>(Field::ModsFilter)))
@@ -10627,6 +10750,7 @@ void View::mouseDown(Point p, Modifiers mods) {
     if (drawsStep(w, mods)) {
         // Held, the step follows the mouse, up and down and from column to column, as one undo step.
         const int shape = w.a;
+        clearShapePick(); // the points it takes the place of may have been picked
         std::vector<double> before;
         for (int f = 0; f < shapeParamCount(shape); ++f)
             before.push_back(value(shapeBase(shape) + f));
@@ -11052,6 +11176,9 @@ void View::mouseDown(Point p, Modifiers mods) {
             break; // a comb has no slope: its list stays shut
         listMenu_ = listMenu_ == w.param ? -1 : w.param;
         break;
+    case Kind::ListStep:
+        stepList(w.param, w.b);
+        break;
     case Kind::LabelMode:
         listMenu_ = listMenu_ == w.param ? -1 : w.param;
         break;
@@ -11099,7 +11226,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         const auto action = static_cast<PresetAction>(w.a);
         if (!presetActionOn(action))
             break;
-        const bool ask = action == PresetAction::Save     ? controller_.writesPresetFiles()
+        const bool ask = action == PresetAction::Save     ? controller_.writesPresetFiles() && controller_.presetWritable()
                          : action == PresetAction::SaveAs ? false
                                                           : controller_.patchEdited();
         if (ask) {
@@ -11223,13 +11350,42 @@ void View::mouseDown(Point p, Modifiers mods) {
         controller_.beginEdit(paramIndex(GlobalParam::PitchBend));
         applyDrag(p);
         break;
-    case Kind::ShapeArea:
+    case Kind::ShapeArea: // a box across it picks the points it reaches, with Ctrl as well as those picked already
+        drag_.kind = DragKind::ShapeBox;
+        drag_.boxBase = mods.ctrl ? shapePicked(w.a) : std::vector<int>{};
+        setShapePick(w.a, drag_.boxBase);
         break;
-    case Kind::ShapePoint:
+    case Kind::ShapePoint: {
+        // A point not picked is picked alone, or with Ctrl along with the others; one picked already moves with the
+        // others, and let go of unmoved is picked alone, or with Ctrl let go.
         drag_.kind = DragKind::ShapePoint;
+        std::vector<int> picked = shapePicked(w.a);
+        const bool was = std::find(picked.begin(), picked.end(), w.b) != picked.end();
+        if (mods.ctrl && was)
+            drag_.unpick = true;
+        else if (mods.ctrl)
+            picked.push_back(w.b);
+        else if (!was)
+            picked = {w.b};
+        else
+            drag_.narrow = picked.size() > 1;
+        setShapePick(w.a, picked);
+        picked = shapePicked(w.a);
+        if (picked.size() > 1) { // together, one undo step
+            controller_.beginStep();
+            drag_.step = true;
+            for (int point : picked) {
+                for (PointField field : {PointField::X, PointField::Y})
+                    controller_.beginEdit(shapeIndex(w.a, point, field));
+                drag_.origin.push_back({shapePointX(w.a, point), value(shapeIndex(w.a, point, PointField::Y))});
+            }
+            drag_.points = std::move(picked);
+            break;
+        }
         for (PointField field : {PointField::X, PointField::Y})
             controller_.beginEdit(shapeIndex(w.a, w.b, field));
         break;
+    }
     case Kind::ShapeCurve:
         drag_.kind = DragKind::ShapeCurve;
         drag_.startValue = value(w.param);
@@ -11330,6 +11486,15 @@ void View::mouseDown(Point p, Modifiers mods) {
 
 void View::mouseUp(Point p, Modifiers) {
     const Widget &w = drag_.widget;
+    // A point clicked, not moved: with Ctrl, one picked already let go; without, one of several picked picked alone.
+    if (drag_.kind == DragKind::ShapePoint && !drag_.moved && (drag_.unpick || drag_.narrow)) {
+        std::vector<int> picked = shapePicked(w.a);
+        if (drag_.unpick)
+            std::erase(picked, w.b);
+        else
+            picked = {w.b};
+        setShapePick(w.a, std::move(picked));
+    }
     switch (drag_.kind) {
     case DragKind::Node:
         if (drag_.moved)
@@ -11561,8 +11726,11 @@ void View::finishDrag() {
             controller_.endEdit(index);
         break;
     case DragKind::ShapePoint:
-        for (PointField field : {PointField::Y, PointField::X})
-            controller_.endEdit(shapeIndex(w.a, w.b, field));
+        if (drag_.points.empty())
+            drag_.points = {w.b};
+        for (int point : drag_.points)
+            for (PointField field : {PointField::Y, PointField::X})
+                controller_.endEdit(shapeIndex(w.a, point, field));
         break;
     case DragKind::Key:
         controller_.playNote(keyboardBase() + w.a, false);
@@ -11577,6 +11745,7 @@ void View::finishDrag() {
         break;
     case DragKind::Partials: // its undo step closes below
     case DragKind::ShapeStep:
+    case DragKind::ShapeBox:
     case DragKind::Node:
     case DragKind::Bend:
     case DragKind::ModsScroll:
@@ -12014,9 +12183,11 @@ void View::doubleClick(Point p, Modifiers mods) {
     if (hit && (hit->kind == Kind::Key || hit->kind == Kind::Octave || hit->kind == Kind::UndoButton ||
                 hit->kind == Kind::PresetStep || hit->kind == Kind::FxPower || hit->kind == Kind::FxNodePower ||
                 hit->kind == Kind::SlotBypass || (hit->kind == Kind::ShapeGrid && hit->b != 0) ||
-                hit->kind == Kind::ShapeTool || stepperButton(*hit, p) != 0 || drawsStep(*hit, mods))) {
+                hit->kind == Kind::ShapeTool || hit->kind == Kind::ListStep || stepperButton(*hit, p) != 0 ||
+                drawsStep(*hit, mods))) {
         // Windows turns a quick second click into a double-click instead of a press:
-        // play it as a press so fast repeated notes, octave steps, undos and steps aren't dropped.
+        // play it as a press so fast repeated notes, octave steps, undos, a list's arrows' steps, a stepper's - and +
+        // and steps aren't dropped.
         mouseDown(p, mods);
         return;
     }

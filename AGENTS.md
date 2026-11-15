@@ -287,6 +287,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - each factory preset's file being sparse, as the preset tool writes it;
   - the tempo a preset was saved at reading back as written, and as none below 20 BPM or from a layout before it;
   - the mod wheel leaving the FM alone until it is assigned, and the output meter's peaks, fall and clip light;
+  - the DC blocker before the effects: a squeezed square coming out with no DC, a Ring route at unison going into
+    a hard shaper as its octave alone (clipped evenly, no 4th harmonic), and the output exactly silent once the
+    note has rung out, the effects resting;
   - a macro's knob modulated: along a chain of macros out of their numbers' order (the telemetry saying where the
     knobs stand), in a loop a state holds, steadily and alike each time, and per voice by velocity, a loud note's
     knob silencing it while a soft one played with it plays as it would alone;
@@ -520,7 +523,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     after (read off the rendered pixels);
   - a shaper: switching it on with its tab, sending an operator and a filter into it (in the graph and the matrix)
     and running it onto an operator and into a filter, its page's curve list, link switch, symmetric switch (for
-    a Custom curve) and knobs (Drive, Output and Mix, centered, with no To Out), its Custom curve drawn on the page and in the big editor;
+    a Custom curve) and knobs (Drive, Output and Mix, centered, with no To Out), its Custom curve drawn on the page and in the big editor, whose pencil sits beside the curve's list (on the
+    shaper effect's card too), lit while it is open (read off the rendered pixels);
   - a shaper's Stack curve, between Fold and Custom in its list, on its page and on the shaper effect's card,
     showing its Stack knob after Drive, turned in whole stages, undoably, and the wheel over the list's button
     stepping along the list's order;
@@ -541,6 +545,16 @@ the plain CMake commands and installing into a host are in the [README](README.m
     going through the notch and back, its six knobs, its Morph after Resonance turning, and a formant's, its Vowel after Q turning;
   - Points | Steps and Snap in the other big shape editors: Steps drawing a step in the note source's curve with a
     plain click, and Snap snapping a shaper effect's curve point in its editor;
+  - points picked in a shape editor: in a Curve source's full-size editor a box from empty space picking the points
+    it reaches (drawn filled, read off the rendered pixels), one of them dragged moving them all as far, one undo
+    step, stopping as a whole at a neighbor not picked and at the top, Ctrl+click adding a point and taking one away,
+    a click on one of several picked picking it alone, Ctrl+A and Delete removing all but the two kept, undoably, and a
+    click on empty space letting them go; on a symmetric voice shaper's page the middle point picked with another
+    staying in the middle; with the Curve card still widened beside the SEQ view, Ctrl+A over the roll picking its
+    notes, not the shape's points, and Delete removing them; and on the SEQ view's BEND lane, with Select, a box picking its points (ringed, read off
+    the rendered pixels), moved together and stopping at a neighbor, undoably, Shift+click adding one, with Draw a
+    picked point moving the others too, Ctrl+A over the lane and Delete removing them, undoably, and a click off the
+    lane letting them go, as Ctrl+A over the roll does (Delete then removing the notes);
   - making sources unipolar and bipolar from their menus (an envelope's and an LFO's card, a macro's knob and
     handle, the mod wheel and the note source's display);
   - dragging a Param EQ band's handle, and Alt-dragging it for its Q; its bands' chips: a click on one, its shape
@@ -600,6 +614,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
     setting Position and Distance in one undo step and double-clicked back; its drive meter following the telemetry
     and its display following Treble and the mic's position (read off the rendered pixels); and its title's menu
     picking its oversampling, the one in force checked;
+  - the arrows in a list's button: a filter's type (on its page and the filter effect's card), a shaper's curve (on
+    its page and the shaper effect's card), the amp's model and cabinet, the reverb's algorithm and an LFO's shape
+    stepping along the list, round its ends,
+    each click an undo step (a quick second click, which comes as a double-click, a step too), the arrow lit under
+    the mouse (read off the rendered pixels);
   - the utility's card: added last from the list of effects (under STEREO & PHASE), leaving the sound as it is (Mono
     Bass Off); the handles on its display setting Mono Bass, Pan, Width and Gain, each drag an undo step, the band
     narrowing into its middle below Mono Bass's line (read off the rendered pixels), and a double-click putting Mono
@@ -637,13 +656,14 @@ the plain CMake commands and installing into a host are in the [README](README.m
     pixels; the sources' closing
     at a click around it, and shutting with the panel for good), and the arrow between two effects adding one there;
   - picking the oversampling, MPE and its bend range (leaving the patch alone), the theme (Spectrum, the default, and Porcelain first in its list) and the depth handles'
-    size (drawn bigger at each, read off the rendered pixels), and dragging the hue slider (the accent taking its hue, read off the rendered pixels), the glow slider, the lines slider (a source's dashed line drawn as strongly as it says, and not at all when off, read off the rendered pixels) and the grid slider, a double-click putting each back where it starts, in the settings dialog (with the editor rendered in each theme, and glowing), closing it with its x
+    size (drawn bigger at each, read off the rendered pixels), and dragging the hue slider (the accent taking its hue, read off the rendered pixels), the glow slider, the lines slider (a source's dashed line drawn as strongly as it says, and not at all when off, read off the rendered pixels) and the grid slider, a double-click putting each back where it starts and each showing its tooltip under it while the mouse rests on it and not while it is dragged (read off the rendered pixels), in the settings dialog (with the editor rendered in each theme, and glowing), closing it with its x
     or a click around it, and the wheel scrolling nothing behind it;
   - undo and redo of drags, wheel runs, node moves, typed values and a removed effect with its modulation;
   - typing values into knobs, header knobs and target depths, with Enter, Escape and a click elsewhere;
   - the preset bar's arrows (asking first while the patch has changed, the dialog a line shorter before a file
     loads); Save greyed out (read off the rendered pixels) and doing nothing while the preset is unchanged, asking
-    before it overwrites the preset's file (Cancel keeping it, a failed write leaving the patch changed), and
+    before it overwrites the preset's file (Cancel keeping it, a failed write leaving the patch changed), on a changed factory
+    preset opening Save As's dialog without asking, and
     doing nothing on Init, changed or not, where Save As does nothing until the patch changes and the preset browser, which loading a preset closes; its search narrowing the list as words are
     typed, Enter loading the preset found, Up and Down picking one, Escape and the search's × emptying it, and
     its editing: selecting with Shift and the arrows, Home and End, the mouse (a drag, a Shift+click, a
@@ -689,6 +709,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - a knob's modulation ring cut off at the knob's end ending in a line across it, and one within range not (read
     off the rendered pixels);
   - in Spectrum, a source card outlined only while the mouse is over it (read off the rendered pixels);
+  - in every theme, Porcelain among them, a filter's and a shaper's display on the inspector's lens standing apart from
+    the lens's face (read off the rendered pixels);
   - in Spectrum, a modulated knob's arc keeping the accent and a ring from a source of a like color (LFO 1's) drawn
     lighter, and Midnight's ring in its source's own color (read off the rendered pixels);
   - in the flat themes, every source in a color of its own and no effect in the dim text's, and an aux that is set
@@ -734,10 +756,13 @@ the plain CMake commands and installing into a host are in the [README](README.m
     roll zoomed in across by its +, Ctrl+A picking every note and the arrows moving them a step, a semitone and with
     Shift an octave (the rows following only as far as shows every note moved; with none picked, going on to the
     host), each undoably; a picked note's dot
-    ringed in the lane (read off the rendered pixels) and the picked notes' velocities dragged together there (where
-    notes start together, the picked one's alone), the
-    lane's cursor a pen and up and down over a dot and while one is dragged; Delete removing the notes picked; a note or key clicked in the
-    roll heard alone while held (not played as the keyboard's), a note moved heard on its new row; the middle button
+    ringed in the lane (read off the rendered pixels) and, with Draw, the picked notes' velocities dragged together
+    there (where notes start together, the picked one's alone), the
+    lane's cursor a pen and up and down over a dot and while one is dragged; with Select, a box from the lane's empty
+    space picking the notes whose dots it holds (ringed, read off the rendered pixels; over their stems alone, none), a dot dragged moving
+    every one picked together, one undo step, Shift+click adding a dot's note and Ctrl+click letting it go, a click on
+    one of several picked picking it alone, and the arrow over empty space; Delete removing the notes picked; a note or key clicked in the
+    roll heard alone while held (not played as the keyboard's, a key clicked quickly twice heard twice), a note moved heard on its new row; the middle button
     panning it across and up and down, and Alt+wheel zooming the rows
     in about the row under the mouse, the rows' bar at its right scrolling them; the scale's list opening above its button with both panels collapsed; a note put down by a double-click heard
     while the button is held; the lane
@@ -847,10 +872,12 @@ pkg-config, git and Cairo's headers (`libcairo2-dev`), and fetches the CLAP SDK 
 
 The factory presets are preset files, `presets/Factory/<name>.fmv`, which the build compiles in:
 `cmake/embed_presets.cmake` turns them into byte arrays (`factoryPresets()` in `src/factory.h`), for the plugin and
-the browser demo alike, again whenever one changes. The plugin writes their bytes as they are into a new preset folder.
-`presets/factory.txt` names them in the order they came, which counts: the settings file counts the examples a folder
-was given, so a new one goes at the end and none is reordered or taken out. The build fails on a file the list
-doesn't name, or a name without its file.
+the browser demo alike, again whenever one changes. Neither writes them out: the preset library lists them from
+memory under Factory, beside the preset folder's files (`PresetLibrary::rescan()`), and a factory preset's "file" is
+`factory:` and its name (`PresetLibrary::kFactoryPrefix`), which the host's state names as it would a file. So a
+name, once released, is stored in projects: none is renamed or taken out. `presets/factory.txt` names them in the
+order they came; a new one goes at the end. The build fails on a file the list doesn't name, or a name without its
+file.
 
 They are stored sparse: only the params that differ from their defaults (which is what loading a preset gives the
 others), then the editor layout, a kilobyte or so where a preset the plugin saves holds every param (about 128 KB).
@@ -865,10 +892,10 @@ To add or change one:
 3. For a new one, add its name at the end of `presets/factory.txt`.
 4. Build and run `ctest`.
 
-A user's preset folder gets the factory presets once, and again as a newer version brings them: the settings file
-notes the version that last wrote them out (`examplesVersion`), and a newer one writes those still in the folder's
-`Factory` subfolder over their files where they differ (`PresetLibrary::rescan()`). So a factory preset changed here
-reaches users with the next release, and a user's own change saved over one is lost then.
+A factory preset changed here reaches users with the next release. Being built in, it can't be saved over: Save
+on one opens Save As (`Controller::presetWritable()`). Versions up to 0.11 wrote the factory presets out into the
+preset folder's `Factory` subfolder: the scan leaves that subfolder out, and `PresetLibrary::resolve()` takes a file
+there named as a factory preset for the built-in one, so a project naming it loads the built-in one.
 
 Factory presets are not pinned by checksum, so changing or adding one needs no test edit. Don't add a checksum test
 for them: a preset is meant to change as its sound is tuned, and a pinned hash only forces an edit to the test on
@@ -979,8 +1006,8 @@ breakpoints in `src/` then hit.
 | `src/vst3iids.cpp` | The ids of the VST3 interfaces the plugin and its test host use |
 | `src/state.cpp` | The state's bytes: the patch (params, then the editor layout chunk, whose fields one list describes for writing and reading), the settings and preset chunks; independent of Windows |
 | `src/remotepages.cpp` | The remote control pages hosts show, built from the patch and the editor's source order |
-| `src/presets.cpp` | The preset library: the preset folder, its scan, the examples written into it |
-| `src/usersettings.cpp` | The user's settings file in the roaming app data (theme, hue, glow, handle size, line strength, examples given and the version that wrote them) |
+| `src/presets.cpp` | The preset library: the factory presets, built in, and the preset folder and its scan |
+| `src/usersettings.cpp` | The user's settings file in the roaming app data (theme, hue, glow, handle size, line strength, the editor's size) |
 | `src/sharedtelemetry.h` | The telemetry the audio thread hands the editor, in atomics |
 | `src/params.h` | Parameter layout (index ↔ id), slot targets, value mappings |
 | `src/params.cpp` | Parameter table (names, ranges, defaults) and value text |

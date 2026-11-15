@@ -153,8 +153,8 @@ void View::runPreset(PresetAction action) {
             controller_.choosePreset(false);
         }
         break;
-    case PresetAction::Save: // over the preset's file; with none to write (the demo), its dialog says so
-        if (!controller_.writesPresetFiles())
+    case PresetAction::Save: // over the preset's file; with none to write (the demo, a factory preset), as Save As
+        if (!controller_.writesPresetFiles() || !controller_.presetWritable())
             controller_.choosePreset(true);
         else if (controller_.overwritePreset())
             flash(trf(Str::MsgPresetSaved, {controller_.presetName()}));

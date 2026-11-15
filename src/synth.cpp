@@ -213,6 +213,10 @@ void Synth::prepare(double sampleRate, int capacity, int oversampling) {
     effects_.prepare(sampleRate);
     noiseColor_.prepare(rate_, sampleRate);
     volumeGlide_ = 1.0 - std::exp(-1.0 / (kVolumeGlide * sampleRate));
+    { // the DC blocker's high-pass (see DcBlocker)
+        const double k = std::tan(std::numbers::pi * 5.0 / sampleRate), norm = 1.0 / (1.0 + std::sqrt(2.0) * k + k * k);
+        dcCoefs_ = {norm, -2.0 * norm, norm, 2.0 * (k * k - 1.0) * norm, (1.0 - std::sqrt(2.0) * k + k * k) * norm};
+    }
     ended_.clear();
     // Every note that ends in one block is reported at its end: room for a burst of them far past the voices.
     ended_.reserve(std::max<size_t>(voices_.size() * 2 + 16, kMaxEndedNotes));
@@ -257,6 +261,7 @@ void Synth::reset() {
     fxTail_.on = false;
     fxLast_ = nullptr;
     volumeGain_ = -1.0; // set at once, the first time round
+    dcBlockers_ = {};
     outPeak_ = {};
     clipHold_ = 0.0;
     outScope_ = {};
@@ -851,10 +856,19 @@ void Synth::renderSpan(float *left, float *right, uint32_t frames, const ParamVa
             sounding = true;
         });
         for (int c = 0; c < 2; ++c) {
-            if (sounding)
-                decimators_[c].process(mix_[c].data(), (c == 0 ? left : right) + done, static_cast<int>(n));
-            else
+            if (sounding) {
+                float *out = (c == 0 ? left : right) + done;
+                decimators_[c].process(mix_[c].data(), out, static_cast<int>(n));
+                // The voices' DC taken out before the effects (see DcBlocker); a block of silence clears it too.
+                if (std::all_of(out, out + n, [](float x) { return x == 0.0f; }))
+                    dcBlockers_[c] = {};
+                else
+                    for (uint32_t s = 0; s < n; ++s)
+                        out[s] = dcBlockers_[c].run(out[s], dcCoefs_);
+            } else {
                 decimators_[c].reset();
+                dcBlockers_[c] = {};
+            }
         }
         if (analyzing_)
             analyzeFilters(n, sounding, params);

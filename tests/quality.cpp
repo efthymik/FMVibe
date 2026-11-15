@@ -2355,13 +2355,15 @@ void noteAndVoiceChecks() {
                 e.synth().noteOn({-1, 0, 0, 60}, 1.0);
             if (soft)
                 e.synth().noteOn({-1, 0, 0, 64}, 0.05);
-            const std::vector<float> rendered = e.render(9600);
+            // (Half a second, measured over its second half: the loud note's first moment, before its knob is down,
+            // has rung out of the DC blocker before the effects by then.)
+            const std::vector<float> rendered = e.render(24000);
             if (knobs) {
                 auto t = std::make_unique<Telemetry>();
                 e.synth().telemetry(*t);
                 (*knobs)[1] = t->macroOffset[1];
             }
-            return std::vector<float>(rendered.begin() + 4800, rendered.end());
+            return std::vector<float>(rendered.begin() + 12000, rendered.end());
         };
         MacroKnobs softKnob{};
         const std::vector<float> loudAlone = voiced(true, false, nullptr), softAlone = voiced(false, true, &softKnob),
@@ -2749,7 +2751,7 @@ template <class Span> ScopeMotion lowNoteMotion(Engine &e, Telemetry &t, const S
     };
     e.p[paramIndex(0, OpParam::Release)] = normFromEnvTime(2.0);
     e.noteOn(21); // A0, 27.5 Hz: two cycles take 73 ms
-    e.render(9600);
+    e.render(24000); // the DC blocker before the effects settled from the note's start (see Synth::DcBlocker)
     ScopeMotion motion;
     const std::vector<float> held = take();
     e.render(kBlock * 3 + 7);
@@ -4176,8 +4178,64 @@ void savedTempoChecks() {
           "a preset's saved tempo reads back as written, and as none below 20 BPM or from before it was kept");
 }
 
+// --- DC: the voices' sum going into the effects has its DC taken out. A square squeezed to a narrow pulse comes
+// out with none; a Ring route at unison (a sine squared: DC and the octave) goes into a hard shaper as the octave
+// alone, clipped evenly (no 4th harmonic of the note), not lifted onto one side of the curve; and the output falls
+// silent, exactly, once the note has rung out, so the effects can rest.
+void dcChecks() {
+    {
+        Engine e(2);
+        e.p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Square);
+        e.p[paramIndex(0, OpParam::Warp)] = static_cast<double>(OpWarp::Squeeze);
+        e.p[paramIndex(0, OpParam::WarpAmount)] = 0.8;
+        e.noteOn(57);
+        e.render(96000);
+        const std::vector<float> out = e.render(48000);
+        double mean = 0.0, peak = 0.0;
+        for (float x : out) {
+            mean += x;
+            peak = std::max(peak, static_cast<double>(std::abs(x)));
+        }
+        mean /= static_cast<double>(out.size());
+        std::printf("      a squeezed square's DC at the output: %.2e (peak %.2f)\n", mean, peak);
+        check(std::abs(mean) < 1e-3, "a squeezed square comes out with no DC");
+    }
+    {
+        Engine e(2);
+        e.p[paramIndex(1, OpParam::Enabled)] = 1.0;
+        e.p[matrixIndex(1, 0)] = 1.0;
+        e.p[routeModeIndex(1, 0)] = static_cast<double>(RouteMode::Ring);
+        e.p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+        e.p[paramIndex(0, FxParam::ShaperMode)] = static_cast<double>(ClipMode::Hard);
+        e.p[paramIndex(0, FxParam::ShaperDrive)] = 24.0;
+        chain(e.p, {0});
+        const int key = 57;
+        e.noteOn(key);
+        e.render(48000);
+        const std::vector<double> power = powerSpectrum(e.render(kFftSize));
+        auto level = [&](double hz) {
+            const long center = std::lround(hz * kFftSize / kSampleRate);
+            double most = 1e-30;
+            for (long b = center - 3; b <= center + 3; ++b)
+                most = std::max(most, power[static_cast<size_t>(b)]);
+            return 10.0 * std::log10(most);
+        };
+        const double octave = level(2.0 * keyHz(key)), uneven = level(4.0 * keyHz(key)) - octave;
+        std::printf("      a ring at unison clipped hard: its 4th harmonic %.1f dB under the octave\n", -uneven);
+        check(uneven < -40.0, "the voices' DC is taken out before the effects");
+        e.noteOff(key);
+        e.render(96000);
+        std::vector<float> left(kBlock), right(kBlock);
+        e.synth().render(left.data(), right.data(), kBlock, e.p);
+        const bool silent = std::all_of(left.begin(), left.end(), [](float x) { return x == 0.0f; }) &&
+                            std::all_of(right.begin(), right.end(), [](float x) { return x == 0.0f; });
+        check(silent && !e.synth().effectsRinging(), "the DC blocker leaves silence once the note ends, and the effects rest");
+    }
+}
+
 int main() {
     const int factors[] = {1, 2, 4, 8};
+    dcChecks();
     sequencerChecks();
     savedTempoChecks();
     // --- The decimator: flat up to 20 kHz, and what would fold into the audible band gone.
@@ -4910,10 +4968,10 @@ int main() {
                             : 0.0f;
                 fx.process(left.data(), right.data(), kBlock, p, 120.0, 60.0);
                 for (uint32_t s = 0; s < kBlock; ++s) {
-                    const double level = std::max(std::abs(left[s]), std::abs(right[s]));
+                    const double peak = std::max(std::abs(left[s]), std::abs(right[s]));
                     double &into = done < second ? before : done < second + second / 4 ? during : after;
                     if (done < 2 * second)
-                        into = std::max(into, level);
+                        into = std::max(into, peak);
                 }
             }
             double last = 0.0; // the last block's peak, a second after the sine stopped
