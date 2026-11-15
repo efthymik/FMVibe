@@ -3887,9 +3887,10 @@ void View::paint(Canvas &c, Rect area) {
         paintTyping(c);
     if (browserOpen_)
         paintBrowser(c);
-    if (settingsOpen_)
+    if (settingsOpen_) {
         paintSettings(c);
-    else if (confirm_ >= 0)
+        paintTooltip(c); // its sliders'
+    } else if (confirm_ >= 0)
         paintConfirm(c);
     else
         paintTooltip(c);
@@ -9355,6 +9356,8 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::PresetStep && hover_->kind != Kind::PresetNameBox &&
          hover_->kind != Kind::TempoBox && hover_->kind != Kind::BrowserFolder &&
          hover_->kind != Kind::SettingsButton && hover_->kind != Kind::UndoButton &&
+         hover_->kind != Kind::SettingsHue && hover_->kind != Kind::SettingsGlow &&
+         hover_->kind != Kind::SettingsLinks && hover_->kind != Kind::SettingsGrid &&
          !(hover_->kind == Kind::AlgorithmButton && !algorithmMenuOpen_) &&
          hover_->kind != Kind::ShapeReset && hover_->kind != Kind::PartialReset &&
          hover_->kind != Kind::PartialRandom &&
@@ -9509,6 +9512,14 @@ void View::paintTooltip(Canvas &c) {
         }
     else if (hover_->kind == Kind::SettingsButton)
         text = tr(Str::TipSettings);
+    else if (hover_->kind == Kind::SettingsHue)
+        text = tr(Str::TipSettingsHue);
+    else if (hover_->kind == Kind::SettingsGlow)
+        text = tr(Str::TipSettingsGlow);
+    else if (hover_->kind == Kind::SettingsLinks)
+        text = tr(Str::TipSettingsLinks);
+    else if (hover_->kind == Kind::SettingsGrid)
+        text = tr(Str::TipSettingsGrid);
     else if (hover_->kind == Kind::SlotBypass)
         text = tr(slotBypassed(hover_->a, hover_->b) ? Str::TipBypassed : Str::TipBypass);
     else if (hover_->kind == Kind::SourcePolarity)

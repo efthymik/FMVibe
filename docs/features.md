@@ -2019,7 +2019,8 @@ one may have changed since it last did.
   100 % (75 % to begin with), sets how strongly the dashed lines from a source's handle to what it modulates (and the
   one a handle being dragged trails) are drawn: Off draws none, 100 % draws them opaque. **Grid**, a slider like it
   from Off to 100 % (50 % to begin with, and a double-click puts it back), sets how strongly the SEQ view's roll draws
-  its grid lines: Off draws none, 100 % twice as strongly as 50 %. **Handles**, Small (to begin
+  its grid lines: Off draws none, 100 % twice as strongly as 50 %. With the mouse resting on any of the four sliders
+  (not while one is dragged), a tooltip under it says what it sets and that a double-click puts it back. **Handles**, Small (to begin
   with), Medium or Large, draws the depth handles and their **+n** pills bigger, each step about half a pixel more in
   radius and a pixel more across, in the same places (so on a label or cell, Large ones overlap a little). All six
   are yours rather than the

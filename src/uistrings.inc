@@ -999,6 +999,10 @@ STR(TipSaveUnchanged, "No changes to save")
 STR(TipSaveNoFile, "No preset loaded. Use Save As...")
 STR(TipSaveAs, "Save as a new preset")
 STR(TipSettings, "Settings")
+STR(TipSettingsHue, "Accent color. Double-click for the theme's own") // the settings dialog's sliders, under them
+STR(TipSettingsGlow, "Glow of curves and sounding nodes. Double-click resets")
+STR(TipSettingsLinks, "Strength of the modulation lines. Double-click resets")
+STR(TipSettingsGrid, "Strength of the sequencer's grid lines. Double-click resets")
 STR(TipBypassed, "Bypassed. Click to resume")
 STR(InputsNone, "Nothing modulates {1} yet.") // an operator's INPUTS tab with no route into it
 STR(InputsFeedback, "{1} feedback  ·  phase only")

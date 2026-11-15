@@ -1162,7 +1162,9 @@ bool View::seqKey(Key key, bool shift) {
         seqSelectionPattern_ = pattern;
     }
     if (key == Key::SelectAll) {
-        clearShapePick(); // so that Delete then removes the notes, not a shape's points picked before
+        // So that Delete then removes the notes, not a shape's points or the lane curve's picked before.
+        clearShapePick();
+        seqCurvePick_ = SeqCurvePick{};
         seqSelection_.clear();
         for (const SeqNote &n : seqNotes())
             seqSelection_.push_back(n.slot);

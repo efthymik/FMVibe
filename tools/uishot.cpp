@@ -3624,7 +3624,7 @@ void testShapePick(const std::filesystem::path &dir, Renderer &renderer) {
 // points it reaches (ringed, read off the rendered pixels), one of them dragged moving them all as far, one undo step,
 // stopping as a whole at a neighbor not picked; Shift+click adding a point; with Draw, a point picked dragged moving
 // the others too; Ctrl+A over the lane picking every point and Delete removing them, undoably; a click off the lane
-// letting them go.
+// letting them go, and Ctrl+A over the roll too, Delete then removing the notes.
 void testSeqCurvePick(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -3711,6 +3711,20 @@ void testSeqCurvePick(const std::filesystem::path &dir, Renderer &renderer) {
     const bool letGo = !view.seqKey(View::Key::Delete, false) && count() == 4.0;
     check(all && deleted && back && letGo,
           "Ctrl+A over the lane picks its points and Delete removes them, undoably; a click off the lane lets them go");
+
+    // Ctrl+A over the lane, then over the roll with no click between: Delete then removes the notes, not the points.
+    model.set(seqNoteIndex(0, 0, SeqNoteParam::Start), 0.0);
+    model.set(seqNoteIndex(0, 0, SeqNoteParam::Length), 1.0);
+    model.set(seqNoteIndex(0, 0, SeqNoteParam::Pitch), 60.0);
+    view.poll();
+    view.mouseMove(bendAt(14.5, 0.9), {});
+    view.seqKey(View::Key::SelectAll, false);
+    view.mouseMove({600.0f, 116.0f + 300.0f}, {}); // over the roll
+    const bool notesPicked = view.seqKey(View::Key::SelectAll, false);
+    const bool notesGone = view.seqKey(View::Key::Delete, false) &&
+                           model.value(seqNoteIndex(0, 0, SeqNoteParam::Length)) == 0.0 && count() == 4.0;
+    check(notesPicked && notesGone,
+          "Ctrl+A over the roll after Ctrl+A over the lane: Delete removes the notes, the lane's points staying");
 }
 
 
@@ -11945,6 +11959,33 @@ void run(const std::filesystem::path &dir, float scale) {
     doubleClick(view, linesAt(0.1f));
     check(model.hue < 0.0 && model.glowLevel == 0.5 && model.links == 0.75,
           "a double-click puts the HUE, GLOW and LINES sliders back to where they start");
+    // Each slider shows its tooltip under it while the mouse rests on it, and none while it is dragged (read off the
+    // rendered pixels just inside the tooltip's top, clear of its text, against the dialog with the mouse on its title).
+    {
+        const float sliderBottoms[] = {98.0f, 130.0f, 162.0f, 194.0f}; // HUE, GLOW, LINES, GRID, from the LOOK line
+        const float sliderYs[] = {85.0f, 117.0f, 149.0f, 181.0f};
+        const char *tipShots[] = {"14k-settings-hue-tip.png", "14k-settings-glow-tip.png", "14k-settings-lines-tip.png",
+                                  "14k-settings-grid-tip.png"};
+        bool tips = true;
+        for (int i = 0; i < 4; ++i) {
+            const Point under{dialog.x + 176.0f, dialog.y + 312.0f + sliderBottoms[i] + 7.0f};
+            const Point on{dialog.x + 176.0f, dialog.y + 312.0f + sliderYs[i]};
+            view.mouseMove({dialog.x + 24.0f, dialog.y + 30.0f}, {});
+            renderer.save(view, dir / "14k-settings-no-tip.png");
+            const uint32_t bare = renderer.pixel(under);
+            view.mouseMove(on, {});
+            tips = tips && renderer.save(view, dir / tipShots[i]) && renderer.pixel(under) != bare;
+            view.mouseDown(on, {});
+            view.mouseMove({on.x + 1.0f, on.y}, {});
+            renderer.save(view, dir / "14k-settings-dragged.png");
+            tips = tips && renderer.pixel(under) == bare;
+            view.mouseUp({on.x + 1.0f, on.y}, {});
+            doubleClick(view, on);
+        }
+        check(tips && model.hue < 0.0 && model.glowLevel == 0.5 && model.links == 0.75 &&
+                  model.grid == Controller::kDefaultGridIntensity,
+              "the settings dialog's sliders show a tooltip under them while the mouse rests on them, not while dragged");
+    }
     model.glowLevel = 0.0;
     model.links = 0.75;
     // HANDLES picks the depth handles' size, Small to begin with, leaving the patch alone.
