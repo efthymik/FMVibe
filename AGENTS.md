@@ -544,6 +544,15 @@ the plain CMake commands and installing into a host are in the [README](README.m
     going through the notch and back, its six knobs, its Morph after Resonance turning, and a formant's, its Vowel after Q turning;
   - Points | Steps and Snap in the other big shape editors: Steps drawing a step in the note source's curve with a
     plain click, and Snap snapping a shaper effect's curve point in its editor;
+  - points picked in a shape editor: in a Curve source's full-size editor a box from empty space picking the points
+    it reaches (drawn filled, read off the rendered pixels), one of them dragged moving them all as far, one undo
+    step, stopping as a whole at a neighbor not picked and at the top, Ctrl+click adding a point and taking one away,
+    a click on one of several picked picking it alone, Ctrl+A and Delete removing all but the two kept, undoably, and a
+    click on empty space letting them go; on a symmetric voice shaper's page the middle point picked with another
+    staying in the middle; and on the SEQ view's BEND lane, with Select, a box picking its points (ringed, read off
+    the rendered pixels), moved together and stopping at a neighbor, undoably, Shift+click adding one, with Draw a
+    picked point moving the others too, Ctrl+A over the lane and Delete removing them, undoably, and a click off the
+    lane letting them go;
   - making sources unipolar and bipolar from their menus (an envelope's and an LFO's card, a macro's knob and
     handle, the mod wheel and the note source's display);
   - dragging a Param EQ band's handle, and Alt-dragging it for its Q; its bands' chips: a click on one, its shape
@@ -738,9 +747,12 @@ the plain CMake commands and installing into a host are in the [README](README.m
     roll zoomed in across by its +, Ctrl+A picking every note and the arrows moving them a step, a semitone and with
     Shift an octave (the rows following only as far as shows every note moved; with none picked, going on to the
     host), each undoably; a picked note's dot
-    ringed in the lane (read off the rendered pixels) and the picked notes' velocities dragged together there (where
-    notes start together, the picked one's alone), the
-    lane's cursor a pen and up and down over a dot and while one is dragged; Delete removing the notes picked; a note or key clicked in the
+    ringed in the lane (read off the rendered pixels) and, with Draw, the picked notes' velocities dragged together
+    there (where notes start together, the picked one's alone), the
+    lane's cursor a pen and up and down over a dot and while one is dragged; with Select, a box from the lane's empty
+    space picking the notes whose dots it holds (ringed, read off the rendered pixels; over their stems alone, none), a dot dragged moving
+    every one picked together, one undo step, Shift+click adding a dot's note and Ctrl+click letting it go, a click on
+    one of several picked picking it alone, and the arrow over empty space; Delete removing the notes picked; a note or key clicked in the
     roll heard alone while held (not played as the keyboard's), a note moved heard on its new row; the middle button
     panning it across and up and down, and Alt+wheel zooming the rows
     in about the row under the mouse, the rows' bar at its right scrolling them; the scale's list opening above its button with both panels collapsed; a note put down by a double-click heard

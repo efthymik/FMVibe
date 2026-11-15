@@ -833,11 +833,17 @@ one may have changed since it last did.
     drag paints a note in each grid step it crosses that has none; a note clicked is moved or stretched as in Select
     (the cursor saying which over it). Each edit is one undo step.
   - **The lane** under the roll: a stem for each note at its start, as high as its velocity or its chance, as the
-    **VELOCITY | CHANCE | BEND | MOD WHEEL** tabs under it pick, a note picked ringed there too; dragged across, the notes there take
-    the height of the mouse (the cursor a pen, and up and down over a dot and while one is dragged), and a double-click puts them back
-    (velocity 100, chance full). With more than one note picked, a drag from one of their dots moves them all up or
-    down together, each from where it was. Where notes start together and any of them is picked, the lane sets the
-    picked ones alone (their dots drawn over the others').
+    **VELOCITY | CHANCE | BEND | MOD WHEEL** tabs under it pick, a note picked ringed there too. With **Draw**, dragged
+    across, the notes there take the height of the mouse (the cursor a pen, and up and down over a dot and while one is
+    dragged); with more than one note picked, a drag from one of their dots moves them all up or down together, each
+    from where it was. With **Select**, the dots are picked as their notes are in the roll, picking the notes: a drag
+    from empty space draws a box that picks the notes whose dots it holds (their stems alone don't count; with Shift or
+    Ctrl, it adds them to those picked); a dot clicked picks its note alone, and with Shift or Ctrl along with the others
+    (or lets it go, once let go unmoved); a click on one of several picked, let go unmoved, picks it alone; and a dot
+    dragged moves every note picked up or down together, each from where it was, one undo step (the cursor up and down
+    over a dot, the arrow elsewhere). Either way a double-click puts the notes there back (velocity 100, chance full).
+    Where notes start together and any of them is picked, the lane sets the picked ones alone (their dots drawn over
+    the others').
     On **BEND** and **MOD WHEEL**, the lane shows the pattern's curve instead (see Sequencer), across the pattern as
     the roll is zoomed and scrolled, in the bend's or the mod wheel's color, filled down to where it rests (the bend's
     middle, the mod wheel's bottom), with its points and, on each segment that rises or falls and has room, a handle
@@ -850,6 +856,13 @@ one may have changed since it last did.
     first click put down). Points go where the mouse is; with **Ctrl** held, onto the grid, across on the snap's lines
     and up and down on the lane's. Each is an undo step. The cursor moves over a point, goes up and down over a bend,
     and is a pen where Draw puts a point down. The whole pattern twice or half as long takes its curves along.
+    Points are picked as notes are: with **Select**, a drag from empty space draws a box that picks the points it
+    reaches (with Ctrl or Shift added to those picked); Ctrl+click or Shift+click on a point picks it along with the
+    others, or lets it go; a click on a point picks it alone (on one of several picked, once it is let go unmoved), and
+    with **Draw** a point put down is picked alone. Picked points are ringed in the curve's color. With either tool,
+    dragging a picked point moves every one picked as far, one undo step, keeping their spacing: across between the
+    nearest points not picked (or the pattern's ends), and up and down within the curve's range. Ctrl+A over the lane
+    picks every point, and Delete removes those picked, one undo step. A click off the lane lets them go.
   - **Hearing notes**: a key clicked in the roll's keys, and a note clicked, drawn or put down by a double-click on
     the roll, sound alone while the button is held (a note moved to another row sounding that row's), whatever Play is: never the sequencer's
     pattern, which only the keyboard strip's keys and the host's notes start in Key and Latch.
@@ -1400,6 +1413,19 @@ one may have changed since it last did.
     unipolar one). A point stays between its neighbors, but can reach a neighbor's time: points at one time make a
     line straight up or down (a spike, say), and at that moment the LFO takes the last of them in order, the one
     the shape goes on from. Double-click empty space to add a point and a point to delete it (or right-click it).
+    **Picking several points**, in every shape editor (a Curve source's, in its widened card and full size; a shaper
+    effect's and a voice shaper's drawn curve, on the card or page and in the big editor; the note source's and
+    velocity's curves): a drag from empty space draws a box that picks the points it reaches (with Steps, Shift+drag,
+    since a plain click draws a step there), and with Ctrl adds them to those picked already; Ctrl+click on a point
+    picks it along with the others, or lets it go if it was picked. A click on a point not picked picks it alone, and
+    on one of several picked, let go without moving, picks it alone too. Picked points are filled and ringed. Dragging
+    any of them moves them all as far as it moves, in one undo step, keeping their spacing: across, as far as the
+    nearest point not picked either side lets each go (and the first point, a curve's last and a symmetric curve's
+    middle stay where they are across, moving only up and down), and up and down as far as the shape's top and bottom
+    let every one go. Ctrl+A picks every point of the shape under the mouse (else the big editor's, else a widened
+    card's), and Delete removes those picked, all but the first, a curve's ends, a symmetric curve's middle and as many
+    as keep two points, as one undo step. A click anywhere off the shape, any change of how many points it has, and
+    the shape tools and reset let the points go. What is picked isn't saved.
     Shift+click (over a point or a bend dot too) draws a step, as in a step sequencer: a level line at the
     click's height from the grid line left of it to the one right of it, with a point at each end (Ctrl snaps its
     height to the grid too). The points between those lines go; a step beside another starts where that one ends,

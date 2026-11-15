@@ -3444,6 +3444,218 @@ void testShapers(const std::filesystem::path &dir, Renderer &renderer) {
     check(added && pageStays && editorShot && model.layout().view == RoutingView::Graph,
           "the pencil opens a shaper's curve over the routing panel, its page staying beside it");
 }
+// Points picked in the shape editors, to move and remove together. In a Curve source's full-size editor: a box from
+// empty space picking the points it reaches (drawn filled, read off the rendered pixels), one of them dragged moving
+// them all as far, one undo step, stopping as a whole at a neighbor not picked and at the top; Ctrl+click adding a
+// point and taking one away, a click on one of several picked picking it alone, Ctrl+A picking every one and Delete
+// removing all but the two it keeps, undoably, and a click on empty space letting them go. On a symmetric voice
+// shaper's page, the middle point picked with another staying in the middle as they move.
+void testShapePick(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    model.set(paramIndex(2, SourceParam::Type), static_cast<double>(SourceType::Curve)); // the only card, the first
+    view.poll();
+    click(view, lfoDisplay(0));
+    click(view, wideButton(0, 2));
+    const double xs[] = {0.0, 0.2, 0.4, 0.6, 0.8}, ys[] = {-1.0, -0.5, 0.0, 0.5, -0.5};
+    auto reset = [&] {
+        model.set(shapeCountIndex(2), 5.0);
+        for (int i = 0; i < 5; ++i) {
+            model.set(shapePointIndex(2, i, PointField::X), xs[i]);
+            model.set(shapePointIndex(2, i, PointField::Y), ys[i]);
+            model.set(shapePointIndex(2, i, PointField::Curve), 0.0);
+        }
+        view.poll();
+    };
+    reset();
+    auto px = [&](int i) { return model.value(shapePointIndex(2, i, PointField::X)); };
+    auto py = [&](int i) { return model.value(shapePointIndex(2, i, PointField::Y)); };
+    auto near = [](double a, double b) { return std::abs(a - b) < 0.01; };
+    auto boxDrag = [&](Point from, Point to, Modifiers mods = {}) {
+        view.mouseDown(from, mods);
+        view.mouseMove({(from.x + to.x) * 0.5f, (from.y + to.y) * 0.5f}, mods);
+        view.mouseMove(to, mods);
+        view.mouseUp(to, mods);
+    };
+    const Modifiers ctrl{false, true, false};
+    auto lit = [](uint32_t c) { return ((c >> 16 & 255) + (c >> 8 & 255) + (c & 255)) / 3; };
+
+    // The box over the 3rd and 4th points: they draw filled, the 2nd hollow; while dragged, the box shows.
+    view.mouseDown(shapeAt(0.3, 0.9), {});
+    view.mouseMove(shapeAt(0.5, 0.4), {});
+    view.mouseMove(shapeAt(0.7, -0.2), {});
+    const bool boxShot = renderer.save(view, dir / "10g-shape-box.png");
+    view.mouseUp(shapeAt(0.7, -0.2), {});
+    view.mouseMove(shapeAt(0.1, 0.9), {});
+    const bool pickedShot = renderer.save(view, dir / "10g-shape-picked.png");
+    const uint32_t filled = lit(renderer.pixel(shapeAt(0.4, 0.0))), hollow = lit(renderer.pixel(shapeAt(0.2, -0.5)));
+    if (filled <= hollow + 40)
+        std::printf("      a point's middle: %u picked, %u not\n", filled, hollow);
+    check(boxShot && pickedShot && filled > hollow + 40, "a box across a shape picks the points it reaches, drawn filled");
+
+    // Dragged by the 4th, both move as far; the others stay; one undo step takes both back.
+    drag(view, shapeAt(0.6, 0.5), shapeAt(0.65, 0.7));
+    const bool moved = near(px(2), 0.45) && near(py(2), 0.2) && near(px(3), 0.65) && near(py(3), 0.7) &&
+                       near(px(1), 0.2) && near(px(4), 0.8) && near(py(4), -0.5) && model.openEdits == 0;
+    view.undo();
+    const bool undone = near(px(2), 0.4) && near(py(2), 0.0) && near(px(3), 0.6) && near(py(3), 0.5);
+    check(moved && undone, "the points picked move together after the one dragged, one undo step");
+    // Left past the 2nd point and up past the top: they stop together, as far apart as they were.
+    drag(view, shapeAt(0.4, 0.0), shapeAt(0.05, 0.9));
+    const bool stopped = near(px(2), 0.2) && near(px(3), 0.4) && near(py(3), 1.0) && near(py(2), 0.5);
+    view.undo();
+    check(stopped, "points moved together stop as a whole at a neighbor not picked and at the shape's top");
+
+    // Ctrl+click adds the 5th and takes the 4th away: dragged by the 3rd, the 3rd and 5th move, the 4th stays.
+    click(view, shapeAt(0.8, -0.5), ctrl);
+    click(view, shapeAt(0.6, 0.5), ctrl);
+    drag(view, shapeAt(0.4, 0.0), shapeAt(0.4, -0.2));
+    const bool ctrlPicked = near(py(2), -0.2) && near(py(4), -0.7) && near(py(3), 0.5);
+    view.undo();
+    // A click on the 3rd, one of the two picked, picks it alone: dragged, the 5th stays.
+    click(view, shapeAt(0.4, 0.0));
+    drag(view, shapeAt(0.4, 0.0), shapeAt(0.4, 0.2));
+    const bool alone = near(py(2), 0.2) && near(py(4), -0.5);
+    view.undo();
+    check(ctrlPicked && alone, "Ctrl+click adds a point and takes one away, and a click on one picked picks it alone");
+
+    // Ctrl+A picks every point; Delete removes all but the first and one more, undoably.
+    view.mouseMove(shapeAt(0.1, 0.9), {});
+    const bool all = view.seqKey(View::Key::SelectAll, false);
+    const bool deleted = view.seqKey(View::Key::Delete, false);
+    const bool kept = model.value(shapeCountIndex(2)) == 2.0 && near(px(1), 0.8);
+    view.undo();
+    const bool back = model.value(shapeCountIndex(2)) == 5.0 && near(px(3), 0.6);
+    // Picked, then a click on empty space: Delete has nothing to remove, and goes on to the host.
+    view.seqKey(View::Key::SelectAll, false);
+    click(view, shapeAt(0.1, 0.9));
+    const bool letGo = !view.seqKey(View::Key::Delete, false) && model.value(shapeCountIndex(2)) == 5.0;
+    check(all && deleted && kept && back && letGo,
+          "Ctrl+A picks every point and Delete removes them, undoably; a click on empty space lets them go");
+
+    // A symmetric voice shaper's drawn curve on its page: its middle point and the next picked by a box, dragged left,
+    // the middle staying in the middle and the other stopping just right of it.
+    {
+        const int shaper = 0, node = kOps + kFilters;
+        click(view, {64.0f, 116.0f}); // ROUTING, closing the full-size editor
+        click(view, nodeTab(node));
+        const ShaperParams clip = shaperParams(kFxSlots + shaper);
+        model.set(clip.mode, static_cast<double>(ClipMode::Custom));
+        model.set(clip.symmetric, 1.0);
+        const double cx[] = {0.0, 0.5, 0.75, 1.0}, cy[] = {-1.0, 0.0, 0.6, 1.0};
+        model.set(clip.curve, 4.0);
+        for (int i = 0; i < 4; ++i) {
+            model.set(shapeFieldIndex(clip.curve, i, PointField::X), cx[i]);
+            model.set(shapeFieldIndex(clip.curve, i, PointField::Y), cy[i]);
+        }
+        view.poll();
+        auto cxAt = [&](int i) { return model.value(shapeFieldIndex(clip.curve, i, PointField::X)); };
+        auto cyAt = [&](int i) { return model.value(shapeFieldIndex(clip.curve, i, PointField::Y)); };
+        boxDrag(shaperCurveAt(0.85, 0.9), shaperCurveAt(0.45, -0.3)); // from the right half, over the middle
+        drag(view, shaperCurveAt(0.75, 0.6), shaperCurveAt(0.3, 0.7));
+        const bool middle = cxAt(1) == 0.5 && near(cyAt(1), 0.1) && cxAt(2) > 0.5 && cxAt(2) < 0.51 &&
+                            near(cyAt(2), 0.7) && cxAt(3) == 1.0;
+        view.mouseMove(shaperCurveAt(0.3, -0.8), {});
+        const bool shot = renderer.save(view, dir / "30d-shaper-picked.png");
+        view.undo();
+        check(middle && shot && cxAt(2) == 0.75,
+              "a symmetric curve's middle point picked with another stays in the middle as they move");
+    }
+}
+
+// Points picked on the SEQ view's BEND lane, as a shape editor's are: with Select, a box from empty space picking the
+// points it reaches (ringed, read off the rendered pixels), one of them dragged moving them all as far, one undo step,
+// stopping as a whole at a neighbor not picked; Shift+click adding a point; with Draw, a point picked dragged moving
+// the others too; Ctrl+A over the lane picking every point and Delete removing them, undoably; a click off the lane
+// letting them go.
+void testSeqCurvePick(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    using detail::kSeqGrid;
+    view.poll();
+    click(view, {308.0f, 116.0f}); // the SEQ tab
+    click(view, {kSeqGrid.x + 2.0f * 76.0f + 36.0f, detail::kSeqLaneTabs.y + 11.0f}); // BEND
+    const float laneTop = detail::kSeqLaneArea.y + 6.0f, laneH = detail::kSeqLaneArea.h - 12.0f;
+    auto bendAt = [&](double step, double v) {
+        return Point{kSeqGrid.x + static_cast<float>(step) * kSeqGrid.w / 16.0f,
+                     laneTop + laneH - static_cast<float>((v + 1.0) * 0.5) * laneH};
+    };
+    const double xs[] = {2.0, 5.0, 8.0, 11.0}, ys[] = {0.0, 0.5, -0.5, 0.0};
+    model.set(seqCurveCountIndex(0, SeqCurve::Bend), 4.0);
+    for (int i = 0; i < 4; ++i) {
+        model.set(seqCurveIndex(0, SeqCurve::Bend, i, PointField::X), xs[i]);
+        model.set(seqCurveIndex(0, SeqCurve::Bend, i, PointField::Y), ys[i]);
+    }
+    view.poll();
+    auto cx = [&](int i) { return model.value(seqCurveIndex(0, SeqCurve::Bend, i, PointField::X)); };
+    auto cy = [&](int i) { return model.value(seqCurveIndex(0, SeqCurve::Bend, i, PointField::Y)); };
+    auto count = [&] { return model.value(seqCurveCountIndex(0, SeqCurve::Bend)); };
+    auto near = [](double a, double b) { return std::abs(a - b) < 0.02; };
+    const Modifiers shift{true, false, false};
+    auto lit = [](uint32_t c) { return ((c >> 16 & 255) + (c >> 8 & 255) + (c & 255)) / 3; };
+
+    // With Select, a box over the 2nd and 3rd: ringed (a pixel on the ring, left of each point, read off the rendered
+    // pixels), the 4th not.
+    view.mouseMove(bendAt(14.5, 0.9), {});
+    renderer.save(view, dir / "36p-seq-curve-unpicked.png");
+    auto ring = [&](int i) { return Point{bendAt(xs[i], ys[i]).x - 6.0f, bendAt(xs[i], ys[i]).y}; };
+    const uint32_t before = lit(renderer.pixel(ring(1)));
+    view.mouseDown(bendAt(4.0, 0.9), {});
+    view.mouseMove(bendAt(6.0, 0.0), {});
+    view.mouseMove(bendAt(9.0, -0.8), {});
+    const bool boxShot = renderer.save(view, dir / "36p-seq-curve-box.png");
+    view.mouseUp(bendAt(9.0, -0.8), {});
+    view.mouseMove(bendAt(14.5, 0.9), {});
+    const bool shot = renderer.save(view, dir / "36p-seq-curve-picked.png");
+    const uint32_t after = lit(renderer.pixel(ring(1))), other = lit(renderer.pixel(ring(3)));
+    if (after <= before + 30 || other > before + 10)
+        std::printf("      a lane point's ring: %u, %u picked, the 4th's %u\n", before, after, other);
+    check(boxShot && shot && after > before + 30 && other <= before + 10,
+          "a box across the BEND lane picks its points, ringed");
+
+    // Dragged by the 2nd, both move a step later and a quarter up; one undo step takes them back.
+    drag(view, bendAt(5.0, 0.5), bendAt(6.0, 0.75));
+    const bool moved = near(cx(1), 6.0) && near(cy(1), 0.75) && near(cx(2), 9.0) && near(cy(2), -0.25) &&
+                       near(cx(0), 2.0) && near(cx(3), 11.0);
+    view.undo();
+    const bool undone = near(cx(1), 5.0) && near(cx(2), 8.0);
+    // Right past the 4th: they stop as a whole there, three steps apart still.
+    drag(view, bendAt(5.0, 0.5), bendAt(10.0, 0.5));
+    const bool stopped = near(cx(2), 11.0) && near(cx(1), 8.0);
+    view.undo();
+    check(moved && undone && stopped, "the lane's points picked move together, stopping at a neighbor, undoably");
+
+    // Shift+click adds the 1st: dragged by the 1st, all three move down, the 4th stays.
+    click(view, bendAt(2.0, 0.0), shift);
+    drag(view, bendAt(2.0, 0.0), bendAt(2.0, -0.25));
+    const bool three = near(cy(0), -0.25) && near(cy(1), 0.25) && near(cy(2), -0.75) && near(cy(3), 0.0);
+    view.undo();
+    // With Draw, a point picked dragged moves the others too.
+    const Point selectTool = rectCenter(Rect{detail::kSeqTools.x, detail::kSeqTools.y, 30.0f, detail::kSeqTools.h});
+    click(view, {selectTool.x + 30.0f, selectTool.y}); // Draw
+    click(view, bendAt(14.5, 0.9) , {}); // a point put down there, picked alone, then taken away again
+    view.undo();
+    view.mouseMove(bendAt(5.0, 0.0), {});
+    view.seqKey(View::Key::SelectAll, false);
+    drag(view, bendAt(5.0, 0.5), bendAt(5.0, 0.25));
+    const bool drawn = near(cy(0), -0.25) && near(cy(3), -0.25) && count() == 4.0;
+    view.undo();
+    click(view, selectTool);
+    check(three && drawn, "Shift+click adds a lane point, and with Draw a point picked moves the others too");
+
+    // Ctrl+A over the lane picks every point and Delete removes them, undoably; a click off the lane lets them go.
+    view.mouseMove(bendAt(14.5, 0.9), {});
+    const bool all = view.seqKey(View::Key::SelectAll, false);
+    const bool deleted = view.seqKey(View::Key::Delete, false) && count() == 0.0;
+    view.undo();
+    const bool back = count() == 4.0;
+    view.seqKey(View::Key::SelectAll, false);
+    click(view, {600.0f, 116.0f + 300.0f}); // the roll, off the lane
+    const bool letGo = !view.seqKey(View::Key::Delete, false) && count() == 4.0;
+    check(all && deleted && back && letGo,
+          "Ctrl+A over the lane picks its points and Delete removes them, undoably; a click off the lane lets them go");
+}
+
 
 // Folding cards: the chevron left of an effect card's cross folds it to a strip (38 px, its neighbours closing
 // up), whose icon stays where it was and still switches it, and whose name unfolds it; an LFO card folds the
@@ -5907,8 +6119,9 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
     const Point dot1 = laneDot(4.0, 100.0 / 127.0), dot0 = laneDot(0.0, 100.0 / 127.0);
     const bool ringed = bright({dot1.x + 6.0f, dot1.y}) && !bright({dot0.x + 6.0f, dot0.y});
     check(ringed, "a picked note's dot in the lane is ringed");
-    // Every note picked, the first's dot dragged 4 px up takes each one's velocity a tenth up from its own (the first
-    // from 64, the others from 100), as one undo step.
+    // With Draw: every note picked, the first's dot dragged 4 px up takes each one's velocity a tenth up from its own
+    // (the first from 64, the others from 100), as one undo step.
+    model.ui.seqDraw = true;
     model.set(seqNoteIndex(0, 0, SeqNoteParam::Velocity), 64.0 / 127.0);
     view.poll();
     view.seqKey(View::Key::SelectAll, false);
@@ -5923,7 +6136,9 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
     const bool groupDragCursor = view.cursor() == CursorKind::Vertical;
     view.mouseUp({grab.x, grab.y - 4.0f}, {});
     // A single note's dot dragged keeps the up and down cursor too; a drag from an empty place, the pen.
+    model.ui.seqDraw = false; // a click on the empty grid picks nothing with Select (with Draw it puts a note down)
     click(view, at(15.5, 66)); // nothing picked
+    model.ui.seqDraw = true;
     const Point single = laneDot(4.0, 100.0 / 127.0);
     view.mouseDown(single, {});
     view.mouseMove({single.x, single.y - 3.0f}, {});
@@ -5941,9 +6156,72 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
     model.set(seqNoteIndex(0, 0, SeqNoteParam::Velocity), 100.0 / 127.0);
     view.poll();
     std::printf("      the picked notes' velocities moved together: %ld and %ld\n", v0, v1);
+    model.ui.seqDraw = false;
     check(v0 == 77 && v1 == 113 && dotCursor && penCursor && groupDragCursor && singleDragCursor && emptyDragCursor,
-          "the picked notes' velocities move together in the lane, its cursor a pen and up and down over a dot");
-    // Two notes starting together on step 12, one picked: the lane dragged there sets the picked one's velocity alone.
+          "with Draw, the picked notes' velocities move together in the lane, its cursor a pen and up and down over a dot");
+    // With Select, the lane's dots are picked as their notes are: a box over their stems alone picks nothing, and one
+    // from empty space back over the dots of steps 4 and 0 picks those two notes (ringed, read off the rendered
+    // pixels), the 8th's left out; a dot dragged up
+    // moves both, each from its own, one undo step; Shift+click adds the 8th's and Ctrl+click lets it go again; a click
+    // on one of those picked, let go unmoved, picks it alone; the arrow, not a pen, over empty space.
+    {
+        click(view, at(15.5, 66)); // nothing picked
+        double was[4]; // every velocity at 100 for this, as it was after
+        for (int slot = 0; slot < 4; ++slot) {
+            was[slot] = field(slot, SeqNoteParam::Velocity);
+            model.set(seqNoteIndex(0, slot, SeqNoteParam::Velocity), 100.0 / 127.0);
+        }
+        view.poll();
+        const float foot = detail::kSeqLaneArea.y + detail::kSeqLaneArea.h - 8.0f;
+        view.mouseMove({at(2.5, 48).x, detail::kSeqLaneArea.y + 10.0f}, {});
+        const bool arrow = view.cursor() == CursorKind::Arrow;
+        // Along the lane's foot, over the stems alone, it picks nothing.
+        view.mouseDown({at(5.5, 48).x, foot}, {});
+        view.mouseMove({at(2.0, 48).x, foot - 6.0f}, {});
+        view.mouseMove({at(0.0, 48).x - 6.0f, foot - 12.0f}, {});
+        view.mouseUp({at(0.0, 48).x - 6.0f, foot - 12.0f}, {});
+        const bool stemsLeft = !view.seqKey(View::Key::Delete, false);
+        // Over the dots of steps 0 and 4, from right of step 4 back past the lane's left end, it picks those two.
+        const float dots = laneDot(0.0, 100.0 / 127.0).y;
+        view.mouseDown({at(5.5, 48).x, dots + 8.0f}, {});
+        view.mouseMove({at(2.0, 48).x, dots}, {});
+        view.mouseMove({at(0.0, 48).x - 6.0f, dots - 8.0f}, {});
+        const bool boxCursor = view.cursor() == CursorKind::Arrow;
+        const bool boxShot = renderer.save(view, dir / "36i2-seq-lane-box.png");
+        view.mouseUp({at(0.0, 48).x - 6.0f, dots - 8.0f}, {});
+        view.mouseMove({600.0f, 600.0f}, {});
+        renderer.save(view, dir / "36i2-seq-lane-picked.png");
+        const Point d0 = laneDot(0.0, 100.0 / 127.0), d4 = laneDot(4.0, 100.0 / 127.0), d8 = laneDot(8.0, 100.0 / 127.0);
+        const bool boxed = bright({d0.x + 6.0f, d0.y}) && bright({d4.x + 6.0f, d4.y}) && !bright({d8.x + 6.0f, d8.y});
+        view.mouseDown(d4, {});
+        view.mouseMove({d4.x, d4.y - 2.0f}, {});
+        view.mouseMove({d4.x, d4.y - 4.0f}, {});
+        view.mouseUp({d4.x, d4.y - 4.0f}, {});
+        auto vel = [&](int slot) { return std::lround(field(slot, SeqNoteParam::Velocity) * 127.0); };
+        const bool together = vel(0) == 113 && vel(1) == 113 && vel(2) == 100;
+        view.undo();
+        const bool undone = vel(0) == 100 && vel(1) == 100;
+        click(view, d8, {true, false, false});
+        const bool added = view.seqKey(View::Key::Delete, false) && field(2, SeqNoteParam::Length) == 0.0;
+        view.undo(); // the three back
+        view.seqKey(View::Key::SelectAll, false);
+        click(view, d8, {false, true, false}); // Ctrl lets the 8th's go
+        click(view, d0); // one of the two picked: picked alone
+        view.seqKey(View::Key::Delete, false);
+        const bool alone = field(0, SeqNoteParam::Length) == 0.0 && field(1, SeqNoteParam::Length) > 0.0 &&
+                           field(2, SeqNoteParam::Length) > 0.0;
+        view.undo();
+        std::printf("      the lane picked with Select: box %d (%d), together %d, undone %d, added %d, alone %d\n", boxed,
+                    boxShot, together, undone, added, alone);
+        check(arrow && stemsLeft && boxCursor && boxShot && boxed && together && undone && added && alone,
+              "with Select, a box, Shift+click and Ctrl+click pick the lane's dots, which move up and down together");
+        for (int slot = 0; slot < 4; ++slot)
+            model.set(seqNoteIndex(0, slot, SeqNoteParam::Velocity), was[slot]);
+        view.poll();
+        view.seqKey(View::Key::SelectAll, false); // as before, for the checks below
+    }
+    // With Draw, two notes starting together on step 12, one picked: the lane dragged there sets the picked one's
+    // velocity alone.
     {
         model.set(seqNoteIndex(0, 20, SeqNoteParam::Start), 12.0);
         model.set(seqNoteIndex(0, 20, SeqNoteParam::Length), 1.0);
@@ -5951,6 +6229,7 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         view.poll();
         click(view, at(15.5, 66)); // nothing picked
         click(view, at(12.4, 62)); // the new one picked
+        model.ui.seqDraw = true;
         drag(view, {laneDot(12.0, 100.0 / 127.0).x, detail::kSeqLaneArea.y + 30.0f},
              {laneDot(12.0, 100.0 / 127.0).x, detail::kSeqLaneArea.y + 6.0f});
         const bool alone = field(20, SeqNoteParam::Velocity) == 1.0 && field(3, SeqNoteParam::Velocity) == 100.0 / 127.0;
@@ -5959,7 +6238,8 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         model.set(seqNoteIndex(0, 20, SeqNoteParam::Start), 0.0);
         model.set(seqNoteIndex(0, 20, SeqNoteParam::Pitch), 60.0);
         view.poll();
-        check(alone, "where notes start together, the lane sets the picked ones' alone");
+        model.ui.seqDraw = false;
+        check(alone, "with Draw, where notes start together, the lane sets the picked ones' alone");
     }
 
     // Selecting, the cursor over the empty grid is the arrow; drawing, a pen, and over a note what a drag does to it.
@@ -11658,6 +11938,8 @@ void run(const std::filesystem::path &dir, float scale) {
     renderNewEffects(dir, renderer);
     testChorus(dir, renderer);
     testShapers(dir, renderer);
+    testShapePick(dir, renderer);
+    testSeqCurvePick(dir, renderer);
     testWideLfoCard(dir, renderer);
     testFolding(dir, renderer);
     testFxGraph(dir, renderer);
