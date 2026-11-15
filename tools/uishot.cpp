@@ -439,7 +439,6 @@ constexpr Point kOutCore = detail::kOutCore; // the routing graph's OUT
 // What covers the routing panel alone (the note curve's and the partial editor) moved with it, right of the lens.
 constexpr float kRoutingDx = detail::kRouting.x - 16.0f;
 const Point kPitchKnob = detail::opKnobCenter(0);
-const Point kDetuneKnob = detail::opKnobCenter(1);
 // On the UNISON tab, under its display: Unison (the copies) first, Blend fourth, Rnd Phase last.
 constexpr Point kUnisonKnob{detail::kInspector.x + 16.0f + 268.0f / 5.0f * 0.5f, detail::kUnisonKnobsY};
 constexpr Point kBlendKnob{detail::kInspector.x + 16.0f + 268.0f / 5.0f * 3.5f, detail::kUnisonKnobsY};
@@ -8787,7 +8786,7 @@ void testModsSearch(const std::filesystem::path &dir, Renderer &renderer) {
           "the target menu's search lights the first match that can be picked, which Enter takes");
 }
 
-// Eight LFOs on Op A's Detune: under the knob, a depth handle and a "+7" pill, nothing drawn outside the knob's
+// Eight LFOs on Op A's Pitch: under the knob, a depth handle and a "+7" pill, nothing drawn outside the knob's
 // column (read off the rendered pixels). The pill opens the list of all eight, whose rows bypass, set the depth of
 // and remove their modulation as a card's rows do; a click elsewhere closes it. A macro's handle held over the pill
 // opens the list under it, and let go of on a row makes the macro that row's aux; let go of anywhere else, the list
@@ -8795,21 +8794,21 @@ void testModsSearch(const std::filesystem::path &dir, Renderer &renderer) {
 void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
-    // Beside the knob, between its column and the next ones' (Pitch's and Phase's), at the depth handles' height.
-    const float handleY = kDetuneKnob.y + 0.5f * detail::kOpKnobD - 1.0f;
+    // Beside the knob, between its column and the next ones' (the Ratio readout's and Detune's), at the depth handles' height.
+    const float handleY = kPitchKnob.y + 0.5f * detail::kOpKnobD - 1.0f;
     auto beside = [&] {
         std::vector<uint32_t> pixels;
         for (float y = handleY - 5.0f; y < handleY + 6.0f; y += 1.0f)
             for (float x = 17.0f; x < 27.0f; x += 1.0f) {
-                pixels.push_back(renderer.pixel({kDetuneKnob.x - x, y}));
-                pixels.push_back(renderer.pixel({kDetuneKnob.x + x, y}));
+                pixels.push_back(renderer.pixel({kPitchKnob.x - x, y}));
+                pixels.push_back(renderer.pixel({kPitchKnob.x + x, y}));
             }
         return pixels;
     };
     view.mouseMove({600.0f, 328.0f}, {});
     renderer.save(view, dir / "40-pill-none.png");
     const std::vector<uint32_t> none = beside();
-    const int pitch = paramIndex(0, OpParam::Detune);
+    const int pitch = paramIndex(0, OpParam::Transpose);
     for (int s = 0; s < 8; ++s) {
         model.set(paramIndex(s, SourceParam::Type), static_cast<double>(SourceType::Lfo));
         model.set(slotTargetIndex(s, 0), slotTargetValue(pitch));
@@ -8822,7 +8821,7 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     // The pill sits 2 px right of the handle: 21 px across, centered under the knob, its middle 4.5 px right of the
     // knob's. Its list, 265 px wide and 8 more for its scrollbar, centered under it: the rows 24 px apart from 24 px
     // down, as on a card, six of them shown.
-    const Point pill{kDetuneKnob.x + 4.5f, handleY};
+    const Point pill{kPitchKnob.x + 4.5f, handleY};
     const float listX = pill.x - 136.5f + 6.0f, rowsY = pill.y + 4.5f + 6.0f + 24.0f;
     auto row = [&](int k, float x) { return Point{listX + x, rowsY + k * 24.0f + 10.0f}; };
     view.mouseMove(pill, {});

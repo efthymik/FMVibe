@@ -1902,6 +1902,10 @@ bool View::isRatioTarget(int param) {
 bool View::isStepperParam(int param) {
     if (param < 0)
         return false;
+    // An operator's Pitch stays a knob, in its row of knobs beside the Ratio readout.
+    if (param >= kOpBase && param < kMatrixBase &&
+        (param - kOpBase) % kOpParamCount == static_cast<int>(OpParam::Transpose))
+        return false;
     switch (paramTable()[param].kind) {
     case ParamKind::Count:
     case ParamKind::VoiceCount:

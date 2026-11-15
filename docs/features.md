@@ -782,7 +782,8 @@ one may have changed since it last did.
   - **The card**: the sequencer's power switch; **PATTERN** A to D (the one picked plays and shows in the roll) and a
     button that copies it, its length, loop, notes and curves, into the next empty pattern (no notes, and no points
     on its curves); **PLAY** Host | Key | Latch; the
-    big knobs Rate, Swing, Gate, Length (the pattern's, in bars), Velocity, Humanize, Octave and Transpose; **ORDER** as
+    two rows of four, at the left the steppers (see Steppers) Rate and Length (the pattern's, in bars) over Octave
+    and Transpose, at the right the big knobs Swing and Gate over Velocity and Humanize; **ORDER** as
     arrows (forward, back, to and fro, a die for random); **SCALE**: the root (dragged up and down or scrolled, a
     semitone a step; a double-click puts it back on C4), the scale's list (Chromatic, Major, Minor, Dorian, Phrygian,
     Lydian, Mixolydian, Harmonic Minor, Melodic Minor, Pentatonic Major and Minor, Blues; wider than its button, and
@@ -1720,10 +1721,11 @@ one may have changed since it last did.
 - **Steppers**: a value that moves only in whole steps shows as a stepper rather than a knob: its number in a field
   (a unit, st, smaller and dimmer after it), − and + at the field's ends and its steps along the field's foot, a tick
   each where they fit 2.5 px apart or more (the one set lit), else a track with the value's place marked, filling
-  from 0 for a range that has it in its middle. Those are the header's Bend and Voices, an operator's Pitch, Mult
-  (fixed) and Unison, a synced LFO's, Random's or Curve source's Rate, a MIDI source's CC, a delay's synced times, a
+  from 0 for a range that has it in its middle. Those are the header's Bend and Voices, an operator's Mult (fixed)
+  and Unison, a synced LFO's, Random's or Curve source's Rate, a MIDI source's CC, a delay's synced times, a
   phaser's and flanger's synced Rate, the phaser's and disperser's Stages, the shimmer's Pitch, a shaper's Stack,
-  the note curve's Low and High, and the SEQ card's Rate, Length, Octave and Transpose. It takes what a knob takes:
+  the note curve's Low and High, and the SEQ card's Rate, Length, Octave and Transpose; an operator's Pitch stays a
+  knob, in its row of knobs beside the Ratio readout. It takes what a knob takes:
   a drag up and down a step every 10 px (Voices doubling every 40), the wheel a step a notch, a double-click to
   reset, Ctrl+Click or a double-click on its label to type, a source's handle dropped on it where its value takes
   modulation, its depth handles under it; − and + step it as a notch of the wheel does, an undo step each, a quick
