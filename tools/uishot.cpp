@@ -6004,6 +6004,16 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseUp({detail::kSeqKeys.x + 30.0f, at(0.0, 60).y}, {});
     check(heard && follows && keyHeard && model.auditioning == 0,
           "a note or key clicked in the roll is heard alone while held, a note moved heard on its new row");
+    // A key clicked again quickly, the second click coming as a double-click, is heard again, held as the first was.
+    {
+        const Point key{detail::kSeqKeys.x + 30.0f, at(0.0, 60).y};
+        click(view, key);
+        model.lastAudition = -1;
+        view.doubleClick(key, {});
+        const bool again = model.lastAudition == 60 && model.auditioning == 1;
+        view.mouseUp(key, {});
+        check(again && model.auditioning == 0, "a key in the roll clicked quickly twice is heard twice");
+    }
     // A note put down by a double-click (with Select) is heard while the button is held, and let go as it comes up.
     {
         model.lastAudition = -1;

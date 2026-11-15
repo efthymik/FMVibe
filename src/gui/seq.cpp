@@ -1901,6 +1901,7 @@ bool View::seqDoubleClick(const Widget &w, Point p, Modifiers mods) {
         return true;
     }
     case Kind::SeqZoom: // a click each
+    case Kind::SeqKeys: // a key heard again, held, as fast as it is clicked (Windows sends the second click this way)
         return seqPress(w, p, {});
     case Kind::SeqField: { // the notes picked back to velocity 100, a full chance, or no offset off the grid
         const std::vector<int> picked = seqPicked();
@@ -1928,7 +1929,6 @@ bool View::seqDoubleClick(const Widget &w, Point p, Modifiers mods) {
     case Kind::SeqSnap:
     case Kind::SeqStretch:
     case Kind::SeqFlag:
-    case Kind::SeqKeys:
         return true; // a double-click is two clicks of theirs, which the first press took
     default:
         return false;

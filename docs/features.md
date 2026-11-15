@@ -863,7 +863,7 @@ one may have changed since it last did.
     dragging a picked point moves every one picked as far, one undo step, keeping their spacing: across between the
     nearest points not picked (or the pattern's ends), and up and down within the curve's range. Ctrl+A over the lane
     picks every point, and Delete removes those picked, one undo step. A click off the lane lets them go.
-  - **Hearing notes**: a key clicked in the roll's keys, and a note clicked, drawn or put down by a double-click on
+  - **Hearing notes**: a key clicked in the roll's keys (each click, however quick), and a note clicked, drawn or put down by a double-click on
     the roll, sound alone while the button is held (a note moved to another row sounding that row's), whatever Play is: never the sequencer's
     pattern, which only the keyboard strip's keys and the host's notes start in Key and Latch.
   - **Following what is dragged**: a note, a box or a paint stroke dragged to the roll's edge (or past it) scrolls the
