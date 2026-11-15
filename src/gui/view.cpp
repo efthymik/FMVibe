@@ -1932,29 +1932,17 @@ bool View::isRatioTarget(int param) {
 }
 
 bool View::isStepperParam(int param) {
+    // The voice limit, an operator's unison count and fixed Mult, and a MIDI source's controller number; every other
+    // stepped value stays a knob.
     if (param < 0)
         return false;
-    // An operator's Pitch stays a knob, in its row of knobs beside the Ratio readout, and so do the header's Bend and
-    // the shimmer's Pitch.
-    if (param >= kOpBase && param < kMatrixBase &&
-        (param - kOpBase) % kOpParamCount == static_cast<int>(OpParam::Transpose))
-        return false;
-    if (param == paramIndex(GlobalParam::BendRange) || fxFieldOf(param) == FxParam::ReverbShimmerPitch)
-        return false;
-    switch (paramTable()[param].kind) {
-    case ParamKind::Count:
-    case ParamKind::VoiceCount:
-    case ParamKind::Semitones:
-    case ParamKind::Transpose:
-    case ParamKind::NotePitch:
-    case ParamKind::FixedMult:
-    case ParamKind::SyncDivision:
-    case ParamKind::SeqRate:
-    case ParamKind::SeqBars:
+    if (param == paramIndex(GlobalParam::Voices) || opOfField(param, OpParam::Unison) >= 0 ||
+        opOfField(param, OpParam::FixedMult) >= 0)
         return true;
-    default:
-        return false;
-    }
+    for (int s = 0; s < kMaxSources; ++s)
+        if (param == paramIndex(s, SourceParam::CcNumber))
+            return true;
+    return false;
 }
 
 bool View::isStepper(const Widget &w) {
@@ -2365,15 +2353,15 @@ std::vector<View::Widget> View::widgets() const {
                 for (int i = 0; i < 3; ++i)
                     add(Kind::Toggle, {card.x + 14.0f + i * w, under, w - 4.0f, 18.0f}, at(switches[i]));
                 merge(first);
-                // Synced, the time knobs are steppers picking note values. Linked, the
+                // Synced, the time knobs pick note values and show them as their labels. Linked, the
                 // left one sets both sides.
                 const bool synced = value(at(FxParam::DelaySync)) >= 0.5;
                 const int timeL = synced ? at(FxParam::DelayDivisionL) : at(FxParam::DelayTimeL);
                 const int timeR = synced ? at(FxParam::DelayDivisionR) : at(FxParam::DelayTimeR);
                 const bool linked = value(at(FxParam::DelayLink)) >= 0.5;
                 knobs({timeL, linked ? -1 : timeR, at(FxParam::DelayFeedback)},
-                      {tr(linked ? Str::LabelTime : Str::LabelTimeL),
-                       tr(Str::LabelTimeR), tr(Str::LabelFeedback)},
+                      {synced ? nullptr : tr(linked ? Str::LabelTime : Str::LabelTimeL),
+                       synced ? nullptr : tr(Str::LabelTimeR), tr(Str::LabelFeedback)},
                       206.0f);
                 knobs({at(FxParam::DelayTone), at(FxParam::DelayWidth), at(FxParam::DelayMix)},
                       {tr(Str::LabelTone), tr(Str::LabelWidth), tr(Str::LabelMix)}, 266.0f);
@@ -2506,7 +2494,7 @@ std::vector<View::Widget> View::widgets() const {
             case FxType::Flanger: {
                 // Under the display: at the left, over the Rate knob, SYNC (the delay's metronome), then STEREO, two
                 // switches of their own; at the right the polarity, + and - as one choice. Synced, the Rate knob
-                // is a stepper picking a note value.
+                // picks a note value and shows it as its label.
                 const bool phaser = type == FxType::Phaser;
                 const int sync = at(phaser ? FxParam::PhaserSync : FxParam::FlangerSync);
                 const Rect display = fxDisplayIn(card, type);
@@ -2524,13 +2512,13 @@ std::vector<View::Widget> View::widgets() const {
                                         : at(phaser ? FxParam::PhaserRate : FxParam::FlangerRate);
                 if (phaser) {
                     knobs({rate, at(FxParam::PhaserDepth), at(FxParam::PhaserCenter)},
-                          {tr(Str::LabelRate), tr(Str::LabelDepth), tr(Str::LabelCenter)}, 206.0f);
+                          {synced ? nullptr : tr(Str::LabelRate), tr(Str::LabelDepth), tr(Str::LabelCenter)}, 206.0f);
                     knobs({at(FxParam::PhaserStages), at(FxParam::PhaserFeedback), at(FxParam::PhaserMix)},
                           {tr(Str::LabelStages), tr(Str::LabelFeedback), tr(Str::LabelMix)}, 266.0f);
                     break;
                 }
                 knobs({rate, at(FxParam::FlangerDepth), at(FxParam::FlangerDelay)},
-                      {tr(Str::LabelRate), tr(Str::LabelDepth), tr(Str::LabelDelay)}, 206.0f);
+                      {synced ? nullptr : tr(Str::LabelRate), tr(Str::LabelDepth), tr(Str::LabelDelay)}, 206.0f);
                 knobs({at(FxParam::FlangerFeedback), -1, at(FxParam::FlangerMix)},
                       {tr(Str::LabelFeedback), nullptr, tr(Str::LabelMix)}, 266.0f);
                 break;
@@ -3156,7 +3144,7 @@ std::vector<View::Widget> View::widgets() const {
                 knob(paramIndex(s, SourceParam::RandomSmooth), randomKnob(card, 0), 30.0f, tr(Str::LabelSmooth));
                 knob(paramIndex(s, SourceParam::RandomChaos), randomKnob(card, 1), 30.0f, tr(Str::LabelChaos));
             }
-            // Synced, the knob is a stepper picking a note value instead of a rate.
+            // Synced, the knob picks a note value instead of a rate and shows it as its label.
             add(Kind::Toggle, sourceSync(card), paramIndex(s, SourceParam::Sync));
             // Its clock modes under the shape list, one of them lit, as Poly | Mono; each sets Free, Anchor and
             // One-Shot for it (see setLfoClock()), and stands for them all. Unipolar under the sync switch.
@@ -3171,7 +3159,7 @@ std::vector<View::Widget> View::widgets() const {
                 add(Kind::Toggle, lfoUnipolarSwitch(card), paramIndex(s, SourceParam::Unipolar));
             const bool synced = value(paramIndex(s, SourceParam::Sync)) >= 0.5;
             knob(synced ? paramIndex(s, SourceParam::Division) : paramIndex(s, SourceParam::Rate),
-                 lfoKnob(card, 0), 30.0f, tr(Str::LabelRate));
+                 lfoKnob(card, 0), 30.0f, synced ? nullptr : tr(Str::LabelRate));
             if (!random)
                 knob(paramIndex(s, SourceParam::Phase), lfoKnob(card, 1), 30.0f, tr(Str::LabelPhase));
         } else if (sourceTypeOf(s) == SourceType::Env) {

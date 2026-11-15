@@ -366,8 +366,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     browser; see Header), which every synced LFO, delay and sweep follows, as does `fmvibe-uihost`'s. A new LFO
     starts synced, in quarter notes. The note
     value takes modulation like a knob, from the editor's sources, but in steps: it moves from one
-    note value to the next along the list (up for faster), never between them, and the dot on its stepper (see
-    Steppers) stands on the one playing.
+    note value to the next along the list (up for faster), never between them, and the dot on its knob stands on
+    the one playing.
   - **One-Shot** runs an LFO through one cycle from each note and then holds it where the cycle ends (a one-shot
     is never free or anchored): for a sine, a triangle or a drawn shape that is where it started, while a saw holds
     at its top, a square low and a Random source at the value it took. A drawn shape with a point at the cycle's end
@@ -786,8 +786,8 @@ one may have changed since it last did.
   - **The card**: the sequencer's power switch; **PATTERN** A to D (the one picked plays and shows in the roll) and a
     button that copies it, its length, loop, notes and curves, into the next empty pattern (no notes, and no points
     on its curves); **PLAY** Host | Key | Latch; the
-    two rows of four, at the left the steppers (see Steppers) Rate and Length (the pattern's, in bars) over Octave
-    and Transpose, at the right the big knobs Swing and Gate over Humanize and Velocity; **ORDER** as
+    big knobs in two rows of four, Rate and Length (the pattern's, in bars) over Octave and Transpose at the left,
+    Swing and Gate over Humanize and Velocity at the right; **ORDER** as
     arrows (forward, back, to and fro, a die for random); **SCALE**: the root (dragged up and down or scrolled, a
     semitone a step; a double-click puts it back on C4), the scale's list (Chromatic, Major, Minor, Dorian, Phrygian,
     Lydian, Mixolydian, Harmonic Minor, Melodic Minor, Pentatonic Major and Minor, Blues; wider than its button, and
@@ -1127,8 +1127,8 @@ one may have changed since it last did.
     the right end of its line over the shared knobs), centered on the card under its display; for a Custom curve the shaper's Symmetric shows left of it, a curve
     rising to level off, its left half the right one turned over, the two centered together. The shaper's curve's list takes the whole row above the display. Every effect with a Sync
     has that metronome: the phaser and flanger at the left under their displays (a button of its own, STEREO
-    another beside it, and their polarity's + | − at the right), over their Rate knob, which, synced, is a stepper
-    picking a note value (see Steppers), as the delay's time knobs are. The chorus has its voices, 2 | 3 | 4 | 6, in the
+    another beside it, and their polarity's + | − at the right), over their Rate knob, which, synced, picks a note
+    value and shows it as its label, as the delay's time knobs do. The chorus has its voices, 2 | 3 | 4 | 6, in the
     middle under its display, and its knobs in two rows, Rate, Depth and Delay above Feedback, Spread and Mix. The filter's slope is a list under its display, like a voice filter's (see the inspector) and a split's. The filter's
     knobs come in two rows, Cutoff, Reso and Key Track above Drive and Mix, and so do the
     frequency shifter's, Range, Shift and Spread above Feedback and Mix.
@@ -1752,26 +1752,20 @@ one may have changed since it last did.
     shows as a steady swell rather than a flicker; its matrix cell has a small bar along its bottom with each
     modulation's range, a tick where the amount is set and a white dot where it is now, and its label each
     modulation's range just above it, clear of its solid fill.
-- **Steppers**: a value that moves only in whole steps shows as a stepper rather than a knob: its number in a field
-  (a unit, st, smaller and dimmer after it), − and + at the field's ends and its steps along the field's foot, a tick
-  each where they fit 2.5 px apart or more (the one set lit), else a track with the value's place marked, filling
-  from 0 for a range that has it in its middle. Those are the header's Voices, an operator's Mult (fixed)
-  and Unison, a synced LFO's, Random's or Curve source's Rate, a MIDI source's CC, a delay's synced times, a
-  phaser's and flanger's synced Rate, the phaser's and disperser's Stages, a shaper's Stack,
-  the note curve's Low and High, and the SEQ card's Rate, Length, Octave and Transpose; an operator's Pitch stays a
-  knob, in its row of knobs beside the Ratio readout, and so do the header's Bend and the shimmer's Pitch. It takes what a knob takes:
-  a drag up and down a step every 10 px (Voices doubling every 40), the wheel a step a notch, a double-click to
-  reset, Ctrl+Click or a double-click on its label to type, a source's handle dropped on it where its value takes
-  modulation, its depth handles under it; − and + step it as a notch of the wheel does, an undo step each, a quick
-  second click stepping again, and an end that is reached faint. They show faint at rest where the number leaves
-  them room and lit under the mouse, where the unit makes way for them if they need its room, then the number takes a smaller size, and a
-  number too long even so (a delay's 1/64D) leaves only the one under the mouse showing, moving off it. The cursor is a hand
-  over − and +, up and down over the number (and while it is dragged), and the arrow elsewhere on it. Its field is under
-  the knob's place, as wide as the widgets beside it leave room for (36 to 56 px, two steppers side by side sharing
-  what is between them, the end of a row half the way to the next knob), and in the header and the note curve's
-  title row under its label. A modulation's reach shows along its steps in its source's color (the ticks within it
-  taking that color, the one set keeping its own), and a white dot where the newest voice is (for a synced Rate, on
-  the step it plays).
+- **Steppers**: the header's Voices, an operator's Unison and Mult (fixed) and a MIDI source's CC show as steppers
+  rather than knobs: the number in a field, − and + at the field's ends and its steps along the field's foot, a tick
+  each where they fit 2.5 px apart or more (the one set lit), else a track with the value's place marked. Every other
+  stepped value stays a knob. A stepper takes what a knob takes: a drag up and down a step every 10 px (Voices
+  doubling every 40), the wheel a step a notch, a double-click to reset, Ctrl+Click or a double-click on its label to
+  type, a source's handle dropped on it where its value takes modulation, its depth handles under it; − and + step it
+  as a notch of the wheel does, an undo step each, a quick second click stepping again, and an end that is reached
+  faint. They show faint at rest where the number leaves them room, and under the mouse wherever it clears their
+  glyphs, the number then taking a smaller size if it must; a number too long even so (Mult's ×0.001) leaves only the
+  one under the mouse showing, moving off it. The cursor is a hand over − and +, up and down over the number (and
+  while it is dragged), and the arrow elsewhere on it. Its field is under the knob's place, as wide as the widgets
+  beside it leave room for (36 to 56 px, the end of a row half the way to the next knob), and in the header under
+  its label. A modulation's reach shows along its steps in its source's color (the ticks within it taking that color,
+  the one set keeping its own), and a white dot where the newest voice is.
 - **Everywhere**: drag up/down to change values (hold Shift for fine steps, a knob then moving a fiftieth as fast; sliders such as the depth bars, the
   Mod wheel and the glow slider then move from where they are, a hundredth as fast; a value moves only once the mouse
   has moved more than 3 px, so a click, or a double-click's jitter, changes nothing), double-click to reset, use the mouse

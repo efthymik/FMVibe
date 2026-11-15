@@ -594,7 +594,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - a stepper (the unison count's): its - and + stepping it, an undo step each, a quick
     second click stepping again and - doing nothing at 1 copy, its + faint at rest and lit under the mouse (read off
     the rendered pixels), the hand over its - and +, up and down over its number and while dragged, and the arrow
-    over its label; and a number too long for - and + both (a delay's 1/64D) moving off the one under the mouse, which
+    over its label; and a number too long for - and + both (a fixed Mult's ×0.001) moving off the one under the mouse, which
     alone shows (read off the rendered pixels);
   - the play switches and the glide knob;
   - an LFO starting synced in quarter notes, and its sync switch freeing it; its Phase knob, marked on its display
