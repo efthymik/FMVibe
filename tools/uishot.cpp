@@ -6068,8 +6068,9 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
     const Point dot1 = laneDot(4.0, 100.0 / 127.0), dot0 = laneDot(0.0, 100.0 / 127.0);
     const bool ringed = bright({dot1.x + 6.0f, dot1.y}) && !bright({dot0.x + 6.0f, dot0.y});
     check(ringed, "a picked note's dot in the lane is ringed");
-    // Every note picked, the first's dot dragged 4 px up takes each one's velocity a tenth up from its own (the first
-    // from 64, the others from 100), as one undo step.
+    // With Draw: every note picked, the first's dot dragged 4 px up takes each one's velocity a tenth up from its own
+    // (the first from 64, the others from 100), as one undo step.
+    model.ui.seqDraw = true;
     model.set(seqNoteIndex(0, 0, SeqNoteParam::Velocity), 64.0 / 127.0);
     view.poll();
     view.seqKey(View::Key::SelectAll, false);
@@ -6084,7 +6085,9 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
     const bool groupDragCursor = view.cursor() == CursorKind::Vertical;
     view.mouseUp({grab.x, grab.y - 4.0f}, {});
     // A single note's dot dragged keeps the up and down cursor too; a drag from an empty place, the pen.
+    model.ui.seqDraw = false; // a click on the empty grid picks nothing with Select (with Draw it puts a note down)
     click(view, at(15.5, 66)); // nothing picked
+    model.ui.seqDraw = true;
     const Point single = laneDot(4.0, 100.0 / 127.0);
     view.mouseDown(single, {});
     view.mouseMove({single.x, single.y - 3.0f}, {});
@@ -6102,9 +6105,63 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
     model.set(seqNoteIndex(0, 0, SeqNoteParam::Velocity), 100.0 / 127.0);
     view.poll();
     std::printf("      the picked notes' velocities moved together: %ld and %ld\n", v0, v1);
+    model.ui.seqDraw = false;
     check(v0 == 77 && v1 == 113 && dotCursor && penCursor && groupDragCursor && singleDragCursor && emptyDragCursor,
-          "the picked notes' velocities move together in the lane, its cursor a pen and up and down over a dot");
-    // Two notes starting together on step 12, one picked: the lane dragged there sets the picked one's velocity alone.
+          "with Draw, the picked notes' velocities move together in the lane, its cursor a pen and up and down over a dot");
+    // With Select, the lane's dots are picked as their notes are: a box from empty space along the lane's foot back
+    // over steps 4 and 0 picks those two notes (ringed, read off the rendered pixels), the 8th's left out; a dot dragged up
+    // moves both, each from its own, one undo step; Shift+click adds the 8th's and Ctrl+click lets it go again; a click
+    // on one of those picked, let go unmoved, picks it alone; the arrow, not a pen, over empty space.
+    {
+        click(view, at(15.5, 66)); // nothing picked
+        double was[4]; // every velocity at 100 for this, as it was after
+        for (int slot = 0; slot < 4; ++slot) {
+            was[slot] = field(slot, SeqNoteParam::Velocity);
+            model.set(seqNoteIndex(0, slot, SeqNoteParam::Velocity), 100.0 / 127.0);
+        }
+        view.poll();
+        const float foot = detail::kSeqLaneArea.y + detail::kSeqLaneArea.h - 8.0f;
+        view.mouseMove({at(2.5, 48).x, detail::kSeqLaneArea.y + 10.0f}, {});
+        const bool arrow = view.cursor() == CursorKind::Arrow;
+        view.mouseDown({at(5.5, 48).x, foot}, {}); // from right of step 4 back past the lane's left end
+        view.mouseMove({at(2.0, 48).x, foot - 10.0f}, {});
+        view.mouseMove({at(0.0, 48).x - 6.0f, foot - 20.0f}, {});
+        const bool boxCursor = view.cursor() == CursorKind::Arrow;
+        const bool boxShot = renderer.save(view, dir / "36i2-seq-lane-box.png");
+        view.mouseUp({at(0.0, 48).x - 6.0f, foot - 20.0f}, {});
+        view.mouseMove({600.0f, 600.0f}, {});
+        renderer.save(view, dir / "36i2-seq-lane-picked.png");
+        const Point d0 = laneDot(0.0, 100.0 / 127.0), d4 = laneDot(4.0, 100.0 / 127.0), d8 = laneDot(8.0, 100.0 / 127.0);
+        const bool boxed = bright({d0.x + 6.0f, d0.y}) && bright({d4.x + 6.0f, d4.y}) && !bright({d8.x + 6.0f, d8.y});
+        view.mouseDown(d4, {});
+        view.mouseMove({d4.x, d4.y - 2.0f}, {});
+        view.mouseMove({d4.x, d4.y - 4.0f}, {});
+        view.mouseUp({d4.x, d4.y - 4.0f}, {});
+        auto vel = [&](int slot) { return std::lround(field(slot, SeqNoteParam::Velocity) * 127.0); };
+        const bool together = vel(0) == 113 && vel(1) == 113 && vel(2) == 100;
+        view.undo();
+        const bool undone = vel(0) == 100 && vel(1) == 100;
+        click(view, d8, {true, false, false});
+        const bool added = view.seqKey(View::Key::Delete, false) && field(2, SeqNoteParam::Length) == 0.0;
+        view.undo(); // the three back
+        view.seqKey(View::Key::SelectAll, false);
+        click(view, d8, {false, true, false}); // Ctrl lets the 8th's go
+        click(view, d0); // one of the two picked: picked alone
+        view.seqKey(View::Key::Delete, false);
+        const bool alone = field(0, SeqNoteParam::Length) == 0.0 && field(1, SeqNoteParam::Length) > 0.0 &&
+                           field(2, SeqNoteParam::Length) > 0.0;
+        view.undo();
+        std::printf("      the lane picked with Select: box %d (%d), together %d, undone %d, added %d, alone %d\n", boxed,
+                    boxShot, together, undone, added, alone);
+        check(arrow && boxCursor && boxShot && boxed && together && undone && added && alone,
+              "with Select, a box, Shift+click and Ctrl+click pick the lane's dots, which move up and down together");
+        for (int slot = 0; slot < 4; ++slot)
+            model.set(seqNoteIndex(0, slot, SeqNoteParam::Velocity), was[slot]);
+        view.poll();
+        view.seqKey(View::Key::SelectAll, false); // as before, for the checks below
+    }
+    // With Draw, two notes starting together on step 12, one picked: the lane dragged there sets the picked one's
+    // velocity alone.
     {
         model.set(seqNoteIndex(0, 20, SeqNoteParam::Start), 12.0);
         model.set(seqNoteIndex(0, 20, SeqNoteParam::Length), 1.0);
@@ -6112,6 +6169,7 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         view.poll();
         click(view, at(15.5, 66)); // nothing picked
         click(view, at(12.4, 62)); // the new one picked
+        model.ui.seqDraw = true;
         drag(view, {laneDot(12.0, 100.0 / 127.0).x, detail::kSeqLaneArea.y + 30.0f},
              {laneDot(12.0, 100.0 / 127.0).x, detail::kSeqLaneArea.y + 6.0f});
         const bool alone = field(20, SeqNoteParam::Velocity) == 1.0 && field(3, SeqNoteParam::Velocity) == 100.0 / 127.0;
@@ -6120,7 +6178,8 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         model.set(seqNoteIndex(0, 20, SeqNoteParam::Start), 0.0);
         model.set(seqNoteIndex(0, 20, SeqNoteParam::Pitch), 60.0);
         view.poll();
-        check(alone, "where notes start together, the lane sets the picked ones' alone");
+        model.ui.seqDraw = false;
+        check(alone, "with Draw, where notes start together, the lane sets the picked ones' alone");
     }
 
     // Selecting, the cursor over the empty grid is the arrow; drawing, a pen, and over a note what a drag does to it.

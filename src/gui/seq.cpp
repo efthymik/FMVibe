@@ -1445,9 +1445,39 @@ bool View::seqPress(const Widget &w, Point p, Modifiers mods) {
                 setSeqCurvePick({index});
             return true;
         }
-        // On the dot or stem of one of the notes picked, while more than one is: they move together, up and down from
-        // where they are. Elsewhere, the notes under the mouse take its height.
         const int hit = seqLaneNoteAt(p);
+        if (!layout.seqDraw) {
+            // With Select, the dots are picked as their notes are in the roll: a box from empty space picking the notes
+            // whose dots or stems it reaches (Shift or Ctrl adding them to those picked), a dot clicked picking its
+            // note alone, or with Shift or Ctrl along with the others (or letting it go, once let go unmoved); and a dot
+            // dragged moves every note picked up or down together, each from where it was.
+            const bool adds = mods.shift || mods.ctrl;
+            if (hit < 0) {
+                startDrag(SeqDrag::Mode::LaneBox, false);
+                seqDrag_.boxBase = adds ? seqPicked() : std::vector<int>{};
+                seqSelection_ = seqDrag_.boxBase;
+                return true;
+            }
+            bool unpick = false, narrow = false;
+            if (adds && seqSelected(hit))
+                unpick = true;
+            else if (adds)
+                seqSelection_.push_back(hit);
+            else if (!seqSelected(hit))
+                seqSelection_ = {hit};
+            else
+                narrow = seqPicked().size() > 1;
+            startDrag(SeqDrag::Mode::LaneGroup, true);
+            seqDrag_.anchor = hit;
+            seqDrag_.unpick = unpick;
+            seqDrag_.narrow = narrow;
+            for (const SeqNote &n : seqNotes())
+                if (seqSelected(n.slot))
+                    seqDrag_.origin.push_back(n);
+            return true;
+        }
+        // With Draw, on the dot or stem of one of the notes picked, while more than one is: they move together, up and
+        // down from where they are. Elsewhere, the notes under the mouse take its height.
         if (hit >= 0 && seqSelected(hit) && seqPicked().size() > 1) {
             startDrag(SeqDrag::Mode::LaneGroup, true);
             for (const SeqNote &n : seqNotes())
@@ -1672,6 +1702,18 @@ void View::seqDrag(Point p) {
         setSeqCurve(curve, points);
         break;
     }
+    case SeqDrag::Mode::LaneBox: { // the notes whose dots, or stems under them, it reaches, and those picked before it
+        const float x0 = std::min(drag_.start.x, p.x), x1 = std::max(drag_.start.x, p.x);
+        const float y0 = std::min(drag_.start.y, p.y), y1 = std::max(drag_.start.y, p.y);
+        const float bottom = kSeqLaneArea.y + kSeqLaneArea.h - 6.0f;
+        seqSelection_ = d.boxBase;
+        for (const SeqNote &n : seqNotes()) {
+            const Point dot = seqLaneDot(n);
+            if (dot.x >= x0 && dot.x <= x1 && dot.y <= y1 && bottom >= y0 && !seqSelected(n.slot))
+                seqSelection_.push_back(n.slot);
+        }
+        break;
+    }
     case SeqDrag::Mode::CurveBox: { // the points inside it, and those picked before it
         const Rect box{std::min(drag_.start.x, p.x), std::min(drag_.start.y, p.y), std::abs(p.x - drag_.start.x),
                        std::abs(p.y - drag_.start.y)};
@@ -1765,6 +1807,8 @@ void View::seqRelease(Point) {
     const SeqDrag::Mode mode = seqDrag_.mode;
     if (seqDrag_.unpick && !drag_.moved) // a Shift+click on a note picked: no longer picked
         std::erase(seqSelection_, seqDrag_.anchor);
+    if (mode == SeqDrag::Mode::LaneGroup && seqDrag_.narrow && !drag_.moved) // a click on one of several dots picked
+        seqSelection_ = {seqDrag_.anchor};
     if (mode == SeqDrag::Mode::CurvePoint && !drag_.moved && (seqDrag_.curveUnpick || seqDrag_.narrow)) {
         // A point clicked: with Ctrl or Shift, one picked let go; without, one of several picked picked alone.
         std::vector<int> picked = seqCurvePicked();
@@ -2271,6 +2315,13 @@ void View::paintSeq(Canvas &c) {
         if (picked) // ringed, as the note is
             c.strokeCircle(dot, 6.0f, kText, 1.5f);
     }
+    // The box being dragged across the lane, picking the notes whose dots it reaches.
+    if (drag_.kind == DragKind::Seq && seqDrag_.mode == SeqDrag::Mode::LaneBox) {
+        const Rect box{std::min(drag_.start.x, drag_.now.x), std::min(drag_.start.y, drag_.now.y),
+                       std::abs(drag_.now.x - drag_.start.x), std::abs(drag_.now.y - drag_.start.y)};
+        c.fillRect(box, stem.alpha(0.12f));
+        c.strokeRect(box, stem.alpha(0.7f), 1.0f);
+    }
     c.popClip();
     c.line({kSeqBox.x, kSeqLaneTabs.y}, {kSeqBox.x + kSeqBox.w, kSeqLaneTabs.y}, kBorder, 1.0f);
     // The zoom's arrows, before their buttons: across, and up and down.
@@ -2369,7 +2420,7 @@ std::optional<CursorKind> View::seqCursor(const Widget &w) const {
         if (drag_.kind == DragKind::Seq)
             return seqDrag_.mode == SeqDrag::Mode::CurveBend    ? CursorKind::Vertical
                    : seqDrag_.mode == SeqDrag::Mode::CurvePoint ? CursorKind::Move
-                   : seqDrag_.mode == SeqDrag::Mode::CurveBox   ? std::optional<CursorKind>()
+                   : seqDrag_.mode == SeqDrag::Mode::CurveBox   ? CursorKind::Arrow
                                                                 : CursorKind::Pen;
         if (seqCurvePointAt(hoverPoint_) >= 0)
             return CursorKind::Move;
@@ -2377,11 +2428,14 @@ std::optional<CursorKind> View::seqCursor(const Widget &w) const {
             return CursorKind::Vertical;
         return controller_.layout().seqDraw ? std::optional<CursorKind>(CursorKind::Pen) : std::nullopt;
     }
-    if (w.kind == Kind::SeqLane) { // a pen, drawing the notes' heights; up and down over a dot, or moving them
+    if (w.kind == Kind::SeqLane) { // up and down over a dot, or moving them; with Draw a pen elsewhere, drawing heights
         if (drag_.kind == DragKind::Seq)
-            return seqDrag_.mode == SeqDrag::Mode::LaneGroup || seqDrag_.anchor >= 0 ? CursorKind::Vertical
-                                                                                     : CursorKind::Pen;
-        return seqLaneNoteAt(hoverPoint_) >= 0 ? CursorKind::Vertical : CursorKind::Pen;
+            return seqDrag_.mode == SeqDrag::Mode::LaneBox                                ? CursorKind::Arrow
+                   : seqDrag_.mode == SeqDrag::Mode::LaneGroup || seqDrag_.anchor >= 0 ? CursorKind::Vertical
+                                                                                         : CursorKind::Pen;
+        if (seqLaneNoteAt(hoverPoint_) >= 0)
+            return CursorKind::Vertical;
+        return controller_.layout().seqDraw ? CursorKind::Pen : CursorKind::Arrow;
     }
     if (w.kind != Kind::SeqGrid)
         return std::nullopt;

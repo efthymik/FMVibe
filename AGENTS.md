@@ -742,9 +742,12 @@ the plain CMake commands and installing into a host are in the [README](README.m
     roll zoomed in across by its +, Ctrl+A picking every note and the arrows moving them a step, a semitone and with
     Shift an octave (the rows following only as far as shows every note moved; with none picked, going on to the
     host), each undoably; a picked note's dot
-    ringed in the lane (read off the rendered pixels) and the picked notes' velocities dragged together there (where
-    notes start together, the picked one's alone), the
-    lane's cursor a pen and up and down over a dot and while one is dragged; Delete removing the notes picked; a note or key clicked in the
+    ringed in the lane (read off the rendered pixels) and, with Draw, the picked notes' velocities dragged together
+    there (where notes start together, the picked one's alone), the
+    lane's cursor a pen and up and down over a dot and while one is dragged; with Select, a box from the lane's empty
+    space picking the notes whose dots or stems it reaches (ringed, read off the rendered pixels), a dot dragged moving
+    every one picked together, one undo step, Shift+click adding a dot's note and Ctrl+click letting it go, a click on
+    one of several picked picking it alone, and the arrow over empty space; Delete removing the notes picked; a note or key clicked in the
     roll heard alone while held (not played as the keyboard's), a note moved heard on its new row; the middle button
     panning it across and up and down, and Alt+wheel zooming the rows
     in about the row under the mouse, the rows' bar at its right scrolling them; the scale's list opening above its button with both panels collapsed; a note put down by a double-click heard

@@ -1099,7 +1099,7 @@ private:
     struct SeqDrag {
         enum class Mode { None, Move, Resize, ResizeStart, Box, Paint, Velocity, Lane, LaneGroup, Loop, LoopStart,
                           LoopEnd, LoopMove, Field, Audition, Scroll, ScrollY, CurvePoint, CurveBend, CurvePaint,
-                          CurveBox };
+                          CurveBox, LaneBox };
         Mode mode = Mode::None;
         int anchor = -1;                 // the note grabbed (Move, Resize), the field (Field), the key (Audition)
         double grabStep = 0.0;           // where it was grabbed: in steps,
