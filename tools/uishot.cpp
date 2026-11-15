@@ -9571,7 +9571,9 @@ void run(const std::filesystem::path &dir, float scale) {
     // Its count is a stepper, as every stepped number is: a field reaching out half a column less 6 px either side (the
     // first of its row, with nothing at its left), its - and + at the ends stepping it as a notch of the wheel does,
     // each an undo step, a quick second click stepping again, and - doing nothing at 1 copy; its + faint at rest and lit
-    // under the mouse (read off the rendered pixels). The header's Bend likewise, its field under its label.
+    // under the mouse (read off the rendered pixels). The hand over - and +, up and down over its number (and while
+    // it is dragged from there, wherever the mouse goes), and the arrow over its label. The header's Bend likewise,
+    // its field under its label.
     {
         const int unison = paramIndex(0, OpParam::Unison);
         const float d = detail::kOpKnobD, half = 268.0f / 5.0f * 0.5f - 6.0f;
@@ -9584,6 +9586,19 @@ void run(const std::filesystem::path &dir, float scale) {
         view.mouseMove(plus, {});
         const bool hoverShot = renderer.save(view, dir / "3s-stepper-hover.png");
         const int lit = ringLevel(renderer, {plus.x, plus.y - 3.0f}, 6.0f);
+        const bool plusHand = view.cursor() == CursorKind::Hand;
+        view.mouseMove(minus, {});
+        const bool minusHand = view.cursor() == CursorKind::Hand;
+        view.mouseMove({kUnisonKnob.x, top + 7.5f}, {});
+        const bool numberVertical = view.cursor() == CursorKind::Vertical;
+        view.mouseMove({kUnisonKnob.x, bottom + 14.0f}, {}); // its label
+        const bool labelArrow = view.cursor() == CursorKind::Arrow;
+        view.mouseDown({kUnisonKnob.x, top + 7.5f}, {});
+        view.mouseMove({plus.x, top + 2.0f}, {}); // over its + while dragged: a step up
+        const bool draggedVertical = view.cursor() == CursorKind::Vertical;
+        view.mouseUp({plus.x, top + 2.0f}, {});
+        view.undo();
+        const bool cursors = plusHand && minusHand && numberVertical && labelArrow && draggedVertical;
         click(view, plus);
         const bool up = model.value(unison) == 5.0;
         doubleClick(view, plus);
@@ -9615,6 +9630,9 @@ void run(const std::filesystem::path &dir, float scale) {
         check(hoverShot && up && twice && down && undone && back && floor && bent && model.value(bend) == bendWas &&
                   lit > rest + 40,
               "a stepper's - and + step it, an undo step each, and its + lights under the mouse");
+        check(cursors && model.value(unison) == 4.0,
+              "a stepper shows the hand over its - and +, up and down over its number and while dragged, and the "
+              "arrow over its label");
     }
     drag(view, kPhaseKnob, {kPhaseKnob.x, kPhaseKnob.y - 100.0f});
     check(std::abs(model.value(paramIndex(0, OpParam::PhaseRandom)) - 0.5) < 1e-6,

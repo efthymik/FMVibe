@@ -12889,6 +12889,12 @@ CursorKind View::cursor() const {
         return CursorKind::Arrow;
     if (const std::optional<CursorKind> seq = seqCursor(*w))
         return *seq;
+    // A stepper: a hand over its - and +, which click; up and down over its number, which drags; elsewhere on it (round
+    // its field, its label) the arrow. Dragged, up and down wherever the mouse goes.
+    if (isStepper(*w) && drag_.kind == DragKind::None)
+        return stepperButton(*w, hoverPoint_) != 0 ? CursorKind::Hand
+               : w->well.contains(hoverPoint_)     ? CursorKind::Vertical
+                                                   : CursorKind::Arrow;
     switch (w->kind) {
     case Kind::DynZone:
     case Kind::Knob:
