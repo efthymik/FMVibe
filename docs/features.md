@@ -1764,7 +1764,8 @@ one may have changed since it last did.
   reset, Ctrl+Click or a double-click on its label to type, a source's handle dropped on it where its value takes
   modulation, its depth handles under it; − and + step it as a notch of the wheel does, an undo step each, a quick
   second click stepping again, and an end that is reached faint. They show faint at rest where the number leaves
-  them room and lit under the mouse, where the unit makes way for them if they need its room. The cursor is a hand
+  them room and lit under the mouse, where the unit makes way for them if they need its room, then the number takes a smaller size, and a
+  number too long even so (a delay's 1/64D) leaves only the one under the mouse showing, moving off it. The cursor is a hand
   over − and +, up and down over the number (and while it is dragged), and the arrow elsewhere on it. Its field is under
   the knob's place, as wide as the widgets beside it leave room for (36 to 56 px, two steppers side by side sharing
   what is between them, the end of a row half the way to the next knob), and in the header and the note curve's

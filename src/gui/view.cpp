@@ -9457,25 +9457,47 @@ void View::paintStepper(Canvas &c, const Widget &w) {
         unit = number.substr(number.size() - st.size() + 1);
         number.resize(number.size() - st.size());
     }
-    const float size = w.compact ? kTextValue : kTextBody;
+    float size = w.compact ? kTextValue : kTextBody;
     constexpr float kZone = 14.0f; // each end's button (see stepperButton())
-    const float numberW = std::ceil(c.textWidth(number, size, true));
+    float numberW = std::ceil(c.textWidth(number, size, true));
     float unitW = unit.empty() ? 0.0f : std::ceil(c.textWidth(unit, kTextSmall)) + 2.0f;
     const bool room = numberW + unitW + 4.0f <= well.w - 2.0f * kZone; // 2 px clear of each glyph's zone
-    if (hovered && !room) {
+    const int under = hovered ? stepperButton(w, hoverPoint_) : 0;
+    // Where the number goes, between `left` and `right`, and which of - and + show (-1, +1, or both at 0).
+    float left = well.x + kZone + 2.0f, right = well.right() - kZone - 2.0f;
+    bool both = room;
+    if (!room && !focused) { // at rest, neither showing: the whole field
+        left = well.x + 3.0f;
+        right = well.right() - 3.0f;
+    } else if (!room) {
+        // Under the mouse with too long a number: the unit makes way for - and +, then the number takes the small
+        // size; and if it still runs into them, only the one under the mouse shows, the number moving off it into
+        // the other's room (with the mouse on the number, neither shows).
         unit.clear();
         unitW = 0.0f;
+        if (numberW > right - left) {
+            size = kTextSmall;
+            numberW = std::ceil(c.textWidth(number, size, true));
+        }
+        both = numberW <= right - left;
+        if (!both) {
+            left = under < 0 ? well.x + kZone + 1.0f : well.x + 3.0f;
+            right = under > 0 ? well.right() - kZone - 1.0f : well.right() - 3.0f;
+        }
     }
     const float textH = well.h - 5.0f; // above the steps
-    const float x = std::round(well.center().x - (numberW + unitW) * 0.5f);
+    // Centered between its bounds, or held inside them where it is wider than its room.
+    const float x = std::round(
+        std::max(left, std::min(right - numberW - unitW, 0.5f * (left + right) - 0.5f * (numberW + unitW))));
     c.text({x, well.y, numberW + 2.0f, textH}, number, size, kText, Align::Left, true);
     if (!unit.empty())
         c.text({x + numberW + 2.0f, well.y + 1.5f, unitW, textH}, unit, kTextSmall, kDim, Align::Left);
 
-    if (room || focused) {
-        const int under = hovered ? stepperButton(w, hoverPoint_) : 0;
+    if (both || under != 0) {
         const float y = well.y + textH * 0.5f;
         for (const int side : {-1, 1}) {
+            if (!both && side != under)
+                continue;
             const bool end = side < 0 ? v <= def.min + 1e-9 : v >= def.max - 1e-9;
             const float bx = side < 0 ? well.x + 7.5f : well.right() - 7.5f;
             if (under == side && !end)

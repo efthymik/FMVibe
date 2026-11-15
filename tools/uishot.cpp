@@ -1507,6 +1507,31 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     model.set(paramIndex(1, FxParam::ReverbSize), 1.0);
     check(smallRoom && renderer.save(view, dir / "21e-reverb-big-shimmer.png"),
           "render a small room and a big shimmer");
+    // A stepper's number too long for its field with - and + both: under the mouse on +, the + alone shows and the
+    // number moves off it, as it does off - (the column just inside each one's lit square left clear of the number,
+    // read off the rendered pixels). The delay's synced Time L at 1/64D, its field reaching half a column less 6 px
+    // either side.
+    {
+        const int timeL = paramIndex(0, FxParam::DelayDivisionL);
+        const double was = model.value(timeL);
+        model.set(timeL, kDivisions - 3.0); // 1/64D
+        view.poll();
+        const Point knob = fxKnob(model, 0, 0, 3, 206.0f);
+        const float half = std::clamp(fxCardW(model, 0) / 3.0f * 0.5f - 6.0f, 18.0f, 28.0f);
+        const float y = knob.y + 15.0f - 5.5f - 20.0f + 7.5f;
+        const float right = knob.x + half, left = knob.x - half;
+        view.mouseMove({right - 7.5f, y}, {});
+        const bool shot = renderer.save(view, dir / "21f-stepper-long.png");
+        const int byPlus = ringLevel(renderer, {right - 12.5f, y - 5.0f}, 10.0f);
+        view.mouseMove({left + 7.5f, y}, {});
+        renderer.save(view, dir / "21f-stepper-long-minus.png");
+        const int byMinus = ringLevel(renderer, {left + 12.5f, y - 5.0f}, 10.0f);
+        model.set(timeL, was);
+        view.mouseMove({600.0f, 328.0f}, {});
+        std::printf("      a long stepper number beside + at %d, beside - at %d\n", byPlus, byMinus);
+        check(shot && byPlus < 140 && byMinus < 140,
+              "a stepper's number too long for - and + both moves off the one under the mouse");
+    }
     model.set(paramIndex(1, FxParam::ReverbType), static_cast<double>(ReverbType::Hall));
     model.set(paramIndex(1, FxParam::ReverbSize), paramTable()[paramIndex(1, FxParam::ReverbSize)].def);
     click(view, kRoutingTab);
