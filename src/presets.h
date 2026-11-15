@@ -35,11 +35,12 @@ public:
     static std::wstring factoryFile(const std::string &name);
     // The factory preset `file` names, or nullptr for a file on disk (or a name no factory preset has).
     static const FactoryPreset *factoryPreset(const std::wstring &file);
-    // `file`, or the factory preset's "file" for a copy the plugin once wrote into the folder's Factory subfolder
-    // that is gone or still as built in: projects saved then name it, and the library leaves such copies out.
+    // `file`, or the factory preset's "file" for a file named as one in the folder's Factory subfolder, where
+    // versions up to 0.11 wrote them out: projects saved then name it.
     static std::wstring resolve(const std::wstring &file);
 
-    // Lists the folder's presets and the factory presets. The folder isn't made for it.
+    // Lists the factory presets and the folder's presets, leaving out its Factory subfolder (see resolve()). The
+    // folder isn't made for it.
     void rescan();
     // Shows the folder, made first if it isn't there yet.
     void openFolder();

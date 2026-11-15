@@ -869,9 +869,8 @@ To add or change one:
 
 A factory preset changed here reaches users with the next release. Being built in, it can't be saved over: Save
 on one opens Save As (`Controller::presetWritable()`). Versions up to 0.11 wrote the factory presets out into the
-preset folder's `Factory` subfolder; `PresetLibrary::resolve()` takes a copy there that is gone or still as built in
-for the built-in one, so the library leaves it out and a project naming it loads the built-in one, while a copy
-changed since stays a preset of its own.
+preset folder's `Factory` subfolder: the scan leaves that subfolder out, and `PresetLibrary::resolve()` takes a file
+there named as a factory preset for the built-in one, so a project naming it loads the built-in one.
 
 Factory presets are not pinned by checksum, so changing or adding one needs no test edit. Don't add a checksum test
 for them: a preset is meant to change as its sound is tuned, and a pinned hash only forces an edit to the test on

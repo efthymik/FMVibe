@@ -1887,9 +1887,9 @@ one may have changed since it last did.
   turning up the amp's Gain, then ping-pong echoes and a plate); and BA Driven Bass (a round FM bass with a sub an
   octave down, through the Bass amp's grit into a 4x10, its lows staying clean). Each release brings
   them as it tunes them. Being built in, they can't be saved over: Save on a changed one saves it as a new preset, as
-  Save As does. Versions before 0.12 wrote them out into the folder's `Factory` subfolder: a copy there still as it
-  was written (or gone) counts as the built-in one, so the list shows it once and a project that named it loads the
-  built-in one, while a copy changed since shows beside it as a preset of its own. Their routing graphs are laid out with no node on another, and no wire, line to OUT or
+  Save As does. Versions before 0.12 wrote them out into the folder's `Factory` subfolder: the library leaves that
+  subfolder out (it stays on disk, for the user to keep or delete), and a project that named a preset in it loads the
+  built-in one of that name. Their routing graphs are laid out with no node on another, and no wire, line to OUT or
   label running over a node it doesn't join. They hold only the params that differ from Init, so they are small, and
   load like any other preset.
   - The **preset bar** in the middle of the title bar shows the preset loaded or saved last, or **- Init -** (as

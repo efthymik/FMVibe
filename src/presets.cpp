@@ -28,15 +28,9 @@ bool sameNoCase(const std::wstring &a, const std::wstring &b) {
     return _wcsicmp(a.c_str(), b.c_str()) == 0;
 }
 
-// Whether the file at `path` holds exactly `data`.
-bool fileHolds(const std::filesystem::path &path, std::span<const unsigned char> data) {
-    FILE *file = nullptr;
-    if (_wfopen_s(&file, path.c_str(), L"rb") != 0 || !file)
-        return false;
-    std::vector<unsigned char> bytes(data.size() + 1);
-    const size_t read = std::fread(bytes.data(), 1, bytes.size(), file);
-    std::fclose(file);
-    return read == data.size() && std::equal(data.begin(), data.end(), bytes.begin());
+// The subfolder versions up to 0.11 wrote the factory presets into, which the library leaves out.
+std::filesystem::path oldFactoryFolder(const std::wstring &folder) {
+    return (std::filesystem::path(folder) / L"Factory").lexically_normal();
 }
 
 } // namespace
@@ -94,17 +88,13 @@ std::wstring PresetLibrary::resolve(const std::wstring &file) {
         return file;
     try {
         const fs::path path = fs::path(file).lexically_normal();
-        if (!sameNoCase(path.parent_path().wstring(), (fs::path(folder) / L"Factory").lexically_normal().wstring()) ||
+        if (!sameNoCase(path.parent_path().wstring(), oldFactoryFolder(folder).wstring()) ||
             !sameNoCase(path.extension().wstring(), L".fmv"))
             return file;
         const std::wstring stem = path.stem().wstring();
-        for (const FactoryPreset &preset : factoryPresets()) {
-            if (!sameNoCase(widePath(preset.name), stem))
-                continue;
-            std::error_code error;
-            const bool gone = !fs::exists(path, error) && !error;
-            return gone || fileHolds(path, preset.data) ? factoryFile(preset.name) : file;
-        }
+        for (const FactoryPreset &preset : factoryPresets())
+            if (sameNoCase(widePath(preset.name), stem))
+                return factoryFile(preset.name);
     } catch (const std::exception &) {
     }
     return file;
@@ -118,22 +108,26 @@ void PresetLibrary::rescan() {
         gui::PresetEntry entry;
         std::wstring file;
     };
-    // The factory presets first, so a changed copy of one in the folder's Factory subfolder comes after it.
     std::vector<Found> found;
     for (const FactoryPreset &preset : factoryPresets())
         found.push_back({{preset.name, kFactoryCategory}, factoryFile(preset.name)});
     const std::wstring folderName = folderPath();
     if (!folderName.empty()) {
         const fs::path folder(folderName);
+        const std::wstring oldFactory = oldFactoryFolder(folderName).wstring();
         std::error_code error;
         for (fs::recursive_directory_iterator it(folder, fs::directory_options::skip_permission_denied, error), end;
              !error && it != end; it.increment(error)) {
             std::error_code fileError;
+            // The factory presets an earlier version wrote out, whatever has become of them: the list has them.
+            if (it.depth() == 0 && it->is_directory(fileError) &&
+                sameNoCase(it->path().lexically_normal().wstring(), oldFactory)) {
+                it.disable_recursion_pending();
+                continue;
+            }
             if (!it->is_regular_file(fileError) || _wcsicmp(it->path().extension().c_str(), L".fmv") != 0)
                 continue;
             const std::wstring file = it->path().lexically_normal().wstring();
-            if (resolve(file) != file) // a copy of a factory preset, which the list has already
-                continue;
             const fs::path parent = it->path().parent_path().lexically_relative(folder);
             const std::string category = parent.empty() || parent == L"." ? std::string() : utf8(parent, true);
             std::string name = utf8(it->path().stem());
