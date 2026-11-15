@@ -269,6 +269,20 @@ bool View::seqTrackGlows(const Telemetry &t) {
     return paint;
 }
 
+bool View::seqFollowKeys(const Telemetry &t) {
+    constexpr float kRise = kKeyLightRise, kFall = kKeyLightFall;
+    bool moved = false;
+    for (int pitch = 0; pitch < 128; ++pitch) {
+        const bool played = (t.seqKeys[static_cast<size_t>(pitch / 32)] >> (pitch % 32) & 1u) != 0;
+        const bool heard = drag_.kind == DragKind::Seq && seqDrag_.sounding == pitch;
+        float &light = seqKeyLight_[static_cast<size_t>(pitch)];
+        const float next = played || heard ? std::min(light + kRise, 1.0f) : std::max(light - kFall, 0.0f);
+        moved = moved || next != light;
+        light = next;
+    }
+    return moved;
+}
+
 float View::seqGlow(const SeqNote &note) const {
     const double from = seqGlowFrom_[static_cast<size_t>(note.slot)];
     if (from < 0.0)
@@ -1689,12 +1703,12 @@ void View::paintSeq(Canvas &c) {
     for (size_t i = 0; i < rows.size(); ++i) {
         const int pitch = rows[i];
         const float y = kSeqGrid.y + kSeqGrid.h - (i + 1) * rh;
-        const bool black = !fold && isBlackKey(pitch);
-        const bool outside = scale != 0 && !seqInScale(scale, root, pitch); // folded, a row a note off it has
-        if (black || outside)
-            c.fillRect({kSeqGrid.x, y, kSeqGrid.w, rh}, kBackground.alpha(outside ? 0.55f : 0.35f));
-        else // a white key's row a little lighter than the well
-            c.fillRect({kSeqGrid.x, y, kSeqGrid.w, rh}, Color{1.0f, 1.0f, 1.0f, lightTheme() ? 0.4f : 0.03f});
+        // The rows' ground follows the keys alone, whatever the scale: a black key's darker, a white key's a little
+        // lighter than the well; folded, the well as it is.
+        if (!fold)
+            c.fillRect({kSeqGrid.x, y, kSeqGrid.w, rh},
+                       isBlackKey(pitch) ? kBackground.alpha(0.35f)
+                                         : Color{1.0f, 1.0f, 1.0f, lightTheme() ? 0.4f : 0.03f});
         c.line({kSeqGrid.x, y + rh}, {kSeqGrid.x + kSeqGrid.w, y + rh},
                light.alpha((pitch % 12 == 0 ? 0.10f : 0.035f) * gridLines), 1.0f);
     }
@@ -1832,13 +1846,13 @@ void View::paintSeq(Canvas &c) {
                        Align::Right, true);
         }
     }
-    // The keys sounding: those the sequencer plays now, and the one heard while it is held.
+    // The keys sounding: those whose notes the sequencer plays now, as written, and the one heard while it is held,
+    // each lit as far as it has eased (see seqFollowKeys()).
     for (size_t i = 0; i < rows.size(); ++i) {
-        const int pitch = rows[i];
-        const bool played = (telemetry_.seqKeys[static_cast<size_t>(pitch / 32)] >> (pitch % 32) & 1u) != 0;
-        const bool heard = drag_.kind == DragKind::Seq && seqDrag_.sounding == pitch;
-        if (played || heard)
-            c.fillRect({kSeqKeys.x, kSeqKeys.y + kSeqKeys.h - (i + 1) * rh, kSeqKeys.w, rh}, kAccent.alpha(0.6f));
+        const float light = seqKeyLight_[static_cast<size_t>(std::clamp(rows[i], 0, 127))];
+        if (light > 0.0f)
+            c.fillRect({kSeqKeys.x, kSeqKeys.y + kSeqKeys.h - (i + 1) * rh, kSeqKeys.w, rh},
+                       kAccent.alpha(0.6f * light));
     }
     c.popClip();
     c.line({kSeqKeys.x + kSeqKeys.w, kSeqKeys.y}, {kSeqKeys.x + kSeqKeys.w, kSeqKeys.y + kSeqKeys.h}, kBorder, 1.0f);

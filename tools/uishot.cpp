@@ -5593,11 +5593,23 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         const uint32_t dark = renderer.pixel(key);
         model.live.seqKeys[55 / 32] |= 1u << (55 % 32);
         view.poll();
+        renderer.save(view, dir / "36l-seq-key-rising.png");
+        const uint32_t rising = renderer.pixel(key);
+        for (int i = 0; i < 4; ++i)
+            view.poll();
         renderer.save(view, dir / "36l-seq-key-played.png");
         const uint32_t lit = renderer.pixel(key);
         model.live.seqKeys = {};
         view.poll();
+        renderer.save(view, dir / "36l-seq-key-falling.png");
+        const uint32_t falling = renderer.pixel(key);
+        for (int i = 0; i < 8; ++i)
+            view.poll();
+        renderer.save(view, dir / "36l-seq-key-gone.png");
+        const uint32_t gone = renderer.pixel(key);
         check(lit != dark, "a key the sequencer plays lights in the roll's keys");
+        check(rising != dark && rising != lit && falling != lit && falling != dark && gone == dark,
+              "a key the sequencer plays eases up to lit over a few polls and back down once its note ends");
     }
 
     // Keys: with nothing picked the arrows go on to the host; Ctrl+A picks every note, Right moves them a grid step
@@ -10106,9 +10118,25 @@ void run(const std::filesystem::path &dir, float scale) {
     model.live.modOffset[fmAmount] = 0.25f;
     model.live.modOffset[paramIndex(GlobalParam::Pan)] = -0.3f;
     model.live.modOffset[matrixIndex(1, 0)] = 0.2f; // Env 1 on the B -> A wire: it swells, its label shows where
-    for (int key : {48, 52, 55}) // the host holds a C major chord, which lights up on the keyboard
-        model.live.keys[key / 32] |= 1u << (key % 32);
-    view.poll();
+    // The host holds a C major chord, which lights up on the keyboard, easing up over a few polls (read off the
+    // rendered pixels: C3's key, clear of its name and the black keys).
+    {
+        const Point c3{detail::kKeys.x + (24 / 12 * 7) * detail::kWhiteW + 4.0f,
+                       detail::keyboardTop(false) + detail::kKeys.y + detail::kKeys.h - 4.0f};
+        renderer.save(view, dir / "5-keys-off.png");
+        const uint32_t off = renderer.pixel(c3);
+        for (int key : {48, 52, 55})
+            model.live.keys[key / 32] |= 1u << (key % 32);
+        view.poll();
+        renderer.save(view, dir / "5-keys-rising.png");
+        const uint32_t rising = renderer.pixel(c3);
+        view.poll();
+        view.poll();
+        renderer.save(view, dir / "5-keys-lit.png");
+        const uint32_t lit = renderer.pixel(c3);
+        check(rising != off && rising != lit && lit != off,
+              "a key the host holds eases up to lit on the keyboard over a few polls");
+    }
     view.mouseMove(kDecayKnob, {}); // hover Op B's decay knob
     check(renderer.save(view, dir / "5-patch.png"), "render a busier patch");
     // Unwired, F still plays but isn't heard, so it stays dark.

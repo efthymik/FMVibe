@@ -284,7 +284,7 @@ int Sequencer::plan(uint32_t frames, double tempo, bool playing, double songBeat
     // The notes starting in this stretch, in order.
     struct Start {
         double at, end;
-        int key;
+        int key, pitch;
         double velocity;
         bool slide;
     };
@@ -311,7 +311,7 @@ int Sequencer::plan(uint32_t frames, double tempo, bool playing, double songBeat
                 const double end = std::max(swung(t + std::max(n.length * gate_, kShortest)) + delay, at + 1e-6);
                 double velocity = (1.0 - velocityAmount_) * kPlainVelocity + velocityAmount_ * n.velocity;
                 velocity *= 1.0 + humanize_ * kHumanizeVelocity * (2.0 * unit(k, n.index, 2) - 1.0);
-                starts[startCount++] = {at, end, key, std::clamp(velocity, 1.0 / 127.0, 1.0), n.slide};
+                starts[startCount++] = {at, end, key, n.pitch, std::clamp(velocity, 1.0 / 127.0, 1.0), n.slide};
             }
         }
         std::stable_sort(starts.begin(), starts.begin() + startCount,
@@ -359,7 +359,7 @@ int Sequencer::plan(uint32_t frames, double tempo, bool playing, double songBeat
                 count = pushOff(out, count, frame, sounding_[i]);
                 remove(i);
             }
-        sounding_[soundingCount_++] = {id, s.key, s.end, s.slide ? s.end + 1.0 : s.end, s.slide};
+        sounding_[soundingCount_++] = {id, s.key, s.pitch, s.end, s.slide ? s.end + 1.0 : s.end, s.slide};
     }
 
     next_ = to;

@@ -1696,11 +1696,25 @@ bool View::poll() {
         in(panels);
     if (seqWide() && seqTrackGlows(t))
         in(panels);
+    if (seqFollowKeys(t) && seqWide()) // the keys ease whether shown or not, so they show where they are
+        in(panels);
     if (t.tempo != telemetry_.tempo)
         everywhere = true;
-    if (t.keys != telemetry_.keys) {
-        const bool collapsed = controller_.layout().sourcesCollapsed;
-        in(keyboardPanel(keyboardTop(collapsed), controller_.layout().keysCollapsed));
+    // The keyboard's keys ease up to lit and back down as they are held and let go (as the roll's, see
+    // seqFollowKeys()), clicked here or played by the host.
+    {
+        bool moved = false;
+        for (int key = 0; key < 128; ++key) {
+            const bool held = t.keyDown(key) || (drag_.kind == DragKind::Key && keyboardBase() + drag_.widget.a == key);
+            float &light = keyLight_[static_cast<size_t>(key)];
+            const float next = held ? std::min(light + kKeyLightRise, 1.0f) : std::max(light - kKeyLightFall, 0.0f);
+            moved = moved || next != light;
+            light = next;
+        }
+        if (t.keys != telemetry_.keys || moved) {
+            const bool collapsed = controller_.layout().sourcesCollapsed;
+            in(keyboardPanel(keyboardTop(collapsed), controller_.layout().keysCollapsed));
+        }
     }
     // The output meter falls while it shows anything, also once the audio has stopped and the snapshot ages, and
     // is painted once more as it goes.
@@ -3979,9 +3993,11 @@ void View::paintKey(Canvas &c, const Widget &w, bool hovered, bool active) {
     Color color = black ? look.blackKey : look.whiteKey;
     if (hovered)
         color = black ? look.blackKeyHover : look.whiteKeyHover;
-    // Lit while held: clicked here, or played by the host.
-    if (active || telemetry_.keyDown(keyboardBase() + w.a))
-        color = kAccent;
+    // Lit while held, clicked here or played by the host, easing up and back down (see poll()).
+    static_cast<void>(active); // the key clicked here is held in drag_, which poll() follows
+    const int key = keyboardBase() + w.a;
+    if (key >= 0 && key < 128)
+        color = mix(color, kAccent, keyLight_[static_cast<size_t>(key)]);
     c.fillRect(w.rect, color, kRadiusMark);
     c.strokeRect(w.rect, kBorder, 1.0f, kRadiusMark);
     if (!black && w.a % 12 == 0) // label the C keys

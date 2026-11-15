@@ -61,12 +61,13 @@ public:
     // Every note it holds on, ended now.
     int stopAll(std::span<SeqEvent> out);
 
-    // The keys of the notes it holds on, a bit each (key 0 is bit 0 of the first).
-    std::array<uint32_t, 4> soundingKeys() const {
-        std::array<uint32_t, 4> keys{};
+    // The pitches the notes it holds on are written at in the pattern, untransposed by Octave, Transpose or a key, a
+    // bit each (pitch 0 is bit 0 of the first): the rows the roll lights.
+    std::array<uint32_t, 4> soundingPitches() const {
+        std::array<uint32_t, 4> pitches{};
         for (int i = 0; i < soundingCount_; ++i)
-            keys[static_cast<size_t>(sounding_[i].key / 32)] |= 1u << (sounding_[i].key % 32);
-        return keys;
+            pitches[static_cast<size_t>(sounding_[i].pitch / 32)] |= 1u << (sounding_[i].pitch % 32);
+        return pitches;
     }
     // Where it plays, in the playing pattern's steps (fractions between), and which pattern; -1 while it doesn't.
     float position() const { return position_; }
@@ -85,6 +86,7 @@ private:
     struct Sounding {
         int32_t id;
         int key;
+        int pitch;   // as written in the pattern
         double end;  // played steps
         double off;  // when it ends at the latest: its end, or a slide's end and a step more
         bool slide;

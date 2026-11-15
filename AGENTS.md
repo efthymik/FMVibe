@@ -341,7 +341,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     back, and forward otherwise), a loop playing only the notes in it, a muted note and one at
     no chance silent and one at half playing about half the passes (alike each time), another pattern taking over where
     the loop comes round, in Key a key playing the pattern transposed from Root and stopping it when let go (its end
-    reported, the sequencer's notes' never, the playhead in the telemetry), the keys the telemetry shows held leaving
+    reported, the sequencer's notes' never, the playhead in the telemetry, and the keys its notes are written on, not those they play), the keys the telemetry shows held leaving
     its notes out, and through the synth a note sounding from its sample however the blocks are split; its curves
     standing where the playhead is (back through a step played reversed, a bent segment off the straight line, held
     before the first point), doing nothing without points or while it doesn't play, and through the synth a bend curve
@@ -621,7 +621,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     off the rendered pixels), the mod wheel's
     handle (new modulation starting upward) and the pitch bend's (bipolar), each over its wheel and faint until it
     modulates something (read off the rendered pixels); with no note playing, a knob's dot showing where a macro
-    takes it (read off the rendered pixels); the octave shift's small buttons under the keys; collapsing the keyboard
+    takes it (read off the rendered pixels); the octave shift's small buttons under the keys; a key the host holds easing up to lit over a few polls (read off the rendered pixels); collapsing the keyboard
     strip to its top row by its chevron or title, the wheels' handles staying in it and still mapping the wheels; and
     Bend's knob, in the header after Pitch, turning; the bend wheel dragged editing the Pitch Bend param in one
     gesture (the host following it), springing back to the middle and leaving nothing to undo;
@@ -720,7 +720,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     its length and its start moving it with its end staying (the cursor left-right over either end), and either with Shift set off the
     grid, as a note moved with Shift lands (a Shift+click on a note picked, not dragged, unpicking it); a box picking the notes it reaches and the field's VEL dragged up turning every one picked up; the
     field's VEL and OFFSET double-clicked back to 100 and onto the grid; a key the sequencer plays lit in the roll's
-    keys (read off the rendered pixels); the loop dragged by its ends and its middle (with their cursors) and a new
+    keys, easing up over a few polls and back down once its note ends (read off the rendered pixels); the loop dragged by its ends and its middle (with their cursors) and a new
     one drawn across the bars outside it; the draw tool's cursor a pen over the empty grid (and over a note what a drag does to it), a note it draws and holds
     taking the velocity the mouse sets up and down (one undo step with the note), and with Shift painting a note in
     each step dragged across; the card's switches showing tooltips of their own (read off the rendered pixels); the

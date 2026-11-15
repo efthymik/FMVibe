@@ -148,7 +148,7 @@ struct Telemetry {
     // Where the sequencer plays, in its pattern's steps, and which pattern; -1 while it doesn't (see Sequencer).
     float seqPosition = -1.0f;
     int seqPattern = 0;
-    std::array<uint32_t, 4> seqKeys{}; // the keys of the notes the sequencer holds on, as `keys` has them
+    std::array<uint32_t, 4> seqKeys{}; // the pitches the notes the sequencer holds on are written at, as `keys` has keys
 
     bool keyDown(int key) const { return key >= 0 && key < 128 && (keys[key / 32] >> (key % 32) & 1u) != 0; }
 };

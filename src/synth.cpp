@@ -1344,7 +1344,7 @@ void Synth::telemetry(Telemetry &out) const {
     std::construct_at(&out);
     out.seqPosition = seq_.position();
     out.seqPattern = seq_.pattern();
-    out.seqKeys = seq_.soundingKeys();
+    out.seqKeys = seq_.soundingPitches();
     if (scope_.op >= 0 && scope_.live) {
         // A slow span (or the first one, before it is whole) shows as it fills; a quicker one a whole span at a time,
         // blending into the next (see kScopeBlendSpan).

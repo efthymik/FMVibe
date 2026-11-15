@@ -784,9 +784,10 @@ one may have changed since it last did.
     arrows (forward, back, to and fro, a die for random); **SCALE**: the root (dragged up and down or scrolled, a
     semitone a step; a double-click puts it back on C4), the scale's list (Chromatic, Major, Minor, Dorian, Phrygian,
     Lydian, Mixolydian, Harmonic Minor, Melodic Minor, Pentatonic Major and Minor, Blues; wider than its button, and
-    opening above it where the editor is too short for it below) and **FOLD**, which shows only the scale's rows (the
-    rows outside it are shaded otherwise), and those of notes off it all the same, shaded, their names faint. Notes off
-    the scale are hatched across, folded or not. At its foot, what the play mode does. Its switches say what they do in their
+    opening above it where the editor is too short for it below) and **FOLD**, which shows only the scale's rows, and
+    those of notes off it all the same, their names faint. The rows' ground follows the keys alone, whatever the scale:
+    a black key's row darker and a white key's a little lighter, and folded, all of them plain. Notes off the scale are
+    hatched across, folded or not. At its foot, what the play mode does. Its switches say what they do in their
     tooltips.
   - **The grid**: a line at every snap's length across the roll (a step with the snap off), the beats and bars
     stronger, as strong as the settings dialog's **GRID** says (50 % to begin with).
@@ -800,7 +801,7 @@ one may have changed since it last did.
     The roll's settings (the tool, the snap, the lane, the rows scrolled to and FOLD) belong to the editor: a preset
     or Init leaves them as they are.
   - **The roll**: the piano keys at its left (white keys across, the black ones shorter over them, every C named; with
-    FOLD, each row's name), a click playing the key, and the keys the sequencer plays lit as it plays them; the bars
+    FOLD, each row's name), a click playing the key, and the keys the sequencer's notes are written on lit as it plays them (as written, before Octave, Transpose or a key move them), each rising and fading a moment rather than switching; the bars
     and beats over it, with the loop as a bar in the accent (dragged by its ends to size it and by its middle to move
     it, the cursor left and right or moving; across the bars outside it for a new loop; a double-click loops the whole
     pattern again), the steps outside the loop shaded; and the playhead, while the sequencer plays the pattern shown (running backward through the steps it plays
@@ -1758,7 +1759,7 @@ one may have changed since it last did.
   under them, so the wheels can still be assigned. Whether it is
   collapsed is kept with the editor, like the modulation panel's, and loading a
   preset leaves it as it is. Drag across the keys to glide between notes. Keys light up while they are held, whether clicked here or
-  played by the host. The **Bend** wheel is the Pitch Bend param: it bends the pitch by the Bend Range and springs
+  played by the host, rising and fading a moment as the roll's keys do rather than switching. The **Bend** wheel is the Pitch Bend param: it bends the pitch by the Bend Range and springs
   back to center on release, in one edit the host follows. It shows where the bend stands: the param, with what the
   host adds on top (its MIDI pitch bend, and its modulation of the param, the newest note's own while notes play),
   filled in the pitch bend source's color, and its handle drags the pitch bend source onto what it should move. The

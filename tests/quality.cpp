@@ -3993,8 +3993,14 @@ void sequencerChecks() {
         e.synth().setTempo(120.0);
         const std::vector<float> before = e.render(4800);
         e.synth().noteOn({5, 0, 0, 64}, 1.0);
-        const std::vector<float> held = e.render(static_cast<size_t>(4 * kStep));
+        std::vector<float> held = e.render(static_cast<size_t>(2.5 * kStep));
         Telemetry t;
+        e.synth().telemetry(t);
+        // The roll lights the key the note is written on, not the key it plays: G4, not B4.
+        auto lit = [&](int key) { return (t.seqKeys[static_cast<size_t>(key / 32)] >> (key % 32) & 1u) != 0; };
+        const bool programmedLit = lit(67) && !lit(71);
+        const std::vector<float> rest = e.render(static_cast<size_t>(1.5 * kStep));
+        held.insert(held.end(), rest.begin(), rest.end());
         e.synth().telemetry(t);
         const float position = t.seqPosition;
         e.synth().noteOff({5, 0, 0, 64});
@@ -4028,6 +4034,7 @@ void sequencerChecks() {
         check(peak(before) == 0.0f && peak(held) > 0.1f && peak(after) == 0.0f && at(493.9) > 100.0 * at(392.0) &&
                   keyEnded && !seqEnded && std::abs(position - 4.0f) < 0.1f,
               "in Key, a key plays the pattern transposed by it and stops it when let go");
+        check(programmedLit, "the telemetry gives the keys of the notes playing as written, not as transposed");
     }
     // In Key, with an empty pattern, a note the editor plays to be heard (on kAuditionPort) sounds as a note rather
     // than starting the pattern (which would play nothing), and no end is reported for it.

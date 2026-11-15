@@ -1021,6 +1021,13 @@ private:
     }(); // when each slot's note started glowing, in seconds (see seqNow()), -1 for never
     std::array<bool, kSeqNotes> seqInFirstStep_{}; // whether the playhead was in each note's first step at the last poll
     bool seqGlowed_ = false;
+    // The roll's keys lit as the sequencer plays their notes (or one is heard while held): each eases up to lit and
+    // back down a step every poll, rather than switching. Whether any moved, to paint.
+    bool seqFollowKeys(const Telemetry &t);
+    std::array<float, 128> seqKeyLight_{}; // 0..1, each key's light as shown
+    std::array<float, 128> keyLight_{};    // the same for the keyboard strip's keys, by MIDI key
+    // How far a key's light moves each poll, up and down: about 35 ms up and 80 ms down at 60 polls a second.
+    static constexpr float kKeyLightRise = 0.5f, kKeyLightFall = 0.22f;
     static double seqNow(); // seconds on a steady clock
     // A note, a box or a paint stroke dragged to the roll's edge (or past it) scrolls it that way, a step of it each
     // poll: whether it did.
