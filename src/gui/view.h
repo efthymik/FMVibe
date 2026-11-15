@@ -427,6 +427,7 @@ private:
         ShapePoint,
         ShapeCurve,
         ShapeStep, // a step just drawn, following the mouse (drag_.shapeBefore: the shape before it)
+        ShapeBox,  // a box across a shape from drag_.start to drag_.now, picking the points it reaches
         Partials,
         Key,
         ModWheel,
@@ -460,6 +461,15 @@ private:
         float scrollStart = 0.0f; // moving a card: where its row was scrolled to when it was grabbed
         int lastPartial = -1; // drawing partials: the one the last move was over, and its value in startValue
         std::vector<double> shapeBefore; // drawing a step: the shape's params before it
+        // Points moved together (DragKind::ShapePoint with more than one picked): which, and where each was as they
+        // were grabbed (x, y). Pressed with Ctrl on one picked already, `unpick` lets it go if it is let go unmoved;
+        // pressed without on one of several picked, `narrow` picks it alone then. A box (DragKind::ShapeBox): the
+        // points picked before it, which Ctrl adds it to.
+        std::vector<int> points;
+        std::vector<std::pair<double, double>> origin;
+        bool unpick = false;
+        bool narrow = false;
+        std::vector<int> boxBase;
         // A card or node Ctrl-dragged, which carries a copy (see copyDragged()): every param and the layout before the
         // copy was made, which a drag called off goes back to.
         std::vector<double> copyBefore;
@@ -1006,6 +1016,19 @@ private:
     // there.
     void paintSeqCurve(double from, double fromValue, double step, double v, double unit);
     int seqCurveJustAdded_ = -1; // the point the last press put down, which a double-click leaves
+    // The points picked on the lane's curve, as a shape editor's are (see ShapePick): of the pattern and curve shown,
+    // while the curve has as many points as when they were picked; let go at a click anywhere off the lane.
+    struct SeqCurvePick {
+        int pattern = -1;
+        SeqCurve curve = SeqCurve::Bend;
+        int count = 0;
+        std::vector<int> points; // in order
+    };
+    SeqCurvePick seqCurvePick_;
+    std::vector<int> seqCurvePicked() const;
+    void setSeqCurvePick(std::vector<int> points);
+    // The points picked, moved together after the one grabbed (seqDrag_.anchor), now where `to` is.
+    void moveSeqCurvePoints(SeqCurvePoint to);
     Rect seqScrollTrack() const;
     Rect seqScrollThumb() const;
     Rect seqScrollYThumb() const; // the rows' bar's thumb: high up for high rows
@@ -1075,7 +1098,8 @@ private:
     // A drag on the roll, its ruler, its lane or the field: what it moves, and what it started from.
     struct SeqDrag {
         enum class Mode { None, Move, Resize, ResizeStart, Box, Paint, Velocity, Lane, LaneGroup, Loop, LoopStart,
-                          LoopEnd, LoopMove, Field, Audition, Scroll, ScrollY, CurvePoint, CurveBend, CurvePaint };
+                          LoopEnd, LoopMove, Field, Audition, Scroll, ScrollY, CurvePoint, CurveBend, CurvePaint,
+                          CurveBox };
         Mode mode = Mode::None;
         int anchor = -1;                 // the note grabbed (Move, Resize), the field (Field), the key (Audition)
         double grabStep = 0.0;           // where it was grabbed: in steps,
@@ -1090,6 +1114,14 @@ private:
         double startCurve = 0.0;         // CurveBend: the segment's bend as it was grabbed; CurvePaint: the value
                                          // painted last
         int sounding = -1;               // the note heard while it is held (see Controller::auditionNote()), -1 for none
+        // The lane's curve: the points picked, moved together (CurvePoint) and where they were as they were grabbed;
+        // a point of several picked, pressed without Ctrl or Shift, picked alone if let go unmoved (`narrow`); and the
+        // points picked before a box (CurveBox), which Ctrl or Shift adds it to.
+        std::vector<int> curvePoints;
+        std::vector<SeqCurvePoint> curveOrigin;
+        bool narrow = false;
+        bool curveUnpick = false; // a point picked, pressed with Ctrl or Shift: let go of if let go unmoved
+        std::vector<int> curveBase;
     };
     void seqHear(int pitch); // that note heard from now on in the drag, the one before let go; -1 lets it go
     SeqDrag seqDrag_;
@@ -1381,6 +1413,32 @@ private:
     bool drawsStep(const Widget &w, Modifiers mods) const;
     void removeShapePoint(int shape, int point);
     void resetShape(int shape);
+    // The points picked in a shape editor, which a drag on one of them moves together and Delete removes: picked by a
+    // box dragged across the shape from empty space, Ctrl+click adding a point or taking it away, Ctrl+A picking every
+    // one. Not saved; the editor's alone. A click anywhere else lets them go, and so does any change of how many
+    // points the shape has.
+    struct ShapePick {
+        int shape = -1;
+        int count = 0; // how many points the shape had, which the points picked are of
+        std::vector<int> points; // in order
+    };
+    ShapePick shapePick_;
+    // The points picked of `shape` that it still has and shows (a symmetric curve's mirrored half shows none).
+    std::vector<int> shapePicked(int shape) const;
+    bool shapePointPicked(int shape, int point) const;
+    void setShapePick(int shape, std::vector<int> points);
+    void clearShapePick() { shapePick_ = ShapePick{}; }
+    // Whether `shape` is shown where it can be edited: the big editor, a widened card, a shaper's card or page.
+    bool shapeEditable(int shape) const;
+    // Whether a point stays where it is across: the first, a curve's last, a symmetric curve's middle.
+    bool shapePointPinned(int shape, int point) const;
+    // The points picked, moved together after the one grabbed, now at `x`, `y` (see applyDrag()).
+    void moveShapePoints(int shape, int grabbed, double x, double y);
+    // Removes those of `points` that can go, as many as leave the shape two, as one undo step.
+    void removeShapePoints(int shape, const std::vector<int> &points);
+    // The keys a shape editor takes while it has points picked (Delete removes them) or is under the mouse
+    // (Ctrl+A picks every point); whether it took it.
+    bool shapeKey(Key key);
     // The next grid the shape editor offers along `axis`, `steps` away.
     void stepShapeGrid(int axis, int steps);
     // While an LFO's or envelope's handle, or a card of the row, is dragged near either end of a row of cards, the

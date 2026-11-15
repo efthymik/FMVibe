@@ -10,6 +10,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <numeric>
 #include <string>
 #include <vector>
 
@@ -746,6 +747,62 @@ SeqCurvePoint View::seqCurvePointFor(SeqCurve curve, Point p, bool snap) const {
     return {x, y, 0.0};
 }
 
+std::vector<int> View::seqCurvePicked() const {
+    std::vector<int> points;
+    if (!seqCurveLane() || seqCurvePick_.pattern != seqPattern() || seqCurvePick_.curve != seqLaneCurve())
+        return points;
+    const int count = static_cast<int>(seqCurvePoints(seqCurvePick_.curve).size());
+    if (seqCurvePick_.count != count)
+        return points; // points came or went since
+    for (int point : seqCurvePick_.points)
+        if (point >= 0 && point < count)
+            points.push_back(point);
+    return points;
+}
+
+void View::setSeqCurvePick(std::vector<int> points) {
+    std::sort(points.begin(), points.end());
+    points.erase(std::unique(points.begin(), points.end()), points.end());
+    const SeqCurve curve = seqLaneCurve();
+    seqCurvePick_ = {seqPattern(), curve, static_cast<int>(seqCurvePoints(curve).size()), std::move(points)};
+}
+
+void View::moveSeqCurvePoints(SeqCurvePoint to) {
+    // As a shape editor's points move together (see moveShapePoints()): as far as the one grabbed, as far as each
+    // can, up and down within the curve's range and across between its nearest neighbors not picked.
+    const SeqCurve curve = seqLaneCurve();
+    std::vector<SeqCurvePoint> points = seqCurvePoints(curve);
+    const std::vector<int> &picked = seqDrag_.curvePoints;
+    const std::vector<SeqCurvePoint> &origin = seqDrag_.curveOrigin;
+    const auto at = std::find(picked.begin(), picked.end(), seqDrag_.anchor);
+    if (at == picked.end() || origin.size() != picked.size())
+        return;
+    const size_t g = static_cast<size_t>(at - picked.begin());
+    const int count = static_cast<int>(points.size());
+    const double low = curve == SeqCurve::Bend ? -1.0 : 0.0, steps = seqSteps();
+    auto isPicked = [&](int point) { return std::find(picked.begin(), picked.end(), point) != picked.end(); };
+    double dx = to.x - origin[g].x, dy = to.y - origin[g].y;
+    for (size_t i = 0; i < picked.size(); ++i) {
+        if (picked[i] >= count)
+            return;
+        dy = std::clamp(dy, std::min(low - origin[i].y, 0.0), std::max(1.0 - origin[i].y, 0.0));
+        int below = picked[i] - 1, above = picked[i] + 1;
+        while (below >= 0 && isPicked(below))
+            --below;
+        while (above < count && isPicked(above))
+            ++above;
+        const double from = below >= 0 ? points[static_cast<size_t>(below)].x : 0.0;
+        const double until = above < count ? points[static_cast<size_t>(above)].x : steps;
+        dx = std::clamp(dx, std::min(from - origin[i].x, 0.0), std::max(until - origin[i].x, 0.0));
+    }
+    for (size_t i = 0; i < picked.size(); ++i) {
+        SeqCurvePoint &q = points[static_cast<size_t>(picked[i])];
+        q.x = origin[i].x + dx;
+        q.y = origin[i].y + dy;
+    }
+    setSeqCurve(curve, points);
+}
+
 int View::addSeqCurvePoint(SeqCurve curve, SeqCurvePoint point) {
     std::vector<SeqCurvePoint> points = seqCurvePoints(curve);
     if (static_cast<int>(points.size()) >= kSeqCurvePoints) {
@@ -1075,8 +1132,29 @@ std::string View::seqFieldText(int field) const {
 // --- The keyboard.
 
 bool View::seqKey(Key key, bool shift) {
+    if (shapeKey(key)) // a shape editor's points picked, or one under the mouse, take Delete and Ctrl+A first
+        return true;
     if (!seqWide() || typing() || dialogOpen() || drag_.kind != DragKind::None)
         return false;
+    // The lane's curve: Delete removes its points picked, and Ctrl+A over the lane picks every one.
+    if (seqCurveLane() && key == Key::Delete && !seqCurvePicked().empty()) {
+        const SeqCurve curve = seqLaneCurve();
+        const std::vector<int> picked = seqCurvePicked();
+        std::vector<SeqCurvePoint> points = seqCurvePoints(curve);
+        for (auto it = picked.rbegin(); it != picked.rend(); ++it)
+            points.erase(points.begin() + *it);
+        controller_.beginStep();
+        setSeqCurve(curve, points);
+        controller_.endStep();
+        seqCurvePick_ = SeqCurvePick{};
+        return true;
+    }
+    if (seqCurveLane() && key == Key::SelectAll && hover_ && hover_->kind == Kind::SeqLane) {
+        std::vector<int> all(seqCurvePoints(seqLaneCurve()).size());
+        std::iota(all.begin(), all.end(), 0);
+        setSeqCurvePick(std::move(all));
+        return true;
+    }
     const int pattern = seqPattern();
     if (seqSelectionPattern_ != pattern) { // another pattern shown: what was picked was another's
         seqSelection_.clear();
@@ -1302,13 +1380,35 @@ bool View::seqPress(const Widget &w, Point p, Modifiers mods) {
             // As with notes: on a point, it moves; on a segment's middle, the segment bends; elsewhere, Draw puts a point
             // down and moves it while the button is held, or with Shift draws the curve, and Select does nothing (a
             // double-click puts a point down). Ctrl puts them on the grid. Each an undo step.
+            // Points are picked as notes are: a box from empty space with Select (Ctrl or Shift adding it to those
+            // picked), a point clicked picked alone, or with Ctrl or Shift picked along with the others or let go;
+            // a point picked moves with the others.
             const SeqCurve curve = seqLaneCurve();
             const bool free = !mods.ctrl;
+            const bool adds = mods.ctrl || mods.shift;
             seqCurveJustAdded_ = -1;
             if (const int point = seqCurvePointAt(p); point >= 0) {
                 startDrag(SeqDrag::Mode::CurvePoint, true);
                 seqDrag_.anchor = point;
                 seqDrag_.free = free;
+                std::vector<int> picked = seqCurvePicked();
+                const bool was = std::find(picked.begin(), picked.end(), point) != picked.end();
+                if (adds && was)
+                    seqDrag_.curveUnpick = true;
+                else if (adds)
+                    picked.push_back(point);
+                else if (!was)
+                    picked = {point};
+                else
+                    seqDrag_.narrow = picked.size() > 1;
+                setSeqCurvePick(picked);
+                picked = seqCurvePicked();
+                if (picked.size() > 1) {
+                    const std::vector<SeqCurvePoint> points = seqCurvePoints(curve);
+                    for (int q : picked)
+                        seqDrag_.curveOrigin.push_back(points[static_cast<size_t>(q)]);
+                    seqDrag_.curvePoints = std::move(picked);
+                }
                 return true;
             }
             if (const int segment = seqCurveBendAt(p); segment >= 0) {
@@ -1317,8 +1417,13 @@ bool View::seqPress(const Widget &w, Point p, Modifiers mods) {
                 seqDrag_.startCurve = seqCurvePoints(curve)[static_cast<size_t>(segment)].curve;
                 return true;
             }
-            if (!layout.seqDraw)
+            if (!layout.seqDraw) { // a box across the lane, picking the points it reaches
+                startDrag(SeqDrag::Mode::CurveBox, false);
+                seqDrag_.curveBase = adds ? seqCurvePicked() : std::vector<int>{};
+                setSeqCurvePick(seqDrag_.curveBase);
                 return true;
+            }
+            seqCurvePick_ = SeqCurvePick{};
             const double steps = seqSteps();
             if (mods.shift) { // a point at every grid line the stroke crosses, a step apart with the snap off
                 const double grid = kSeqSnaps[std::clamp(layout.seqSnap, 0, kSeqSnapCount - 1)];
@@ -1336,6 +1441,8 @@ bool View::seqPress(const Widget &w, Point p, Modifiers mods) {
             seqDrag_.anchor = index;
             seqDrag_.free = free;
             seqCurveJustAdded_ = index;
+            if (index >= 0)
+                setSeqCurvePick({index});
             return true;
         }
         // On the dot or stem of one of the notes picked, while more than one is: they move together, up and down from
@@ -1545,6 +1652,10 @@ void View::seqDrag(Point p) {
         const double lo = i > 0 ? points[i - 1].x : 0.0;
         const double hi = i + 1 < points.size() ? points[i + 1].x : static_cast<double>(steps);
         const SeqCurvePoint to = seqCurvePointFor(curve, p, !d.free);
+        if (!d.curvePoints.empty()) { // the points picked, after it
+            moveSeqCurvePoints(to);
+            break;
+        }
         points[i].x = std::clamp(to.x, lo, std::max(lo, hi));
         points[i].y = to.y;
         setSeqCurve(curve, points);
@@ -1559,6 +1670,20 @@ void View::seqDrag(Point p) {
         const double rise = points[i + 1].y > points[i].y ? 1.0 : -1.0; // a bend further up lowers a rising middle
         points[i].curve = std::clamp(d.startCurve - rise * (drag_.start.y - p.y) / 40.0, -1.0, 1.0);
         setSeqCurve(curve, points);
+        break;
+    }
+    case SeqDrag::Mode::CurveBox: { // the points inside it, and those picked before it
+        const Rect box{std::min(drag_.start.x, p.x), std::min(drag_.start.y, p.y), std::abs(p.x - drag_.start.x),
+                       std::abs(p.y - drag_.start.y)};
+        const SeqCurve curve = seqLaneCurve();
+        const std::vector<SeqCurvePoint> points = seqCurvePoints(curve);
+        std::vector<int> picked = d.curveBase;
+        for (int i = 0; i < static_cast<int>(points.size()); ++i) {
+            const SeqCurvePoint &q = points[static_cast<size_t>(i)];
+            if (box.contains({seqStepX(q.x), seqCurveY(curve, q.y)}))
+                picked.push_back(i);
+        }
+        setSeqCurvePick(std::move(picked));
         break;
     }
     case SeqDrag::Mode::CurvePaint: {
@@ -1640,6 +1765,15 @@ void View::seqRelease(Point) {
     const SeqDrag::Mode mode = seqDrag_.mode;
     if (seqDrag_.unpick && !drag_.moved) // a Shift+click on a note picked: no longer picked
         std::erase(seqSelection_, seqDrag_.anchor);
+    if (mode == SeqDrag::Mode::CurvePoint && !drag_.moved && (seqDrag_.curveUnpick || seqDrag_.narrow)) {
+        // A point clicked: with Ctrl or Shift, one picked let go; without, one of several picked picked alone.
+        std::vector<int> picked = seqCurvePicked();
+        if (seqDrag_.curveUnpick)
+            std::erase(picked, seqDrag_.anchor);
+        else
+            picked = {seqDrag_.anchor};
+        setSeqCurvePick(std::move(picked));
+    }
     if (mode == SeqDrag::Mode::Move || mode == SeqDrag::Mode::ResizeStart ||
         (mode == SeqDrag::Mode::Field && (seqDrag_.anchor == 0 || seqDrag_.anchor == 4)))
         seqDropCovered(seqPicked()); // in the drag's undo step, which closes after this
@@ -2097,6 +2231,7 @@ void View::paintSeq(Canvas &c) {
             area.push_back({line.front().x, rest});
             c.fillPolygon(area.data(), area.size(), ink.alpha(0.16f));
             c.polyline(line.data(), line.size(), ink.alpha(on ? 1.0f : 0.6f), 1.5f);
+            const std::vector<int> picked = seqCurvePicked();
             const int hoveredPoint = drag_.kind == DragKind::Seq && seqDrag_.mode == SeqDrag::Mode::CurvePoint
                                          ? seqDrag_.anchor
                                          : seqCurvePointAt(hoverPoint_);
@@ -2115,7 +2250,16 @@ void View::paintSeq(Canvas &c) {
                 c.fillCircle(at, 3.5f, ink);
                 if (i == hoveredPoint)
                     c.strokeCircle(at, 6.0f, kText, 1.5f);
+                else if (std::find(picked.begin(), picked.end(), i) != picked.end()) // picked: ringed in its color
+                    c.strokeCircle(at, 6.0f, ink, 1.5f);
             }
+        }
+        // The box being dragged across the lane, picking the points it reaches.
+        if (drag_.kind == DragKind::Seq && seqDrag_.mode == SeqDrag::Mode::CurveBox) {
+            const Rect box{std::min(drag_.start.x, drag_.now.x), std::min(drag_.start.y, drag_.now.y),
+                           std::abs(drag_.now.x - drag_.start.x), std::abs(drag_.now.y - drag_.start.y)};
+            c.fillRect(box, ink.alpha(0.12f));
+            c.strokeRect(box, ink.alpha(0.7f), 1.0f);
         }
     }
     for (const SeqNote &n : stems) {
@@ -2225,6 +2369,7 @@ std::optional<CursorKind> View::seqCursor(const Widget &w) const {
         if (drag_.kind == DragKind::Seq)
             return seqDrag_.mode == SeqDrag::Mode::CurveBend    ? CursorKind::Vertical
                    : seqDrag_.mode == SeqDrag::Mode::CurvePoint ? CursorKind::Move
+                   : seqDrag_.mode == SeqDrag::Mode::CurveBox   ? std::optional<CursorKind>()
                                                                 : CursorKind::Pen;
         if (seqCurvePointAt(hoverPoint_) >= 0)
             return CursorKind::Move;

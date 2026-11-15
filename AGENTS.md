@@ -544,6 +544,15 @@ the plain CMake commands and installing into a host are in the [README](README.m
     going through the notch and back, its six knobs, its Morph after Resonance turning, and a formant's, its Vowel after Q turning;
   - Points | Steps and Snap in the other big shape editors: Steps drawing a step in the note source's curve with a
     plain click, and Snap snapping a shaper effect's curve point in its editor;
+  - points picked in a shape editor: in a Curve source's full-size editor a box from empty space picking the points
+    it reaches (drawn filled, read off the rendered pixels), one of them dragged moving them all as far, one undo
+    step, stopping as a whole at a neighbor not picked and at the top, Ctrl+click adding a point and taking one away,
+    a click on one of several picked picking it alone, Ctrl+A and Delete removing all but the two kept, undoably, and a
+    click on empty space letting them go; on a symmetric voice shaper's page the middle point picked with another
+    staying in the middle; and on the SEQ view's BEND lane, with Select, a box picking its points (ringed, read off
+    the rendered pixels), moved together and stopping at a neighbor, undoably, Shift+click adding one, with Draw a
+    picked point moving the others too, Ctrl+A over the lane and Delete removing them, undoably, and a click off the
+    lane letting them go;
   - making sources unipolar and bipolar from their menus (an envelope's and an LFO's card, a macro's knob and
     handle, the mod wheel and the note source's display);
   - dragging a Param EQ band's handle, and Alt-dragging it for its Q; its bands' chips: a click on one, its shape

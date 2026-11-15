@@ -7879,8 +7879,17 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         }
         break;
     }
+    case Kind::ShapeArea: // the box dragged across it, picking points; the rest is drawn with its editor or card
+        if (drag_.kind == DragKind::ShapeBox && drag_.widget.a == w.a) {
+            const Rect box{std::min(drag_.start.x, drag_.now.x), std::min(drag_.start.y, drag_.now.y),
+                           std::abs(drag_.now.x - drag_.start.x), std::abs(drag_.now.y - drag_.start.y)};
+            c.pushClip(w.rect);
+            c.fillRect(box, shapeColor(w.a).alpha(0.12f));
+            c.strokeRect(box, shapeColor(w.a).alpha(0.7f), 1.0f);
+            c.popClip();
+        }
+        break;
     case Kind::FxGrip:
-    case Kind::ShapeArea:
     case Kind::MatrixLabel:
     case Kind::NoteDisplay:
     case Kind::Wire:
@@ -8364,12 +8373,15 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                kTextBody, !fits ? kFaint : hovered || selected ? kText : kDim, Align::Left, selected);
         break;
     }
-    case Kind::ShapePoint: { // compact: smaller, in a shaper's card
+    case Kind::ShapePoint: { // compact: smaller, in a shaper's card; picked: filled, and ringed
         const bool focused = hovered || active;
+        const bool picked = shapePointPicked(w.a, w.b);
         const Color color = shapeColor(w.a);
         const float radius = w.compact ? (focused ? 5.0f : 3.8f) : (focused ? 6.5f : 5.0f);
-        c.fillCircle(w.rect.center(), radius, focused ? color : kPanel);
+        c.fillCircle(w.rect.center(), radius, focused || picked ? color : kPanel);
         c.strokeCircle(w.rect.center(), radius, color, w.compact ? 1.5f : 2.0f);
+        if (picked)
+            c.strokeCircle(w.rect.center(), radius + (w.compact ? 2.5f : 3.0f), color.alpha(0.6f), 1.0f);
         break;
     }
     case Kind::ShapeCurve: {
@@ -10154,6 +10166,10 @@ void View::applyDrag(Point p) {
             const double half = 0.5 * layout.shapeGridY; // lines per unit of height
             y = std::round((y + 1.0) * half) / half - 1.0;
         }
+        if (!drag_.points.empty()) { // the points picked, after it
+            moveShapePoints(shape, point, x, y);
+            break;
+        }
         const int count = shapePointCount(shape);
         // Symmetric, the middle point stays in the middle, and the others right of it.
         if (point > 0 && !(isCurve(shape) && point + 1 == count) && !middlePoint(shape, point)) {
@@ -10169,6 +10185,16 @@ void View::applyDrag(Point p) {
         if (!inMirroredHalf(w.a, p)) // held over the mirrored half, the step stays where it was
             addShapeStep(w.a, p, drag_.snap, drag_.shapeBefore);
         break;
+    case DragKind::ShapeBox: { // the points shown inside it, and those picked before it
+        const Rect box{std::min(drag_.start.x, p.x), std::min(drag_.start.y, p.y), std::abs(p.x - drag_.start.x),
+                       std::abs(p.y - drag_.start.y)};
+        std::vector<int> picked = drag_.boxBase;
+        for (int point = 0; point < shapePointCount(w.a); ++point)
+            if (pointShown(w.a, point) && box.contains(shapePointPos(w.a, point)))
+                picked.push_back(point);
+        setShapePick(w.a, std::move(picked));
+        break;
+    }
     case DragKind::Partials: {
         // A quick sweep sets every bar it passed, along a line (in bar heights) from where the last move was.
         const int op = w.a;
@@ -10377,6 +10403,13 @@ void View::mouseDown(Point p, Modifiers mods) {
     // state load may have replaced the layout since it last ran.
     keepRoutes();
     const auto hit = hitTest(p);
+    // The points picked in a shape editor are let go of at a click anywhere but on that shape.
+    if (shapePick_.shape >= 0 && !(hit && (hit->kind == Kind::ShapeArea || hit->kind == Kind::ShapePoint ||
+                                           hit->kind == Kind::ShapeCurve) &&
+                                   hit->a == shapePick_.shape))
+        clearShapePick();
+    if (!(hit && hit->kind == Kind::SeqLane)) // and those on the SEQ view's lane's curve, at a click off the lane
+        seqCurvePick_ = SeqCurvePick{};
     // The MODS view's filter lets the keyboard go at a click anywhere else.
     if (!(hit && (hit->kind == Kind::SearchField || hit->kind == Kind::SearchClear) &&
           hit->a == static_cast<int>(Field::ModsFilter)))
@@ -10403,6 +10436,7 @@ void View::mouseDown(Point p, Modifiers mods) {
     if (drawsStep(w, mods)) {
         // Held, the step follows the mouse, up and down and from column to column, as one undo step.
         const int shape = w.a;
+        clearShapePick(); // the points it takes the place of may have been picked
         std::vector<double> before;
         for (int f = 0; f < shapeParamCount(shape); ++f)
             before.push_back(value(shapeBase(shape) + f));
@@ -10994,13 +11028,42 @@ void View::mouseDown(Point p, Modifiers mods) {
         controller_.beginEdit(paramIndex(GlobalParam::PitchBend));
         applyDrag(p);
         break;
-    case Kind::ShapeArea:
+    case Kind::ShapeArea: // a box across it picks the points it reaches, with Ctrl as well as those picked already
+        drag_.kind = DragKind::ShapeBox;
+        drag_.boxBase = mods.ctrl ? shapePicked(w.a) : std::vector<int>{};
+        setShapePick(w.a, drag_.boxBase);
         break;
-    case Kind::ShapePoint:
+    case Kind::ShapePoint: {
+        // A point not picked is picked alone, or with Ctrl along with the others; one picked already moves with the
+        // others, and let go of unmoved is picked alone, or with Ctrl let go.
         drag_.kind = DragKind::ShapePoint;
+        std::vector<int> picked = shapePicked(w.a);
+        const bool was = std::find(picked.begin(), picked.end(), w.b) != picked.end();
+        if (mods.ctrl && was)
+            drag_.unpick = true;
+        else if (mods.ctrl)
+            picked.push_back(w.b);
+        else if (!was)
+            picked = {w.b};
+        else
+            drag_.narrow = picked.size() > 1;
+        setShapePick(w.a, picked);
+        picked = shapePicked(w.a);
+        if (picked.size() > 1) { // together, one undo step
+            controller_.beginStep();
+            drag_.step = true;
+            for (int point : picked) {
+                for (PointField field : {PointField::X, PointField::Y})
+                    controller_.beginEdit(shapeIndex(w.a, point, field));
+                drag_.origin.push_back({shapePointX(w.a, point), value(shapeIndex(w.a, point, PointField::Y))});
+            }
+            drag_.points = std::move(picked);
+            break;
+        }
         for (PointField field : {PointField::X, PointField::Y})
             controller_.beginEdit(shapeIndex(w.a, w.b, field));
         break;
+    }
     case Kind::ShapeCurve:
         drag_.kind = DragKind::ShapeCurve;
         drag_.startValue = value(w.param);
@@ -11101,6 +11164,15 @@ void View::mouseDown(Point p, Modifiers mods) {
 
 void View::mouseUp(Point p, Modifiers) {
     const Widget &w = drag_.widget;
+    // A point clicked, not moved: with Ctrl, one picked already let go; without, one of several picked picked alone.
+    if (drag_.kind == DragKind::ShapePoint && !drag_.moved && (drag_.unpick || drag_.narrow)) {
+        std::vector<int> picked = shapePicked(w.a);
+        if (drag_.unpick)
+            std::erase(picked, w.b);
+        else
+            picked = {w.b};
+        setShapePick(w.a, std::move(picked));
+    }
     switch (drag_.kind) {
     case DragKind::Node:
         if (drag_.moved)
@@ -11332,8 +11404,11 @@ void View::finishDrag() {
             controller_.endEdit(index);
         break;
     case DragKind::ShapePoint:
-        for (PointField field : {PointField::Y, PointField::X})
-            controller_.endEdit(shapeIndex(w.a, w.b, field));
+        if (drag_.points.empty())
+            drag_.points = {w.b};
+        for (int point : drag_.points)
+            for (PointField field : {PointField::Y, PointField::X})
+                controller_.endEdit(shapeIndex(w.a, point, field));
         break;
     case DragKind::Key:
         controller_.playNote(keyboardBase() + w.a, false);
@@ -11348,6 +11423,7 @@ void View::finishDrag() {
         break;
     case DragKind::Partials: // its undo step closes below
     case DragKind::ShapeStep:
+    case DragKind::ShapeBox:
     case DragKind::Node:
     case DragKind::Bend:
     case DragKind::ModsScroll:
