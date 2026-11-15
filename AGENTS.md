@@ -577,7 +577,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the UNISON tab starting on Alternate, its buttons picking the copies' curve (Supersaw) and pan (Ramp) and its
     Blend knob, each an undo step, the display's lowest copy moving from the right to the left (read off the rendered
     pixels), and a pan button's tooltip;
-  - a stepper (the unison count's, and the header's Bend's): its - and + stepping it, an undo step each, a quick
+  - a stepper (the unison count's): its - and + stepping it, an undo step each, a quick
     second click stepping again and - doing nothing at 1 copy, its + faint at rest and lit under the mouse (read off
     the rendered pixels), the hand over its - and +, up and down over its number and while dragged, and the arrow
     over its label;

@@ -1902,9 +1902,11 @@ bool View::isRatioTarget(int param) {
 bool View::isStepperParam(int param) {
     if (param < 0)
         return false;
-    // An operator's Pitch stays a knob, in its row of knobs beside the Ratio readout.
+    // An operator's Pitch stays a knob, in its row of knobs beside the Ratio readout, and so does the header's Bend.
     if (param >= kOpBase && param < kMatrixBase &&
         (param - kOpBase) % kOpParamCount == static_cast<int>(OpParam::Transpose))
+        return false;
+    if (param == paramIndex(GlobalParam::BendRange))
         return false;
     switch (paramTable()[param].kind) {
     case ParamKind::Count:

@@ -9572,8 +9572,7 @@ void run(const std::filesystem::path &dir, float scale) {
     // first of its row, with nothing at its left), its - and + at the ends stepping it as a notch of the wheel does,
     // each an undo step, a quick second click stepping again, and - doing nothing at 1 copy; its + faint at rest and lit
     // under the mouse (read off the rendered pixels). The hand over - and +, up and down over its number (and while
-    // it is dragged from there, wherever the mouse goes), and the arrow over its label. The header's Bend likewise,
-    // its field under its label.
+    // it is dragged from there, wherever the mouse goes), and the arrow over its label.
     {
         const int unison = paramIndex(0, OpParam::Unison);
         const float d = detail::kOpKnobD, half = 268.0f / 5.0f * 0.5f - 6.0f;
@@ -9617,18 +9616,9 @@ void run(const std::filesystem::path &dir, float scale) {
         const bool floor = model.value(unison) == 1.0;
         model.set(unison, 4.0);
         view.poll();
-        // The header's Bend: its field under its label, its + at the field's right end.
-        const int bend = paramIndex(GlobalParam::BendRange);
-        const float bendX = detail::headerKnobX(3) + 2.0f, bendTop = detail::kStripY + 12.0f + 15.0f;
-        const Point bendPlus{bendX + std::min(detail::kHeaderKnobPlaces[3] - 6.0f, 64.0f) - 7.5f, bendTop + 8.0f};
-        const double bendWas = model.value(bend);
-        click(view, bendPlus);
-        const bool bent = model.value(bend) == bendWas + 1.0;
-        view.undo();
         view.mouseMove(away, {});
         std::printf("      a stepper's + at %d resting, %d under the mouse\n", rest, lit);
-        check(hoverShot && up && twice && down && undone && back && floor && bent && model.value(bend) == bendWas &&
-                  lit > rest + 40,
+        check(hoverShot && up && twice && down && undone && back && floor && lit > rest + 40,
               "a stepper's - and + step it, an undo step each, and its + lights under the mouse");
         check(cursors && model.value(unison) == 4.0,
               "a stepper shows the hand over its - and +, up and down over its number and while dragged, and the "

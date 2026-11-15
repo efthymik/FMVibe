@@ -1721,11 +1721,11 @@ one may have changed since it last did.
 - **Steppers**: a value that moves only in whole steps shows as a stepper rather than a knob: its number in a field
   (a unit, st, smaller and dimmer after it), − and + at the field's ends and its steps along the field's foot, a tick
   each where they fit 2.5 px apart or more (the one set lit), else a track with the value's place marked, filling
-  from 0 for a range that has it in its middle. Those are the header's Bend and Voices, an operator's Mult (fixed)
+  from 0 for a range that has it in its middle. Those are the header's Voices, an operator's Mult (fixed)
   and Unison, a synced LFO's, Random's or Curve source's Rate, a MIDI source's CC, a delay's synced times, a
   phaser's and flanger's synced Rate, the phaser's and disperser's Stages, the shimmer's Pitch, a shaper's Stack,
   the note curve's Low and High, and the SEQ card's Rate, Length, Octave and Transpose; an operator's Pitch stays a
-  knob, in its row of knobs beside the Ratio readout. It takes what a knob takes:
+  knob, in its row of knobs beside the Ratio readout, and so does the header's Bend. It takes what a knob takes:
   a drag up and down a step every 10 px (Voices doubling every 40), the wheel a step a notch, a double-click to
   reset, Ctrl+Click or a double-click on its label to type, a source's handle dropped on it where its value takes
   modulation, its depth handles under it; − and + step it as a notch of the wheel does, an undo step each, a quick
