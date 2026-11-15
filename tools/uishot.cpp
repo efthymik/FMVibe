@@ -84,6 +84,8 @@ public:
         setPreset(path);
         return true;
     }
+    // As the plugin does: a factory preset's "file" can't be written over.
+    bool presetWritable() const override { return presetHasFile() && !presetFile().starts_with(L"factory:"); }
     void choosePreset(bool save) override { ++(save ? saves : loads); }
     int resets = 0, loads = 0, saves = 0, writes = 0;
     std::wstring written; // the file savePreset() was given last
@@ -11722,6 +11724,13 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, overwriteOk);
     model.writeFails = false;
     check(model.writes == 2 && model.patchEdited(), "a preset that could not be written stays changed");
+    // A factory preset is built in: Save, asking nothing, opens Save As's dialog (the Save As after it taken too).
+    model.setPreset(L"factory:Bell", true);
+    click(view, kSaveButton);
+    click(view, kSaveAsButton);
+    check(model.writes == 2 && model.saves == 4 && model.patchEdited(),
+          "Save on a changed factory preset saves it as a new one, asking nothing");
+    model.saves = 2;
     model.setPreset(L""); // Init, unchanged: neither saves
     click(view, kSaveButton);
     click(view, kSaveAsButton);

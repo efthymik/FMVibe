@@ -9486,9 +9486,10 @@ void View::paintTooltip(Canvas &c) {
             text = tr(Str::TipLoad);
             break;
         case PresetAction::Save:
-            text = !controller_.presetHasFile() ? tr(Str::TipSaveNoFile)
-                   : controller_.patchEdited()  ? trf(Str::TipSave, {controller_.presetName()})
-                                                : tr(Str::TipSaveUnchanged);
+            text = !controller_.presetHasFile()                         ? tr(Str::TipSaveNoFile)
+                   : !controller_.patchEdited()                         ? tr(Str::TipSaveUnchanged)
+                   : controller_.writesPresetFiles() && !controller_.presetWritable() ? tr(Str::TipSaveAs)
+                                                                        : trf(Str::TipSave, {controller_.presetName()});
             break;
         case PresetAction::SaveAs:
             text = tr(presetActionOn(PresetAction::SaveAs) ? Str::TipSaveAs : Str::TipSaveUnchanged);
@@ -10973,7 +10974,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         const auto action = static_cast<PresetAction>(w.a);
         if (!presetActionOn(action))
             break;
-        const bool ask = action == PresetAction::Save     ? controller_.writesPresetFiles()
+        const bool ask = action == PresetAction::Save     ? controller_.writesPresetFiles() && controller_.presetWritable()
                          : action == PresetAction::SaveAs ? false
                                                           : controller_.patchEdited();
         if (ask) {

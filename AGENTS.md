@@ -656,7 +656,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - typing values into knobs, header knobs and target depths, with Enter, Escape and a click elsewhere;
   - the preset bar's arrows (asking first while the patch has changed, the dialog a line shorter before a file
     loads); Save greyed out (read off the rendered pixels) and doing nothing while the preset is unchanged, asking
-    before it overwrites the preset's file (Cancel keeping it, a failed write leaving the patch changed), and
+    before it overwrites the preset's file (Cancel keeping it, a failed write leaving the patch changed), on a changed factory
+    preset opening Save As's dialog without asking, and
     doing nothing on Init, changed or not, where Save As does nothing until the patch changes and the preset browser, which loading a preset closes; its search narrowing the list as words are
     typed, Enter loading the preset found, Up and Down picking one, Escape and the search's × emptying it, and
     its editing: selecting with Shift and the arrows, Home and End, the mouse (a drag, a Shift+click, a
@@ -863,10 +864,12 @@ pkg-config, git and Cairo's headers (`libcairo2-dev`), and fetches the CLAP SDK 
 
 The factory presets are preset files, `presets/Factory/<name>.fmv`, which the build compiles in:
 `cmake/embed_presets.cmake` turns them into byte arrays (`factoryPresets()` in `src/factory.h`), for the plugin and
-the browser demo alike, again whenever one changes. The plugin writes their bytes as they are into a new preset folder.
-`presets/factory.txt` names them in the order they came, which counts: the settings file counts the examples a folder
-was given, so a new one goes at the end and none is reordered or taken out. The build fails on a file the list
-doesn't name, or a name without its file.
+the browser demo alike, again whenever one changes. Neither writes them out: the preset library lists them from
+memory under Factory, beside the preset folder's files (`PresetLibrary::rescan()`), and a factory preset's "file" is
+`factory:` and its name (`PresetLibrary::kFactoryPrefix`), which the host's state names as it would a file. So a
+name, once released, is stored in projects: none is renamed or taken out. `presets/factory.txt` names them in the
+order they came; a new one goes at the end. The build fails on a file the list doesn't name, or a name without its
+file.
 
 They are stored sparse: only the params that differ from their defaults (which is what loading a preset gives the
 others), then the editor layout, a kilobyte or so where a preset the plugin saves holds every param (about 128 KB).
@@ -881,10 +884,10 @@ To add or change one:
 3. For a new one, add its name at the end of `presets/factory.txt`.
 4. Build and run `ctest`.
 
-A user's preset folder gets the factory presets once, and again as a newer version brings them: the settings file
-notes the version that last wrote them out (`examplesVersion`), and a newer one writes those still in the folder's
-`Factory` subfolder over their files where they differ (`PresetLibrary::rescan()`). So a factory preset changed here
-reaches users with the next release, and a user's own change saved over one is lost then.
+A factory preset changed here reaches users with the next release. Being built in, it can't be saved over: Save
+on one opens Save As (`Controller::presetWritable()`). Versions up to 0.11 wrote the factory presets out into the
+preset folder's `Factory` subfolder: the scan leaves that subfolder out, and `PresetLibrary::resolve()` takes a file
+there named as a factory preset for the built-in one, so a project naming it loads the built-in one.
 
 Factory presets are not pinned by checksum, so changing or adding one needs no test edit. Don't add a checksum test
 for them: a preset is meant to change as its sound is tuned, and a pinned hash only forces an edit to the test on
@@ -995,8 +998,8 @@ breakpoints in `src/` then hit.
 | `src/vst3iids.cpp` | The ids of the VST3 interfaces the plugin and its test host use |
 | `src/state.cpp` | The state's bytes: the patch (params, then the editor layout chunk, whose fields one list describes for writing and reading), the settings and preset chunks; independent of Windows |
 | `src/remotepages.cpp` | The remote control pages hosts show, built from the patch and the editor's source order |
-| `src/presets.cpp` | The preset library: the preset folder, its scan, the examples written into it |
-| `src/usersettings.cpp` | The user's settings file in the roaming app data (theme, hue, glow, handle size, line strength, examples given and the version that wrote them) |
+| `src/presets.cpp` | The preset library: the factory presets, built in, and the preset folder and its scan |
+| `src/usersettings.cpp` | The user's settings file in the roaming app data (theme, hue, glow, handle size, line strength, the editor's size) |
 | `src/sharedtelemetry.h` | The telemetry the audio thread hands the editor, in atomics |
 | `src/params.h` | Parameter layout (index ↔ id), slot targets, value mappings |
 | `src/params.cpp` | Parameter table (names, ranges, defaults) and value text |
