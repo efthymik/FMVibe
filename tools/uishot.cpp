@@ -10004,6 +10004,75 @@ void run(const std::filesystem::path &dir, float scale) {
     check(layout.opTab == InspectorTab::Unison, "the UNISON tab shows the operator's unison");
     drag(view, kUnisonKnob, {kUnisonKnob.x, kUnisonKnob.y - 30.0f});
     check(model.value(paramIndex(0, OpParam::Unison)) == 4.0, "the unison knob steps through copy counts");
+
+    // Its count is a stepper, as every stepped number is: a field reaching out half a column less 6 px either side (the
+    // first of its row, with nothing at its left), its - and + at the ends stepping it as a notch of the wheel does,
+    // each an undo step, a quick second click stepping again, and - doing nothing at 1 copy; its + faint at rest and lit
+    // under the mouse (read off the rendered pixels). The hand over - and +, up and down over its number (and while
+    // it is dragged from there, wherever the mouse goes), and the arrow over its label.
+    {
+        const int unison = paramIndex(0, OpParam::Unison);
+        const float d = detail::kOpKnobD, half = 268.0f / 5.0f * 0.5f - 6.0f;
+        const float bottom = kUnisonKnob.y + 0.5f * d - 5.5f, top = bottom - 20.0f;
+        const Point plus{kUnisonKnob.x + half - 7.5f, top + 7.5f}, minus{kUnisonKnob.x - half + 7.5f, top + 7.5f};
+        const Point away{600.0f, 328.0f};
+        view.mouseMove(away, {});
+        renderer.save(view, dir / "3s-stepper.png");
+        const int rest = ringLevel(renderer, {plus.x, plus.y - 3.0f}, 6.0f);
+        view.mouseMove(plus, {});
+        const bool hoverShot = renderer.save(view, dir / "3s-stepper-hover.png");
+        const int lit = ringLevel(renderer, {plus.x, plus.y - 3.0f}, 6.0f);
+        const bool plusHand = view.cursor() == CursorKind::Hand;
+        view.mouseMove(minus, {});
+        const bool minusHand = view.cursor() == CursorKind::Hand;
+        view.mouseMove({kUnisonKnob.x, top + 7.5f}, {});
+        const bool numberVertical = view.cursor() == CursorKind::Vertical;
+        view.mouseMove({kUnisonKnob.x, bottom + 14.0f}, {}); // its label
+        const bool labelArrow = view.cursor() == CursorKind::Arrow;
+        view.mouseDown({kUnisonKnob.x, top + 7.5f}, {});
+        view.mouseMove({plus.x, top + 2.0f}, {}); // over its + while dragged: a step up
+        const bool draggedVertical = view.cursor() == CursorKind::Vertical;
+        view.mouseUp({plus.x, top + 2.0f}, {});
+        view.undo();
+        const bool cursors = plusHand && minusHand && numberVertical && labelArrow && draggedVertical;
+        click(view, plus);
+        const bool up = model.value(unison) == 5.0;
+        doubleClick(view, plus);
+        const bool twice = model.value(unison) == 7.0;
+        click(view, minus);
+        const bool down = model.value(unison) == 6.0;
+        view.undo();
+        view.undo();
+        view.undo();
+        const bool undone = model.value(unison) == 5.0;
+        view.undo();
+        const bool back = model.value(unison) == 4.0;
+        model.set(unison, 1.0);
+        view.poll();
+        click(view, minus);
+        const bool floor = model.value(unison) == 1.0;
+        // At 16, too long to leave - and + room at rest, they still show under the mouse on its number, which clears
+        // their glyphs (read off the rendered pixels).
+        model.set(unison, 16.0);
+        view.poll();
+        view.mouseMove(away, {});
+        renderer.save(view, dir / "3s-stepper-16.png");
+        const int minusRest = ringLevel(renderer, {minus.x, minus.y - 1.0f}, 2.0f);
+        view.mouseMove({kUnisonKnob.x, top + 7.5f}, {});
+        renderer.save(view, dir / "3s-stepper-16-hover.png");
+        const int minusShown = ringLevel(renderer, {minus.x, minus.y - 1.0f}, 2.0f);
+        std::printf("      a stepper at 16's - at %d resting, %d with the mouse on its number\n", minusRest, minusShown);
+        check(minusShown > minusRest + 40, "a stepper's - and + show under the mouse where its number leaves room");
+        model.set(unison, 4.0);
+        view.poll();
+        view.mouseMove(away, {});
+        std::printf("      a stepper's + at %d resting, %d under the mouse\n", rest, lit);
+        check(hoverShot && up && twice && down && undone && back && floor && lit > rest + 40,
+              "a stepper's - and + step it, an undo step each, and its + lights under the mouse");
+        check(cursors && model.value(unison) == 4.0,
+              "a stepper shows the hand over its - and +, up and down over its number and while dragged, and the "
+              "arrow over its label");
+    }
     drag(view, kPhaseKnob, {kPhaseKnob.x, kPhaseKnob.y - 100.0f});
     check(std::abs(model.value(paramIndex(0, OpParam::PhaseRandom)) - 0.5) < 1e-6,
           "the phase knob sets the operator's phase randomization");
@@ -10400,6 +10469,31 @@ void run(const std::filesystem::path &dir, float scale) {
             view.undo();
             check(backspaced && deleted && model.value(mult) == 3.0,
                   "typing into Mult steps over its × whole, Backspace and Delete taking all of it");
+        }
+        // Mult is a stepper, its field between Freq's knob and Pitch's less 4 px either side. At ×0.001 its number is
+        // too long for - and + both: under the mouse on +, the + alone shows and the number moves off it, as it does
+        // off - (the column between each one's glyph and where the number may reach left clear of it, read off the
+        // rendered pixels).
+        {
+            const float d = detail::kOpKnobD;
+            const float half = std::clamp(std::min(kPitchKnob.x - kMultKnob.x, kMultKnob.x - detail::opKnobCenter(-2).x) - 0.5f * d - 4.0f, 18.0f, 28.0f);
+            const float h = d >= 32.0f ? 22.0f : 20.0f, top = kMultKnob.y + 0.5f * d - 5.5f - h;
+            const float y = top + 0.5f * (h - 5.0f); // the middle of its number, above its steps
+            const float right = kMultKnob.x + half, left = kMultKnob.x - half;
+            model.set(mult, 0.0); // ×0.001
+            view.poll();
+            view.mouseMove({right - 7.5f, y}, {});
+            const bool shot = renderer.save(view, dir / "3f-stepper-long.png");
+            const int byPlus = ringLevel(renderer, {right - 11.5f, y - 5.0f}, 10.0f);
+            view.mouseMove({left + 7.5f, y}, {});
+            renderer.save(view, dir / "3f-stepper-long-minus.png");
+            const int byMinus = ringLevel(renderer, {left + 11.5f, y - 5.0f}, 10.0f);
+            model.set(mult, 3.0);
+            view.poll();
+            view.mouseMove({600.0f, 328.0f}, {});
+            std::printf("      a long stepper number beside + at %d, beside - at %d\n", byPlus, byMinus);
+            check(shot && byPlus < 140 && byMinus < 140,
+                  "a stepper's number too long for - and + both moves off the one under the mouse");
         }
         // A source's handle held meanwhile rings the knobs it can be dropped on, Freq among them, but not the dimmed
         // Pitch, which takes no drop (read off the rendered pixels: a strip across the top of each ring, with the

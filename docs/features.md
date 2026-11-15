@@ -786,7 +786,8 @@ one may have changed since it last did.
   - **The card**: the sequencer's power switch; **PATTERN** A to D (the one picked plays and shows in the roll) and a
     button that copies it, its length, loop, notes and curves, into the next empty pattern (no notes, and no points
     on its curves); **PLAY** Host | Key | Latch; the
-    big knobs Rate, Swing, Gate, Length (the pattern's, in bars), Velocity, Humanize, Octave and Transpose; **ORDER** as
+    big knobs in two rows of four, Rate and Length (the pattern's, in bars) over Octave and Transpose at the left,
+    Swing and Gate over Humanize and Velocity at the right; **ORDER** as
     arrows (forward, back, to and fro, a die for random); **SCALE**: the root (dragged up and down or scrolled, a
     semitone a step; a double-click puts it back on C4), the scale's list (Chromatic, Major, Minor, Dorian, Phrygian,
     Lydian, Mixolydian, Harmonic Minor, Melodic Minor, Pentatonic Major and Minor, Blues; wider than its button, and
@@ -1526,7 +1527,7 @@ one may have changed since it last did.
     dropped anywhere on the box modulates it. A keyboard on the summary
     line, left of the power switch, switches fixed pitch: faint while the operator follows the keys, crossed out
     and lit while it is fixed. Switched on, Freq and Mult are set to where the ratio put an A4 (the smallest Mult
-    that keeps Freq in its range), in the same undo step, so an A4 sounds as before; Freq and Mult knobs take the
+    that keeps Freq in its range), in the same undo step, so an A4 sounds as before; Freq (a knob) and Mult (a stepper) take the
     Ratio readout's place, Pitch and Detune are dimmed and take no drags, wheel or typing (nor do their depth
     handles), and the summary line and the operator's circle in the graph show the frequency in Hz instead of the
     ratio. Switched off, the ratio, Pitch and Detune count again as they were. While the wave is Custom,
@@ -1619,7 +1620,7 @@ one may have changed since it last did.
   place taken it is dimmed, and a click says so). Random and Curve cards are laid out as an LFO's (see below), but
   have **Unipolar** | **Bipolar** (as icons) where an LFO's shape list is, one of them lit, which sets which way their
   depths swing, as the polarity in its title's menu does, and no Unipolar switch; a Random card has no Phase knob. A MIDI card has its input's list (CC,
-  Pressure or Slide, where an LFO's shape is; its tooltip says what the input follows), and right of it its CC knob
+  Pressure or Slide, where an LFO's shape is; its tooltip says what the input follows), and right of it its CC stepper
   (while its input is a controller) and Slew; under them, both cards'
   display is a bar of what the newest voice gets now (from the middle while the source is bipolar), with its value.
   Below, the sources' cards show four at a time, and after the last one, while there is room for more, a dashed
@@ -1751,6 +1752,20 @@ one may have changed since it last did.
     shows as a steady swell rather than a flicker; its matrix cell has a small bar along its bottom with each
     modulation's range, a tick where the amount is set and a white dot where it is now, and its label each
     modulation's range just above it, clear of its solid fill.
+- **Steppers**: the header's Voices, an operator's Unison and Mult (fixed) and a MIDI source's CC show as steppers
+  rather than knobs: the number in a field, − and + at the field's ends and its steps along the field's foot, a tick
+  each where they fit 2.5 px apart or more (the one set lit), else a track with the value's place marked. Every other
+  stepped value stays a knob. A stepper takes what a knob takes: a drag up and down a step every 10 px (Voices
+  doubling every 40), the wheel a step a notch, a double-click to reset, Ctrl+Click or a double-click on its label to
+  type, a source's handle dropped on it where its value takes modulation, its depth handles under it; − and + step it
+  as a notch of the wheel does, an undo step each, a quick second click stepping again, and an end that is reached
+  faint. They show faint at rest where the number leaves them room, and under the mouse wherever it clears their
+  glyphs, the number then taking a smaller size if it must; a number too long even so (Mult's ×0.001) leaves only the
+  one under the mouse showing, moving off it. The cursor is a hand over − and +, up and down over the number (and
+  while it is dragged), and the arrow elsewhere on it. Its field is under the knob's place, as wide as the widgets
+  beside it leave room for (36 to 56 px, the end of a row half the way to the next knob), and in the header under
+  its label. A modulation's reach shows along its steps in its source's color (the ticks within it taking that color,
+  the one set keeping its own), and a white dot where the newest voice is.
 - **Everywhere**: drag up/down to change values (hold Shift for fine steps, a knob then moving a fiftieth as fast; sliders such as the depth bars, the
   Mod wheel and the glow slider then move from where they are, a hundredth as fast; a value moves only once the mouse
   has moved more than 3 px, so a click, or a double-click's jitter, changes nothing), double-click to reset, use the mouse
