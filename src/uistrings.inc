@@ -313,6 +313,7 @@ STR(ParamBypass, "Bypass {1}")
 STR(ParamBipolar, "Bipolar")
 STR(ParamAux, "Aux {1}") // the source that scales a slot
 STR(ParamAuxAmount, "Amount {1}") // how much of its depth a slot keeps, 0 to 100 %
+STR(ParamAuxDepth, "Aux Depth {1}") // how far down a slot's aux can take its depth, 0 to 100 %
 STR(ParamSlotCurve, "Curve {1}") // how a slot bends what its source puts out, -100 to 100 %
 STR(ParamLow, "Low")
 STR(ParamHigh, "High")
@@ -1123,6 +1124,7 @@ STR(MenuBypass, "Bypass {1} modulation")
 STR(MenuResume, "Resume {1} modulation")
 STR(MenuRemoveModulation, "Remove {1} modulation")
 STR(MenuRemoveAux, "Remove {1} aux") // the source scaling a modulation's depth
+STR(MenuEditAuxDepth, "Edit aux depth…") // how far down the aux can take the depth
 STR(MenuRemoveAll, "Remove all modulation")
 STR(MenuDeletePoint, "Delete point")
 STR(MenuStraighten, "Straighten")
@@ -1224,6 +1226,7 @@ STR(TipModsPickSource, "Pick its source") // an empty modulation's
 STR(TipModsPickTarget, "Pick its target")
 STR(TipModsAux, "Scale depth by another source")
 STR(TipModsAuxClear, "No aux")
+STR(TipModsAuxDepth, "Aux depth {1}: drag to set, double-click for 100 %") // the aux chip's number
 STR(TipModsScale, "Amount: scales the depth")
 STR(TipModsCurve, "Curve {1}: drag to bend, double-click to reset")
 STR(CascadeLfos, "LFOs")

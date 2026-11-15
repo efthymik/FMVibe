@@ -8440,6 +8440,37 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     const bool auxShot = renderer.save(view, dir / "35e-mods-aux-menu.png");
     click(view, {1080.0f, 239.0f + 4.0f + 11.0f});
     check(auxShot && slotAuxSource(model.value(slotAuxIndex(0, 0))) == 1, "+ Aux's menu picks an aux from its category");
+    // The chip's aux depth, the number before its x (34 px from x 1056): dragged 30 px left it goes from 100 % to 70 %,
+    // one undo step, the bar along the chip's foot (from x 927 to 1099) filled that far in Env 1's color (read off the
+    // rendered pixels); a double-click puts it back to 100 %. The x then taking the aux away puts it back to 100 % too,
+    // and undo brings both back.
+    {
+        const Point number{1073.0f, y};
+        const int index = slotAuxDepthIndex(0, 0);
+        drag(view, number, {number.x - 30.0f, y});
+        const double dragged = model.value(index);
+        view.mouseMove({600.0f, 468.0f}, {});
+        const bool depthShot = renderer.save(view, dir / "35e3-mods-aux-depth.png");
+        auto level = [&](float px) {
+            const uint32_t c = renderer.pixel({px, y + 9.0f});
+            return static_cast<int>((c >> 16) & 0xff) + static_cast<int>((c >> 8) & 0xff) + static_cast<int>(c & 0xff);
+        };
+        const bool filled = level(1000.0f) > level(1080.0f) + 60;
+        view.undo();
+        const double undone = model.value(index);
+        view.redo();
+        doubleClick(view, number);
+        const double reset = model.value(index);
+        drag(view, number, {number.x - 30.0f, y});
+        click(view, {1102.0f, y});
+        const double cleared = model.value(index);
+        view.undo();
+        check(std::abs(dragged - 0.7) < 0.01 && undone == 1.0 && reset == 1.0 && depthShot && filled &&
+                  cleared == 1.0 && std::abs(model.value(index) - 0.7) < 0.01 &&
+                  slotAuxSource(model.value(slotAuxIndex(0, 0))) == 1,
+              "an aux chip's depth drags across, undoably, its bar filling as far, a double-click putting it back to "
+              "100 %, and taking the aux away putting it back too");
+    }
     // The target opens every target by category, under its search (30 px, the level 240 px wide from x 234):
     // Operators, then B, then (under PITCH, after Ratio and Pitch) Detune, three levels deep.
     click(view, {300.0f, y});
@@ -8456,8 +8487,8 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     view.undo();
     check(menuShot && retargeted && slotIs(0, 0, paramIndex(0, OpParam::Ratio)),
           "a row's target menu moves its modulation to another target, keeping the rest, undoably");
-    // Its source moves it to a free slot of another source, Macro 1 here, with its depth, Amount and aux, in one undo
-    // step.
+    // Its source moves it to a free slot of another source, Macro 1 here, with its depth, Amount, aux and aux depth, in
+    // one undo step.
     click(view, {90.0f, y});
     view.mouseMove({80.0f, 198.0f + 4.0f + 2.0f * 22.0f + 11.0f}, {}); // Macros
     view.mouseMove({200.0f, 242.0f + 4.0f + 11.0f}, {});              // Macro 1
@@ -8467,6 +8498,7 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
                        slotIs(kMaxSources, 1, paramIndex(0, OpParam::Ratio)) &&
                        std::abs(model.value(slotAmountIndex(kMaxSources, 1)) - 0.4) < 1e-9 &&
                        std::abs(model.value(slotScaleIndex(kMaxSources, 1)) - 0.75) < 1e-6 &&
+                       std::abs(model.value(slotAuxDepthIndex(kMaxSources, 1)) - 0.7) < 0.01 &&
                        slotAuxSource(model.value(slotAuxIndex(kMaxSources, 1))) == 1;
     view.undo();
     check(sourceShot && moved && slotIs(0, 0, paramIndex(0, OpParam::Ratio)) &&
@@ -8541,6 +8573,52 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     check(noAuxEntry && auxCommand != 0 && auxGone &&
               slotAuxSource(model.value(slotAuxIndex(0, 0))) == kMaxSources + 1,
           "a depth handle's menu removes its aux, undoably, and offers it only with one");
+    // Alt-dragged, the depth handle sets the aux depth instead, from the 70 % the MODS row left it at: 20 px down
+    // takes it to 50 %, the depth left alone, in one undo step, its ring then half lit (read off the rendered pixels:
+    // the ring's right brighter than its left). Its menu's Edit aux depth types one: 25 % here.
+    {
+        const int index = slotAuxDepthIndex(0, 0);
+        const double depthBefore = model.value(slotAmountIndex(0, 0));
+        Modifiers alt;
+        alt.alt = true;
+        view.mouseDown(kRatioDot, alt);
+        view.mouseMove({kRatioDot.x, kRatioDot.y + 10.0f}, alt);
+        view.mouseMove({kRatioDot.x, kRatioDot.y + 20.0f}, alt);
+        view.mouseUp({kRatioDot.x, kRatioDot.y + 20.0f}, alt);
+        const double altDragged = model.value(index);
+        const bool depthKept = model.value(slotAmountIndex(0, 0)) == depthBefore;
+        view.mouseMove({600.0f, 328.0f}, {});
+        const bool halfShot = renderer.save(view, dir / "35d2-aux-ring-half.png");
+        auto ringSide = [&](float side) { // the ring's brightest pixel on that side, its radius some 7 px out
+            int best = 0;
+            for (float dy = -3.0f; dy <= 3.0f; dy += 1.0f)
+                for (float dx = 5.0f; dx <= 9.0f; dx += 1.0f) {
+                    const uint32_t c = renderer.pixel({kRatioDot.x + side * dx, kRatioDot.y + dy});
+                    best = std::max(best, static_cast<int>((c >> 16) & 0xff) + static_cast<int>((c >> 8) & 0xff) +
+                                              static_cast<int>(c & 0xff));
+                }
+            return best;
+        };
+        const bool halfLit = ringSide(1.0f) > ringSide(-1.0f) + 40;
+        view.undo();
+        const double undone = model.value(index);
+        const std::string editAux = tr(Str::MenuEditAuxDepth);
+        int editCommand = 0;
+        for (const MenuItem &item : view.contextMenu(kRatioDot))
+            if (item.label == editAux)
+                editCommand = item.command;
+        if (editCommand != 0) {
+            view.menuCommand(editCommand);
+            for (char ch : std::string("25"))
+                view.typeChar(static_cast<char32_t>(ch));
+            view.typeKey(View::Key::Enter);
+        }
+        const double typed = model.value(index);
+        check(std::abs(altDragged - 0.5) < 0.01 && depthKept && halfShot && halfLit && std::abs(undone - 0.7) < 0.01 &&
+                  editCommand != 0 && std::abs(typed - 0.25) < 1e-6,
+              "a depth handle Alt-dragged sets its aux depth, undoably, its ring lit as far, and its menu types one");
+        model.set(index, 1.0);
+    }
     view.mouseMove({600.0f, 328.0f}, {});
     // Hovering that depth handle draws the dashed line to it from LFO 1's handle, on screen on the first card: half
     // way along the line, bowed to one side, the pixels change (read off the rendered pixels).
@@ -9319,16 +9397,16 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
               slotTarget(model.value(slotTargetIndex(kMaxSources + 1, 0))) < 0,
           "a handle held over a pill opens its list, a row takes it as an aux, and elsewhere the list closes");
 
-    // With LFO 4's aux, the list opens 96 px wider, an aux column after the names: LFO 4's row shows Macro 2's chip
+    // With LFO 4's aux, the list opens 126 px wider, an aux column after the names: LFO 4's row shows Macro 2's chip
     // (its dot read off the rendered pixels, where LFO 3's row has none), and the chip's x takes the aux away, the
     // list narrowing again.
     click(view, pill);
     view.mouseMove({600.0f, 328.0f}, {});
-    const float wideX = std::clamp(pill.x - 184.5f, 4.0f, 1200.0f - 4.0f - 369.0f) + 6.0f; // held inside the window
+    const float wideX = std::clamp(pill.x - 199.5f, 4.0f, 1200.0f - 4.0f - 399.0f) + 6.0f; // held inside the window
     auto wideRow = [&](int k, float x) { return Point{wideX + x, rowsY + k * 24.0f + 10.0f}; };
     const bool chipShot = renderer.save(view, dir / "40g2-pill-aux-chip.png");
     const bool chip = renderer.pixel(wideRow(3, 126.0f)) != renderer.pixel(wideRow(2, 126.0f));
-    click(view, wideRow(3, 201.0f)); // the chip's x
+    click(view, wideRow(3, 231.0f)); // the chip's x
     const bool auxCleared = slotAuxSource(model.value(slotAuxIndex(3, 0))) < 0;
     view.mouseMove({600.0f, 328.0f}, {});
     renderer.save(view, dir / "40g3-pill-aux-cleared.png");

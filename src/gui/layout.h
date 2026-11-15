@@ -661,11 +661,18 @@ constexpr float kModListTitleH = 24.0f;
 constexpr float kModListRowStep = 24.0f; // a row is 20 px high
 constexpr int kModListRows = 6;          // shown at once; more scroll
 constexpr float kModListBarW = 8.0f;     // the room its scrollbar takes at its right
-constexpr float kModListAuxW = 96.0f;    // the aux column: its chip and a gap
+constexpr float kModListAuxW = 126.0f;   // the aux column: its chip and a gap
 
 // A row's aux chip, after its source's name, its x at its right end.
 inline Rect modListAuxChip(Rect row) {
     return {row.x + 116.0f, row.y + 1.0f, kModListAuxW - 4.0f, row.h - 2.0f};
+}
+// The width of the aux depth on an aux's chip, before its x (in the MODS view and a pill's list alike).
+constexpr float kAuxDepthW = 34.0f;
+// The aux depth's place on a pill's list row's chip, before its x.
+inline Rect modListAuxDepth(Rect row) {
+    const Rect chip = modListAuxChip(row);
+    return {chip.right() - 20.0f - kAuxDepthW, chip.y, kAuxDepthW, chip.h};
 }
 
 // Under a source's display, at the card's foot, the button that shows its modulations in the MODS view.

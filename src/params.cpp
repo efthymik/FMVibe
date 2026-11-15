@@ -593,7 +593,7 @@ void buildTable(ParamTable &t) {
         add(paramIndex(BendParam::Bipolar), bend + " " + tr(Str::ParamBipolar), bend, ParamKind::Toggle, 0.0, 1.0, 1.0);
     }
 
-    // Every slot of every source has an aux, an Amount and a curve, and those of the sources under the keyboard their bypass.
+    // Every slot of every source has an aux, an Amount, a curve and an aux depth, and those of the sources under the keyboard their bypass.
     for (int source = 0; source < kAllSources; ++source) {
         const std::string name = isBend(source)       ? tr(Str::ParamBendSource)
                                  : isVelocity(source) ? tr(Str::ParamVelocitySource)
@@ -613,6 +613,8 @@ void buildTable(ParamTable &t) {
                 0.0, 1.0, 1.0);
             add(slotCurveIndex(source, slot), name + " " + trf(Str::ParamSlotCurve, {n}), module,
                 ParamKind::BipolarPercent, -1.0, 1.0, 0.0); // a straight line
+            add(slotAuxDepthIndex(source, slot), name + " " + trf(Str::ParamAuxDepth, {n}), module, ParamKind::Percent,
+                0.0, 1.0, 1.0); // the aux scaling it all the way
             if (isStripSource(source)) // the places' bypasses come with their other fields
                 add(slotBypassIndex(source, slot), name + " " + trf(Str::ParamBypass, {n}), module,
                     ParamKind::SlotBypass, 0.0, 1.0, 0.0);
@@ -1199,13 +1201,13 @@ const HostList &hostList() {
     static const std::unique_ptr<const HostList> list = [] {
         auto l = std::make_unique<HostList>();
         const ParamTable &table = paramTable();
-        // Every source's slots: what each modulates, its aux, curve and bypass are set in the editor; its depth and
+        // Every source's slots: what each modulates, its aux, curve, aux depth and bypass are set in the editor; its depth and
         // Amount hosts may automate (see hostParamCount()).
         std::vector<bool> wiring(kParamCount, false), kept(kParamCount, false);
         for (int source = 0; source < kAllSources; ++source)
             for (int s = 0; s < kSlots; ++s) {
                 for (int i : {slotTargetIndex(source, s), slotAuxIndex(source, s), slotCurveIndex(source, s),
-                              slotBypassIndex(source, s)})
+                              slotAuxDepthIndex(source, s), slotBypassIndex(source, s)})
                     wiring[i] = true;
                 kept[slotAmountIndex(source, s)] = kept[slotScaleIndex(source, s)] = true;
             }

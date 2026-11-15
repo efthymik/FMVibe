@@ -777,6 +777,7 @@ void View::assign(int source, int target) {
                                                 {slotAmountIndex(source, free), amount},
                                                 {slotScaleIndex(source, free), 1.0},
                                                 {slotCurveIndex(source, free), 0.0},
+                                                {slotAuxDepthIndex(source, free), 1.0},
                                                 {slotAuxIndex(source, free), 0.0},
                                                 {slotBypassIndex(source, free), 0.0}};
     editMany(changes);
@@ -798,6 +799,7 @@ void View::removeSlot(int source, int slot) {
                                                 {slotAmountIndex(source, slot), 0.0},
                                                 {slotScaleIndex(source, slot), 1.0},
                                                 {slotCurveIndex(source, slot), 0.0},
+                                                {slotAuxDepthIndex(source, slot), 1.0},
                                                 {slotAuxIndex(source, slot), 0.0},
                                                 {slotBypassIndex(source, slot), 0.0}};
     editMany(changes);
@@ -1432,6 +1434,7 @@ int View::addSource(SourceType type, int copyOf) {
         fresh(slotBypassIndex(source, slot));
         fresh(slotScaleIndex(source, slot));
         fresh(slotCurveIndex(source, slot));
+        fresh(slotAuxDepthIndex(source, slot));
         fresh(slotAuxIndex(source, slot));
     }
     // A new Random source swings both ways, as an LFO does; Bipolar, which MIDI shares, starts off. A new Curve source
@@ -2259,7 +2262,11 @@ std::vector<View::Widget> View::widgets() const {
                 m.source, m.slot);
             const Rect aux = modsCell(r, kModsAux);
             if (m.aux >= 0) {
-                add(Kind::ModsAux, {aux.x, aux.y + 3.0f, aux.w - 24.0f, aux.h - 6.0f}, -1, m.source, m.slot);
+                // The chip: its name opens the menu of auxes, its aux depth drags, its x takes the aux away.
+                add(Kind::ModsAux, {aux.x, aux.y + 3.0f, aux.w - 24.0f - kAuxDepthW, aux.h - 6.0f}, -1, m.source,
+                    m.slot);
+                add(Kind::ModsAuxDepth, {aux.right() - 22.0f - kAuxDepthW, aux.y + 3.0f, kAuxDepthW, aux.h - 6.0f},
+                    slotAuxDepthIndex(m.source, m.slot), m.source, m.slot);
                 add(Kind::ModsAuxClear, {aux.right() - 22.0f, aux.y + 3.0f, 20.0f, aux.h - 6.0f}, -1, m.source, m.slot);
             } else {
                 add(Kind::ModsAux, {aux.x, aux.y + 3.0f, 64.0f, aux.h - 6.0f}, -1, m.source, m.slot);
@@ -3593,6 +3600,7 @@ std::vector<View::Widget> View::widgets() const {
             add(Kind::SlotBypass, {r.x + 1.0f, r.y, 16.0f, r.h}, slotBypassIndex(s, slot), s, slot);
             if (auxOf(rows[k]) >= 0) { // the x at the end of its chip (see paintModListRow())
                 const Rect chip = modListAuxChip(r);
+                add(Kind::ModsAuxDepth, modListAuxDepth(r), slotAuxDepthIndex(s, slot), s, slot);
                 add(Kind::ModsAuxClear, {chip.right() - 20.0f, chip.y + 2.0f, 18.0f, chip.h - 4.0f}, -1, s, slot);
             }
             add(Kind::SlotBar, {r.x + 116.0f + shift, r.y, 76.0f, r.h}, slotAmountIndex(s, slot), s, slot);
@@ -8945,9 +8953,10 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             c.strokeCircle(center, radius - 0.6f, color, 1.2f);
         else
             c.fillCircle(center, radius, color);
-        // With an aux, a ring round it in the aux's color.
+        // With an aux, a ring round it in the aux's color: as much of it as the aux depth, clockwise from the top, the
+        // rest faint.
         if (const int aux = slotAux([this](int index) { return value(index); }, w.a, w.b); aux >= 0)
-            c.strokeCircle(center, radius + 1.8f, kSourceColors[aux], 1.3f);
+            paintAuxRing(c, center, radius + 1.8f, aux, value(slotAuxDepthIndex(w.a, w.b)));
         break;
     }
     case Kind::ModPill:
@@ -9070,16 +9079,24 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             c.text(w.rect, tr(Str::ModsAddAux), kTextLabel, hovered || open ? kText : kDim);
             break;
         }
-        const Rect chip{w.rect.x, w.rect.y, w.rect.w + 22.0f, w.rect.h};
+        const Rect chip{w.rect.x, w.rect.y, w.rect.w + kAuxDepthW + 22.0f, w.rect.h};
         if (look.flat) { // tinted with its source's color, without an outline, more strongly than + Aux is filled
             c.fillRect(chip, kSourceColors[aux].alpha(hovered || open ? 0.32f : 0.22f), radius);
         } else {
             c.fillRect(chip, hovered || open ? kTrack : kRaised, radius);
             c.strokeRect(chip, kSourceColors[aux].alpha(0.5f), 1.0f, radius);
         }
+        paintAuxDepthBar(c, chip, aux, value(slotAuxDepthIndex(w.a, w.b)));
         c.fillCircle({w.rect.x + 11.0f, w.rect.center().y}, 4.0f, kSourceColors[aux]);
         c.text({w.rect.x + 20.0f, w.rect.y, w.rect.w - 22.0f, w.rect.h}, sourceName(aux), kTextLabel, kText, Align::Left,
                true);
+        break;
+    }
+    case Kind::ModsAuxDepth: {
+        // The aux depth's number, lit under the mouse and while dragged (the chip and its bar are its aux's).
+        char text[16];
+        std::snprintf(text, sizeof(text), "%.0f%%", value(w.param) * 100.0);
+        c.text(w.rect, text, kTextLabel, hovered || active ? kText : kDim, Align::Right);
         break;
     }
     case Kind::ModsAdd: {
@@ -9599,6 +9616,7 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::SourcePolarity && hover_->kind != Kind::Wire && hover_->kind != Kind::ModsSource &&
          !(hover_->kind == Kind::LabelMode && listMenu_ != hover_->param) && hover_->kind != Kind::LabelRemove &&
          hover_->kind != Kind::ModsTarget && hover_->kind != Kind::ModsAux && hover_->kind != Kind::ModsAuxClear &&
+         hover_->kind != Kind::ModsAuxDepth &&
          hover_->kind != Kind::ModsScale && hover_->kind != Kind::ModsCurve && hover_->kind != Kind::SearchField &&
          hover_->kind != Kind::MacroHandle && hover_->kind != Kind::SourceHandle &&
          hover_->kind != Kind::MatrixLabel && hover_->kind != Kind::FxPower && hover_->kind != Kind::FxNodePower &&
@@ -9762,6 +9780,11 @@ void View::paintTooltip(Canvas &c) {
         text = tr(Str::TipModsAux);
     else if (hover_->kind == Kind::ModsAuxClear)
         text = tr(Str::TipModsAuxClear);
+    else if (hover_->kind == Kind::ModsAuxDepth) {
+        char amount[32];
+        formatParam(hover_->param, value(hover_->param), amount, sizeof(amount));
+        text = trf(Str::TipModsAuxDepth, {amount});
+    }
     else if (hover_->kind == Kind::ModsScale)
         text = tr(Str::TipModsScale);
     else if (hover_->kind == Kind::ModsCurve) {
@@ -10020,6 +10043,27 @@ void View::paintModList(Canvas &c, const Widget &w) {
 
 // A row: its bypass dot, the source's name (dimmed while bypassed or off), its aux's chip as in the MODS view, its
 // depth bar and its remove.
+// The ring clockwise from the top for as much of it as the aux depth, the rest of it faint; all of it at 100 %.
+void View::paintAuxRing(Canvas &c, Point center, float radius, int aux, double depth) const {
+    const Color color = kSourceColors[aux];
+    if (depth >= 0.9995) {
+        c.strokeCircle(center, radius, color, 1.3f);
+        return;
+    }
+    c.strokeCircle(center, radius, color.alpha(0.3f), 1.3f);
+    if (depth > 0.0005)
+        c.arc(center, radius, 0.0f, static_cast<float>(depth) * 2.0f * kPi, color, 1.3f);
+}
+
+// Along the chip's foot, inside its rounded ends: a faint track, filled in the aux's color as far as the aux depth.
+void View::paintAuxDepthBar(Canvas &c, Rect chip, int aux, double depth) const {
+    const float inset = chip.h * 0.5f;
+    const Rect track{chip.x + inset, chip.bottom() - 3.0f, chip.w - 2.0f * inset, 2.0f};
+    c.fillRect(track, kSourceColors[aux].alpha(0.25f), kRadiusMark);
+    c.fillRect({track.x, track.y, track.w * static_cast<float>(std::clamp(depth, 0.0, 1.0)), track.h},
+               kSourceColors[aux], kRadiusMark);
+}
+
 void View::paintModListRow(Canvas &c, const Widget &w) {
     const bool lit = hover_ && hover_->popup && hover_->a == w.a && hover_->b == w.b && drag_.kind == DragKind::None;
     c.fillRect(w.rect, lit ? kTrack : kRaised, kRadiusControl);
@@ -10036,8 +10080,10 @@ void View::paintModListRow(Canvas &c, const Widget &w) {
             c.fillRect(chip, kPanel, radius);
             c.strokeRect(chip, kSourceColors[aux].alpha(0.5f), 1.0f, radius);
         }
+        paintAuxDepthBar(c, chip, aux, value(slotAuxDepthIndex(w.a, w.b)));
         c.fillCircle({chip.x + 10.0f, chip.center().y}, 3.5f, kSourceColors[aux]);
-        c.text({chip.x + 18.0f, chip.y, chip.w - 40.0f, chip.h}, sourceName(aux), kTextLabel, kText, Align::Left, true);
+        c.text({chip.x + 18.0f, chip.y, chip.w - 40.0f - kAuxDepthW, chip.h}, sourceName(aux), kTextLabel, kText,
+               Align::Left, true);
     }
 }
 
@@ -10340,6 +10386,10 @@ void View::applyDrag(Point p) {
         } else if (w.kind == Kind::SlotBar)
             set(w.param, drag_.fine ? drag_.startValue + (p.x - drag_.start.x) / (w.rect.w * 0.5f) * 0.01
                                     : (p.x - w.rect.center().x) / (w.rect.w * 0.5f));
+        else if (w.kind == Kind::ModsAuxDepth) // from where it is, across: all of it every 100 px (10000 with Shift)
+            set(w.param, drag_.startValue + (p.x - drag_.start.x) / (drag_.fine ? 10000.0 : 100.0));
+        else if (w.kind == Kind::ModDot && w.a >= 0 && w.b >= 0 && w.param == slotAuxDepthIndex(w.a, w.b))
+            set(w.param, drag_.startValue + (drag_.start.y - p.y) / (drag_.fine ? 10000.0 : 100.0)); // Alt-dragged, up
         else if (w.kind == Kind::ModsScale) // 0 at its left end, all of it at its right
             set(w.param, drag_.fine ? drag_.startValue + (p.x - drag_.start.x) / w.rect.w * 0.01
                                     : (p.x - w.rect.x) / w.rect.w);
@@ -10754,7 +10804,8 @@ void View::mouseDown(Point p, Modifiers mods) {
     const Widget &w = *hit;
     // Ctrl+Click types a value into whatever shows one: a knob, a modulation's depth, a route.
     if (mods.ctrl && (w.kind == Kind::Knob || w.kind == Kind::ValueText || w.kind == Kind::WireLabel ||
-                      w.kind == Kind::OutLabel || w.kind == Kind::GridCell || w.kind == Kind::TempoBox)) {
+                      w.kind == Kind::OutLabel || w.kind == Kind::GridCell || w.kind == Kind::TempoBox ||
+                      w.kind == Kind::ModsAuxDepth)) {
         startTyping(w);
         return;
     }
@@ -10806,11 +10857,16 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::SlotBar:
     case Kind::ModsScale:
     case Kind::ModsCurve:
+    case Kind::ModsAuxDepth:
         drag_.kind = DragKind::Value;
-        drag_.startValue = value(w.param);
+        // A depth handle with an aux Alt-dragged sets the aux depth instead, up and down (see applyDrag()).
+        if (w.kind == Kind::ModDot && mods.alt && w.a >= 0 && w.b >= 0 &&
+            slotAux([this](int index) { return value(index); }, w.a, w.b) >= 0)
+            drag_.widget.param = slotAuxDepthIndex(w.a, w.b);
+        drag_.startValue = value(drag_.widget.param);
         if (isRatioDisplay(w)) // the digit pressed is the one dragged, wherever the mouse goes
             drag_.widget.b = ratioDigit(p.x);
-        controller_.beginEdit(w.param);
+        controller_.beginEdit(drag_.widget.param);
         if ((w.kind == Kind::SlotBar || w.kind == Kind::ModsScale) && !drag_.fine) // to the mouse at once; with
             applyDrag(p);                                                           // Shift, from where it is
         break;
@@ -11995,6 +12051,7 @@ bool View::dragsOnTouch(const Widget &w) const {
     case Kind::SlotBar:
     case Kind::ModsScale:
     case Kind::ModsCurve:
+    case Kind::ModsAuxDepth:
     case Kind::ModsScroll:
     case Kind::InputsScroll:
     case Kind::ModListScroll:
@@ -12208,6 +12265,10 @@ void View::doubleClick(Point p, Modifiers mods) {
     if (hit && (hit->kind == Kind::FxMode || hit->kind == Kind::FxSlot || hit->kind == Kind::FxGap ||
                 hit->kind == Kind::FxNode)) {
         mouseDown(p, mods);
+        return;
+    }
+    if (hit && hit->kind == Kind::ModsAuxDepth) { // all of it again
+        edit(hit->param, 1.0);
         return;
     }
     if (hit && hit->param >= 0 && onValue(*hit, p)) {
@@ -12567,6 +12628,7 @@ std::vector<MenuItem> View::contextMenu(Point p) {
     menuSource_ = -1;
     menuPoint_ = {-1, -1};
     menuValue_.reset();
+    menuAuxDepth_.reset();
     const auto hit = hitTest(p);
     if (!hit)
         return items;
@@ -12645,7 +12707,8 @@ std::vector<MenuItem> View::contextMenu(Point p) {
     if (hit->kind == Kind::SlotBar || hit->kind == Kind::SlotRemove || hit->kind == Kind::ModDot ||
         hit->kind == Kind::ValueText || hit->kind == Kind::SlotBypass || hit->kind == Kind::ModsSource ||
         hit->kind == Kind::ModsTarget || hit->kind == Kind::ModsScale || hit->kind == Kind::ModsCurve ||
-        hit->kind == Kind::ModsAux || hit->kind == Kind::ModsAuxClear || hit->kind == Kind::ModListRow) {
+        hit->kind == Kind::ModsAux || hit->kind == Kind::ModsAuxClear || hit->kind == Kind::ModsAuxDepth ||
+        hit->kind == Kind::ModListRow) {
         if (hit->b < 0) // an empty modulation: nothing to bypass, nor a depth to type
             return items;
         // The depth types where it shows: beside its bar, or under a knob's dot.
@@ -12658,8 +12721,15 @@ std::vector<MenuItem> View::contextMenu(Point p) {
             items.push_back({11, tr(Str::MenuEditDepth)});
         }
         items.push_back({kBypassCommand + hit->a * kSlots + hit->b, bypassLabel(hit->a, hit->b)});
-        if (const int aux = slotAux([this](int index) { return value(index); }, hit->a, hit->b); aux >= 0)
+        if (const int aux = slotAux([this](int index) { return value(index); }, hit->a, hit->b); aux >= 0) {
+            // The aux depth types where it shows: on its chip, or under a knob's dot as the depth does.
+            if (hit->kind == Kind::ModDot || hit->kind == Kind::ModsAuxDepth) {
+                menuAuxDepth_ = *hit;
+                menuAuxDepth_->param = slotAuxDepthIndex(hit->a, hit->b);
+                items.push_back({12, tr(Str::MenuEditAuxDepth)});
+            }
             items.push_back({kAuxClearCommand + hit->a * kSlots + hit->b, trf(Str::MenuRemoveAux, {sourceName(aux)})});
+        }
         items.push_back({0, ""});
         items.push_back({100 + hit->a * kSlots + hit->b, trf(Str::MenuRemoveModulation, {sourceName(hit->a)})});
         return items;
@@ -12804,6 +12874,8 @@ void View::menuCommand(int command) {
         removeSource(menuSource_);
     } else if (command == 11 && menuValue_) {
         startTyping(*menuValue_);
+    } else if (command == 12 && menuAuxDepth_) {
+        startTyping(*menuAuxDepth_);
     } else if ((command == kUnipolarCommand || command == kBipolarCommand) && menuSource_ >= 0) {
         setSourcePolarity(menuSource_, command == kBipolarCommand);
     } else if (command >= kRouteModeCommand && command < kRouteModeCommand + static_cast<int>(RouteMode::Count) &&
@@ -13129,6 +13201,7 @@ CursorKind View::cursor() const {
                                                                                        : CursorKind::Text;
     case Kind::SlotBar:
     case Kind::ModsScale:
+    case Kind::ModsAuxDepth:
     case Kind::DynGrip:
         return CursorKind::Horizontal;
     case Kind::ModsCurve:
