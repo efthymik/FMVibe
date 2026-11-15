@@ -784,6 +784,13 @@ int main(int argc, char **argv) {
             peak = std::max(peak, std::fabs(s));
         return peak;
     };
+    // The RMS level: a square's is its peak, also band-limited, where its peaks overshoot.
+    auto rmsOf = [](const std::vector<float> &signal) {
+        double sum = 0.0;
+        for (float s : signal)
+            sum += static_cast<double>(s) * s;
+        return signal.empty() ? NAN : static_cast<float>(std::sqrt(sum / signal.size()));
+    };
 
     // A fixed operator plays at its Freq x Mult whatever the note: A at 300 Hz x1 for a C3 and an A4, under a full
     // bend, with its Pitch and Detune turned and modulated; at 1 kHz x0.1 it plays 100 Hz, at 50 Hz x10 500 Hz.
@@ -3078,14 +3085,16 @@ int main(int argc, char **argv) {
     {
         auto type = [](int slot) { return paramIndex(slot, FxParam::Type); };
         auto fx = [](int slot, FxParam field) { return paramIndex(slot, field); };
-        // A hard shaper at full drive, unlinked, turns the sine into a square at its output level.
+        // A hard shaper at full drive, unlinked, turns the sine into a square at its output level: its RMS level, as
+        // its peaks overshoot a little band-limited (the shaper runs at twice the rate, and comes back down through a
+        // low-pass).
         setParams({{type(0), static_cast<double>(FxType::Shaper)},
                    {fx(0, FxParam::ShaperLink), 0.0},
                    {fx(0, FxParam::ShaperMode), static_cast<double>(ClipMode::Hard)},
                    {fx(0, FxParam::ShaperDrive), 36.0},
                    {fx(0, FxParam::ShaperOutput), -6.0}});
-        const float clipped = peakOf(play({}));
-        std::printf("      hard shaper at -6 dB output: peak %.3f\n", clipped);
+        const float clipped = rmsOf(play({}));
+        std::printf("      hard shaper at -6 dB output: RMS %.3f\n", clipped);
         check(clipped > 0.45f && clipped < 0.52f, "the hard shaper holds the level at its ceiling");
         bool modesSound = true;
         for (int m = 0; m < static_cast<int>(ClipMode::Count); ++m) {
@@ -3100,11 +3109,11 @@ int main(int argc, char **argv) {
         setParams({{fx(0, FxParam::ShaperMode), static_cast<double>(ClipMode::Hard)},
                    {fx(0, FxParam::ShaperOutput), 0.0},
                    {fx(0, FxParam::ShaperLink), 1.0}});
-        const float linkedPeak = peakOf(play({}));
+        const float linkedLevel = rmsOf(play({})); // a square's RMS level, as above
         setParams({{fx(0, FxParam::ShaperLink), 0.0}});
         const double linkedDb = clipOutputDb(0.0, 36.0, true);
-        std::printf("      hard shaper at 36 dB of drive, linked: peak %.4f (%.1f dB)\n", linkedPeak, linkedDb);
-        check(std::abs(linkedPeak - std::pow(10.0, linkedDb / 20.0)) < 0.01 && linkedDb < -8.0 && linkedDb > -10.0,
+        std::printf("      hard shaper at 36 dB of drive, linked: RMS %.4f (%.1f dB)\n", linkedLevel, linkedDb);
+        check(std::abs(linkedLevel - std::pow(10.0, linkedDb / 20.0)) < 0.01 && linkedDb < -8.0 && linkedDb > -10.0,
               "linked, the shaper's output comes down as its drive goes up, keeping the level about even");
         // Symmetric, a Custom curve's upper half is turned over onto its lower one: one whose lower half only reaches
         // -0.3 loses its even harmonics. The formula curves are left alone: Asymmetric keeps its 2nd harmonic.

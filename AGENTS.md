@@ -244,7 +244,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     440 Hz and 5 kHz about as loud as it went in, with 2, 3, 4 and 6; and its Feedback full up either way staying
     steady as Voices drops from 6 to 2 under a loud sine, then dying away;
   - the reverb's tails: every algorithm's late spectrum without lasting resonances and its two sides unalike, an
-    undamped tail falling 60 dB around 1 kHz in its decay time, and a reverb with a 200 ms pre-delay ringing on
+    undamped tail falling 60 dB around 1 kHz in its decay time (and around 8 kHz in nearly as long, its lines' reads
+    between samples taking nothing from its top), and a reverb with a 200 ms pre-delay ringing on
     until its tail has been heard, and stopping after; a sample that isn't a number, and one louder than any sound,
     going into a delay and a reverb leaving them sane, ringing out and playing on; a delay switched off and on again playing back nothing it
     held, its lines part written or written all round, and its times then turned to their longest and shortest (as a
@@ -268,16 +269,21 @@ the plain CMake commands and installing into a host are in the [README](README.m
     stacked eight high ending with its voice;
   - a drawn shaper curve's points moved gliding in rather than clicking, in whole blocks and in single frames, and
     dragged up and down putting out no DC, made symmetric too;
-  - a quiet, slow sine through a drawn shaper curve coming out as drawn, without spikes where it crosses the
-    curve's table steps; a symmetric drawn curve that doesn't pass through the middle putting out silence for
+  - a quiet, slow sine through a drawn shaper curve coming out as drawn (a few samples late, for the shaper's twice
+    the rate), without spikes where it crosses the curve's table steps; a symmetric drawn curve that doesn't pass through the middle putting out silence for
     silence, and an input that isn't a number reading inside its table;
   - the filter effect switched to another type or slope and back (every newer type among them, and the analog
     types, which share their stages, from one another and from a morph), and a plate switched to a hall and back,
     playing nothing their stages held before; and the effects running on until a shaper's DC blocker has settled;
   - the phaser's and flanger's polarity: negative moving their notches to where the positive peaks were, and
     turned over mid-sine fading through nothing rather than clicking;
-  - a frequency shifter's mirror image 40 dB under the shifted note from 50 Hz to 10 kHz, at 44.1, 48, 96 and
+  - a frequency shifter's mirror image 60 dB under the shifted note from 50 Hz to 10 kHz, at 44.1, 48, 96 and
     192 kHz;
+  - the effects keeping the top where their knobs don't take it: a quiet 15 kHz sine through a soft shaper and a
+    driven high-pass filter effect within 1.5 dB of a 1 kHz one, the parametric EQ's bands up high (a bell, a dip, a
+    high shelf, a low cut and a high cut) sounding within 1.25 dB of their drawn curves from 3 to 15 kHz, and a
+    delay's sixth echo of a 10 kHz burst, at a time between two samples, within 0.5 dB of Feedback's fifth power
+    under its first;
   - the Random source's steps and glides, and at 0 Hz a value for each note, anywhere, at once and held (a mono
     retrigger taking a new one), a freeform shape's points at one time (a vertical line, its last
     counting, and a point at the cycle's end holding a one-shot there), a Curve source playing sample for sample as

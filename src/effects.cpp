@@ -5,6 +5,7 @@
 #include <cmath>
 #include <complex>
 #include <cstring>
+#include <initializer_list>
 #include <limits>
 #include <numbers>
 #include <utility>
@@ -48,47 +49,94 @@ Coefs biquad(BiquadType type, double hz, double sampleRate) {
     return {b0 / a0, b1 / a0, b2 / a0, -2.0 * cosW / a0, (1.0 - alpha) / a0};
 }
 
-// A parametric EQ band (RBJ cookbook: peaking EQ, shelves, high- and low-pass, notch), from its params.
+// The z-plane pair (z^2 + c1 z + c2, as c1 and c2) of the analog pair s^2 + k1 s + k0 (s in units of the corner,
+// whose angular frequency is `w0` radians a sample), each root s going to e^(s w0): the matched z-transform.
+std::pair<double, double> matchedPair(double k1, double k0, double w0) {
+    const double disc = k1 * k1 - 4.0 * k0;
+    if (disc < 0.0) {
+        const double decay = std::exp(-0.5 * k1 * w0);
+        return {-2.0 * decay * std::cos(0.5 * std::sqrt(-disc) * w0), decay * decay};
+    }
+    const double root = std::sqrt(disc);
+    const double r1 = std::exp(0.5 * (-k1 + root) * w0), r2 = std::exp(0.5 * (-k1 - root) * w0);
+    return {-(r1 + r2), r1 * r2};
+}
+
+// The magnitude of b0 + b1 z^-1 + b2 z^-2 over 1 + a1 z^-1 + a2 z^-2 at `w` radians a sample.
+double biquadMagnitude(const Coefs &c, double w) {
+    const std::complex<double> z = std::polar(1.0, -w);
+    return std::abs((c.b0 + (c.b1 + c.b2 * z) * z) / (1.0 + (c.a1 + c.a2 * z) * z));
+}
+
+// A parametric EQ band, from its params: the analog band peqResponse() draws, made digital so that it keeps its shape
+// up to the rate's half. The bilinear transform (RBJ's cookbook) squeezes the whole analog response below the half
+// rate, so a bell or shelf in the top octaves came out narrower and lower than drawn, a notch or cut steeper. Here the
+// poles go where the analog ones are (the matched z-transform), and so do the zeros, the gain then set for the level at
+// 0 Hz (at the half rate for the low cut, which has none there). The high cut keeps its zeros free: its poles
+// matched, its zeros are those whose magnitude meets the analog one at 0 Hz, its corner and the half rate (Vicanek's
+// "matched" design), where matched zeros, at infinity, would leave the top unbounded.
 Coefs peqCoefs(PeqType type, double freq, double gainDb, double q, double sampleRate) {
     const double hz = std::min(cutoffFromNorm(freq), 0.45 * sampleRate);
     const double a = std::pow(10.0, gainDb / 40.0);
-    const double w = 2.0 * std::numbers::pi * hz / sampleRate;
-    const double cosW = std::cos(w);
-    const double alpha = std::sin(w) / (2.0 * qFromNorm(q));
-    const double shelf = 2.0 * std::sqrt(a) * alpha;
-    double b0 = 1.0, b1 = 0.0, b2 = 0.0, a0 = 1.0, a1 = 0.0, a2 = 0.0;
+    const double w0 = 2.0 * std::numbers::pi * hz / sampleRate;
+    const double bandwidth = 1.0 / qFromNorm(q);
+    const double root = std::sqrt(a) * bandwidth;
+    // The analog band's denominator and numerator as s^2 + k1 s + k0 (the numerator's scale left to the gain below).
+    double d1 = bandwidth, d0 = 1.0, n1 = 0.0, n0 = 1.0;
     switch (type) {
     case PeqType::Peak:
     case PeqType::Count:
-        b0 = 1.0 + alpha * a, b1 = -2.0 * cosW, b2 = 1.0 - alpha * a;
-        a0 = 1.0 + alpha / a, a1 = -2.0 * cosW, a2 = 1.0 - alpha / a;
+        d1 = bandwidth / a, n1 = bandwidth * a;
         break;
-    case PeqType::LowShelf:
-        b0 = a * ((a + 1.0) - (a - 1.0) * cosW + shelf), b1 = 2.0 * a * ((a - 1.0) - (a + 1.0) * cosW);
-        b2 = a * ((a + 1.0) - (a - 1.0) * cosW - shelf);
-        a0 = (a + 1.0) + (a - 1.0) * cosW + shelf, a1 = -2.0 * ((a - 1.0) + (a + 1.0) * cosW);
-        a2 = (a + 1.0) + (a - 1.0) * cosW - shelf;
+    case PeqType::LowShelf: // a (s^2 + root s + a) / (a s^2 + root s + 1)
+        d1 = root / a, d0 = 1.0 / a, n1 = root, n0 = a;
         break;
-    case PeqType::HighShelf:
-        b0 = a * ((a + 1.0) + (a - 1.0) * cosW + shelf), b1 = -2.0 * a * ((a - 1.0) + (a + 1.0) * cosW);
-        b2 = a * ((a + 1.0) + (a - 1.0) * cosW - shelf);
-        a0 = (a + 1.0) - (a - 1.0) * cosW + shelf, a1 = 2.0 * ((a - 1.0) - (a + 1.0) * cosW);
-        a2 = (a + 1.0) - (a - 1.0) * cosW - shelf;
+    case PeqType::HighShelf: // a (a s^2 + root s + 1) / (s^2 + root s + a)
+        d1 = root, d0 = a, n1 = root / a, n0 = 1.0 / a;
         break;
     case PeqType::LowCut:
-        b0 = 0.5 * (1.0 + cosW), b1 = -(1.0 + cosW), b2 = 0.5 * (1.0 + cosW);
-        a0 = 1.0 + alpha, a1 = -2.0 * cosW, a2 = 1.0 - alpha;
-        break;
     case PeqType::HighCut:
-        b0 = 0.5 * (1.0 - cosW), b1 = 1.0 - cosW, b2 = 0.5 * (1.0 - cosW);
-        a0 = 1.0 + alpha, a1 = -2.0 * cosW, a2 = 1.0 - alpha;
-        break;
     case PeqType::Notch:
-        b0 = 1.0, b1 = -2.0 * cosW, b2 = 1.0;
-        a0 = 1.0 + alpha, a1 = -2.0 * cosW, a2 = 1.0 - alpha;
         break;
     }
-    return {b0 / a0, b1 / a0, b2 / a0, a1 / a0, a2 / a0};
+    const auto [a1, a2] = matchedPair(d1, d0, w0);
+    if (type == PeqType::HighCut) {
+        // |N|^2 = B0 cos^2(w/2) + B1 sin^2(w/2) - 4 b0 b2 sin^2(w), from N's level at 0 (B0) and the half rate (B1):
+        // B0, B1 and b0 b2 set so that N over the poles meets the analog magnitude at 0, the corner and the half rate.
+        auto analog2 = [&](double w) { // the analog band's squared magnitude at w radians a sample
+            const double s = w / w0;
+            const double re = 1.0 - s * s, im = bandwidth * s;
+            return 1.0 / (re * re + im * im);
+        };
+        const double p1 = std::sin(0.5 * w0) * std::sin(0.5 * w0), p0 = 1.0 - p1, p2 = 4.0 * p0 * p1;
+        const double A0 = (1.0 + a1 + a2) * (1.0 + a1 + a2), A1 = (1.0 - a1 + a2) * (1.0 - a1 + a2), A2 = -4.0 * a2;
+        const double B0 = A0, B1 = A1 * analog2(std::numbers::pi);
+        const double B2 = (analog2(w0) * (A0 * p0 + A1 * p1 + A2 * p2) - B0 * p0 - B1 * p1) / p2;
+        const double r0 = std::sqrt(B0), r1 = std::sqrt(B1), sum = 0.5 * (r0 + r1); // N(1), N(-1); b0 + b2
+        const double b0 = 0.5 * (sum + std::sqrt(std::max(sum * sum + B2, 0.0)));
+        return {b0, 0.5 * (r0 - r1), b0 > 0.0 ? -B2 / (4.0 * b0) : 0.0, a1, a2};
+    }
+    double b1 = 0.0, b2 = 0.0;
+    if (type == PeqType::LowCut) {
+        b1 = -2.0, b2 = 1.0; // both zeros at 0 Hz
+    } else {
+        const auto zeros = matchedPair(n1, n0, w0);
+        b1 = zeros.first, b2 = zeros.second;
+    }
+    Coefs c{1.0, b1, b2, a1, a2};
+    // The level to meet: the analog band's at 0 Hz (1, or a shelf's a^2 or 1), or the low cut's at the half rate.
+    double level = 1.0;
+    if (type == PeqType::LowShelf)
+        level = a * a;
+    double at = 0.0;
+    if (type == PeqType::LowCut) {
+        at = std::numbers::pi;
+        const double s = at / w0;
+        level = s * s / std::hypot(1.0 - s * s, bandwidth * s);
+    }
+    const double gain = level / std::max(biquadMagnitude(c, at), 1e-30);
+    c.b0 *= gain, c.b1 *= gain, c.b2 *= gain;
+    return c;
 }
 
 
@@ -278,8 +326,14 @@ double phaserCorner(double centerNorm, double depth, double lfo) {
     return cutoffFromNorm(centerNorm) * std::exp2(2.5 * depth * lfo);
 }
 
+FlangerSweep flangerSweep(double depth) {
+    const double reach = 0.95 * std::clamp(depth, 0.0, 1.0);
+    return {std::sqrt((1.0 - reach) * (1.0 + reach)), 0.5 * std::log((1.0 + reach) / (1.0 - reach))};
+}
+
 double flangerDelay(double delayNorm, double depth, double lfo) {
-    return timeFromNorm(delayNorm) * (1.0 + 0.95 * depth * lfo);
+    const FlangerSweep sweep = flangerSweep(depth);
+    return timeFromNorm(delayNorm) * sweep.middle * std::exp(sweep.reach * lfo);
 }
 
 ChorusGains chorusGains(int voice, int voices, double spread) {
@@ -352,9 +406,10 @@ double reverbSpace(double sizeNorm, ReverbType type) {
 constexpr double kHilbertLowHz = 43.68;
 
 Effects::HilbertCoefs Effects::hilbertCoefs(double sampleRate) {
-    // Up to 48 kHz, four sections a chain keep their sides within about 0.7 degrees of 90 (the other sideband 44 dB
-    // down); at higher rates, two more for each octave the band grows by keep them as close.
-    const int sections = sampleRate <= 50000.0 ? 4 : sampleRate <= 100000.0 ? 5 : sampleRate <= 200000.0 ? 6 : 7;
+    // Up to 48 kHz, six sections a chain keep their sides within a few hundredths of a degree of 90, the other
+    // sideband about 70 dB down, where four (Niemitalo's) left it 44 dB down, which feedback brings back up each time
+    // round; at higher rates, one more for each octave the band grows by keeps them as close.
+    const int sections = sampleRate <= 50000.0 ? 6 : sampleRate <= 100000.0 ? 7 : sampleRate <= 200000.0 ? 8 : 9;
     std::array<double, 2 * kMaxHilbertSections> coefs{};
     halfBandCoefs(2 * sections, std::min(kHilbertLowHz / sampleRate, 0.1), coefs.data());
     HilbertCoefs out;
@@ -434,15 +489,14 @@ void Effects::prepare(double sampleRate) {
     for (Slot &slot : slots_) {
         for (ZeroBuffer &line : slot.delay.lines)
             line.assign(length, 0.0f);
-        for (ZeroBuffer &comb : slot.filter.combs)
-            comb.assign(static_cast<size_t>(combLength(sampleRate)), 0.0f);
+        for (ZeroBuffer &comb : slot.filter.combs) // the filter runs at twice the rate (see runFilter())
+            comb.assign(static_cast<size_t>(combLength(2.0 * sampleRate)), 0.0f);
         slot.filter.settingsFor.fill(std::numeric_limits<double>::quiet_NaN()); // for this rate
         // Flat up to 20 kHz (or as near the host rate's half as it is), as the voices' decimator is.
         const double transition = std::clamp(0.25 - 20000.0 / (2.0 * sampleRate), 0.01, 0.24);
-        for (HalfBand &band : slot.shaperUp)
-            band.design(HalfBand::kMaxCoefs, transition);
-        for (HalfBand &band : slot.shaperDown)
-            band.design(HalfBand::kMaxCoefs, transition);
+        for (auto *bands : {&slot.shaperUp, &slot.shaperDown, &slot.filter.up, &slot.filter.down})
+            for (HalfBand &band : *bands)
+                band.design(HalfBand::kMaxCoefs, transition);
 
         // Room behind the longest line for its wavering, the most of any algorithm.
         const double reach = kReverbLongest + 2.0 * kReverbWander * reverbStyle(ReverbType::Shimmer).wander;
@@ -529,8 +583,10 @@ double Effects::delayTarget(int slot, int side, const ParamValues &p, double tem
         p[paramIndex(slot, FxParam::DelaySync)] >= 0.5
             ? divisionSeconds(p[paramIndex(slot, side == 0 ? FxParam::DelayDivisionL : FxParam::DelayDivisionR)], tempo)
             : timeFromNorm(p[paramIndex(slot, side == 0 ? FxParam::DelayTimeL : FxParam::DelayTimeR)]);
+    // In whole samples: once the time has glided there, each echo is the sound as it went in, where one read between
+    // two samples would come back a little duller every time round.
     const double size = static_cast<double>(slots_[slot].delay.lines[0].size());
-    return std::clamp(seconds * sampleRate_, 1.0, size - 2.0);
+    return std::clamp(std::round(seconds * sampleRate_), 3.0, size - 3.0);
 }
 
 // Clears an effect that is about to fade in, and jumps its ramps to the current settings.
@@ -581,6 +637,10 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
         s.filter.channels = {};
         for (ZeroBuffer &comb : s.filter.combs)
             comb.zero();
+        for (int ch = 0; ch < 2; ++ch) {
+            s.filter.up[ch].reset();
+            s.filter.down[ch].reset();
+        }
         s.filter.mix = at(FxParam::FilterMix);
         s.analyzed.clear();
         break;
@@ -611,6 +671,7 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
         r.shimmerLow = {};
         r.shimmerBass = {};
         r.damp = {};
+        r.lineRead = {};
         r.gainsFor = {std::numeric_limits<double>::quiet_NaN()}; // the sample rate may have changed
         for (int i = 0; i < kReverbLines; ++i) { // each line's wavering starts somewhere else
             const double angle = 2.0 * std::numbers::pi * i * 0.618034;
@@ -619,7 +680,7 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
         }
         r.shimmer = 0.0; // fades in with the rest
         r.size = reverbSpace(at(FxParam::ReverbSize), reverbType(at(FxParam::ReverbType)));
-        r.preLength = reverbPreDelay(at(FxParam::ReverbPreDelay)) * sampleRate_;
+        r.preLength = std::round(reverbPreDelay(at(FxParam::ReverbPreDelay)) * sampleRate_);
         r.dry = delayDryLevel(at(FxParam::ReverbMix));
         r.wet = delayWetLevel(at(FxParam::ReverbMix));
         r.width = at(FxParam::ReverbWidth);
@@ -1499,28 +1560,17 @@ void Effects::clearGraph() {
 namespace {
 
 // How long a shaper effect's path, going to Stack or leaving it, takes to fade over to the other (see runShaper()), as
-// the amp's settings do: long enough to hide the few samples the Stack path's half-bands are late by.
+// the amp's settings do: a stack's stages start from silence, and its level as it is driven is unlike the others'.
 constexpr double kShaperPathFade = 0.01; // seconds
-
-// One sample of a side of a shaper effect, at the host rate or, `doubled` (for Stack), at twice it: up through `up`,
-// both samples through the curve, and back down through `down`.
-double shapeSample(ClipState &side, const ClipCurve &curve, double x, double drive, double output, double mix,
-                   bool block, double pole, double between, bool doubled, HalfBand &up, HalfBand &down) {
-    if (!doubled)
-        return side.run(curve, x, drive, output, mix, block, pole, between);
-    double first, second;
-    up.processUp(x, first, second);
-    first = side.run(curve, first, drive, output, mix, block, pole, between);
-    second = side.run(curve, second, drive, output, mix, block, pole, between);
-    return down.process(first, second);
-}
 
 } // namespace
 
-// The voices' shapers run the same way (see Synth::renderBlock()), on what goes into them. The Stack stages run at
-// twice the rate, as the voices' do at their oversampling: the anti-aliasing's average over each step (see
-// kStackLift) would dull a stack's top at the host rate, 15 dB at 15 kHz stacked eight high at 48 kHz. Going to Stack
-// or leaving it under sound, the path it leaves runs on for kShaperPathFade, fading out as the new one fades in.
+// The voices' shapers run the same way (see Synth::renderBlock()), on what goes into them, at their oversampling; the
+// shaper effect runs at twice the host rate. The anti-aliasing averages the curve over each sample step, which for what
+// the curve leaves straight is the mean of two samples: at the host rate, a top falling away toward its half, 5 dB at
+// 15 kHz at 48 kHz for a quiet sound the curve leaves alone, and a stack's further, stage by stage (see kStackLift);
+// at twice it, about a dB. Going to Stack or leaving it under sound, the path it leaves runs on for kShaperPathFade on
+// the same samples, fading out as the new one fades in.
 void Effects::runShaper(int slot, float *const *io, uint32_t n, const ParamValues &p) {
     Slot &place = slots_[slot];
     Shaper &sh = place.shaper;
@@ -1531,34 +1581,32 @@ void Effects::runShaper(int slot, float *const *io, uint32_t n, const ParamValue
         place.curve.update(get, fields.curve);
         place.curve.advance(n / sampleRate_);
     }
-    const bool doubled = settings.mode == ClipMode::Stack;
-    if (place.shaperRan && doubled != place.shaperDoubled) {
+    const bool stacked = settings.mode == ClipMode::Stack;
+    if (place.shaperRan && stacked != place.shaperStacked) {
         // The path it leaves fades out from where it is (one already fading out, which this one replaces, goes).
         place.shaperWas = place.shaperLast;
         place.shaperWasSides = sh.sides;
         place.shaperWasFade = 1.0;
     }
-    if (doubled && (!place.shaperRan || !place.shaperDoubled)) // from silence, rather than from what they last held
+    if (!place.shaperRan) // from silence, rather than from what they last held
         for (int ch = 0; ch < 2; ++ch) {
             place.shaperUp[ch].reset();
             place.shaperDown[ch].reset();
         }
-    place.shaperDoubled = doubled;
+    place.shaperStacked = stacked;
     place.shaperRan = true;
     place.shaperLast = {settings.mode, settings.symmetric, settings.stack};
-    const double rate = doubled ? 2.0 * sampleRate_ : sampleRate_;
+    const double rate = 2.0 * sampleRate_;
     ClipCurve curve = place.curve.curve(settings.mode, settings.symmetric);
     curve.stack(settings.stack, rate);
     const double fadeStep = 1.0 / n;
     const bool block = clipNeedsBlocker(settings.mode);
     const double pole = clipBlockerPole(rate);
-    // The path it left, at the other rate.
+    // The path it left.
     const ShaperPath &was = place.shaperWas;
-    const double wasRate = doubled ? sampleRate_ : 2.0 * sampleRate_;
     ClipCurve wasCurve = place.curve.curve(was.mode, was.symmetric);
-    wasCurve.stack(was.stack, wasRate);
+    wasCurve.stack(was.stack, rate);
     const bool wasBlock = clipNeedsBlocker(was.mode);
-    const double wasPole = clipBlockerPole(wasRate);
     const double wasStep = 1.0 / (kShaperPathFade * sampleRate_);
     const double driveStep = rampStep(sh.drive, settings.drive, n, rampShortest_);
     const double outputStep = rampStep(sh.output, settings.output, n, rampShortest_);
@@ -1580,14 +1628,16 @@ void Effects::runShaper(int slot, float *const *io, uint32_t n, const ParamValue
             w = 0.5 - 0.5 * std::cos(std::numbers::pi * place.shaperWasFade);
         }
         for (int ch = 0; ch < 2; ++ch) {
-            const double x = io[ch][s];
-            double y = shapeSample(sh.sides[ch], curve, x, sh.drive, sh.output, sh.mix, block, pole, sh.between,
-                                   doubled, place.shaperUp[ch], place.shaperDown[ch]);
-            if (fading)
-                y = y * (1.0 - w) + w * shapeSample(place.shaperWasSides[ch], wasCurve, x, sh.drive, sh.output,
-                                                    sh.mix, wasBlock, wasPole, sh.between, !doubled,
-                                                    place.shaperUp[ch], place.shaperDown[ch]);
-            io[ch][s] = static_cast<float>(y);
+            double twice[2]; // up to twice the rate, both through the curve (and the path it left), and back down
+            place.shaperUp[ch].processUp(io[ch][s], twice[0], twice[1]);
+            for (double &x : twice) {
+                double y = sh.sides[ch].run(curve, x, sh.drive, sh.output, sh.mix, block, pole, sh.between);
+                if (fading)
+                    y = y * (1.0 - w) + w * place.shaperWasSides[ch].run(wasCurve, x, sh.drive, sh.output, sh.mix,
+                                                                         wasBlock, pole, sh.between);
+                x = y;
+            }
+            io[ch][s] = static_cast<float>(place.shaperDown[ch].process(twice[0], twice[1]));
         }
     }
 }
@@ -1628,13 +1678,8 @@ double Effects::runDelay(int slot, float *const *io, uint32_t n, const ParamValu
         double wet[2];
         for (int c = 0; c < 2; ++c) {
             d.length[c] += (targets[c] - d.length[c]) * glide;
-            double pos = d.write - d.length[c];
-            if (pos < 0.0)
-                pos += size;
-            const int i0 = std::min(static_cast<int>(pos), size - 1);
-            const int i1 = i0 + 1 == size ? 0 : i0 + 1;
-            const float *line = d.lines[c].data();
-            const double read = line[i0] + (line[i1] - line[i0]) * (pos - i0);
+            // On a cubic while the time glides, so the echoes going round keep their top.
+            const double read = readCubic(d.lines[c], d.write, d.length[c]);
             // Each echo passes the tone filters again, so repeats get darker (or thinner).
             d.lowPass[c] += lowPass * (read - d.lowPass[c]);
             const double toned = read + (d.lowPass[c] - read) * lowPassAmount;
@@ -1773,9 +1818,13 @@ double Effects::runFilter(int slot, float *const *io, uint32_t n, const ParamVal
             std::clamp(static_cast<int>(std::lround(inputs[0])), 0, static_cast<int>(FilterType::Count) - 1));
         // Key tracking moves the cutoff with the pitch from C4 on, as a voice filter's does.
         const double cutoffHz = cutoffFromNorm(inputs[1]) * std::exp2((pitch - 60.0) / 12.0 * keyTrack);
-        filter.settings = filterSettings(type, filterSlope(inputs[4]), cutoffHz, inputs[5], inputs[6], sampleRate_,
-                                         inputs[7], inputs[8], morphMode(inputs[9]));
+        filter.settings = filterSettings(type, filterSlope(inputs[4]), cutoffHz, inputs[5], inputs[6],
+                                         2.0 * sampleRate_, inputs[7], inputs[8], morphMode(inputs[9]));
     }
+    // At twice the rate, as the voices' filters run at their oversampling: the analog types saturate inside their
+    // loops and Drive before them, whose harmonics fold back far less there, and Drive's anti-aliasing, an average
+    // over each step, would dull the top at the host rate. What goes past (Mix) goes up and down the same way, so the
+    // two stay in step.
     const FilterSettings &settings = filter.settings;
     const double mixStep = rampStep(filter.mix, p[paramIndex(slot, FxParam::FilterMix)], n, rampShortest_);
     const int combSize = static_cast<int>(filter.combs[0].size());
@@ -1783,10 +1832,14 @@ double Effects::runFilter(int slot, float *const *io, uint32_t n, const ParamVal
     for (uint32_t s = 0; s < n; ++s) {
         filter.mix += mixStep;
         for (int ch = 0; ch < 2; ++ch) {
-            const double x = io[ch][s];
-            const double y = filter.channels[ch].process(x, settings, filter.combs[ch].data(), combSize);
-            io[ch][s] = static_cast<float>(x + (y - x) * filter.mix);
-            peak = std::max(peak, std::abs(y));
+            double twice[2];
+            filter.up[ch].processUp(io[ch][s], twice[0], twice[1]);
+            for (double &x : twice) {
+                const double y = filter.channels[ch].process(x, settings, filter.combs[ch].data(), combSize);
+                peak = std::max(peak, std::abs(y));
+                x += (y - x) * filter.mix;
+            }
+            io[ch][s] = static_cast<float>(filter.down[ch].process(twice[0], twice[1]));
         }
     }
     return peak;
@@ -1935,7 +1988,8 @@ double Effects::runReverb(int slot, float *const *io, uint32_t n, const ParamVal
             r.diffusers[c][d].zero(r.ran);
     r.diffusersUsed = style.diffusers;
     const double sizeTarget = reverbSpace(at(FxParam::ReverbSize), type); // a new algorithm's length glides too
-    const double preTarget = reverbPreDelay(at(FxParam::ReverbPreDelay)) * sampleRate_;
+    // In whole samples, so once it has glided there it reads no samples between (which would dull the top a little).
+    const double preTarget = std::round(reverbPreDelay(at(FxParam::ReverbPreDelay)) * sampleRate_);
     // A room's early reflections spread with its size, after the pre-delay; they stay inside the buffer.
     const double echoScale = reverbScale(at(FxParam::ReverbSize)) * sampleRate_;
     const double echoRoom = static_cast<double>(r.preDelay[0].size()) - 2.0;
@@ -2061,8 +2115,8 @@ double Effects::runReverb(int slot, float *const *io, uint32_t n, const ParamVal
                 double a = r.shimmerPhase + 0.25 * c;
                 a -= a >= 1.0 ? 1.0 : 0.0;
                 const double b = a >= 0.5 ? a - 0.5 : a + 0.5;
-                const double heads = readBehind(r.shifter[c], r.shiftWrite, nearest + a * window) * fades[c][0] +
-                                     readBehind(r.shifter[c], r.shiftWrite, nearest + b * window) * fades[c][1];
+                const double heads = readCubic(r.shifter[c], r.shiftWrite, nearest + a * window) * fades[c][0] +
+                                     readCubic(r.shifter[c], r.shiftWrite, nearest + b * window) * fades[c][1];
                 fed[c] = heads * r.shimmer;
             }
             r.shimmerPhase += phaseStep;
@@ -2090,7 +2144,20 @@ double Effects::runReverb(int slot, float *const *io, uint32_t n, const ParamVal
             const double c = r.wanderCos[i], sn = r.wanderSin[i];
             r.wanderCos[i] = c * wanderTurn_[i][0] - sn * wanderTurn_[i][1];
             r.wanderSin[i] = sn * wanderTurn_[i][0] + c * wanderTurn_[i][1];
-            out[i] = readBehind(r.lines[i], r.lineWrite, reverbLengths_[i] * r.size + wander * (1.0 + r.wanderSin[i]));
+            // Between samples through a first-order all-pass, which waits `fraction` more at low frequencies and
+            // passes every frequency at its level: read through a straight line, the top would lose a little each
+            // time round (2 dB at 10 kHz at 48 kHz half way between), a tail's highs falling much faster than its
+            // damping says. The fraction stays between 0.5 and 1.5, where the all-pass's pole is far from the circle,
+            // so its step as the whole samples move on dies away at once; the lines' slow wavering hides it.
+            const double behind = reverbLengths_[i] * r.size + wander * (1.0 + r.wanderSin[i]);
+            const int whole = static_cast<int>(behind - 0.5);
+            const double fraction = behind - whole;
+            const double coef = (1.0 - fraction) / (1.0 + fraction);
+            int newer = r.lineWrite - whole;
+            newer += newer < 0 ? lineSize : 0;
+            const int before = newer == 0 ? lineSize - 1 : newer - 1;
+            out[i] = coef * (r.lines[i][newer] - r.lineRead[i]) + r.lines[i][before];
+            r.lineRead[i] = out[i];
         }
         double wet[2] = {0.0, 0.0};
         std::array<double, kReverbLines> back; // each set below
@@ -2292,7 +2359,8 @@ double Effects::runWidener(int slot, float *const *io, uint32_t n, const ParamVa
             const double sn = sinNow[k];
             sinNow[k] = sn * cosStep[k] + cosNow[k] * sinStep[k];
             cosNow[k] = cosNow[k] * cosStep[k] - sn * sinStep[k];
-            taps[k] = readBehind(e.line, e.write, std::clamp(widenerTap(k, e.size, lfo) * sampleRate_, 1.0, size - 2.0));
+            // On a cubic, which keeps the sides' top as the taps are swept.
+            taps[k] = readCubic(e.line, e.write, std::clamp(widenerTap(k, e.size, lfo) * sampleRate_, 3.0, size - 3.0));
         }
         const double x[2] = {io[0][s], io[1][s]};
         e.line[e.write] = static_cast<float>(e.highPass.process(0.5 * (x[0] + x[1]), highPass));
@@ -2372,8 +2440,8 @@ double Effects::runFlanger(int slot, float *const *io, uint32_t n, const ParamVa
     f.ran += n; // counted ahead of what this chunk writes (see start())
     auto at = [&](FxParam field) { return p[paramIndex(slot, field)]; };
     const double step = sweepHz([&p](int i) { return p[i]; }, slot, FxType::Flanger, tempo) / sampleRate_;
-    const double delaySeconds = timeFromNorm(at(FxParam::FlangerDelay)); // flangerDelay()'s, the same all chunk
-    const double depth = at(FxParam::FlangerDepth);
+    const FlangerSweep sweep = flangerSweep(at(FxParam::FlangerDepth)); // flangerDelay()'s, the same all chunk
+    const double middleSamples = timeFromNorm(at(FxParam::FlangerDelay)) * sweep.middle * sampleRate_;
     const double feedback = sweepFeedback(at(FxParam::FlangerFeedback));
     const double gain = sweepGain(at(FxParam::FlangerFeedback));
     const double mixStep = rampStep(f.mix, sweepWet(at(FxParam::FlangerMix)), n, rampShortest_);
@@ -2382,10 +2450,10 @@ double Effects::runFlanger(int slot, float *const *io, uint32_t n, const ParamVa
     const double spread = at(FxParam::FlangerStereo) >= 0.5 ? 0.25 : 0.0; // the right side's head start
     const int size = static_cast<int>(f.lines[0].size());
     // The delay in samples where the sweep is at `phase`, on each side: worked out every kSweepStep samples, as the
-    // phaser's coefficient is (see runPhaser()).
+    // phaser's coefficient is (see runPhaser()). 3 samples at the least, for its cubic.
     auto delayAt = [&](double phase, int ch) {
         const double lfo = std::sin(2.0 * std::numbers::pi * (phase + spread * ch));
-        return std::clamp(delaySeconds * (1.0 + 0.95 * depth * lfo) * sampleRate_, 1.0, size - 2.0); // flangerDelay()
+        return std::clamp(middleSamples * std::exp(sweep.reach * lfo), 3.0, size - 3.0); // flangerDelay()
     };
     if (!f.delayKnown) {
         f.delay = {delayAt(f.phase, 0), delayAt(f.phase, 1)};
@@ -2414,7 +2482,9 @@ double Effects::runFlanger(int slot, float *const *io, uint32_t n, const ParamVa
         f.phase -= std::floor(f.phase);
         for (int ch = 0; ch < 2; ++ch) {
             f.delay[ch] = stepLeft == 0 ? delayTo[ch] : f.delay[ch] + delayStep[ch];
-            const double delayed = readBehind(f.lines[ch], f.write, f.delay[ch]);
+            // On a cubic: through a straight line between two samples, what goes round would lose its top and come
+            // back grainy as the sweep moves.
+            const double delayed = readCubic(f.lines[ch], f.write, f.delay[ch]);
             const double x = io[ch][s];
             f.lines[ch][f.write] = static_cast<float>(x + f.polarity * feedback * delayed);
             f.last[ch] = delayed;

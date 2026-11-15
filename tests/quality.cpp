@@ -953,7 +953,7 @@ void effectsChainChecks() {
     }
     {
         // A frequency shifter moves a note up without its mirror image: 50 Hz to 10 kHz shifted up 30 Hz, the image 30
-        // Hz below each at least 40 dB under it, at every common rate (its Hilbert pair worked out for the rate).
+        // Hz below each at least 60 dB under it, at every common rate (its Hilbert pair worked out for the rate).
         auto level = [](const std::vector<float> &x, double hz, double rate) { // Hann-windowed
             std::complex<double> sum = 0.0;
             for (size_t i = 0; i < x.size(); ++i) {
@@ -991,7 +991,116 @@ void effectsChainChecks() {
                         rate / 1000.0, rateWorst);
             worst = std::min(worst, rateWorst);
         }
-        check(worst > 40.0, "a frequency shifter's mirror image stays 40 dB down from 50 Hz up, at 44.1 to 192 kHz");
+        check(worst > 60.0, "a frequency shifter's mirror image stays 60 dB down from 50 Hz up, at 44.1 to 192 kHz");
+    }
+    {
+        // The effects keep the top of what goes through them where their knobs don't take it away: a quiet sine at
+        // 1 kHz and one at 12 or 15 kHz come out of each within 1.5 dB of each other (the figures printed).
+        auto through = [](ParamValues p, double hz) { // the RMS out over the RMS in of a -30 dB sine, settled
+            Effects fx;
+            fx.prepare(kSampleRate);
+            chain(p, {0});
+            constexpr uint32_t kPiece = 64;
+            float left[kPiece], right[kPiece];
+            double in = 0.0, out = 0.0;
+            for (size_t t = 0; t < static_cast<size_t>(0.6 * kSampleRate); t += kPiece) {
+                for (uint32_t s = 0; s < kPiece; ++s)
+                    left[s] = right[s] = static_cast<float>(
+                        0.0316 * std::sin(2.0 * std::numbers::pi * hz * static_cast<double>(t + s) / kSampleRate));
+                for (uint32_t s = 0; s < kPiece && t >= static_cast<size_t>(0.2 * kSampleRate); ++s)
+                    in += static_cast<double>(left[s]) * left[s];
+                fx.process(left, right, kPiece, p, 120.0, 60.0);
+                for (uint32_t s = 0; s < kPiece && t >= static_cast<size_t>(0.2 * kSampleRate); ++s)
+                    out += static_cast<double>(left[s]) * left[s];
+            }
+            return 10.0 * std::log10(out / in);
+        };
+        auto tilt = [&](const ParamValues &p, double hz) { return through(p, hz) - through(p, 1000.0); };
+        ParamValues shaper = defaults();
+        shaper[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+        shaper[paramIndex(0, FxParam::ShaperMode)] = static_cast<double>(ClipMode::Soft);
+        shaper[paramIndex(0, FxParam::ShaperDrive)] = 0.0;
+        shaper[paramIndex(0, FxParam::ShaperMix)] = 1.0;
+        ParamValues filter = defaults();
+        filter[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Filter);
+        filter[paramIndex(0, FxParam::FilterType)] = static_cast<double>(FilterType::HighPass);
+        filter[paramIndex(0, FxParam::FilterCutoff)] = 0.0;
+        filter[paramIndex(0, FxParam::FilterResonance)] = 0.0;
+        filter[paramIndex(0, FxParam::FilterDrive)] = 0.5;
+        filter[paramIndex(0, FxParam::FilterMix)] = 1.0;
+        const double shaperTilt = tilt(shaper, 15000.0), filterTilt = tilt(filter, 15000.0);
+        std::printf("      15 kHz against 1 kHz: a soft shaper %+.2f dB, a driven high-pass filter %+.2f dB\n", shaperTilt,
+                    filterTilt);
+        check(std::abs(shaperTilt) < 1.5, "the shaper effect keeps a quiet sound's top");
+        check(std::abs(filterTilt) < 1.5, "the filter effect's Drive keeps a quiet sound's top");
+
+        // A parametric EQ's bands sound as the editor draws them (peqResponse()), in the top octaves too: a bell, a
+        // dip, a high shelf, a low cut and a high cut up high, measured from 3 to 15 kHz, within 1.25 dB.
+        struct Band {
+            PeqType type;
+            double hz, gainDb, q;
+        };
+        double farthest = 0.0;
+        for (const Band &b : {Band{PeqType::Peak, 12000.0, 12.0, 0.707}, Band{PeqType::Peak, 12000.0, -12.0, 1.0},
+                              Band{PeqType::HighShelf, 10000.0, 9.0, 0.707}, Band{PeqType::LowCut, 12000.0, 0.0, 0.707},
+                              Band{PeqType::HighCut, 8000.0, 0.0, 0.707}}) {
+            ParamValues p = defaults();
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::ParamEq);
+            p[paramIndex(0, FxParam::PeqAmount)] = 1.0;
+            for (int band = 0; band < kPeqBands; ++band)
+                p[peqOnIndex(0, band)] = band == 0 ? 1.0 : 0.0;
+            p[peqTypeIndex(0, 0)] = static_cast<double>(b.type);
+            p[peqFreqIndex(0, 0)] = normFromCutoff(b.hz);
+            p[peqGainIndex(0, 0)] = b.gainDb;
+            p[peqQIndex(0, 0)] = normFromQ(b.q);
+            double off = 0.0;
+            for (double hz : {3000.0, 6000.0, 9000.0, 12000.0, 15000.0})
+                off = std::max(off, std::abs(through(p, hz) - 20.0 * std::log10(peqResponse(
+                                                                         hz, b.type, normFromCutoff(b.hz), b.gainDb,
+                                                                         normFromQ(b.q)))));
+            farthest = std::max(farthest, off);
+        }
+        std::printf("      parametric EQ bands up high: off their drawn curves by %.2f dB at most\n", farthest);
+        check(farthest < 1.25, "a parametric EQ's bands sound as drawn up to 15 kHz");
+
+        // A delay's echoes keep their top: a 10 kHz burst, at a time between two samples (214.3 ms), its sixth echo at
+        // Feedback 50 % the fifth power of a half under its first (-30.1 dB), within 0.5 dB.
+        Effects fx;
+        fx.prepare(kSampleRate);
+        ParamValues p = defaults();
+        p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Delay);
+        chain(p, {0});
+        p[paramIndex(0, FxParam::DelaySync)] = 0.0;
+        p[paramIndex(0, FxParam::DelayTimeL)] = p[paramIndex(0, FxParam::DelayTimeR)] = normFromTime(0.2143);
+        p[paramIndex(0, FxParam::DelayFeedback)] = 0.5;
+        p[paramIndex(0, FxParam::DelayTone)] = 0.0;
+        p[paramIndex(0, FxParam::DelayMix)] = 1.0;
+        constexpr uint32_t kPiece = 64;
+        float left[kPiece], right[kPiece];
+        std::vector<float> out;
+        const size_t burst = static_cast<size_t>(0.004 * kSampleRate);
+        for (size_t t = 0; t < static_cast<size_t>(1.5 * kSampleRate); t += kPiece) {
+            for (uint32_t s = 0; s < kPiece; ++s) {
+                const size_t i = t + s;
+                const double window = i < burst ? std::sin(std::numbers::pi * i / burst) : 0.0;
+                left[s] = right[s] = static_cast<float>(
+                    0.5 * window * window * std::sin(2.0 * std::numbers::pi * 10000.0 * i / kSampleRate));
+            }
+            fx.process(left, right, kPiece, p, 120.0, 60.0);
+            out.insert(out.end(), left, left + kPiece);
+        }
+        auto echo = [&](int k) { // its energy, around where it comes
+            const double at = k * 0.2143 * kSampleRate;
+            double energy = 0.0;
+            for (size_t i = static_cast<size_t>(at - 0.002 * kSampleRate); i < static_cast<size_t>(at + 0.008 * kSampleRate);
+                 ++i)
+                energy += static_cast<double>(out[i]) * out[i];
+            return energy;
+        };
+        const double sixth = 10.0 * std::log10(echo(6) / echo(1));
+        std::printf("      a delay's sixth echo of a 10 kHz burst: %.2f dB under its first (-30.10 without loss)\n",
+                    sixth);
+        check(std::abs(sixth - 20.0 * std::log10(std::pow(0.5, 5))) < 0.5, "a delay's echoes keep their top");
     }
     {
         // A parametric EQ band switched on and off fades rather than clicking: a low cut at 5 kHz, which takes most
@@ -1285,8 +1394,9 @@ void effectsChainChecks() {
     }
     {
         // A sine at -40 dB and 50 Hz through the shaper effect's drawn curve (as it starts: smooth, here made odd),
-        // at unity gain: each sample comes out as the curve has it at the middle of its step, through the DC blocker
-        // every drawn curve has.
+        // at unity gain: each sample comes out as the curve has it, through the DC blocker every drawn curve has, a few
+        // samples late (the shaper runs at twice the rate, through half-band filters up and down, which a 50 Hz sine
+        // passes at its level, delayed).
         Effects fx;
         fx.prepare(kSampleRate);
         ParamValues p = defaults();
@@ -1301,7 +1411,8 @@ void effectsChainChecks() {
         const int curve = shaperParams(0).curve;
         auto get = [&p](int index) { return p[index]; };
         std::vector<float> left(kBlock), right(kBlock);
-        double last = 0.0, worst = 0.0, dcIn = 0.0, dcOut = 0.0;
+        std::vector<double> drawn, out; // the curve's, through a blocker; what came out
+        double dcIn = 0.0, dcOut = 0.0;
         const double pole = clipBlockerPole(kSampleRate);
         for (size_t t = 0; t < static_cast<size_t>(kSampleRate); t += kBlock) {
             for (uint32_t s = 0; s < kBlock; ++s) {
@@ -1311,14 +1422,23 @@ void effectsChainChecks() {
             const std::vector<float> in = left;
             fx.process(left.data(), right.data(), kBlock, p, 120.0, 60.0);
             for (uint32_t s = 0; s < kBlock; ++s) {
-                const double shaped = shaperCurveValue(get, ClipMode::Custom, curve, true, 0.5 * (in[s] + last));
-                const double drawn = shaped - dcIn + pole * dcOut;
+                const double shaped = shaperCurveValue(get, ClipMode::Custom, curve, true, in[s]);
+                drawn.push_back(shaped - dcIn + pole * dcOut);
                 dcIn = shaped;
-                dcOut = drawn;
-                if (t + s >= 480) // once faded in
-                    worst = std::max(worst, std::abs(left[s] - drawn));
-                last = in[s];
+                dcOut = drawn.back();
+                out.push_back(left[s]);
             }
+        }
+        // Off the curve by the least of any delay, in half samples (between two, their mean).
+        double worst = 1e9;
+        for (int half = 0; half <= 24; ++half) {
+            const size_t whole = static_cast<size_t>(half / 2);
+            double off = 0.0;
+            for (size_t i = 480 + whole + 1; i < out.size(); ++i) { // once faded in
+                const double late = half % 2 ? 0.5 * (drawn[i - whole] + drawn[i - whole - 1]) : drawn[i - whole];
+                off = std::max(off, std::abs(out[i] - late));
+            }
+            worst = std::min(worst, off);
         }
         std::printf("      drawn shaper curve, a -40 dB 50 Hz sine: off the curve by %.0f dB at most\n",
                     20.0 * std::log10(worst + 1e-30));
@@ -5134,33 +5254,40 @@ int main() {
         }
         check(smooth, "every reverb algorithm's tail is smooth, without lasting resonances, and its sides unalike");
         // The decay, in the octave around 1 kHz: the energy left there (Schroeder's backward integral) falls from -5
-        // to -35 dB in half the decay time.
-        const auto [left, right] = impulse(ReverbType::Hall, 0.0);
+        // to -35 dB in half the decay time. Around 8 kHz too, a little faster for the damping's shelf (its corner at
+        // 20 kHz), but not much: the lines' reads between samples, as they waver, take nothing from the top.
+        const auto sides = impulse(ReverbType::Hall, 0.0);
+        const auto &left = sides.first, &right = sides.second;
         size_t n = 1;
         while (n < left.size())
             n *= 2;
-        std::vector<std::complex<double>> octave(n);
-        for (size_t i = 0; i < left.size(); ++i)
-            octave[i] = {left[i], right[i]}; // both sides at once: they come back as the real and imaginary parts
-        fft(octave);
-        for (size_t k = 0; k < n; ++k) {
-            const double hz = std::min(k, n - k) * kSampleRate / n;
-            octave[k] = hz > 707.0 && hz < 1414.0 ? std::conj(octave[k]) : 0.0; // conjugated, for the inverse
-        }
-        fft(octave);
-        std::vector<double> remaining(left.size());
-        double energy = 0.0;
-        for (size_t i = left.size(); i-- > 0;)
-            remaining[i] = energy += std::norm(octave[i]);
-        double at5 = 0.0, at35 = 0.0;
-        for (size_t i = 0; i < remaining.size(); ++i) {
-            const double db = 10.0 * std::log10(remaining[i] / remaining[0]);
-            at5 = at5 == 0.0 && db < -5.0 ? i / kSampleRate : at5;
-            at35 = at35 == 0.0 && db < -35.0 ? i / kSampleRate : at35;
-        }
-        const double t60 = 2.0 * (at35 - at5);
-        std::printf("      undamped hall falls 60 dB around 1 kHz in %.2f s (set to 2.5 s)\n", t60);
+        auto decay =[&](double low, double high) { // the time to fall 60 dB in the band from `low` to `high` Hz
+            std::vector<std::complex<double>> octave(n);
+            for (size_t i = 0; i < left.size(); ++i)
+                octave[i] = {left[i], right[i]}; // both sides at once: they come back as the real and imaginary parts
+            fft(octave);
+            for (size_t k = 0; k < n; ++k) {
+                const double hz = std::min(k, n - k) * kSampleRate / n;
+                octave[k] = hz > low && hz < high ? std::conj(octave[k]) : 0.0; // conjugated, for the inverse
+            }
+            fft(octave);
+            std::vector<double> remaining(left.size());
+            double energy = 0.0;
+            for (size_t i = left.size(); i-- > 0;)
+                remaining[i] = energy += std::norm(octave[i]);
+            double at5 = 0.0, at35 = 0.0;
+            for (size_t i = 0; i < remaining.size(); ++i) {
+                const double db = 10.0 * std::log10(remaining[i] / remaining[0]);
+                at5 = at5 == 0.0 && db < -5.0 ? i / kSampleRate : at5;
+                at35 = at35 == 0.0 && db < -35.0 ? i / kSampleRate : at35;
+            }
+            return 2.0 * (at35 - at5);
+        };
+        const double t60 = decay(707.0, 1414.0), high60 = decay(5657.0, 11314.0);
+        std::printf("      undamped hall falls 60 dB in %.2f s around 1 kHz, %.2f s around 8 kHz (set to 2.5 s)\n", t60,
+                    high60);
         check(std::abs(t60 / 2.5 - 1.0) < 0.15, "an undamped reverb's tail falls 60 dB in its decay time");
+        check(high60 / t60 > 0.8, "an undamped reverb's tail keeps its top about as long");
     }
 
     // --- A shimmer's tail after a 0.4 s A4 sine (4 s decay, at full wet), with Shimmer half and full up. As a whole it
