@@ -805,7 +805,7 @@ Point nodeTab(int node) {
 
 // A shaper's page: its curve's list, the symmetric and link switches, the Drive, Output and Mix knobs (centered, as far
 // apart as four would be), the list's entries, and its drawn curve in the display (x 0..1 across, y -1..1 up), with its
-// edit button in the display's corner.
+// edit button between the list and the symmetric switch.
 constexpr Point kShaperList = ins(1009.0f, 205.0f);
 constexpr Point kShaperSym = ins(1096.0f, 205.0f);
 constexpr Point kShaperLink = ins(1146.0f, 205.0f);
@@ -824,7 +824,7 @@ Point shaperListItem(ClipMode mode) {
 Point shaperCurveAt(double x, double y) {
     return ins(908.0f + static_cast<float>(x) * 252.0f, 338.0f - static_cast<float>(y) * 42.24f);
 }
-constexpr Point kShaperEdit = ins(1150.0f, 381.0f);
+const Point kShaperEdit = detail::kShaperEditButton.center();
 
 // A switched-off node's ghost, docked under OUT in the graph's bottom right, the ghosts in the nodes' order (mirrors
 // the widgets in view.cpp).
@@ -3446,6 +3446,12 @@ void testShapers(const std::filesystem::path &dir, Renderer &renderer) {
     const bool symmetric = at(ShaperParam::Symmetric) == 1.0;
     click(view, kShaperSym);
     check(symmetric && at(ShaperParam::Symmetric) == 0.0, "a Custom curve's SYM switches on and off");
+    // The pencil sits beside the curve's list, out of the display, and is lit while its big editor is open.
+    const Point pencilFace{detail::kShaperEditButton.x + 3.0f, detail::kShaperEditButton.y + 3.0f}; // clear of its icon
+    view.mouseMove({600.0f, 900.0f}, {});
+    renderer.save(view, dir / "30a1-shaper-pencil.png");
+    const uint32_t pencilShut = renderer.pixel(pencilFace);
+    const bool pencilOutside = detail::kShaperEditButton.bottom() < detail::kShaperDisplay.y;
     click(view, kShaperEdit);
     view.doubleClick(noteCurveAt(0.25, 0.5), {});
     const bool added = model.value(shaperCurveCountIndex(shaper)) == 4.0;
@@ -3472,9 +3478,11 @@ void testShapers(const std::filesystem::path &dir, Renderer &renderer) {
     const bool pageStays = at(ShaperParam::Drive) > driveThen;
     view.mouseMove(noteCurveAt(0.25, 0.5), {});
     const bool editorShot = renderer.save(view, dir / "30b-shaper-editor.png");
+    const bool pencilLit = renderer.pixel(pencilFace) != pencilShut;
     click(view, kRoutingEditorDone);
     check(added && pageStays && editorShot && model.layout().view == RoutingView::Graph,
           "the pencil opens a shaper's curve over the routing panel, its page staying beside it");
+    check(pencilOutside && pencilLit, "a shaper's pencil sits beside its curve's list, lit while its editor is open");
 }
 // Points picked in the shape editors, to move and remove together. In a Curve source's full-size editor: a box from
 // empty space picking the points it reaches (drawn filled, read off the rendered pixels), one of them dragged moving
@@ -11215,8 +11223,11 @@ void run(const std::filesystem::path &dir, float scale) {
           "a point of the curve drags in the card");
     view.mouseMove(cardAt(0.8, 0.6), {});
     check(renderer.save(view, dir / "8d-clip-custom.png"), "render the curve being edited in the card");
-    // Its edit button, a pencil, opens the big editor, which edits the same curve.
-    click(view, {fxCardX(model, 0) + 134.0f, 180.0f + 190.0f - 12.0f}); // the pencil, at the display's bottom right
+    // Its edit button, a pencil at the right of its curve's list, out of the display, opens the big editor, which edits
+    // the same curve.
+    const Rect pencil = detail::clipEditButton({fxCardX(model, 0), 180.0f, fxCardW(model, 0), 300.0f});
+    check(pencil.bottom() < 180.0f + 100.0f - 8.0f, "the shaper card's pencil sits beside its list, out of its display");
+    click(view, pencil.center());
     view.doubleClick(clipAt(0.3, -0.5), {});
     check(model.value(clipCurveCountIndex(0)) == 5.0 &&
               std::abs(model.value(shapeFieldIndex(clipCurveCountIndex(0), 1, PointField::X)) - 0.3) < 0.01,

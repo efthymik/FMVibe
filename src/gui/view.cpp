@@ -2082,7 +2082,8 @@ std::vector<View::Widget> View::widgets() const {
         add(Kind::Knob, knobRect(center, diameter), param);
         list.back().label = label;
     };
-    // A drawn shaper curve is edited right in its display, as in the big editor its edit button opens.
+    // A drawn shaper curve is edited right in its display, as in the big editor its edit button (beside its curve's
+    // list, ClipDisplay) opens.
     auto drawnCurve = [&](int unit, Rect display) {
         const int shape = kMaxSources + unit;
         add(Kind::ShapeArea, display, -1, shape);
@@ -2102,8 +2103,6 @@ std::vector<View::Widget> View::widgets() const {
             add(Kind::ShapePoint, {c.x - 6.0f, c.y - 6.0f, 12.0f, 12.0f}, -1, shape, point);
             list.back().compact = true;
         }
-        // The edit button in the corner a curve leaves empty
-        add(Kind::ClipDisplay, clipEditButton(display), -1, unit);
     };
 
     // Header.
@@ -2296,8 +2295,10 @@ std::vector<View::Widget> View::widgets() const {
             };
             switch (type) {
             case FxType::Shaper: {
-                add(Kind::ListButton, clipModeButton(card), at(FxParam::ShaperMode));
                 const bool custom = clipMode(value(at(FxParam::ShaperMode))) == ClipMode::Custom;
+                add(Kind::ListButton, clipModeButton(card, custom), at(FxParam::ShaperMode));
+                if (custom)
+                    add(Kind::ClipDisplay, clipEditButton(card), -1, slot);
                 const size_t switches = list.size();
                 if (custom)
                     add(Kind::Toggle, clipSymButton(card), at(FxParam::ShaperSymmetric));
@@ -2803,6 +2804,8 @@ std::vector<View::Widget> View::widgets() const {
         const int shaper = shaperOfNode(node);
         const bool custom = clipMode(value(paramIndex(shaper, ShaperParam::Mode))) == ClipMode::Custom;
         add(Kind::ListButton, shaperModeButton(custom), paramIndex(shaper, ShaperParam::Mode));
+        if (custom)
+            add(Kind::ClipDisplay, kShaperEditButton, -1, kFxSlots + shaper);
         const size_t switches = list.size();
         if (custom)
             add(Kind::Toggle, kShaperSymButton, paramIndex(shaper, ShaperParam::Symmetric));
@@ -3368,7 +3371,8 @@ std::vector<View::Widget> View::widgets() const {
                                            : slopeButton(fxDisplayIn(card, FxType::Filter)))
                                 : listField == FxParam::AmpModel    ? ampModelButton(card)
                                 : listField == FxParam::AmpCab      ? ampCabButton(card)
-                                                                    : clipModeButton(card);
+                                                                    : clipModeButton(card, clipMode(value(listMenu_)) ==
+                                                                                                    ClipMode::Custom);
             const int items = listCount(listMenu_);
             add(Kind::ListMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
             add(Kind::ListMenu, listMenu(button, items), -1, 1);
@@ -8305,8 +8309,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::PartialEdit: // a Custom wave's, lit while its partial editor is open
         editButton(c, w.rect, kAccent, hovered, partialEditing() == w.a);
         break;
-    case Kind::ClipDisplay: // the edit button on a drawn curve's display
-        editButton(c, w.rect, clipColor(w.a), hovered, false);
+    case Kind::ClipDisplay: // a drawn curve's edit button, beside its list; lit while its big editor is open
+        editButton(c, w.rect, clipColor(w.a), hovered, shapeEditing() == kMaxSources + w.a);
         break;
     case Kind::ListButton: {
         // A slope shows as it plays (a band-pass's 6 dB as 12), and faintly for a comb, which has none.

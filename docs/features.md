@@ -1045,7 +1045,8 @@ one may have changed since it last did.
     does:
     - the shaper's transfer curve; a Custom curve shows its own points and bends instead, to drag right there
       (double-click adds or deletes a point, Ctrl snaps to the grid), with what the drive, output and mix make of
-      it faintly behind and the point under the mouse in numbers; its edit button (a pencil) opens the big editor;
+      it faintly behind and the point under the mouse in numbers; its edit button (a pencil, at the right of its curve's
+      list) opens the big editor, and is lit while it is open;
     - the delay's echoes on a timeline, left above the line and right below it;
     - the EQs' and the filter's responses; behind the Param EQ's curve, what it puts out, measured (a 2048-point
       FFT in 96 bands from 20 Hz to 20 kHz, 0 dB at the top, falling away at 55 dB a second), which it only
@@ -1439,7 +1440,7 @@ one may have changed since it last did.
     editor, sets how many lines run across (2–32, thirds included) and up and down (2–16), with its − and +
     buttons or the mouse wheel; hold Ctrl to snap points to them. The grid belongs to the editor: it is saved with
     the project, and presets leave it alone (so do Points | Steps and Snap). The first point always sits at the start of the cycle. A shaper
-    effect's Custom curve opens the same editor from the edit button (a pencil) on its card's display, in a panel in the middle of the
+    effect's Custom curve opens the same editor from the edit button (a pencil) beside its card's curve list, in a panel in the middle of the
     effects' (the inspector stays hidden), its plot closer to square, with input across and output up; its first
     and last points stay at the ends. While the shaper is symmetric, only the curve's right half is edited, in
     the editor and in the card alike: the left half is drawn as its mirror (behind a veil in the editor) with faint
@@ -1586,10 +1587,12 @@ one may have changed since it last did.
     second. The same goes for the mod envelopes' displays. In the graph, an operator with unison is drawn as a stack of rings.
   - Shapers: the summary (its curve, what feeds it, the filters it feeds, whether it goes out and the operators it
     modulates, as a filter's has), its curve's list with the link switch beside it, and for a Custom curve the
-    symmetric one between them (as on the shaper effect's card), the Drive, Output and Mix knobs, centered under them
+    curve's edit button (a pencil) and the symmetric switch between them (as on the shaper effect's card), the Drive,
+    Output and Mix knobs, centered under them
     (what goes straight out is its line to OUT's label),
     and its transfer curve; a Custom curve shows its points and bends there to drag, like a shaper effect's card, and its
-    edit button (a pencil) opens the big curve editor over the routing panel, the shaper's page staying beside it. Underneath
+    edit button opens the big curve editor over the routing panel, the shaper's page staying beside it, the button lit
+    while it is open. Underneath
     are the send knobs of the operators and filters that feed it.
   - Filters: the summary (its type and slope, then what feeds it, what it feeds and whether it goes out, and the
     operators it modulates, as a shaper's has), the type's list across the row under it (where a shaper's curve's

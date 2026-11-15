@@ -127,13 +127,10 @@ constexpr Rect kRatioTrack{kRatioBox.x + 6.0f, kRatioBox.y + 4.0f, kRatioBox.w -
 // A Custom wave's edit button (a pencil, as big as the keyboard switch, left of it): opens its partial editor.
 constexpr Rect kPartialEditButton{kFixedSwitch.x - 4.0f - kFixedSwitch.w, kFixedSwitch.y, kFixedSwitch.w,
                                   kFixedSwitch.h};
-// The edit buttons in a display's corner, a pencil each: a Custom LFO's top right, a drawn shaper curve's bottom right.
+// The edit button in a Custom LFO's display, a pencil in its top right corner.
 constexpr float kEditButtonW = 24.0f, kEditButtonH = 16.0f;
 inline Rect lfoEditButton(Rect display) {
     return {display.right() - 4.0f - kEditButtonW, display.y + 4.0f, kEditButtonW, kEditButtonH};
-}
-inline Rect clipEditButton(Rect display) {
-    return {display.right() - 6.0f - kEditButtonW, display.bottom() - 5.0f - kEditButtonH, kEditButtonW, kEditButtonH};
 }
 // An operator's page: under its block, a line across, then a well whose top edge holds the tabs (one per
 // InspectorTab) and whose display under them shows what the tab picks; the tab's controls in a row under the well.
@@ -225,12 +222,16 @@ inline Rect filterTypeIconRect(Rect row) {
 }
 constexpr Rect kFilterDisplay{kInspector.x + 16.0f, kInspector.y + 150.0f, kInspector.w - 32.0f, 90.0f};
 inline const Rect kFilterSlopeButton = slopeButton(kFilterDisplay);
-// A shaper's page: its curve's list and the link switch in the row under the summary, with the symmetric switch
-// between them for a Custom curve, then its transfer curve where a filter's response shows.
+// A shaper's page: its curve's list and the link switch in the row under the summary, with a Custom curve's edit
+// button (a pencil, opening its big editor) and symmetric switch between them, then its transfer curve where a filter's
+// response shows.
 constexpr Rect kShaperLinkButton{kInspector.x + kInspector.w - 16.0f - 44.0f, kInspector.y + 62.0f, 44.0f, 22.0f};
 constexpr Rect kShaperSymButton{kShaperLinkButton.x - 50.0f, kShaperLinkButton.y, 44.0f, 22.0f};
+constexpr float kClipEditW = 28.0f; // a Custom curve's edit button beside its list, on a shaper's page and card
+constexpr Rect kShaperEditButton{kShaperSymButton.x - 6.0f - kClipEditW, kShaperLinkButton.y, kClipEditW, 22.0f};
 inline Rect shaperModeButton(bool custom) {
-    return {kInspector.x + 16.0f, kInspector.y + 62.0f, kInspector.w - 32.0f - (custom ? 100.0f : 50.0f), 22.0f};
+    return {kInspector.x + 16.0f, kInspector.y + 62.0f,
+            kInspector.w - 32.0f - (custom ? kShaperLinkButton.right() - kShaperEditButton.x + 6.0f : 50.0f), 22.0f};
 }
 constexpr Rect kShaperDisplay{kInspector.x + 16.0f, kInspector.y + 150.0f, kInspector.w - 32.0f, 112.0f};
 // An operator's wave buttons: the common waves, then "..." with a list of the others.
@@ -852,11 +853,15 @@ inline Rect fxMenuNodeItem(Point at, int bands = 2) {
     return {head.x, head.bottom() + (bands == 3 ? kFxMenuPitch : 0.0f), head.w, kFxMenuPitch - 2.0f};
 }
 
-// A shaper card's curve picker: a button with the curve's name across the card, and the list it opens under it;
-// under its display LINK, which ties the Output knob to the drive, centered on the card; for a Custom curve SYM
-// left of it, the two centered together. The reverb's row: its algorithm's button.
-inline Rect clipModeButton(Rect card) {
-    return {card.x + 14.0f, card.y + 44.0f, card.w - 28.0f, 22.0f};
+// A shaper card's curve picker: a button with the curve's name across the card, and the list it opens under it (for a
+// Custom curve, the curve's edit button at its right, a pencil opening its big editor); under its display LINK, which
+// ties the Output knob to the drive, centered on the card; for a Custom curve SYM left of it, the two centered together.
+// The reverb's row: its algorithm's button.
+inline Rect clipModeButton(Rect card, bool custom = false) {
+    return {card.x + 14.0f, card.y + 44.0f, card.w - 28.0f - (custom ? kClipEditW + 6.0f : 0.0f), 22.0f};
+}
+inline Rect clipEditButton(Rect card) {
+    return {card.right() - 14.0f - kClipEditW, card.y + 44.0f, kClipEditW, 22.0f};
 }
 inline Rect clipSymButton(Rect card) {
     return {card.center().x - 47.0f, card.y + 194.0f, 44.0f, 20.0f};
