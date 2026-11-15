@@ -4036,6 +4036,54 @@ void sequencerChecks() {
               "in Key, a key plays the pattern transposed by it and stops it when let go");
         check(programmedLit, "the telemetry gives the keys of the notes playing as written, not as transposed");
     }
+    // A slide holds on into the next note, which ends it as it starts; one the next note starts within ends at its own
+    // end, as written, not a step after.
+    {
+        ParamValues p = blank();
+        note(p, 0, 0.0, 1.0, 60);
+        p[seqNoteIndex(0, 0, SeqNoteParam::Slide)] = 1.0;
+        note(p, 1, 1.5, 0.5, 62);
+        note(p, 2, 4.0, 4.0, 64);
+        p[seqNoteIndex(0, 2, SeqNoteParam::Slide)] = 1.0;
+        note(p, 3, 6.0, 1.0, 65);
+        const std::vector<Event> e = plan(p, 9 * kStep);
+        auto offOf = [&](int key) {
+            for (const Event &ev : e)
+                if (!ev.on && ev.key == key)
+                    return ev.frame;
+            return -1.0;
+        };
+        std::printf("      slides: held into the next note to %.2f steps, overlapped ending at %.2f\n", offOf(60) / kStep,
+                    offOf(64) / kStep);
+        check(near(offOf(60), 1.5 * kStep) && near(offOf(64), 8.0 * kStep),
+              "a slide holds on into the next note, and one the next note starts within ends as written");
+    }
+    // In Latch, a pattern a key started plays on once it is let go, and All Notes Off stops it.
+    {
+        Engine e(1);
+        e.p[paramIndex(SeqParam::Enabled)] = 1.0;
+        e.p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Latch);
+        for (int step = 0; step < 16; step += 2)
+            note(e.p, step / 2, step, 1.0, 60);
+        e.synth().setTempo(120.0);
+        e.render(480);
+        e.synth().noteOn({5, 0, 0, 60}, 1.0);
+        e.render(static_cast<size_t>(kStep));
+        e.synth().noteOff({5, 0, 0, 60});
+        auto peak = [](const std::vector<float> &x) {
+            float most = 0.0f;
+            for (float s : x)
+                most = std::max(most, std::abs(s));
+            return most;
+        };
+        const float latched = peak(e.render(static_cast<size_t>(4 * kStep)));
+        e.synth().allNotesOff(-1);
+        e.render(48000);
+        const float stopped = peak(e.render(static_cast<size_t>(4 * kStep)));
+        std::printf("      Latch: %.3f let go, %.4f after All Notes Off\n", latched, stopped);
+        check(latched > 0.1f && stopped == 0.0f && !e.synth().sequencerAwake(),
+              "in Latch, the pattern plays on once the key is let go, and All Notes Off stops it");
+    }
     // In Key, with an empty pattern, a note the editor plays to be heard (on kAuditionPort) sounds as a note rather
     // than starting the pattern (which would play nothing), and no end is reported for it.
     {

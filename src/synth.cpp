@@ -483,11 +483,20 @@ void Synth::setPedal(int channel, bool down) {
 
 void Synth::allNotesOff(int channel) {
     noteOff(channelMatch(channel));
+    stopLatch();
+}
+
+// After all notes off, a pattern Latch plays on stops, and the notes it holds end.
+void Synth::stopLatch() {
+    seq_.unlatch();
+    if (seq_.sounding() && !seq_.wantsProcessing())
+        applySeqEvents(seq_.stopAll(seqEvents_));
 }
 
 void Synth::allSoundOff(int channel) {
     const NoteRef match = channelMatch(channel);
     releaseKeys(match);
+    stopLatch();
     for (size_t i = held_.size(); i-- > 0;) {
         if (!matches(match, held_[i].note))
             continue;

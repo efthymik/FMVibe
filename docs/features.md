@@ -701,12 +701,13 @@ What the plugin does and how its editor works, in full. Building and installing 
   to 128 notes; the pattern picked plays, and another one picked while it plays takes over where the loop comes round.
   Each note has its start and length in steps (anywhere, not only on the grid), its pitch, velocity, **chance** (how
   likely it plays each time round, drawn the same way each time a step comes round again, so a render plays alike),
-  **Slide** (it holds on into the next note, a step at most, so mono legato and glide join them) and **Mute** (kept,
+  **Slide** (it holds on into the next note, a step at most, so mono legato and glide join them; a next note starting
+  before its end leaves it ending there, as written) and **Mute** (kept,
   silent). A pattern's **loop**, from step to step within its length (all of it to begin with), is what plays.
   - **Play**: **Host** plays with the host's transport, locked to its bars (and silent while it is stopped; keys still
     play the synth on top). **Key** plays while a key is held, from the pattern's start, transposed by the newest key
     from **Root**, and stops when the keys are let go; **Latch** starts with a key and plays on once they are let go, a
-    new key transposing it. In Key and Latch the keys play no notes of their own: the host is told each one has ended
+    new key transposing it, until All Notes Off or All Sound Off (MIDI CC 123 or 120, as a host sends as it stops). In Key and Latch the keys play no notes of their own: the host is told each one has ended
     as it is let go.
   - **Rate** is a step's length: 1/4, 1/8 dotted, 1/8, 1/16 dotted, 1/8 triplet, 1/16 (to begin with), 1/16 triplet or
     1/32, at the host's tempo. **Swing** (50–75 %) delays every other step; **Gate** (5–200 %) scales every note's

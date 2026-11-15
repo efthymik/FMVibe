@@ -292,6 +292,7 @@ private:
     // The host's notes the sequencer took as keys (in Key and Latch), which no voice plays: they end as their keys come
     // up, or a reset, choke or All Sound Off ends them. Whether any matched `match`; `report` reports their ends.
     bool releaseKeys(const NoteRef &match);
+    void stopLatch();
     Sequencer seq_;
     // Whether a sequencer param changed since the last render() (see paramChanged()), so it reads its pattern again.
     bool seqStale_ = true;

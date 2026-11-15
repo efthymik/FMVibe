@@ -53,6 +53,11 @@ public:
     // key and plays on once they are let go, a new key transposing it.
     void keyDown(int key);
     void keyUp(int key);
+    // All notes off: Latch stops too, as Key does with its keys let go.
+    void unlatch() {
+        if (play_ == SeqPlay::Latch && keyCount_ == 0)
+            keyRunning_ = false;
+    }
 
     // The events of the next `frames` samples, in order, at `tempo`, with the host's transport as the stretch starts.
     // Returns how many it put in `out`; `covered` is how many of the frames it planned (all of them, unless it stopped

@@ -355,11 +355,19 @@ int Sequencer::plan(uint32_t frames, double tempo, bool playing, double songBeat
         const int32_t id = nextId_;
         nextId_ = nextId_ == INT32_MAX ? 1 : nextId_ + 1;
         out[count++] = {frame, true, s.key, s.velocity, id};
-        for (int i = soundingCount_; i-- > 0;) // slides waiting for the next note, which this is: they end as it starts
-            if (sounding_[i].slide && sounding_[i].end <= s.at) {
+        // Slides waiting for the next note, which this is: they end as it starts. One it starts within ends at its own
+        // end, as written, rather than a step after.
+        for (int i = soundingCount_; i-- > 0;) {
+            if (!sounding_[i].slide)
+                continue;
+            if (sounding_[i].end <= s.at) {
                 count = pushOff(out, count, frame, sounding_[i]);
                 remove(i);
+            } else {
+                sounding_[i].off = sounding_[i].end;
+                sounding_[i].slide = false;
             }
+        }
         sounding_[soundingCount_++] = {id, s.key, s.pitch, s.end, s.slide ? s.end + 1.0 : s.end, s.slide};
     }
 
