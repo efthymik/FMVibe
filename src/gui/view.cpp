@@ -6252,12 +6252,19 @@ void View::paintInspector(Canvas &c) {
                 c.popLayer();
         }
     };
+    // A filter's response and a shaper's curve are drawn in the lens's own shade of the displays (inspectorDisplay()).
+    struct LensDisplay {
+        Color saved = look.display;
+        LensDisplay() { look.display = inspectorDisplay(); }
+        ~LensDisplay() { look.display = saved; }
+    };
 
     if (isShaperNode(node)) {
         const int shaper = shaperOfNode(node);
         paintPageTitle(c, node, summaryRect, clipModeName(clipMode(value(paramIndex(shaper, ShaperParam::Mode)))),
                        boxRoutes(node));
         const PageDim page(c, !nodeOn(node));
+        const LensDisplay display;
         paintShaperPage(c, shaper);
         return;
     }
@@ -6332,6 +6339,7 @@ void View::paintInspector(Canvas &c) {
                 " dB";
     paintPageTitle(c, node, summaryRect, head, boxRoutes(node));
     const PageDim page(c, !nodeOn(node));
+    const LensDisplay display;
     // A voice filter tracks the newest voice's note; with none, the curve is back at the knob's C4.
     paintFilterResponse(c, kFilterDisplay, paramIndex(filter, FilterParam::Type),
                         paramIndex(filter, FilterParam::Slope), paramIndex(filter, FilterParam::Cutoff),

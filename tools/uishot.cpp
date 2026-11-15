@@ -3325,6 +3325,36 @@ void renderNewEffects(const std::filesystem::path &dir, Renderer &renderer) {
     }
 }
 
+// In Porcelain, whose displays are nearly the inspector's lens's own face, a filter's response and a shaper's curve on
+// the lens are drawn a shade apart from it, as in the other themes (read off the rendered pixels).
+void checkLensDisplays(const std::filesystem::path &dir, Renderer &renderer) {
+    auto apart = [](uint32_t a, uint32_t b) {
+        int sum = 0;
+        for (int shift = 0; shift < 24; shift += 8)
+            sum += std::abs(static_cast<int>((a >> shift) & 0xFF) - static_cast<int>((b >> shift) & 0xFF));
+        return sum;
+    };
+    for (const char *theme : {"Porcelain", "Spectrum", "Midnight", "Light"}) {
+        FakeController model;
+        model.themeName = theme;
+        View view(model);
+        int least = 1000;
+        for (const int node : {kOps, kOps + kFilters}) { // F1, then S1: switched on, its page shown
+            click(view, nodeTab(node));
+            view.mouseMove({600.0f, 900.0f}, {});
+            if (!renderer.save(view, dir / (std::string("14x-lens-display-") + theme + ".png")))
+                least = 0;
+            const Rect display = node == kOps ? detail::kFilterDisplay : detail::kShaperDisplay;
+            // Just inside the display's top left corner, clear of its grid and curve, and on the lens left of it.
+            least = std::min(least, apart(renderer.pixel({display.x + 5.0f, display.y + 5.0f}),
+                                          renderer.pixel({display.x - 6.0f, display.y + 30.0f})));
+        }
+        std::printf("      %s: the lens's displays %d apart from its face\n", theme, least);
+        check(least >= 18, (std::string("in ") + theme +
+                            ", a filter's and a shaper's display stand apart from the inspector's lens").c_str());
+    }
+}
+
 // A shaper's page: the curve list picks Hard, the link switch unlinks, Drive turns; picked from the list, Custom shows
 // its points in the display to drag, and its pencil opens the big editor over the routing panel, the page staying.
 void testShapers(const std::filesystem::path &dir, Renderer &renderer) {
@@ -11936,6 +11966,7 @@ void run(const std::filesystem::path &dir, float scale) {
     renderFactoryPresets(dir, renderer);
     checkAlgorithms(dir, renderer);
     checkAlgorithmMenu(dir, renderer);
+    checkLensDisplays(dir, renderer);
     renderLfoOnLfo(dir, renderer);
     testMacros(dir, renderer);
     testMacroTargets(dir, renderer);

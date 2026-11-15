@@ -1494,7 +1494,8 @@ one may have changed since it last did.
   own shortcuts keep working everywhere else.
 - **Inspector** (left): a lens, a card floating over the routing panel's left end a little in from its edges, on a
   soft shadow, the graph's backdrop faintly through it, outlined in the color of the node it shows at 35 % (in Spectrum
-  and Porcelain, as their cards, on its shadow alone, without an outline); while
+  and Porcelain, as their cards, on its shadow alone, without an outline; a filter's response and a shaper's curve on
+  it a shade darker than the displays elsewhere in Porcelain, whose displays are nearly the lens's own face); while
   the graph shows that node, a notch on the card's right side meets the leader from it. Tabs A–F, F1 and F2, and S1
   and S2, in three groups with a hairline between two, pick what it shows; tabs of switched-off nodes are
   dimmed, and clicking one switches its operator, filter or shaper on; the names of switched-on ones take a little

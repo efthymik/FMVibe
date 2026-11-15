@@ -704,6 +704,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - a knob's modulation ring cut off at the knob's end ending in a line across it, and one within range not (read
     off the rendered pixels);
   - in Spectrum, a source card outlined only while the mouse is over it (read off the rendered pixels);
+  - in every theme, Porcelain among them, a filter's and a shaper's display on the inspector's lens standing apart from
+    the lens's face (read off the rendered pixels);
   - in Spectrum, a modulated knob's arc keeping the accent and a ring from a source of a like color (LFO 1's) drawn
     lighter, and Midnight's ring in its source's own color (read off the rendered pixels);
   - in the flat themes, every source in a color of its own and no effect in the dim text's, and an aux that is set
