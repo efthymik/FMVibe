@@ -1880,7 +1880,18 @@ one may have changed since it last did.
   Crunch amp into a closed 4x12 and a small room: a rhythm guitar for chords); LD Overdrive Lead (a mono, gliding
   lead through the Lead amp into an open 2x12, a vibrato that an envelope fades in as a note holds, the mod wheel
   turning up the amp's Gain, then ping-pong echoes and a plate); and BA Driven Bass (a round FM bass with a sub an
-  octave down, through the Bass amp's grit into a 4x10, its lows staying clean). A folder made
+  octave down, through the Bass amp's grit into a 4x10, its lows staying clean). Then four more that play the
+  sequencer: SQ Acid Rubber (a mono saw knocked by a fed-back 1:1 sine through a driven, resonant 24 dB ladder, a
+  two-bar C minor line in sixteenths while a key is held, two octaves down, its accents as velocities deepening the
+  filter envelope and its slides gliding, the pattern's mod wheel curve opening the filter across the second bar,
+  into grit, a dotted echo and a room); SQ Bell Cascade (a 3.5:1 bell and a 14:1-clicked tine, a Lydian arpeggio in
+  triplet eighths running to and fro over a loop of twelve steps, some notes left to chance, latched by a key and
+  transposed by the next, into ping-pong echoes and a long hall); SQ Offbeat Stabs (a fed-back FM keys stab through
+  a plucked low-pass, Dorian seventh chords on the off-beats and a bass on the downbeats, swung, with the host's
+  transport; pattern B a pushed, busier variation; each pattern's bend curve dipping the pitch like tape at its end,
+  through chorus, echoes, a plate and a compressor); and SQ Random Glass (a glassy 7:1 tone with a twelfth above, its
+  sixteen minor-pentatonic steps played in random order, many left to chance, humanized, a Random source stepping the
+  index, into ping-pong echoes and a shimmer). A folder made
   before an example came gets it the next time the library is used; `%APPDATA%\FMVibe\settings.txt` counts the examples
   given, so deleted ones stay gone. It also notes the version of FMVibe that wrote them out: a newer one writes the
   factory presets still in the `Factory` subfolder again as it has them, so they take its tuning and its routing
