@@ -335,10 +335,11 @@ constexpr Rect kSeqLaneTabs{kSeqBox.x, kSeqLaneArea.y + kSeqLaneArea.h, kSeqBox.
 constexpr float kSeqTitleY = kSeqCard.y + 12.0f;
 constexpr float kSeqPatternY = kSeqCard.y + 46.0f;
 constexpr float kSeqPlayY = kSeqCard.y + 76.0f;
-constexpr float kSeqKnobsY = kSeqCard.y + 130.0f; // the first row's knobs' centers
-constexpr float kSeqKnobStep = 62.0f;              // to the second row's
-constexpr float kSeqOrderY = kSeqCard.y + 252.0f;
-constexpr float kSeqScaleY = kSeqCard.y + 284.0f;
+constexpr float kSeqKnobD = 42.0f;                 // the knobs' size
+constexpr float kSeqKnobsY = kSeqCard.y + 142.0f; // the first row's knobs' centers
+constexpr float kSeqKnobStep = 78.0f;              // to the second row's
+constexpr float kSeqOrderY = kSeqCard.y + 290.0f;
+constexpr float kSeqScaleY = kSeqCard.y + 322.0f;
 inline Rect seqKnobCenterRect(int i) { // the place of knob `i` of the eight, as knobRect() takes it
     return {kSeqCard.x + 16.0f + 268.0f / 4.0f * (static_cast<float>(i % 4) + 0.5f), kSeqKnobsY + (i / 4) * kSeqKnobStep,
             0.0f, 0.0f};

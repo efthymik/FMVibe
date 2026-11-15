@@ -781,15 +781,14 @@ one may have changed since it last did.
   - **The card**: the sequencer's power switch; **PATTERN** A to D (the one picked plays and shows in the roll) and a
     button that copies it, its length, loop, notes and curves, into the next empty pattern (no notes, and no points
     on its curves); **PLAY** Host | Key | Latch; the
-    knobs Rate, Swing, Gate, Length (the pattern's, in bars), Velocity, Humanize, Octave and Transpose; **ORDER** as
+    big knobs Rate, Swing, Gate, Length (the pattern's, in bars), Velocity, Humanize, Octave and Transpose; **ORDER** as
     arrows (forward, back, to and fro, a die for random); **SCALE**: the root (dragged up and down or scrolled, a
     semitone a step; a double-click puts it back on C4), the scale's list (Chromatic, Major, Minor, Dorian, Phrygian,
     Lydian, Mixolydian, Harmonic Minor, Melodic Minor, Pentatonic Major and Minor, Blues; wider than its button, and
     opening above it where the editor is too short for it below) and **FOLD**, which shows only the scale's rows, and
     those of notes off it all the same, their names faint. The rows' ground follows the keys alone, whatever the scale:
     a black key's row darker and a white key's a little lighter, and folded, all of them plain. Notes off the scale are
-    hatched across, folded or not. At its foot, what the play mode does. Its switches say what they do in their
-    tooltips.
+    hatched across, folded or not. Its switches say what they do in their tooltips (PLAY's what each mode does).
   - **The grid**: a line at every snap's length across the roll (a step with the snap off), the beats and bars
     stronger, as strong as the settings dialog's **GRID** says (50 % to begin with).
   - **The tools** over the roll: select | draw (select to begin with), **SNAP** and its list (Off, 1/4, 1/8, 1/16 to

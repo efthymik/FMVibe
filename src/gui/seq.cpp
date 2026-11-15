@@ -422,7 +422,7 @@ void View::seqWidgets(std::vector<Widget> &list) const {
                            Str::LabelVelocity, Str::LabelHumanize, Str::LabelOctave, Str::LabelTranspose};
     for (int i = 0; i < 8; ++i) {
         const Rect at = seqKnobCenterRect(i);
-        add(Kind::Knob, knobRect({at.x, at.y}, 28.0f), knobs[i]);
+        add(Kind::Knob, knobRect({at.x, at.y}, kSeqKnobD), knobs[i]);
         list.back().label = tr(labels[i]);
     }
     from = list.size();
@@ -1682,11 +1682,6 @@ void View::paintSeq(Canvas &c) {
     label(kSeqOrderY, Str::LabelSeqOrder);
     label(kSeqScaleY, Str::LabelSeqScale);
     label(kSeqTools.y + 1.0f, Str::LabelSeqSnap, kSeqTools.x + 70.0f, 36.0f);
-    // What the play mode does, at the card's foot.
-    const Str plays[] = {Str::HintSeqHost, Str::HintSeqKey, Str::HintSeqLatch};
-    c.text({kSeqCardX, kSeqCard.y + kSeqCard.h - 34.0f, kSeqCard.w - 24.0f, 20.0f},
-           tr(plays[stepped(value(paramIndex(SeqParam::Play)), 0, static_cast<int>(SeqPlay::Count) - 1)]), kTextLabel,
-           kFaint, Align::Left);
 
     // The roll's box.
     c.fillRect(kSeqBox, wellColor(), kRadiusCard);

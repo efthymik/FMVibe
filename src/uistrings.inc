@@ -762,7 +762,7 @@ STR(HintFx, "drag a title to reorder")
 STR(HintFxGraph, "click node: edit  ·  drag node: move  ·  click wire: insert")
 STR(HintFxInspector, "Click a node to edit it") // the graph's inspector, with no node to show
 STR(HintSeqEmpty, "Double-click to add a note") // the SEQ view's roll, with no notes
-STR(HintSeqHost, "Follows the host transport") // what each play mode does, on the SEQ view's card
+STR(HintSeqHost, "Follows the host transport") // what each play mode does, the SEQ view's PLAY buttons' tooltips
 STR(HintSeqKey, "Plays while a key is held")
 STR(HintSeqLatch, "A key starts it, new keys transpose")
 // A split's controls: the tabs that pick the band it shows, and its container's dashed card adding to that band.
