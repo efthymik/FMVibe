@@ -13,26 +13,9 @@
 
 ## Improvements 
 
-- Make the random modulation source into the random LFO, remove random LFO mode
-
 ## Architecture
 
-- Linux support
-    - **In one line:** a build without the editor first, then a Cairo drawing backend and an X11 editor window, and
-      the tests ported (which also lets the UI snapshot checks run in Linux CI).
-    - **Feasible, large.** The engine, `View` and the CLAP code are portable C++20. What's Windows-only is the
-      window (`editor.cpp`), the drawing (`canvas.cpp`, Direct2D), a few calls in `plugin.cpp` (the Documents and
-      %APPDATA% folders, `_wfopen_s`, `_wcsicmp`, `ShellExecuteW`), and the file dialogs, clipboard and keyboard
-      hook.
-        1. Headless first: the plugin and `fmvibe-quality` building on Linux (paths through `std::filesystem::path`;
-           XDG folders: `~/.local/share/FMVibe/presets`, `~/.config/FMVibe`), without `clap.gui`, so hosts show
-           their own param list.
-        2. A third `Canvas` backend on Cairo with a bundled font, and a `CLAP_WINDOW_API_X11` editor window whose X
-           events and redraw timer run on the host's `posix-fd-support` and `timer-support`.
-        3. File dialogs through the XDG desktop portal (or zenity/kdialog), xdg-open for the folder, X11 selections
-           for the clipboard.
-        4. Port the smoke host (dlopen) and uishot (Cairo PNGs, so the UI checks can run in Linux CI too), and add a
-           Linux job to release.yml.
+- Linux support and macOS support (maybe later)
 
 ## Organziational
 
@@ -47,6 +30,3 @@
       grid). features.md says "depth handle" in places now, but its Modulation section still introduces them as
       small dots.
 
-## TBD
-
-- Filter drive sounds strange, investigate
