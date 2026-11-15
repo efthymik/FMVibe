@@ -1693,6 +1693,8 @@ void View::paintSeq(Canvas &c) {
         const bool outside = scale != 0 && !seqInScale(scale, root, pitch); // folded, a row a note off it has
         if (black || outside)
             c.fillRect({kSeqGrid.x, y, kSeqGrid.w, rh}, kBackground.alpha(outside ? 0.55f : 0.35f));
+        else // a white key's row a little lighter than the well
+            c.fillRect({kSeqGrid.x, y, kSeqGrid.w, rh}, Color{1.0f, 1.0f, 1.0f, lightTheme() ? 0.4f : 0.03f});
         c.line({kSeqGrid.x, y + rh}, {kSeqGrid.x + kSeqGrid.w, y + rh},
                light.alpha((pitch % 12 == 0 ? 0.10f : 0.035f) * gridLines), 1.0f);
     }
