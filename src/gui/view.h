@@ -142,7 +142,7 @@ public:
     // browser's search while it is open, the MODS view's filter once clicked, and the search atop a MODS row's target
     // menu while it is open. Meanwhile the window should send the keyboard here: typeChar() takes printable ASCII. Up
     // and Down only move through the browser's list and the target menu's matches.
-    enum class Key { Enter, Escape, Backspace, Delete, Left, Right, Home, End, SelectAll, Up, Down };
+    enum class Key { Enter, Escape, Backspace, Delete, Left, Right, Home, End, SelectAll, Up, Down, Copy, Cut, Paste };
     bool typing() const { return typing_.has_value() || fieldTyping().has_value(); }
     void typeChar(char32_t c);
     // Shift with Left, Right, Home and End extends a text field's selection.
@@ -164,8 +164,11 @@ public:
     bool setCtrl(bool held);
     // The SEQ view's keys, while it shows (the window sends them while the mouse is over the editor): Select All picks
     // every note of the pattern; Left and Right move the notes picked a grid step (a step with the snap off), Up and
-    // Down a row (a degree of the scale while folded), with Shift an octave; Delete removes them. Each is an undo step.
-    // Whether it took the key: the arrows and Delete only while notes are picked, so the host keeps them otherwise.
+    // Down a row (a degree of the scale while folded), with Shift an octave; Delete removes them. Copy keeps the notes
+    // picked, Cut keeps and removes them, and Paste puts what was kept down at the step under the mouse on the roll
+    // (else where a cut took it from, or after what was copied or pasted last), its pitches as they were. Each edit is
+    // an undo step. Whether it took the key: the arrows, Delete, Copy and Cut only while notes are picked, Paste only
+    // with notes kept, so the host keeps them otherwise.
     bool seqKey(Key key, bool shift);
 
 private:
@@ -1050,6 +1053,25 @@ private:
     void stretchSeq(double factor);
     void clearSeqPattern();
     void copySeqPattern();
+    // The notes copied (Ctrl+C, Ctrl+X, the roll's menu), kept by the editor for any pattern: each note's fields, its
+    // start from the first one's; and how far they reach, from that start to the last one's end on the grid.
+    struct SeqClip {
+        std::vector<std::array<double, kSeqNoteParamCount>> notes;
+        double from = 0.0; // where the first one started
+        double span = 0.0;
+    };
+    SeqClip seqClip_;
+    double seqClipNext_ = 0.0; // where a paste goes without the mouse on the roll: after what was copied or pasted last
+    SeqClip seqCopyPicked() const; // the notes picked, as the clipboard keeps them
+    // The notes of `clip` put down from `at` (as one undo step, picked, those past the pattern's end left out); false if
+    // none went in.
+    bool seqPaste(const SeqClip &clip, double at);
+    // The roll's right-click menu (see contextMenu()) and its commands, numbered from kSeqMenuCommands (as many as
+    // kSeqMenuCount); false: not the roll's.
+    static constexpr int kSeqMenuCommands = 50, kSeqMenuCount = 10;
+    bool seqContextMenu(const Widget &w, Point p, std::vector<MenuItem> &items);
+    void seqMenuCommand(int command);
+    double seqMenuAt_ = 0.0; // the step the roll's menu was opened at, where its Paste goes
     // A drag on the roll, its ruler, its lane or the field: what it moves, and what it started from.
     struct SeqDrag {
         enum class Mode { None, Move, Resize, ResizeStart, Box, Paint, Velocity, Lane, LaneGroup, Loop, LoopStart,

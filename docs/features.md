@@ -822,7 +822,8 @@ one may have changed since it last did.
     the length of every note picked and its left end their starts, their ends staying (on the grid; with Shift or Alt
     held, off it, following the mouse) (the cursor left-right over
     either end, a handle at each end of a note picked), a drag from an empty place picks the notes the box reaches (Shift adding to
-    them), and a double-click puts a note down a grid step long (on a note, deletes it). **Draw**: a click puts a note
+    them), and a double-click puts a note down a grid step long (on a note, deletes it), and held, the mouse up or down
+    sets its velocity, as Draw's click does. **Draw**: a click puts a note
     down (the cursor a pen), and held, the mouse up or down sets its velocity, a step a pixel from 100; with Shift, a
     drag paints a note in each grid step it crosses that has none; a note clicked is moved or stretched as in Select
     (the cursor saying which over it). Each edit is one undo step.
@@ -856,8 +857,19 @@ one may have changed since it last did.
   - **Keys**, while the mouse is over the editor (as for undo): **Ctrl+A** picks every note of the pattern; **Left**
     and **Right** move the notes picked a grid step (a step with the snap off), **Up** and **Down** a row (a degree of
     the scale while folded), and **Shift+Up** and **Shift+Down** an octave, and **Delete** removes them, each an undo step. Moved up or down, the
-    rows follow only as far as shows every note moved, and not at all while they all show. With no note picked,
-    the arrows go on to the host.
+    rows follow only as far as shows every note moved, and not at all while they all show. **Ctrl+C** copies the notes
+    picked, **Ctrl+X** cuts them, and **Ctrl+V** pastes what was copied or cut into the pattern shown (any pattern),
+    each note's pitch, length, velocity, chance, Slide and Mute as they were: at the step under the mouse on the roll
+    (on the grid, the first note there and the rest as far after it as they were), or with the mouse off the roll
+    where a cut took them from, or right after what was copied or pasted last (rounded up to the grid), so pasting
+    again lays them end to end. The notes pasted are picked, notes past the pattern's end are left out, and each is an
+    undo step. With no note picked, the arrows, Ctrl+C and Ctrl+X go on to the host, and so does Ctrl+V with nothing
+    copied.
+  - **The roll's right-click menu**, on a note (which it picks alone, unless it is picked) or an empty place (keeping
+    what is picked): **Cut**, **Copy**, **Paste** (where the menu was opened, on the grid), **Duplicate** (the notes
+    picked again right after them, leaving what was copied as it is) and **Delete**; **Select All**; **Slide** and
+    **Mute** (checked while every note picked has it), and **Quantize**, which puts the notes picked on the snap's
+    grid. It offers only what applies: the notes' entries while notes are picked, Paste once something is copied.
 - **Routing panel**: the right of the panel the inspector floats over (see below); the graph shows only what is
   switched on, the matrix everything, greyed out where it is off.
   The inspector's tabs switch nodes on and off (see below); so does a node's right-click menu in the graph, and the

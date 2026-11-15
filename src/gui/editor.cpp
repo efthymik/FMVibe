@@ -751,7 +751,8 @@ bool Editor::key(WPARAM key, LPARAM flags) {
         view_.undo();
         return true;
     }
-    // The SEQ view's: Ctrl+A picks every note, the arrows move those picked.
+    // The SEQ view's: Ctrl+A picks every note, the arrows move those picked, Ctrl+C, Ctrl+X and Ctrl+V copy, cut and
+    // paste them.
     if (const std::optional<View::Key> seq = seqKeyOf(key, ctrl))
         return view_.seqKey(*seq, shift);
     return false;
@@ -759,7 +760,11 @@ bool Editor::key(WPARAM key, LPARAM flags) {
 
 std::optional<View::Key> Editor::seqKeyOf(WPARAM key, bool ctrl) {
     if (ctrl)
-        return key == 'A' ? std::optional(View::Key::SelectAll) : std::nullopt;
+        return key == 'A'   ? std::optional(View::Key::SelectAll)
+               : key == 'C' ? std::optional(View::Key::Copy)
+               : key == 'X' ? std::optional(View::Key::Cut)
+               : key == 'V' ? std::optional(View::Key::Paste)
+                            : std::nullopt;
     switch (key) {
     case VK_LEFT:
         return View::Key::Left;
@@ -777,11 +782,11 @@ std::optional<View::Key> Editor::seqKeyOf(WPARAM key, bool ctrl) {
 }
 
 // Ctrl+Z undoes, Ctrl+Y or Ctrl+Shift+Z redoes, while the mouse is over the editor in the active
-// window, so the host's own shortcuts work everywhere else; so do the SEQ view's keys (see View::seqKey()), Ctrl+A
-// the arrows and Delete, when it takes them. A shortcut's key going up is taken too.
+// window, so the host's own shortcuts work everywhere else; so do the SEQ view's keys (see View::seqKey()), Ctrl+A,
+// Ctrl+C, Ctrl+X, Ctrl+V, the arrows and Delete, when it takes them. A shortcut's key going up is taken too.
 bool Editor::shortcut(WPARAM key, bool up) {
     const bool undoKey = key == 'Z' || key == 'Y';
-    if (!undoKey && key != 'A' && key != VK_LEFT && key != VK_RIGHT && key != VK_UP && key != VK_DOWN &&
+    if (!undoKey && key != 'A' && key != 'C' && key != 'X' && key != 'V' && key != VK_LEFT && key != VK_RIGHT && key != VK_UP && key != VK_DOWN &&
         key != VK_DELETE)
         return false;
     if (up) {

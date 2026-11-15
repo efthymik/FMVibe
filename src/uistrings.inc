@@ -1114,6 +1114,15 @@ STR(MenuSwitchOff, "Switch off {1}")
 STR(MenuDisconnect, "Disconnect")
 STR(MenuEditValue, "Edit value…")
 STR(MenuResetDefault, "Reset to default")
+// The SEQ view's roll, for the notes picked (Paste for those copied, Select All for every note of the pattern)
+STR(MenuSeqCut, "Cut")
+STR(MenuSeqCopy, "Copy")
+STR(MenuSeqPaste, "Paste")
+STR(MenuSeqDelete, "Delete")
+STR(MenuSeqSelectAll, "Select All")
+STR(MenuSeqSlide, "Slide") // checked while every note picked glides into the next
+STR(MenuSeqMute, "Mute") // checked while every note picked is muted
+STR(MenuSeqQuantize, "Quantize") // the notes picked moved onto the snap's grid
 
 // --- The editor: undo and redo, on their buttons' tooltips
 

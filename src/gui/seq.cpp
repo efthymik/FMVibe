@@ -879,6 +879,168 @@ void View::copySeqPattern() {
     flash(trf(Str::MsgSeqCopied, {seqPatternName(from), seqPatternName(to)}));
 }
 
+// --- The notes copied, cut and pasted, and the roll's menu.
+
+View::SeqClip View::seqCopyPicked() const {
+    SeqClip clip;
+    const std::vector<int> picked = seqPicked();
+    if (picked.empty())
+        return clip;
+    const int pattern = seqPattern();
+    double first = kSeqMaxSteps, end = 0.0;
+    for (int slot : picked) {
+        const double start = value(seqNoteIndex(pattern, slot, SeqNoteParam::Start));
+        first = std::min(first, start);
+        end = std::max(end, start + value(seqNoteIndex(pattern, slot, SeqNoteParam::Length)));
+    }
+    for (int slot : picked) {
+        std::array<double, kSeqNoteParamCount> fields{};
+        for (int f = 0; f < kSeqNoteParamCount; ++f)
+            fields[static_cast<size_t>(f)] = value(seqNoteIndex(pattern, slot, static_cast<SeqNoteParam>(f)));
+        fields[static_cast<size_t>(SeqNoteParam::Start)] -= first;
+        clip.notes.push_back(fields);
+    }
+    // As far as they reach, rounded up to the snap's grid (a step with it off), so what goes after them stays on it.
+    const double grid = kSeqSnaps[std::clamp(controller_.layout().seqSnap, 0, kSeqSnapCount - 1)];
+    const double unit = grid > 0.0 ? grid : 1.0;
+    clip.from = first;
+    clip.span = std::max(std::ceil((end - first) / unit - 1e-9) * unit, unit);
+    return clip;
+}
+
+bool View::seqPaste(const SeqClip &clip, double at) {
+    if (clip.notes.empty())
+        return false;
+    const int pattern = seqPattern();
+    const double last = seqSteps() - kShortestNote;
+    std::vector<int> pasted;
+    controller_.beginStep();
+    for (const auto &fields : clip.notes) {
+        const double start = at + fields[static_cast<size_t>(SeqNoteParam::Start)];
+        if (start > last + 1e-9) // past the pattern's end
+            continue;
+        const int slot = seqFreeSlot();
+        if (slot < 0) {
+            flash(trf(Str::MsgSeqFull, {std::to_string(kSeqNotes)}));
+            break;
+        }
+        std::vector<std::pair<int, double>> changes;
+        for (int f = 0; f < kSeqNoteParamCount; ++f)
+            changes.push_back({seqNoteIndex(pattern, slot, static_cast<SeqNoteParam>(f)),
+                               f == static_cast<int>(SeqNoteParam::Start) ? std::max(start, 0.0)
+                                                                          : fields[static_cast<size_t>(f)]});
+        editMany(changes);
+        pasted.push_back(slot);
+    }
+    if (!pasted.empty()) {
+        seqSelection_ = pasted;
+        seqSelectionPattern_ = pattern;
+        seqDropCovered(pasted);
+    }
+    controller_.endStep();
+    return !pasted.empty();
+}
+
+namespace {
+// The roll's menu's commands, after View::kSeqMenuCommands.
+enum SeqMenu { kSeqCut, kSeqCopy, kSeqPaste, kSeqDuplicate, kSeqDelete, kSeqSelectAll, kSeqSlide, kSeqMute, kSeqQuantize };
+} // namespace
+
+bool View::seqContextMenu(const Widget &w, Point p, std::vector<MenuItem> &items) {
+    if (!seqWide() || w.kind != Kind::SeqGrid)
+        return false;
+    const int pattern = seqPattern();
+    if (seqSelectionPattern_ != pattern) { // another pattern shown: what was picked was another's
+        seqSelection_.clear();
+        seqSelectionPattern_ = pattern;
+    }
+    // On a note not picked, that note alone; elsewhere, what is picked stays.
+    if (const int hit = seqNoteAt(p); hit >= 0 && !seqSelected(hit))
+        seqSelection_ = {hit};
+    seqMenuAt_ = std::clamp(seqSnapped(seqStepAt(p.x), false), 0.0, static_cast<double>(seqSteps()));
+    const std::vector<int> picked = seqPicked();
+    auto add = [&](int command, Str label, bool checked = false) {
+        items.push_back({kSeqMenuCommands + command, tr(label), checked});
+    };
+    auto all = [&](SeqNoteParam field) {
+        return std::all_of(picked.begin(), picked.end(),
+                           [&](int slot) { return value(seqNoteIndex(pattern, slot, field)) >= 0.5; });
+    };
+    if (!picked.empty()) {
+        add(kSeqCut, Str::MenuSeqCut);
+        add(kSeqCopy, Str::MenuSeqCopy);
+    }
+    if (!seqClip_.notes.empty())
+        add(kSeqPaste, Str::MenuSeqPaste);
+    if (!picked.empty()) {
+        add(kSeqDuplicate, Str::MenuDuplicate);
+        add(kSeqDelete, Str::MenuSeqDelete);
+    }
+    if (!seqNotes().empty()) {
+        if (!items.empty())
+            items.push_back({0, ""});
+        add(kSeqSelectAll, Str::MenuSeqSelectAll);
+    }
+    if (!picked.empty()) {
+        items.push_back({0, ""});
+        add(kSeqSlide, Str::MenuSeqSlide, all(SeqNoteParam::Slide));
+        add(kSeqMute, Str::MenuSeqMute, all(SeqNoteParam::Mute));
+        items.push_back({0, ""});
+        add(kSeqQuantize, Str::MenuSeqQuantize);
+    }
+    return true;
+}
+
+void View::seqMenuCommand(int command) {
+    if (!seqWide())
+        return;
+    const int pattern = seqPattern();
+    const std::vector<int> picked = seqPicked();
+    switch (command) {
+    case kSeqCut:
+    case kSeqCopy:
+        seqKey(command == kSeqCut ? Key::Cut : Key::Copy, false);
+        break;
+    case kSeqPaste: // where the menu was opened
+        if (seqPaste(seqClip_, seqMenuAt_))
+            seqClipNext_ = seqMenuAt_ + seqClip_.span;
+        break;
+    case kSeqDuplicate: { // right after them, leaving what was copied as it is
+        const SeqClip clip = seqCopyPicked();
+        seqPaste(clip, clip.from + clip.span);
+        break;
+    }
+    case kSeqDelete:
+        removeSeqNotes(picked);
+        break;
+    case kSeqSelectAll:
+        seqKey(Key::SelectAll, false);
+        break;
+    case kSeqSlide:
+    case kSeqMute:
+        flipSeqFlag(command == kSeqSlide ? 0 : 1);
+        break;
+    case kSeqQuantize: { // each start onto the snap's grid (a step with it off), as OFFSET's double-click puts it
+        const double grid = kSeqSnaps[std::clamp(controller_.layout().seqSnap, 0, kSeqSnapCount - 1)];
+        const double unit = grid > 0.0 ? grid : 1.0;
+        std::vector<std::pair<int, double>> changes;
+        for (int slot : picked) {
+            const int start = seqNoteIndex(pattern, slot, SeqNoteParam::Start);
+            changes.push_back({start, std::clamp(std::round(value(start) / unit) * unit, 0.0, seqSteps() - kShortestNote)});
+        }
+        if (changes.empty())
+            break;
+        controller_.beginStep();
+        editMany(changes);
+        seqDropCovered(picked);
+        controller_.endStep();
+        break;
+    }
+    default:
+        break;
+    }
+}
+
 std::string View::seqFieldText(int field) const {
     const std::vector<int> picked = seqPicked();
     if (picked.empty())
@@ -926,10 +1088,27 @@ bool View::seqKey(Key key, bool shift) {
             seqSelection_.push_back(n.slot);
         return true;
     }
+    if (key == Key::Paste) { // at the step under the mouse on the roll, else after what was copied or pasted last
+        if (seqClip_.notes.empty())
+            return false;
+        const double at = kSeqGrid.contains(hoverPoint_)
+                              ? std::clamp(seqSnapped(seqStepAt(hoverPoint_.x), false), 0.0, static_cast<double>(seqSteps()))
+                              : seqClipNext_;
+        if (seqPaste(seqClip_, at))
+            seqClipNext_ = at + seqClip_.span;
+        return true;
+    }
     const std::vector<int> picked = seqPicked();
     if (picked.empty() || (key != Key::Left && key != Key::Right && key != Key::Up && key != Key::Down &&
-                           key != Key::Delete))
+                           key != Key::Delete && key != Key::Copy && key != Key::Cut))
         return false;
+    if (key == Key::Copy || key == Key::Cut) { // a paste then going after them, or for a cut where they were
+        seqClip_ = seqCopyPicked();
+        seqClipNext_ = key == Key::Cut ? seqClip_.from : seqClip_.from + seqClip_.span;
+        if (key == Key::Cut)
+            removeSeqNotes(picked);
+        return true;
+    }
     if (key == Key::Delete) {
         removeSeqNotes(picked);
         return true;
@@ -1462,14 +1641,20 @@ bool View::seqDoubleClick(const Widget &w, Point p, Modifiers mods) {
         }
         const double grid = kSeqSnaps[std::clamp(controller_.layout().seqSnap, 0, kSeqSnapCount - 1)];
         const int pitch = seqPitchAt(p.y);
-        if (addSeqNote(seqSnapped(seqStepAt(p.x), false), pitch, grid > 0.0 ? grid : 1.0) >= 0) {
-            // Heard while the button is held, as a note clicked is: until it comes up (see seqRelease()).
+        controller_.beginStep(); // the note and its velocity, one undo step
+        if (const int slot = addSeqNote(seqSnapped(seqStepAt(p.x), false), pitch, grid > 0.0 ? grid : 1.0); slot >= 0) {
+            // Held, the mouse up and down sets its velocity, as Draw's click does; heard while the button is held, as a
+            // note clicked is: until it comes up (see seqRelease()).
             seqDrag_ = SeqDrag{};
+            seqDrag_.mode = SeqDrag::Mode::Velocity;
+            seqDrag_.anchor = slot;
             drag_.kind = DragKind::Seq;
-            drag_.step = false;
+            drag_.step = true;
             drag_.start = drag_.now = p;
             drag_.moved = false;
             seqHear(pitch);
+        } else {
+            controller_.endStep();
         }
         return true;
     }
@@ -2140,14 +2325,12 @@ bool View::paintSeqWidget(Canvas &c, const Widget &w, bool hovered) {
         return true;
     case Kind::SeqField: {
         const bool any = !seqPicked().empty();
-        const bool first = w.b == 0, last = w.b == kFieldCount - 1;
-        // One well for the five, its corners round at its ends.
-        c.fillRect(w.rect, hovered && any ? wellHover() : wellColor(), first || last ? kRadiusControl : 0.0f);
-        if (first) // its right part square, against the next
-            c.fillRect({w.rect.x + kRadiusControl, w.rect.y, w.rect.w - kRadiusControl, w.rect.h},
-                       hovered && any ? wellHover() : wellColor());
-        if (last)
-            c.fillRect({w.rect.x, w.rect.y, w.rect.w - kRadiusControl, w.rect.h}, hovered && any ? wellHover() : wellColor());
+        // One well for the five, its corners round at its ends: each field its own part of it, filled once (a light
+        // theme's well is a shade, which two fills over each other would darken).
+        const Rect well{seqFieldRect(0).x, w.rect.y, seqFieldRect(kFieldCount - 1).right() - seqFieldRect(0).x, w.rect.h};
+        c.pushClip(w.rect);
+        c.fillRect(well, hovered && any ? wellHover() : wellColor(), kRadiusControl);
+        c.popClip();
         const char *name = tr(kFieldNames[w.b]);
         const float nameW = c.textWidth(name, kTextSmall, true) + 14.0f;
         c.text({w.rect.x + 8.0f, w.rect.y, nameW, w.rect.h}, name, kTextSmall, kDim, Align::Left, true);
@@ -2208,7 +2391,11 @@ bool View::paintSeqWidget(Canvas &c, const Widget &w, bool hovered) {
         return true;
     }
     case Kind::SeqZoom: {
-        iconButton(hovered);
+        // In a well in a flat theme, whose raised face doesn't show, so they don't read as the arrows beside them.
+        if (look.flat)
+            c.fillRect(w.rect, hovered ? wellHover() : wellColor(), kRadiusControl);
+        else
+            iconButton(hovered);
         const Point m = w.rect.center();
         const Color ink = hovered ? kText : kDim;
         c.line({m.x - 4.0f, m.y}, {m.x + 4.0f, m.y}, ink, 1.4f);

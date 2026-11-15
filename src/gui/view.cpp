@@ -12154,6 +12154,8 @@ std::vector<MenuItem> View::contextMenu(Point p) {
     const auto hit = hitTest(p);
     if (!hit)
         return items;
+    if (seqContextMenu(*hit, p, items)) // the SEQ view's roll's
+        return items;
     if ((hit->kind == Kind::FxNode && hit->a >= kFxSlots) || hit->kind == Kind::FxBoxGrip) { // a split or a join
         menuFx_ = hit->a;
         items.push_back({7, tr(Str::MenuRemove)});
@@ -12336,6 +12338,12 @@ std::string View::bypassLabel(int source, int slot) const {
 void View::menuCommand(int command) {
     if (!menuLive_) // what the menu was opened on may have changed or gone since
         return;
+    // The SEQ view's roll's commands (see seqContextMenu()), after the others under 100.
+    static_assert(kMoveBandCommand + 3 < kSeqMenuCommands && kSeqMenuCommands + kSeqMenuCount <= 100);
+    if (command >= kSeqMenuCommands && command < kSeqMenuCommands + kSeqMenuCount) {
+        seqMenuCommand(command - kSeqMenuCommands);
+        return;
+    }
     if (command == 1 && menuParam_ >= 0) {
         edit(menuParam_, resetValue(menuParam_));
     } else if (command == 2 && menuParam_ >= 0) {

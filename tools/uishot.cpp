@@ -5691,6 +5691,137 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         view.undo();
         check(held && put, "a note put down by a double-click is heard while the button is held");
     }
+    // The slot of the note starting at `start` on `pitch`, -1 for none.
+    auto noteAt = [&](double start, int pitch) {
+        for (int s = 0; s < kSeqNotes; ++s)
+            if (field(s, SeqNoteParam::Length) > 0.0 && std::abs(field(s, SeqNoteParam::Start) - start) < 1e-9 &&
+                field(s, SeqNoteParam::Pitch) == pitch)
+                return s;
+        return -1;
+    };
+    // Held after a double-click, the mouse up and down sets the new note's velocity, a step a pixel from 100, the
+    // cursor up and down; the note and its velocity one undo step.
+    {
+        const Point empty = at(14.3, 62);
+        click(view, empty);
+        view.doubleClick(empty, {});
+        view.mouseMove({empty.x, empty.y - 10.0f}, {});
+        view.mouseMove({empty.x, empty.y - 20.0f}, {});
+        const bool upDown = view.cursor() == CursorKind::Vertical;
+        view.mouseUp({empty.x, empty.y - 20.0f}, {});
+        const int slot = noteAt(14.0, 62);
+        const long velocity = slot >= 0 ? std::lround(field(slot, SeqNoteParam::Velocity) * 127.0) : -1;
+        view.undo();
+        std::printf("      a note put down by a double-click, held and dragged 20 px up: velocity %ld\n", velocity);
+        check(velocity == 120 && upDown && noteAt(14.0, 62) < 0,
+              "a double-click held and dragged up and down sets the new note's velocity, in its undo step");
+    }
+    // Ctrl+C keeps the notes picked, and Ctrl+V puts them down as they were but for where: at the step under the mouse
+    // on the roll, picked, and with the mouse off it after what was copied or pasted last; Ctrl+X takes them away too,
+    // and with the mouse off the roll Ctrl+V puts them back. Each an undo step; with nothing picked, Ctrl+C and Ctrl+X go
+    // on to the host.
+    {
+        const Point offRoll{600.0f, 40.0f};
+        click(view, at(15.5, 66)); // nothing picked
+        const bool passed = !view.seqKey(View::Key::Copy, false) && !view.seqKey(View::Key::Cut, false);
+        model.set(seqNoteIndex(0, 2, SeqNoteParam::Velocity), 64.0 / 127.0);
+        view.poll();
+        click(view, at(8.5, 51)); // the note on step 8, two steps long
+        const bool copied = view.seqKey(View::Key::Copy, false);
+        view.mouseMove(offRoll, {});
+        view.seqKey(View::Key::Paste, false);
+        view.seqKey(View::Key::Paste, false);
+        const bool after = noteAt(10.0, 51) >= 0 && noteAt(12.0, 51) >= 0;
+        view.undo();
+        view.undo();
+        view.mouseMove(at(5.6, 60), {});
+        const bool pasted = view.seqKey(View::Key::Paste, false);
+        const int copy = noteAt(5.0, 51);
+        const bool asCopied = copy >= 0 && field(copy, SeqNoteParam::Length) == 2.0 &&
+                              field(copy, SeqNoteParam::Velocity) == 64.0 / 127.0;
+        view.seqKey(View::Key::Delete, false); // the copy alone is picked
+        const bool picked = noteAt(5.0, 51) < 0 && noteAt(8.0, 51) == 2;
+        view.undo();
+        view.undo();
+        const bool undone = noteAt(5.0, 51) < 0;
+        click(view, at(8.5, 51));
+        const bool cut = view.seqKey(View::Key::Cut, false) && field(2, SeqNoteParam::Length) == 0.0;
+        view.mouseMove(offRoll, {});
+        view.seqKey(View::Key::Paste, false);
+        const bool back = noteAt(8.0, 51) >= 0;
+        view.undo();
+        view.undo();
+        const bool restored = noteAt(8.0, 51) == 2 && field(2, SeqNoteParam::Length) == 2.0;
+        model.set(seqNoteIndex(0, 2, SeqNoteParam::Velocity), 100.0 / 127.0);
+        view.poll();
+        check(passed && copied && after && pasted && asCopied && picked && undone && cut && back && restored,
+              "Ctrl+C, Ctrl+X and Ctrl+V copy, cut and paste the notes picked, at the mouse or after them, undoably");
+    }
+    // The roll's right-click menu: on a note not picked, picking it alone; Duplicate putting a copy right after it, Mute
+    // muting it (checked then), Quantize putting it on the grid, Paste on an empty place putting what was copied there,
+    // Select All picking every note; each an undo step.
+    {
+        auto entry = [&](const std::vector<MenuItem> &items, Str label) {
+            for (const MenuItem &item : items)
+                if (item.label == tr(label))
+                    return item.command;
+            return -1;
+        };
+        click(view, at(15.5, 66)); // nothing picked
+        const std::vector<MenuItem> onNote = view.contextMenu(at(4.4, 55)); // the note on step 4
+        const bool offered = entry(onNote, Str::MenuSeqCut) >= 0 && entry(onNote, Str::MenuSeqCopy) >= 0 &&
+                             entry(onNote, Str::MenuDuplicate) >= 0 && entry(onNote, Str::MenuSeqDelete) >= 0 &&
+                             entry(onNote, Str::MenuSeqSelectAll) >= 0 && entry(onNote, Str::MenuSeqQuantize) >= 0;
+        view.menuCommand(entry(onNote, Str::MenuDuplicate));
+        const bool duplicated = noteAt(5.0, 55) >= 0 && noteAt(4.0, 55) == 1;
+        view.undo();
+        view.menuCommand(entry(view.contextMenu(at(4.4, 55)), Str::MenuSeqMute));
+        const bool muted = field(1, SeqNoteParam::Mute) == 1.0;
+        bool checked = false;
+        for (const MenuItem &item : view.contextMenu(at(4.4, 55)))
+            checked = checked || (item.label == tr(Str::MenuSeqMute) && item.checked);
+        view.undo();
+        model.set(seqNoteIndex(0, 1, SeqNoteParam::Start), 4.3);
+        view.poll();
+        view.menuCommand(entry(view.contextMenu(at(4.6, 55)), Str::MenuSeqQuantize));
+        const bool quantized = field(1, SeqNoteParam::Start) == 4.0;
+        view.undo();
+        model.set(seqNoteIndex(0, 1, SeqNoteParam::Start), 4.0);
+        view.poll();
+        view.menuCommand(entry(view.contextMenu(at(4.4, 55)), Str::MenuSeqCopy));
+        view.menuCommand(entry(view.contextMenu(at(14.6, 62)), Str::MenuSeqPaste)); // an empty place
+        const bool pastedThere = noteAt(14.0, 55) >= 0;
+        view.undo();
+        view.menuCommand(entry(view.contextMenu(at(14.6, 62)), Str::MenuSeqSelectAll));
+        const bool every = view.seqKey(View::Key::Delete, false) && noteAt(0.0, 48) < 0 && noteAt(12.0, 58) < 0;
+        view.undo();
+        click(view, at(15.5, 66)); // nothing picked
+        check(offered && duplicated && muted && checked && quantized && pastedThere && every && noteAt(4.0, 55) == 1 &&
+                  field(1, SeqNoteParam::Mute) == 0.0,
+              "the roll's right-click menu cuts, copies, pastes, duplicates, mutes, quantizes and picks every note");
+    }
+    // In Porcelain, the field of the notes picked one even well, its NOTE and OFFSET no darker than the others; and the
+    // zoom's buttons set in a well, apart from the arrows beside them (read off the rendered pixels).
+    {
+        const std::string themeWas = model.themeName;
+        model.themeName = "Porcelain";
+        click(view, at(0.5, 48)); // a note picked: the field reads
+        view.mouseMove({600.0f, 40.0f}, {});
+        const bool shot = renderer.save(view, dir / "36n-seq-porcelain.png");
+        const float right = detail::kSeqTools.x + detail::kSeqTools.w - 26.0f - 8.0f - 104.0f - 8.0f;
+        const float y = detail::kSeqTools.y + 3.0f; // above the fields' text
+        const uint32_t note = renderer.pixel({right - 84.0f - 58.0f - 92.0f - 58.0f - 72.0f + 40.0f, y});
+        const uint32_t chance = renderer.pixel({right - 84.0f - 58.0f - 92.0f + 40.0f, y});
+        const uint32_t offset = renderer.pixel({right - 84.0f + 40.0f, y});
+        // The third zoom button (out, up and down): inside it, left of its −, and just left of it, right of its arrow.
+        const float zx = detail::kSeqBox.x + detail::kSeqBox.w - 6.0f - 2.0f * 20.0f;
+        const float zy = detail::kSeqLaneTabs.y + detail::kSeqLaneTabs.h * 0.5f;
+        const uint32_t inside = renderer.pixel({zx + 3.0f, zy}), beside = renderer.pixel({zx - 3.0f, zy});
+        model.themeName = themeWas;
+        click(view, at(15.5, 66)); // nothing picked
+        check(shot && note == chance && offset == chance, "in Porcelain, the field's NOTE and OFFSET sit in its even well");
+        check(inside != beside, "in Porcelain, the zoom's buttons stand apart from the arrows beside them");
+    }
     click(view, at(4.4, 55)); // the note on step 4, alone
     view.mouseMove({600.0f, 600.0f}, {});
     renderer.save(view, dir / "36i-seq-lane-ring.png");

@@ -37,6 +37,7 @@ const TYPING_KEYS = { // View::Key
   ArrowUp: 9, ArrowDown: 10,
 };
 const SELECT_ALL = 8;
+const SEQ_CTRL_KEYS = { KeyA: SELECT_ALL, KeyC: 11, KeyX: 12, KeyV: 13 }; // View::Key: Select All, Copy, Cut, Paste
 
 // --- Audio --------------------------------------------------------------------------------------------------
 
@@ -624,9 +625,10 @@ window.addEventListener('keydown', (e) => {
     afterInput();
     return;
   }
-  // The SEQ view's keys: Ctrl+A picks every note, the arrows move those picked (Shift: an octave up or down).
-  if (!e.altKey && ((ctrlOf(e) && e.code === 'KeyA') || (!ctrlOf(e) && (e.key.startsWith('Arrow') || e.key === 'Delete')))) {
-    const key = e.code === 'KeyA' ? SELECT_ALL : TYPING_KEYS[e.key];
+  // The SEQ view's keys: Ctrl+A picks every note, the arrows move those picked (Shift: an octave up or down), Ctrl+C,
+  // Ctrl+X and Ctrl+V copy, cut and paste them.
+  if (!e.altKey && ((ctrlOf(e) && e.code in SEQ_CTRL_KEYS) || (!ctrlOf(e) && (e.key.startsWith('Arrow') || e.key === 'Delete')))) {
+    const key = ctrlOf(e) ? SEQ_CTRL_KEYS[e.code] : TYPING_KEYS[e.key];
     if (key !== undefined && ui._ui_seq_key(key, e.shiftKey ? 1 : 0) !== 0) {
       e.preventDefault();
       afterInput();
