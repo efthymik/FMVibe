@@ -54,6 +54,5 @@ LD Overdrive Lead
 BA Driven Bass
 SQ Future Plucks
 SQ Acid Rubber
-SQ Bell Cascade
 SQ Offbeat Stabs
 SQ Random Glass
