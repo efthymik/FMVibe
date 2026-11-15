@@ -1730,8 +1730,8 @@ void View::seqDrag(Point p) {
         break;
     }
     case SeqDrag::Mode::CurvePaint: {
-        const double grid = kSeqSnaps[std::clamp(controller_.layout().seqSnap, 0, kSeqSnapCount - 1)];
-        const double unit = grid > 0.0 ? grid : 1.0;
+        const double snap = kSeqSnaps[std::clamp(controller_.layout().seqSnap, 0, kSeqSnapCount - 1)];
+        const double unit = snap > 0.0 ? snap : 1.0;
         const double step = std::clamp(std::round(seqStepAt(p.x) / unit) * unit, 0.0, static_cast<double>(steps));
         if (std::abs(step - d.loopFrom) < 1e-9)
             break; // still on the line it painted last
@@ -2230,10 +2230,10 @@ void View::paintSeq(Canvas &c) {
     // The keys sounding: those whose notes the sequencer plays now, as written, and the one heard while it is held,
     // each lit as far as it has eased (see seqFollowKeys()).
     for (size_t i = 0; i < rows.size(); ++i) {
-        const float light = seqKeyLight_[static_cast<size_t>(std::clamp(rows[i], 0, 127))];
-        if (light > 0.0f)
+        const float lit = seqKeyLight_[static_cast<size_t>(std::clamp(rows[i], 0, 127))];
+        if (lit > 0.0f)
             c.fillRect({kSeqKeys.x, kSeqKeys.y + kSeqKeys.h - (i + 1) * rh, kSeqKeys.w, rh},
-                       kAccent.alpha(0.6f * light));
+                       kAccent.alpha(0.6f * lit));
     }
     c.popClip();
     c.line({kSeqKeys.x + kSeqKeys.w, kSeqKeys.y}, {kSeqKeys.x + kSeqKeys.w, kSeqKeys.y + kSeqKeys.h}, kBorder, 1.0f);
@@ -2250,7 +2250,7 @@ void View::paintSeq(Canvas &c) {
         // filled down to that line, its points and the middles of the segments that bend.
         stems.clear();
         const SeqCurve curve = seqLaneCurve();
-        const Color ink = look.sources[curve == SeqCurve::Bend ? kBendSource : kWheelSource];
+        const Color curveInk = look.sources[curve == SeqCurve::Bend ? kBendSource : kWheelSource];
         const float rest = seqCurveY(curve, 0.0);
         const float right = std::min(kSeqGrid.x + kSeqGrid.w, seqStepX(steps));
         // The grid: a line at each quarter of the range (what Ctrl puts points on), as strong as the GRID setting says;
@@ -2274,8 +2274,8 @@ void View::paintSeq(Canvas &c) {
             std::vector<Point> area = line;
             area.push_back({line.back().x, rest});
             area.push_back({line.front().x, rest});
-            c.fillPolygon(area.data(), area.size(), ink.alpha(0.16f));
-            c.polyline(line.data(), line.size(), ink.alpha(on ? 1.0f : 0.6f), 1.5f);
+            c.fillPolygon(area.data(), area.size(), curveInk.alpha(0.16f));
+            c.polyline(line.data(), line.size(), curveInk.alpha(on ? 1.0f : 0.6f), 1.5f);
             const std::vector<int> picked = seqCurvePicked();
             const int hoveredPoint = drag_.kind == DragKind::Seq && seqDrag_.mode == SeqDrag::Mode::CurvePoint
                                          ? seqDrag_.anchor
@@ -2287,24 +2287,24 @@ void View::paintSeq(Canvas &c) {
                 const SeqCurvePoint &a = points[static_cast<size_t>(i)], &b = points[static_cast<size_t>(i) + 1];
                 if (seqStepX(b.x) - seqStepX(a.x) >= 20.0f && std::abs(b.y - a.y) >= 1e-6)
                     c.strokeCircle(seqCurveBendPos(points, curve, i), i == hoveredBend ? 4.0f : 2.5f,
-                                   ink.alpha(i == hoveredBend ? 1.0f : 0.7f), 1.2f);
+                                   curveInk.alpha(i == hoveredBend ? 1.0f : 0.7f), 1.2f);
             }
             for (int i = 0; i < static_cast<int>(points.size()); ++i) {
                 const SeqCurvePoint &q = points[static_cast<size_t>(i)];
                 const Point at{seqStepX(q.x), seqCurveY(curve, q.y)};
-                c.fillCircle(at, 3.5f, ink);
+                c.fillCircle(at, 3.5f, curveInk);
                 if (i == hoveredPoint)
                     c.strokeCircle(at, 6.0f, kText, 1.5f);
                 else if (std::find(picked.begin(), picked.end(), i) != picked.end()) // picked: ringed in its color
-                    c.strokeCircle(at, 6.0f, ink, 1.5f);
+                    c.strokeCircle(at, 6.0f, curveInk, 1.5f);
             }
         }
         // The box being dragged across the lane, picking the points it reaches.
         if (drag_.kind == DragKind::Seq && seqDrag_.mode == SeqDrag::Mode::CurveBox) {
             const Rect box{std::min(drag_.start.x, drag_.now.x), std::min(drag_.start.y, drag_.now.y),
                            std::abs(drag_.now.x - drag_.start.x), std::abs(drag_.now.y - drag_.start.y)};
-            c.fillRect(box, ink.alpha(0.12f));
-            c.strokeRect(box, ink.alpha(0.7f), 1.0f);
+            c.fillRect(box, curveInk.alpha(0.12f));
+            c.strokeRect(box, curveInk.alpha(0.7f), 1.0f);
         }
     }
     for (const SeqNote &n : stems) {

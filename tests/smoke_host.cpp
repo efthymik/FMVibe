@@ -1243,10 +1243,10 @@ int main(int argc, char **argv) {
                                       {"Sallen-Key LP", FilterType::SallenKeyLow, 1}}};
         auto db = [](double ratio) { return 20.0 * std::log10(std::max(ratio, 1e-9)); };
         for (Measured &m : lows) {
-            const std::vector<float> saw = play({.wave = OpWave::Saw, .throughFilter = true, .type = m.type,
+            const std::vector<float> sawn = play({.wave = OpWave::Saw, .throughFilter = true, .type = m.type,
                                                  .slope = m.slope, .cutoffHz = 1000.0, .resonance = 0.6});
             for (int h = 2; h <= 7; ++h)
-                m.harmonics[h - 2] = db(magnitude(saw, 440.0 * h) / magnitude(saw, 440.0));
+                m.harmonics[h - 2] = db(magnitude(sawn, 440.0 * h) / magnitude(sawn, 440.0));
             const std::vector<float> sine =
                 play({.throughFilter = true, .type = m.type, .slope = m.slope, .cutoffHz = 3000.0, .resonance = 0.3});
             m.third = db(magnitude(sine, 1320.0) / magnitude(sine, 440.0));
@@ -1716,7 +1716,7 @@ int main(int argc, char **argv) {
             float left = 0.0f, right = 0.0f;
             std::vector<float> samples;
         };
-        auto play = [&](const std::vector<std::pair<int, double>> &values) {
+        auto run = [&](const std::vector<std::pair<int, double>> &values) {
             std::vector<clap_event_param_value_t> evs;
             for (const auto &[index, value] : values)
                 evs.push_back(paramEvent(index, value));
@@ -1739,30 +1739,30 @@ int main(int argc, char **argv) {
             return take;
         };
         const int aPan = paramIndex(0, OpParam::Pan), bPan = paramIndex(1, OpParam::Pan);
-        const Take centered = play({{aPan, 0.0}});
-        const Take hardLeft = play({{aPan, -1.0}});
-        const Take hardRight = play({{aPan, 1.0}});
-        const Take filtered = play({{aPan, -1.0},
+        const Take middle = run({{aPan, 0.0}});
+        const Take hardLeft = run({{aPan, -1.0}});
+        const Take hardRight = run({{aPan, 1.0}});
+        const Take filtered = run({{aPan, -1.0},
                                     {paramIndex(0, OpParam::Out), 0.0},
                                     {sendIndex(0, 0), 1.0},
                                     {paramIndex(0, FilterParam::Enabled), 1.0},
                                     {paramIndex(0, FilterParam::Out), 1.0}});
         std::printf("      pan: centered %.3f/%.3f, left %.3f/%.4f, right %.4f/%.3f, filtered left %.3f/%.4f\n",
-                    centered.left, centered.right, hardLeft.left, hardLeft.right, hardRight.left, hardRight.right,
+                    middle.left, middle.right, hardLeft.left, hardLeft.right, hardRight.left, hardRight.right,
                     filtered.left, filtered.right);
-        check(centered.left > 0.05f && std::abs(centered.left - centered.right) < 1e-6f &&
-                  std::abs(hardLeft.left / centered.left - std::sqrt(2.0f)) < 0.01f && hardLeft.right < 1e-6f &&
-                  std::abs(hardRight.right / centered.left - std::sqrt(2.0f)) < 0.01f && hardRight.left < 1e-6f,
+        check(middle.left > 0.05f && std::abs(middle.left - middle.right) < 1e-6f &&
+                  std::abs(hardLeft.left / middle.left - std::sqrt(2.0f)) < 0.01f && hardLeft.right < 1e-6f &&
+                  std::abs(hardRight.right / middle.left - std::sqrt(2.0f)) < 0.01f && hardRight.left < 1e-6f,
               "an operator's Pan places it, equal-power");
         check(filtered.left > 0.01f && filtered.right < 1e-6f, "an operator panned through a filter stays panned");
-        const Take modulated = play({{aPan, 0.0},
+        const Take modulated = run({{aPan, 0.0},
                                      {paramIndex(0, OpParam::Out), 1.0},
                                      {sendIndex(0, 0), 0.0},
                                      {paramIndex(0, FilterParam::Enabled), 0.0},
                                      {paramIndex(0, FilterParam::Out), 0.0},
                                      {paramIndex(1, OpParam::Enabled), 1.0},
                                      {matrixIndex(1, 0), 0.5}});
-        const Take modulatorPanned = play({{bPan, 1.0}});
+        const Take modulatorPanned = run({{bPan, 1.0}});
         check(modulated.samples == modulatorPanned.samples && modulated.left > 0.05f,
               "a modulator's Pan leaves what it modulates alone");
         const clap_event_param_value_t back[] = {paramEvent(bPan, 0.0), paramEvent(matrixIndex(1, 0), 0.0),
@@ -2679,7 +2679,7 @@ int main(int argc, char **argv) {
             runBlock({&chokeAll.header});
             return peak;
         };
-        const float quarter = peakAt(0.25), half = peakAt(0.5), whole = peakAt(1.0);
+        const float quarter = peakAt(0.25), mid = peakAt(0.5), whole = peakAt(1.0);
         setParams({{paramIndex(VelocityParam::Bipolar), 1.0}});
         const float bipolarHalf = peakAt(0.5), bipolarWhole = peakAt(1.0);
         setParams({{paramIndex(VelocityParam::Bipolar), 0.0},
@@ -2693,8 +2693,8 @@ int main(int argc, char **argv) {
                    {slotAmountIndex(kVelocitySource, 0), 0.0}});
         std::printf("      A's output by velocity: peak %.3f / %.3f / %.3f at 0.25 / 0.5 / 1; bipolar %.3f / %.3f at "
                     "0.5 / 1; curve flipped %.3f at 0.25, %.3f at 1\n",
-                    quarter, half, whole, bipolarHalf, bipolarWhole, flippedSoft, flippedHard);
-        check(whole > 0.2f && std::abs(quarter / whole - 0.25f) < 0.03f && std::abs(half / whole - 0.5f) < 0.03f,
+                    quarter, mid, whole, bipolarHalf, bipolarWhole, flippedSoft, flippedHard);
+        check(whole > 0.2f && std::abs(quarter / whole - 0.25f) < 0.03f && std::abs(mid / whole - 0.5f) < 0.03f,
               "velocity takes its target as far as the note's velocity, in a straight line as it starts");
         check(bipolarHalf < 0.005f && std::abs(bipolarWhole / whole - 0.5f) < 0.03f,
               "bipolar velocity swings about the middle of what it puts out");
@@ -3148,9 +3148,9 @@ int main(int argc, char **argv) {
         setParams({{fx(1, FxParam::EqMid), -1.0}});
         const std::vector<float> killed = play({});
         setParams({{fx(1, FxParam::Enabled), 0.0}});
-        const std::vector<float> dry = play({});
-        const double flatRatio = magnitude(flat, 440.0) / magnitude(dry, 440.0);
-        const double killRatio = magnitude(killed, 440.0) / magnitude(dry, 440.0);
+        const std::vector<float> plain = play({});
+        const double flatRatio = magnitude(flat, 440.0) / magnitude(plain, 440.0);
+        const double killRatio = magnitude(killed, 440.0) / magnitude(plain, 440.0);
         std::printf("      EQ at 440 Hz: %.3f flat, %.3f with the mid killed\n", flatRatio, killRatio);
         check(std::abs(flatRatio - 1.0) < 0.02 && killRatio < 0.15, "the EQ is flat at unity and kills its bands");
         setParams({{type(1), static_cast<double>(FxType::None)}});
@@ -3159,7 +3159,7 @@ int main(int argc, char **argv) {
         // the mid band, and boosting it before a hard shaper in slot 0 comes out quieter than after it.
         const int last = kFxSlots - 1;
         setParams({{type(last), static_cast<double>(FxType::Eq)}, {fx(last, FxParam::EqMid), -1.0}});
-        const double lastKill = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        const double lastKill = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
         setParams({{fx(last, FxParam::EqMid), 1.0},
                    {type(0), static_cast<double>(FxType::Shaper)},
                    {fx(0, FxParam::ShaperMode), static_cast<double>(ClipMode::Hard)},
@@ -3186,11 +3186,11 @@ int main(int argc, char **argv) {
                    {fx(6, FxParam::CompKnee), 0.0},
                    {fx(6, FxParam::CompAttack), 0.0},
                    {fx(6, FxParam::CompRelease), normFromTime(0.1)}});
-        const double squeezed = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        const double squeezed = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
         setParams({{fx(6, FxParam::CompMakeup), 12.0}});
-        const double madeUp = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        const double madeUp = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
         setParams({{fx(6, FxParam::CompMakeup), 0.0}, {fx(6, FxParam::CompMix), 0.0}});
-        const double parallel = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        const double parallel = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
         std::printf("      compressor at 440 Hz: x%.3f at 4:1, x%.3f with +12 dB makeup, x%.3f at 0 %% mix\n", squeezed,
                     madeUp, parallel);
         check(squeezed > 0.17 && squeezed < 0.27 && std::abs(madeUp / squeezed - 3.98) < 0.15 &&
@@ -3208,11 +3208,11 @@ int main(int argc, char **argv) {
                    {mdUpIndex(6, 2), normFromDynRatio(1.0)},
                    {fx(6, FxParam::MdRms), 0.0},
                    {fx(6, FxParam::MdAttack), 0.0}});
-        const double untouched = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        const double untouched = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
         setParams({{mdAboveIndex(6, 1), -30.0}, {mdDownIndex(6, 1), normFromDynRatio(4.0)}});
-        const double midSqueezed = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        const double midSqueezed = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
         setParams({{mdGainIndex(6, 1), 6.0}});
-        const double midLifted = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        const double midLifted = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
         std::printf("      3-band dynamics at 440 Hz: x%.3f with the mid band idle, x%.3f at 4:1, x%.3f with +6 dB\n",
                     untouched, midSqueezed, midLifted);
         check(std::abs(untouched - 1.0) < 0.05 && midSqueezed > 0.15 && midSqueezed < 0.3 &&
@@ -3225,11 +3225,11 @@ int main(int argc, char **argv) {
                    {peqFreqIndex(4, 0), normFromCutoff(440.0)},
                    {peqGainIndex(4, 0), 12.0},
                    {peqGainIndex(4, 1), 0.0}});
-        const double oneBell = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        const double oneBell = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
         setParams({{type(5), static_cast<double>(FxType::ParamEq)},
                    {peqFreqIndex(5, 0), normFromCutoff(440.0)},
                    {peqGainIndex(5, 0), 12.0}});
-        const double twoBells = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        const double twoBells = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
         std::printf("      +12 dB bell at 440 Hz: x%.2f, two of them x%.2f\n", oneBell, twoBells);
         check(std::abs(oneBell - 3.98) < 0.3, "a parametric EQ band boosts at its frequency");
         check(std::abs(twoBells - oneBell * oneBell) < 1.0, "two instances of an effect both work");
@@ -3238,9 +3238,9 @@ int main(int argc, char **argv) {
                    {peqTypeIndex(4, 0), static_cast<double>(PeqType::LowCut)},
                    {peqFreqIndex(4, 0), normFromCutoff(2000.0)},
                    {peqQIndex(4, 0), normFromQ(0.7071)}});
-        const double lowCut = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        const double lowCut = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
         setParams({{peqTypeIndex(4, 0), static_cast<double>(PeqType::LowShelf)}, {peqFreqIndex(4, 0), normFromCutoff(4000.0)}});
-        const double lowShelf = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        const double lowShelf = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
         std::printf("      440 Hz through a low cut at 2 kHz: x%.3f, a +12 dB low shelf at 4 kHz: x%.2f\n", lowCut, lowShelf);
         check(lowCut < 0.1 && std::abs(lowShelf - 3.98) < 0.4, "the EQ's bands also cut and shelve");
         setParams({{peqTypeIndex(4, 0), static_cast<double>(PeqType::Peak)}});
@@ -3251,11 +3251,11 @@ int main(int argc, char **argv) {
                        {peqFreqIndex(4, 0), normFromCutoff(440.0)},
                        {peqFreqIndex(4, 2), normFromCutoff(440.0)},
                        {peqGainIndex(4, 2), -12.0}});
-            const double thirdOff = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+            const double thirdOff = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
             setParams({{peqOnIndex(4, 2), 1.0}});
-            const double thirdOn = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+            const double thirdOn = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
             setParams({{peqOnIndex(4, 0), 0.0}});
-            const double firstOff = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+            const double firstOff = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
             std::printf("      440 Hz under a +12 dB bell: x%.2f, a -12 dB third band on too x%.2f, the first band "
                         "off x%.3f\n", thirdOff, thirdOn, firstOff);
             check(std::abs(thirdOff - 3.98) < 0.4 && std::abs(thirdOn - 1.0) < 0.15 &&
@@ -3268,9 +3268,9 @@ int main(int argc, char **argv) {
             setParams({{peqGainIndex(4, 0), 12.0},
                        {peqTypeIndex(4, 0), static_cast<double>(PeqType::Notch)},
                        {peqQIndex(4, 0), normFromQ(1.0)}});
-            const double notched = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+            const double notched = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
             setParams({{peqFreqIndex(4, 0), normFromCutoff(880.0)}});
-            const double octaveUp = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+            const double octaveUp = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
             std::printf("      440 Hz through a notch on it: x%.3f, through one an octave up x%.2f\n", notched,
                         octaveUp);
             check(notched < 0.05 && std::abs(octaveUp - 0.83) < 0.06,
@@ -3281,11 +3281,11 @@ int main(int argc, char **argv) {
         // at half is x2.49, and at 0 nothing.
         {
             setParams({{peqFreqIndex(4, 0), normFromCutoff(440.0)}, {fx(4, FxParam::PeqAmount), 0.5}});
-            const double half = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+            const double partway = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
             setParams({{fx(4, FxParam::PeqAmount), 0.0}});
-            const double none = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
-            std::printf("      a +12 dB bell on 440 Hz at half its Amount: x%.2f, at none x%.3f\n", half, none);
-            check(std::abs(half - 2.49) < 0.15 && std::abs(none - 1.0) < 0.02,
+            const double none = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
+            std::printf("      a +12 dB bell on 440 Hz at half its Amount: x%.2f, at none x%.3f\n", partway, none);
+            check(std::abs(partway - 2.49) < 0.15 && std::abs(none - 1.0) < 0.02,
                   "the EQ's Amount mixes it with what goes in");
             setParams({{fx(4, FxParam::PeqAmount), 1.0}});
         }
@@ -3418,17 +3418,17 @@ int main(int argc, char **argv) {
                    {fx(7, FxParam::PhaserStages), 2.0},
                    {fx(7, FxParam::PhaserFeedback), 0.0},
                    {fx(7, FxParam::PhaserMix), 1.0}});
-        const double phased = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        const double phased = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
         setParams({{fx(7, FxParam::PhaserMix), 0.0}});
-        const double unphased = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        const double unphased = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
         setParams({{type(7), static_cast<double>(FxType::Flanger)},
                    {fx(7, FxParam::FlangerDepth), 0.0},
                    {fx(7, FxParam::FlangerDelay), normFromTime(1.0 / 880.0)},
                    {fx(7, FxParam::FlangerFeedback), 0.0},
                    {fx(7, FxParam::FlangerMix), 1.0}});
-        const double flanged = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        const double flanged = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
         setParams({{fx(7, FxParam::FlangerMix), 0.5}});
-        const double halfFlanged = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        const double halfFlanged = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
         std::printf("      440 Hz through a notch on it: x%.3f phaser (x%.3f at 0 %% mix), x%.3f flanger (x%.3f at "
                     "50 %% mix)\n",
                     phased, unphased, flanged, halfFlanged);
@@ -3515,7 +3515,7 @@ int main(int argc, char **argv) {
             setParams({{fx(7, FxParam::UtilityPan), 0.0}, {fx(7, FxParam::UtilityWidth), 0.0}});
             const auto narrow = levels(69);
             setParams({{fx(7, FxParam::UtilityWidth), 2.0}});
-            const auto wide = levels(69);
+            const auto widened = levels(69);
             setParams({{fx(7, FxParam::UtilityWidth), 1.0}, {fx(7, FxParam::UtilityMonoBass), normFromCutoff(500.0)}});
             const auto lowMono = levels(45), highMono = levels(93); // A2 and A6 around a high-pass at 500 Hz
             setParams({{fx(7, FxParam::UtilityMonoBass), 0.0}});
@@ -3526,7 +3526,7 @@ int main(int argc, char **argv) {
                         "half left R x%.3f; sides x%.2g at 0 %% width, x%.3f at 200 %%; mono bass at 500 Hz: A2's "
                         "sides x%.3f, A6's x%.3f\n",
                         quieter[0] / asIs[0], louder[0] / asIs[0], silent[0] + silent[1], toRight[0], toRight[1] / asIs[1],
-                        halfLeft[1] / asIs[1], narrow[3] / asIs[3], wide[3] / asIs[3], lowMono[3] / lowAsIs[3],
+                        halfLeft[1] / asIs[1], narrow[3] / asIs[3], widened[3] / asIs[3], lowMono[3] / lowAsIs[3],
                         highMono[3] / highAsIs[3]);
             const double middle = 0.125 * kMaxUtilityGain; // -6 dB
             check(std::abs(quieter[0] / asIs[0] / middle - 1.0) < 0.01 &&
@@ -3538,7 +3538,7 @@ int main(int argc, char **argv) {
                       std::abs(halfLeft[0] / asIs[0] - 1.0) < 0.01 && std::abs(halfLeft[1] / asIs[1] - 0.5) < 0.01,
                   "the utility's Pan turns the other side down");
             check(narrow[3] < 1e-4 * narrow[2] && std::abs(narrow[2] / asIs[2] - 1.0) < 0.01 &&
-                      std::abs(wide[3] / asIs[3] - 2.0) < 0.02 && std::abs(wide[2] / asIs[2] - 1.0) < 0.01,
+                      std::abs(widened[3] / asIs[3] - 2.0) < 0.02 && std::abs(widened[2] / asIs[2] - 1.0) < 0.01,
                   "the utility's Width scales the sides and keeps the middle");
             check(lowMono[3] / lowAsIs[3] < 0.1 && std::abs(lowMono[2] / lowAsIs[2] - 1.0) < 0.01 &&
                       std::abs(highMono[3] / highAsIs[3] - 1.0) < 0.05,
@@ -3563,7 +3563,7 @@ int main(int argc, char **argv) {
         // stay together in the middle. Its bass goes past the voices: with them alone and spread full, an A1's sides
         // are far narrower against it than an A4's.
         setParams({{type(7), static_cast<double>(FxType::Chorus)}, {fx(7, FxParam::ChorusMix), 0.0}});
-        const double chorusDry = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        const double chorusDry = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
         const auto chorusLevels = [&](int16_t key) { // the RMS of the middle and the sides
             const clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 82, key);
             runBlock({&on.header});
@@ -3694,7 +3694,7 @@ int main(int argc, char **argv) {
                    {fx(7, FxParam::DisperserStages), 16.0},
                    {fx(7, FxParam::DisperserPinch), 0.8},
                    {fx(7, FxParam::DisperserMix), 1.0}});
-        const double dispersed = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        const double dispersed = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
         std::printf("      disperser on a 440 Hz sine: level x%.3f\n", dispersed);
         check(dispersed > 0.93 && dispersed < 1.07, "the disperser keeps a steady tone at its level");
 
@@ -4251,7 +4251,7 @@ int main(int argc, char **argv) {
                 SendMessageW(editor, WM_LBUTTONDBLCLK, MK_LBUTTON, p);
                 SendMessageW(editor, WM_LBUTTONUP, 0, p);
             };
-            const int start = seqNoteIndex(0, 0, SeqNoteParam::Start), length = seqNoteIndex(0, 0, SeqNoteParam::Length);
+            const int onset = seqNoteIndex(0, 0, SeqNoteParam::Start), length = seqNoteIndex(0, 0, SeqNoteParam::Length);
             auto read = [&](int index) {
                 double v = 0.0;
                 params->get_value(plugin, idOfIndex(index), &v);
@@ -4261,7 +4261,7 @@ int main(int argc, char **argv) {
             SendMessageW(editor, WM_LBUTTONUP, 0, at(308.0f, 116.0f));
             const LPARAM edge = at(382.0f, 290.0f); // the grid's left edge, on C4's row
             doubleClick(edge);
-            const double unzoomed = read(start);
+            const double unzoomed = read(onset);
             const bool put = read(length) > 0.0;
             doubleClick(edge); // taken away again
             POINT middle{std::lround(770.0f * 0.75f), std::lround(300.0f * 0.75f)};
@@ -4269,7 +4269,7 @@ int main(int argc, char **argv) {
             const bool ctrlUp = GetKeyState(VK_CONTROL) >= 0;
             SendMessageW(editor, WM_MOUSEWHEEL, MAKEWPARAM(MK_CONTROL, 3 * WHEEL_DELTA), MAKELPARAM(middle.x, middle.y));
             doubleClick(edge);
-            const double zoomed = read(start);
+            const double zoomed = read(onset);
             doubleClick(edge);
             SendMessageW(editor, WM_LBUTTONDOWN, MK_LBUTTON, at(64.0f, 116.0f)); // back to ROUTING
             SendMessageW(editor, WM_LBUTTONUP, 0, at(64.0f, 116.0f));

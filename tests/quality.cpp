@@ -4968,10 +4968,10 @@ int main() {
                             : 0.0f;
                 fx.process(left.data(), right.data(), kBlock, p, 120.0, 60.0);
                 for (uint32_t s = 0; s < kBlock; ++s) {
-                    const double level = std::max(std::abs(left[s]), std::abs(right[s]));
+                    const double peak = std::max(std::abs(left[s]), std::abs(right[s]));
                     double &into = done < second ? before : done < second + second / 4 ? during : after;
                     if (done < 2 * second)
-                        into = std::max(into, level);
+                        into = std::max(into, peak);
                 }
             }
             double last = 0.0; // the last block's peak, a second after the sine stopped

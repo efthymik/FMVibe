@@ -618,8 +618,10 @@ inline double filterResponse(FilterType type, int slope, double cutoffHz, double
         break;
     }
     case FilterType::Morph: { // each stage's low-pass, band-pass and high-pass, by its share; a Butterworth after for 24
-        const MorphWeights w = morphWeights(morph, mode);
-        auto shared = [&](double k) { return (w.low + w.band * k * s + w.high * s * s) / (s * s + k * s + 1.0); };
+        const MorphWeights share = morphWeights(morph, mode);
+        auto shared = [&](double k) {
+            return (share.low + share.band * k * s + share.high * s * s) / (s * s + k * s + 1.0);
+        };
         h = shared(filterDamping(resonance));
         if (slope == 3)
             h *= shared(std::numbers::sqrt2);
