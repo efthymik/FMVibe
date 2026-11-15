@@ -1491,7 +1491,22 @@ void View::seqDrag(Point p) {
         if (d.anchor < 0)
             break;
         const double level = std::clamp(std::round(kNewVelocity * 127.0 + (drag_.start.y - p.y)), 1.0, 127.0);
-        editMany({{seqNoteIndex(pattern, d.anchor, SeqNoteParam::Velocity), level / 127.0}});
+        std::vector<std::pair<int, double>> changes{{seqNoteIndex(pattern, d.anchor, SeqNoteParam::Velocity), level / 127.0}};
+        if (d.extend && !d.origin.empty()) { // across: right moves its end, left its start, the other end staying
+            const SeqNote &o = d.origin.front();
+            const double moved = seqStepAt(p.x) - d.grabStep;
+            const double end = o.start + o.length;
+            const double shortest = grid > 0.0 ? std::min(grid, o.length) : kShortestNote;
+            if (moved >= 0.0) {
+                const double length = std::clamp(onGrid(end + moved) - o.start, shortest, static_cast<double>(kSeqMaxSteps));
+                changes.push_back({seqNoteIndex(pattern, d.anchor, SeqNoteParam::Length), length});
+            } else {
+                const double start = std::clamp(onGrid(o.start + moved), std::max(0.0, end - kSeqMaxSteps), end - shortest);
+                changes.push_back({seqNoteIndex(pattern, d.anchor, SeqNoteParam::Start), start});
+                changes.push_back({seqNoteIndex(pattern, d.anchor, SeqNoteParam::Length), end - start});
+            }
+        }
+        editMany(changes);
         break;
     }
     case SeqDrag::Mode::Paint: { // a note in each cell of the grid the mouse goes over that has none starting there
@@ -1628,6 +1643,8 @@ void View::seqRelease(Point) {
     if (mode == SeqDrag::Mode::Move || mode == SeqDrag::Mode::ResizeStart ||
         (mode == SeqDrag::Mode::Field && (seqDrag_.anchor == 0 || seqDrag_.anchor == 4)))
         seqDropCovered(seqPicked()); // in the drag's undo step, which closes after this
+    if (seqDrag_.extend && drag_.moved) // a note extended backward may cover others
+        seqDropCovered({seqDrag_.anchor});
     seqDrag_ = SeqDrag{};
 }
 
@@ -1648,6 +1665,11 @@ bool View::seqDoubleClick(const Widget &w, Point p, Modifiers mods) {
             seqDrag_ = SeqDrag{};
             seqDrag_.mode = SeqDrag::Mode::Velocity;
             seqDrag_.anchor = slot;
+            seqDrag_.extend = true;
+            seqDrag_.grabStep = seqStepAt(p.x);
+            for (const SeqNote &n : seqNotes())
+                if (n.slot == slot)
+                    seqDrag_.origin.push_back(n);
             drag_.kind = DragKind::Seq;
             drag_.step = true;
             drag_.start = drag_.now = p;

@@ -5716,6 +5716,29 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         check(velocity == 120 && upDown && noteAt(14.0, 62) < 0,
               "a double-click held and dragged up and down sets the new note's velocity, in its undo step");
     }
+    // Held after a double-click, the mouse across sets the length: to the right the end follows it, to the left the start,
+    // the other end staying; the velocity still goes with up and down.
+    {
+        const Point empty = at(14.3, 62);
+        click(view, empty);
+        view.doubleClick(empty, {});
+        view.mouseMove(at(16.3, 62), {});
+        view.mouseUp(at(16.3, 62), {});
+        const int right = noteAt(14.0, 62);
+        const double rightLength = right >= 0 ? field(right, SeqNoteParam::Length) : -1.0;
+        view.undo();
+        click(view, empty);
+        view.doubleClick(empty, {});
+        view.mouseMove(at(12.3, 62), {});
+        view.mouseUp(at(12.3, 62), {});
+        const int left = noteAt(12.0, 62);
+        const double leftLength = left >= 0 ? field(left, SeqNoteParam::Length) : -1.0;
+        view.undo();
+        std::printf("      a note put down by a double-click, dragged 2 steps right: length %.2f, left: start 12, length %.2f\n",
+                    rightLength, leftLength);
+        check(std::abs(rightLength - 3.0) < 1e-6 && std::abs(leftLength - 3.0) < 1e-6 && noteAt(14.0, 62) < 0,
+              "a double-click held and dragged across sets the new note's length, to the right its end and to the left its start");
+    }
     // Ctrl+C keeps the notes picked, and Ctrl+V puts them down as they were but for where: at the step under the mouse
     // on the roll, picked, and with the mouse off it after what was copied or pasted last; Ctrl+X takes them away too,
     // and with the mouse off the roll Ctrl+V puts them back. Each an undo step; with nothing picked, Ctrl+C and Ctrl+X go

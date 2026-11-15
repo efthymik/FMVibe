@@ -713,7 +713,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     rendered pixels) dragged a BPM every 2 px (a tenth with Shift), the wheel stepping it a BPM a notch onto whole
     ones (a tenth with Shift), held to 20-999, and typed after a double-click or Ctrl+Click (`BPM` after it taken,
     text that isn't a tempo and Escape leaving it), none of it touching the patch or its undo history;
-  - the SEQ tab, between FX and MODS: its card and an empty roll, and a dot on the tab while the sequencer is on (read
+  - the SEQ tab, between FX and MODS (a note put down by a double-click and held dragged across lengthening it, to the right its end, to the left its start): its card and an empty roll, and a dot on the tab while the sequencer is on (read
     off the rendered pixels), as on FX's while an effect in the line is switched on; a double-click putting a note down on its step (a
     step long at 1/16) and on the note deleting it; the notes and the playhead where the telemetry puts it (read off
     the rendered pixels); a note the playhead reaches glowing, and not with the glow setting off (read off the rendered
