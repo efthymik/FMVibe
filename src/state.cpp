@@ -292,7 +292,7 @@ void layoutFields(Io &io, Layout &ui) {
     io.numbers(ui.boxY, 0.0f, 1.0f);
     io.number(ui.selectedNode, 0.0f, gui::kNodes - 1.0f, truncated<int>);
     io.number(ui.zoom, 0.5f, 3.0f);
-    io.number(ui.view, 0.0f, 3.0f, rounded<gui::RoutingView>);
+    io.number(ui.view, 0.0f, static_cast<float>(gui::RoutingView::Seq), rounded<gui::RoutingView>);
     io.number(ui.sourcesCollapsed, 0.0f, 1.0f, [](float value) { return value >= 0.5f; });
     // The source order lists every place once; anything else falls back to the default.
     io.numbers(ui.sourceOrder, 0.0f, kMaxSources - 1.0f, rounded<int>, everyPlaceOnce);
@@ -325,6 +325,12 @@ void layoutFields(Io &io, Layout &ui) {
     io.number(ui.fxGraphView, 0.0f, 1.0f, [](float value) { return value >= 0.5f; });
     io.numbers(ui.splitBand, 0.0f, 2.0f, rounded<int>); // 0 low, 1 high, 2 middle
     io.number(ui.splitsFolded, 0.0f, 15.0f, rounded<uint32_t>);
+    // The SEQ view's roll: drawing or selecting, its snap, its lane, its lowest row and its folding.
+    io.number(ui.seqDraw, 0.0f, 1.0f, [](float value) { return value >= 0.5f; });
+    io.number(ui.seqSnap, 0.0f, gui::kSeqSnapCount - 1.0f, rounded<int>);
+    io.number(ui.seqLane, 0.0f, static_cast<float>(gui::SeqLane::Count) - 1.0f, rounded<gui::SeqLane>);
+    io.number(ui.seqLow, 0.0f, 127.0f, rounded<int>);
+    io.number(ui.seqFold, 0.0f, 1.0f, [](float value) { return value >= 0.5f; });
 }
 
 } // namespace

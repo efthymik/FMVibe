@@ -32,6 +32,7 @@ set(FMVIBE_ENGINE_SOURCES
     src/uistrings.cpp
     src/uistrings.h
     src/uistrings.inc
+    src/sequencer.cpp
     src/synth.cpp
     src/synth.h
     src/zerobuffer.cpp
@@ -111,6 +112,7 @@ add_library(fmvibe-core STATIC
     src/gui/icons.cpp
     src/gui/icons.h
     src/gui/mods.cpp
+    src/gui/seq.cpp
     src/gui/layout.h
     src/gui/routing.cpp
     src/gui/routing.h

@@ -6,6 +6,7 @@
 #include "noise.h"
 #include "oversampler.h"
 #include "params.h"
+#include "sequencer.h"
 #include "wavetable.h"
 
 #include <algorithm>
@@ -144,6 +145,10 @@ struct Telemetry {
     // The output scope's last whole span (see kOutScopeBins), as the output's level: all 0 while the synth doesn't
     // analyze (see Synth::setAnalyzing()).
     std::array<float, kOutScopeBins> outScope{};
+    // Where the sequencer plays, in its pattern's steps, and which pattern; -1 while it doesn't (see Sequencer).
+    float seqPosition = -1.0f;
+    int seqPattern = 0;
+    std::array<uint32_t, 4> seqKeys{}; // the keys of the notes the sequencer holds on, as `keys` has them
 
     bool keyDown(int key) const { return key >= 0 && key < 128 && (keys[key / 32] >> (key % 32) & 1u) != 0; }
 };
@@ -256,6 +261,8 @@ public:
     // keeps it alive; with note ids, an overlapping note on the same key is a voice of its own.
     bool isActive(const NoteRef &note) const;
     int activeVoiceCount() const;
+    // Whether the sequencer may start notes of its own (see Sequencer::wantsProcessing()), or holds some on.
+    bool sequencerAwake() const { return seq_.wantsProcessing() || seq_.sounding(); }
     // Effects still sounding after the voices ended (delay echoes).
     bool effectsRinging() const { return effects_.ringing(); }
     // Whether the voice filters, parametric EQs and filter effects measure their output for the editor, as do the effects
@@ -276,6 +283,18 @@ public:
     void clearEndedNotes() { ended_.clear(); }
 
 private:
+    // What render() does for each stretch between the sequencer's notes.
+    void renderSpan(float *left, float *right, uint32_t frames, const ParamValues &params, bool sameParams);
+    void applySeqEvent(const SeqEvent &e);
+    void applySeqEvents(int count);
+    // The host's notes the sequencer took as keys (in Key and Latch), which no voice plays: they end as their keys come
+    // up, or a reset, choke or All Sound Off ends them. Whether any matched `match`; `report` reports their ends.
+    bool releaseKeys(const NoteRef &match);
+    Sequencer seq_;
+    std::array<SeqEvent, Sequencer::kMaxEvents> seqEvents_{};
+    std::array<NoteRef, 64> keysTaken_{};
+    int keysTakenCount_ = 0;
+
     // An operator's unison copies: each one's phase increment, and apart from those, which follow its pitch, their
     // stereo gains, which follow only the spread, the number of copies and how they spread (see unison.h and
     // renderBlock()). Each copy's weight in the mono sum other operators hear goes beside them, in the voice.
@@ -513,6 +532,11 @@ private:
     int capacity_ = 0;      // voices that may play; voices_ has as many more (4 to 32) for stolen ones to fade out in
     double bend_ = 0.0;
     double bendSet_ = 0.0; // the Pitch Bend param as the last render() had it (see Telemetry::bendSet)
+    // What the sequencer's curves add as its pattern plays (see Sequencer::curve()): to the pitch bend, and to the Mod
+    // Wheel param, as the host's modulation of it would; 0 while they don't.
+    double seqBend_ = 0.0;
+    double seqWheel_ = 0.0;
+    void followSeqCurves();
     std::array<double, 128> cc_{}; // the MIDI controllers' values, 0..1
     double channelPressure_ = 0.0;
     // MPE (see setMpe()): whether it is on, its bend range, and each member channel's bend (-1..1), pressure (0..1, or
@@ -574,7 +598,8 @@ private:
     // A param as set with the host's modulation for every voice, in its range: how the macros, the mod wheel and the
     // note source read their knobs, depths and range.
     double hostValue(const ParamValues &params, int index) const {
-        return std::clamp(params[index] + globalMod_[index], table_[index].min, table_[index].max);
+        const double wheel = index == paramIndex(GlobalParam::ModWheel) ? seqWheel_ : 0.0;
+        return std::clamp(params[index] + globalMod_[index] + wheel, table_[index].min, table_[index].max);
     }
     // The params the voices read, with the host's modulation for every voice and the macros' added: as summed
     // (voiceBase_), and in their ranges (voiceClamped_). None of it changes during a render(), so it is worked out

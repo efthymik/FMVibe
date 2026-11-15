@@ -22,7 +22,16 @@ const velocityLabel = document.getElementById('velocity');
 const ctx = canvas.getContext('2d');
 const draw = createCanvas2d(ctx);
 
-const CURSORS = ['default', 'pointer', 'ns-resize', 'ew-resize', 'move', 'text']; // gui::CursorKind
+// gui::CursorKind: the last a pencil, its tip at the lower left the hot spot.
+const PEN_CURSOR =
+  'url("data:image/svg+xml;utf8,' +
+  encodeURIComponent(
+    '<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'24\' height=\'24\' viewBox=\'0 0 24 24\'>' +
+      '<path d=\'M2 22l1.5-5.5L16 4l4 4L7.5 20.5z\' fill=\'black\' stroke=\'white\' stroke-width=\'1.5\' ' +
+      'stroke-linejoin=\'round\'/></svg>'
+  ) +
+  '") 2 22, crosshair';
+const CURSORS = ['default', 'pointer', 'ns-resize', 'ew-resize', 'move', 'text', PEN_CURSOR];
 const TYPING_KEYS = { // View::Key
   Enter: 0, NumpadEnter: 0, Escape: 1, Backspace: 2, Delete: 3, ArrowLeft: 4, ArrowRight: 5, Home: 6, End: 7,
   ArrowUp: 9, ArrowDown: 10,
@@ -140,9 +149,10 @@ const host = {
     pending = []; // all of them, as they are now
     send({type: 'all', values}, [values.buffer]);
   },
-  note(key, on, velocity = 100) { // the editor's keyboard plays at 100, as the plugin's does
+  // The editor's keyboard plays at 100, as the plugin's does; `audition`, a note the SEQ view plays to be heard alone.
+  note(key, on, velocity = 100, audition = false) {
     flush(); // after the edits made before it
-    send({type: 'note', key, on, velocity});
+    send({type: 'note', key, on, velocity, audition});
   },
   scope(op, cycles) {
     scopeAsked = {type: 'scope', op, cycles};
@@ -353,7 +363,7 @@ canvas.addEventListener('wheel', (e) => {
     return;
   const [x, y] = viewPoint(e);
   if (delta !== 0)
-    ui._ui_wheel(x, y, -notchesOf(e, delta), e.shiftKey, ctrlOf(e));
+    ui._ui_wheel(x, y, -notchesOf(e, delta), e.shiftKey, ctrlOf(e), e.altKey);
   if (across !== 0)
     ui._ui_wheel_across(x, y, notchesOf(e, across));
   afterInput();
@@ -610,6 +620,15 @@ window.addEventListener('keydown', (e) => {
       ui._ui_undo();
     afterInput();
     return;
+  }
+  // The SEQ view's keys: Ctrl+A picks every note, the arrows move those picked (Shift: an octave up or down).
+  if (!e.altKey && ((ctrlOf(e) && e.code === 'KeyA') || (!ctrlOf(e) && (e.key.startsWith('Arrow') || e.key === 'Delete')))) {
+    const key = e.code === 'KeyA' ? SELECT_ALL : TYPING_KEYS[e.key];
+    if (key !== undefined && ui._ui_seq_key(key, e.shiftKey ? 1 : 0) !== 0) {
+      e.preventDefault();
+      afterInput();
+      return;
+    }
   }
   if (ctrlOf(e) || e.altKey)
     return;

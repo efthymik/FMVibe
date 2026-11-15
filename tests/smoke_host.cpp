@@ -344,6 +344,7 @@ int main(int argc, char **argv) {
     if (!params || !state || !remote)
         return 1;
 
+    std::printf("      %u of the %d params given to hosts\n", params->count(plugin), kParamCount);
     check(params->count(plugin) < static_cast<uint32_t>(kParamCount) && paramInfosAreSane(plugin, params),
           "param infos: unique ids, names, defaults within range");
     {
@@ -2023,6 +2024,60 @@ int main(int argc, char **argv) {
         setParams({{paramIndex(0, SourceParam::Shape), 0.0}, {paramIndex(0, SourceParam::Type), 0.0},
                    {paramIndex(0, SourceParam::Unipolar), 0.0}, {paramIndex(0, OpParam::Out), 1.0},
                    {slotTargetIndex(0, 0), 0.0}, {slotAmountIndex(0, 0), 0.0}});
+    }
+
+    // The sequencer. In Host, it plays with the host's transport: with no key held, its note on the first step sounds,
+    // processing doesn't sleep while it may start notes, and no NOTE_END comes for a note of its own. In Key, a key held
+    // plays the pattern, and its NOTE_END comes once it is let go.
+    {
+        clap_event_transport_t transport{};
+        transport.header = {sizeof(transport), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_TRANSPORT, 0};
+        transport.flags = CLAP_TRANSPORT_HAS_TEMPO | CLAP_TRANSPORT_IS_PLAYING | CLAP_TRANSPORT_HAS_BEATS_TIMELINE;
+        transport.tempo = 120.0;
+        double beats = 0.0;
+        proc.transport = &transport;
+        auto playFor = [&](double seconds, std::vector<const clap_event_header_t *> events = {}) {
+            float peak = 0.0f;
+            for (uint32_t b = 0; b < static_cast<uint32_t>(seconds * kSampleRate / kBlock); ++b) {
+                transport.song_pos_beats = static_cast<clap_beattime>(std::llround(beats * CLAP_BEATTIME_FACTOR));
+                peak = std::max(peak, runBlock(b == 0 ? events : std::vector<const clap_event_header_t *>{}));
+                beats += kBlock / kSampleRate * transport.tempo / 60.0;
+            }
+            return peak;
+        };
+        out.noteEnds.clear();
+        setParams({{paramIndex(SeqParam::Enabled), 1.0},
+                   {seqNoteIndex(0, 0, SeqNoteParam::Start), 0.0},
+                   {seqNoteIndex(0, 0, SeqNoteParam::Length), 2.0},
+                   {seqNoteIndex(0, 0, SeqNoteParam::Pitch), 69.0}});
+        beats = 0.0;
+        const float hostPlayed = playFor(0.2);
+        const float hostAfter = playFor(1.0); // the note ended at 0.25 s, the next comes at 2 s
+        const bool awake = status == CLAP_PROCESS_CONTINUE;
+        const bool noOwnEnds = out.noteEnds.empty();
+        std::printf("      sequencer with the transport: %.3f, then %.4f, %s\n", hostPlayed, hostAfter,
+                    awake ? "still processing" : "asleep");
+        check(hostPlayed > 0.05f && awake && noOwnEnds,
+              "the sequencer plays with the host's transport, keeps processing and reports no ends of its own");
+
+        transport.flags = CLAP_TRANSPORT_HAS_TEMPO; // stopped
+        setParams({{paramIndex(SeqParam::Play), static_cast<double>(SeqPlay::Key)}});
+        const float idle = playFor(0.5);
+        const clap_event_note_t keyOn = noteEvent(CLAP_EVENT_NOTE_ON, 7, 64);
+        const clap_event_note_t keyOff = noteEvent(CLAP_EVENT_NOTE_OFF, 7, 64);
+        const float keyed = playFor(0.2, {&keyOn.header});
+        const bool heldNoEnd = out.noteEnds.empty();
+        playFor(0.1, {&keyOff.header});
+        const bool keyEnded = out.noteEnds.size() == 1 && out.noteEnds[0].note_id == 7;
+        const float after = (playFor(1.0), playFor(0.1));
+        check(idle == 0.0f && keyed > 0.05f && heldNoEnd && keyEnded && after == 0.0f,
+              "in Key, a key held plays the pattern, and its end is reported as it is let go");
+        setParams({{paramIndex(SeqParam::Enabled), 0.0},
+                   {paramIndex(SeqParam::Play), 0.0},
+                   {seqNoteIndex(0, 0, SeqNoteParam::Length), 0.0},
+                   {seqNoteIndex(0, 0, SeqNoteParam::Pitch), 60.0}});
+        out.noteEnds.clear();
+        proc.transport = nullptr;
     }
 
     // Hold: with a short decay to silence, A still sounds 0.2 s in while a 0.3 s hold lasts.
@@ -4180,6 +4235,45 @@ int main(int argc, char **argv) {
         params->get_value(plugin, idOfIndex(volume), &volumeKept);
         check(volumeKept == volumeAfter, "a value from the host just after the plugin told it one is not taken");
         in.events.clear();
+
+        // The SEQ tab: the wheel with Ctrl in its message's keys (and this thread's own idea of Ctrl up, as while the
+        // host has the keyboard) zooms the roll in about its middle, so a double-click at its left edge puts a note
+        // further on than step 0, where it put one before. (Coordinates in view units, scaled by 0.75.)
+        if (editor) {
+            auto at = [](float x, float y) { return MAKELPARAM(std::lround(x * 0.75f), std::lround(y * 0.75f)); };
+            auto doubleClick = [&](LPARAM p) {
+                SendMessageW(editor, WM_LBUTTONDOWN, MK_LBUTTON, p);
+                SendMessageW(editor, WM_LBUTTONUP, 0, p);
+                SendMessageW(editor, WM_LBUTTONDBLCLK, MK_LBUTTON, p);
+                SendMessageW(editor, WM_LBUTTONUP, 0, p);
+            };
+            const int start = seqNoteIndex(0, 0, SeqNoteParam::Start), length = seqNoteIndex(0, 0, SeqNoteParam::Length);
+            auto read = [&](int index) {
+                double v = 0.0;
+                params->get_value(plugin, idOfIndex(index), &v);
+                return v;
+            };
+            SendMessageW(editor, WM_LBUTTONDOWN, MK_LBUTTON, at(308.0f, 116.0f)); // the SEQ tab
+            SendMessageW(editor, WM_LBUTTONUP, 0, at(308.0f, 116.0f));
+            const LPARAM edge = at(382.0f, 290.0f); // the grid's left edge, on C4's row
+            doubleClick(edge);
+            const double unzoomed = read(start);
+            const bool put = read(length) > 0.0;
+            doubleClick(edge); // taken away again
+            POINT middle{std::lround(770.0f * 0.75f), std::lround(300.0f * 0.75f)};
+            ClientToScreen(editor, &middle); // the wheel's position comes on the screen
+            const bool ctrlUp = GetKeyState(VK_CONTROL) >= 0;
+            SendMessageW(editor, WM_MOUSEWHEEL, MAKEWPARAM(MK_CONTROL, 3 * WHEEL_DELTA), MAKELPARAM(middle.x, middle.y));
+            doubleClick(edge);
+            const double zoomed = read(start);
+            doubleClick(edge);
+            SendMessageW(editor, WM_LBUTTONDOWN, MK_LBUTTON, at(64.0f, 116.0f)); // back to ROUTING
+            SendMessageW(editor, WM_LBUTTONUP, 0, at(64.0f, 116.0f));
+            std::printf("      a note at the roll's left edge: step %.2f, zoomed in by Ctrl+wheel step %.2f\n", unzoomed,
+                        zoomed);
+            check(put && ctrlUp && unzoomed == 0.0 && zoomed >= 2.0 && read(length) == 0.0,
+                  "Ctrl in a wheel message's keys zooms the SEQ view's roll, whatever this thread thinks of Ctrl");
+        }
         Sleep(600); // and once that moment has passed, the host's values are taken again (checked below)
 
         // With nothing sounding, processing sleeps; but not while the editor shows a free LFO running on its own,
@@ -4790,6 +4884,8 @@ int main(int argc, char **argv) {
         for (int split = 0; split < kFxSplits; ++split)
             layout.push_back(static_cast<float>(split % 2 == 0)); // the band each split shows, some the high one
         layout.push_back(5.0f);                                   // splits' containers folded
+        // The SEQ view's roll: drawing, at 1/8, on the chance lane, from C2 up, folded to the scale.
+        layout.insert(layout.end(), {1.0f, 2.0f, 1.0f, 36.0f, 1.0f});
 
         MemoryStream big;
         auto put = [&](const void *data, size_t size) {

@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -16,8 +17,19 @@ namespace fmvibe::gui {
 constexpr int kNodes = kOps + kFilters + kShapers;
 
 // What the routing panel shows: the graph, the matrix (both edit the same
-// routing), the effects chain or every modulation (MODS). Saved by number: only append.
-enum class RoutingView { Graph, Matrix, Fx, Mods };
+// routing), the effects chain, every modulation (MODS) or the sequencer (SEQ, whose tab comes before MODS). Saved by
+// number: only append.
+enum class RoutingView { Graph, Matrix, Fx, Mods, Seq };
+
+// The grids the SEQ view's roll snaps notes to, in steps (0 off), as its snap list offers them.
+constexpr double kSeqSnaps[] = {0.0, 4.0, 2.0, 1.0, 0.5, 0.25, 4.0 / 3.0, 2.0 / 3.0};
+constexpr int kSeqSnapCount = static_cast<int>(std::size(kSeqSnaps));
+constexpr const char *kSeqSnapNames[] = {nullptr, "1/4", "1/8", "1/16", "1/32", "1/64", "1/8T", "1/16T"};
+static_assert(std::size(kSeqSnapNames) == std::size(kSeqSnaps));
+// The values the SEQ view's lane shows for each note: its velocity, or its chance.
+// What the lane under the roll shows: the notes' velocities or chances, or the pattern's pitch bend or mod wheel curve
+// (see SeqCurve). Stored by number: only append.
+enum class SeqLane { Velocity, Chance, Bend, ModWheel, Count };
 
 // What the lower half of an operator's page shows, one for every operator. Saved by number, so the tabs' order on
 // the page (Envelope, Unison, Warp, Inputs) is layout.h's opTab(). Warp is the WARP tab (its scope, warps and note
@@ -95,6 +107,14 @@ struct UiLayout {
     std::array<int, kFxSplits> splitBand{};
     // The splits' containers in the row folded to a narrow strip, a bit each; saved with the patch, but not undone.
     uint32_t splitsFolded = 0;
+    // The SEQ view's roll: whether a click draws (rather than selects), the grid it snaps to (kSeqSnaps), the lane it
+    // shows, the lowest pitch it shows, and whether it shows only the scale's rows. They belong to the editor, like the
+    // shape editor's grid.
+    bool seqDraw = false;
+    int seqSnap = 3; // 1/16
+    SeqLane seqLane = SeqLane::Velocity;
+    int seqLow = 48;
+    bool seqFold = false;
 };
 
 // What a preset or Init leaves as it is, taken from the layout before it: how big the editor is, which panels are
@@ -112,6 +132,11 @@ inline void keepEditorLayout(UiLayout &to, const UiLayout &from) {
     to.scopeCycles = from.scopeCycles;
     to.view = from.view;
     to.fxGraphView = from.fxGraphView;
+    to.seqDraw = from.seqDraw;
+    to.seqSnap = from.seqSnap;
+    to.seqLane = from.seqLane;
+    to.seqLow = from.seqLow;
+    to.seqFold = from.seqFold;
 }
 
 // How many empty modulations the MODS view keeps at most.
@@ -237,6 +262,9 @@ public:
     void redo();
     // When the host replaces the whole state, what the history would bring back is gone.
     void clearHistory();
+    // How many times the whole patch was replaced (a preset loaded, Init, the host's state), as clearHistory() counts
+    // them: the editor fits the SEQ view's roll to the notes of each.
+    uint64_t patchLoads() const { return patchLoads_; }
 
     virtual void telemetry(Telemetry &out) const = 0;
     virtual UiLayout &layout() = 0;
@@ -247,6 +275,9 @@ public:
 
     // The virtual keyboard: a MIDI note number (60 is middle C). (Its bend wheel is the Pitch Bend param, edited.)
     virtual void playNote(int note, bool on) = 0;
+    // A note the SEQ view plays to be heard (a key or a note clicked in its roll): that note alone, never the
+    // sequencer's pattern, as the keyboard's would in Key or Latch.
+    virtual void auditionNote(int note, bool on) { playNote(note, on); }
     // The operator whose output the scope shows (-1 while no scope is shown, so the audio thread captures nothing),
     // over how many of its cycles.
     virtual void setScope(int op, int cycles) = 0;
@@ -317,6 +348,11 @@ public:
     // (opaque), 0.75 to begin with; the user's too.
     virtual double linkIntensity() const = 0;
     virtual void setLinkIntensity(double amount) = 0;
+    // How strongly the SEQ view's roll draws its grid lines, 0 (none) to 1; kDefaultGridIntensity to begin with, the
+    // lines as they were before it could be set. The user's, like the glow.
+    static constexpr double kDefaultGridIntensity = 0.5;
+    virtual double gridIntensity() const { return kDefaultGridIntensity; }
+    virtual void setGridIntensity(double) {}
     // The tempo, for a host that stands in for a transport and lets the editor set it (the browser demo, and
     // fmvibe-uihost through FMVibe's own host extension, see src/hosttempo.h): the editor then shows it in the title
     // bar, to drag, scroll or type. A plugin host's tempo is its own, and the editor shows none. In BPM, kMinTempo to
@@ -360,6 +396,7 @@ private:
     int depth_ = 0;              // nested beginStep() calls
     bool applying_ = false;      // undo or redo setting values, which records nothing
     bool edited_ = false;        // see patchEdited()
+    uint64_t patchLoads_ = 0;    // see patchLoads()
     std::wstring preset_;        // see presetFile()
     bool presetSet_ = false;     // setPreset() was called in the open step
 };

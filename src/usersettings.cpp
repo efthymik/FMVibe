@@ -44,6 +44,8 @@ UserSettings readFile(const std::filesystem::path &file) {
             settings.handleSize = std::clamp(std::atoi(line.c_str() + 11), 0, kMaxHandleSize);
         else if (line.starts_with("linkIntensity="))
             settings.links = std::clamp(std::atof(line.c_str() + 14), 0.0, 1.0);
+        else if (line.starts_with("gridIntensity="))
+            settings.grid = std::clamp(std::atof(line.c_str() + 14), 0.0, 1.0);
         else if (line.starts_with("zoom="))
             settings.zoom = std::clamp(std::atof(line.c_str() + 5), 0.0, 3.0);
         else if (line.starts_with("examples="))
@@ -84,6 +86,8 @@ void writeUserSettings() {
         merged.handleSize = userSettings.handleSize;
     if (userSettings.links != asRead.links)
         merged.links = userSettings.links;
+    if (userSettings.grid != asRead.grid)
+        merged.grid = userSettings.grid;
     if (userSettings.zoom != asRead.zoom)
         merged.zoom = userSettings.zoom;
     merged.examples = std::max(merged.examples, userSettings.examples);
@@ -102,7 +106,7 @@ void writeUserSettings() {
     {
         std::ofstream out(part);
         out << "theme=" << merged.theme << "\nglowLevel=" << merged.glow << "\nhandleSize=" << merged.handleSize
-            << "\nlinkIntensity=" << merged.links << '\n';
+            << "\nlinkIntensity=" << merged.links << "\ngridIntensity=" << merged.grid << '\n';
         if (merged.hue >= 0.0)
             out << "hue=" << merged.hue << '\n';
         if (merged.zoom > 0.0)
