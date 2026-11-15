@@ -2120,7 +2120,7 @@ inline long ratioHundredths(double norm) { return std::clamp(std::lround(ratioFr
 // 8/1T, numbered -2 and -1 so that the numbers stored before them keep their note values; the effects' start at 0.
 constexpr int kDivisions = 27;
 constexpr int kSlowestDivision = -2;
-// Before state version 14, the sources' Division reached from 0 up only, so a modulation's depth on it loads scaled
+// Before state version 13, the sources' Division reached from 0 up only, so a modulation's depth on it loads scaled
 // (see readParams()).
 constexpr double kRetiredSourceDivisionSteps = kDivisions - 1.0;
 constexpr double kSourceDivisionSteps = kDivisions - 1.0 - kSlowestDivision;

@@ -10,6 +10,8 @@ feature.
 - Parameter ids, the wave, warp, unison curve and pan, filter type, effect type, source type, amp model, cabinet,
   mic, morph mode and fixed Mult lists, and the state layout are
   stored in host projects and preset files: follow the rules under [Plugin facts](#plugin-facts) when touching them.
+  The state version rises at most once between two tagged releases: look at `git diff <last tag> -- src/state.cpp`
+  before raising it, and add to the step already made if there is one.
 - Keep `ctest` green (the CLAP and VST3 smoke tests, audio quality, UI snapshots). New editor interactions get a
   replay in `tools/uishot.cpp`, new engine behavior a check in `tests/smoke_host.cpp` or `tests/quality.cpp`, and
   what only the VST3 plugin does a check in `tests/vst3_host.cpp`.
@@ -234,8 +236,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     it ran (its points and polarity kept), a version 12 state's as saved; and a version 12 state's depth on an
     operator's Unison Detune loading half as deep, as its range grew from 100 cents to 200, a version 13 state's as
     saved, and its Unison Pan loading Ramp, as its copies played, where a version 13 state without one loads
-    Alternate, the pan a new operator starts with; and a version 13 state's depth on a source's Division loading
-    26/28 as deep, as it grew two note values slower, a version 14 state's as saved;
+    Alternate, the pan a new operator starts with, and its depth on a source's Division loading 26/28 as deep, as it
+    grew two note values slower, a version 13 state's as saved;
   - the chorus's Voices (2, 6, 3, 2) and Spread (0, 100, 0 %) changed under a sine, all wet, gliding rather than
     clicking: no sample stepping further than the sine's own do; held still, an impulse coming out once a voice, at
     its place along Delay and as loud as 1 / sqrt(voices) (2 and 6); and swept, its voices together playing a sine at
@@ -1136,7 +1138,11 @@ itself.
   tells the host a param's value, it takes no value for that param from the host: Bitwig hands values back a
   little later, and taking them would flip a preset loaded meanwhile back to the one before, for a moment. VST3 hosts
   hand every edit back to the processor, which the same moment keeps out.
-- The state blob holds `(id, value)` pairs with a version number (currently 14: version 1's Volume loads 12 dB
+- The state version rises at most once between two tagged releases. A change that needs older states loaded
+  differently goes into the step already made since the last tag, if there is one (its comment in `src/state.cpp`
+  and the checks that load a state from before it), rather than adding another. States saved by a build between two
+  tags are not kept loading as they were: only released versions are.
+- The state blob holds `(id, value)` pairs with a version number (currently 13: version 1's Volume loads 12 dB
   lower, since Volume now gives back the 12 dB the voices go into the effects with; before version 3, a state in
   poly loads Legato off, since it did nothing there then and acts there now; before version 4, a modulation's depth on an
   envelope's attack, decay or release loads scaled by `kMaxEnvNorm / (kMaxEnvNorm - kMinEnvNorm)`, since their
@@ -1156,7 +1162,7 @@ itself.
   with the retired Custom shape loads as a Curve source running as it ran (`loadCurveSources()`); before version 13,
   a modulation's depth on an operator's Unison Detune loads scaled by `kRetiredMaxUnisonDetune / kMaxUnisonDetune`,
   since its range now reaches 200 cents rather than 100, and its Unison Pan, Alternate to begin with, loads Ramp, as
-  its copies played; before version 14, a modulation's depth on a source's Division loads scaled by
+  its copies played, and a modulation's depth on a source's Division loads scaled by
   `kRetiredSourceDivisionSteps / kSourceDivisionSteps`, since it now reaches two note values slower, 8/1T and 8/1,
   numbered -1 and -2 (`kSlowestDivision`) so that its stored values keep their note values), followed by the editor
   layout:

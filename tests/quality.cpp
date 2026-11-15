@@ -3334,8 +3334,8 @@ void unisonModeChecks() {
               "Unison Pan starts on Alternate, and a version 12 state loads Ramp, as its copies played");
     }
     {
-        // A source's Division reaches 8/1 since version 14, two steps below 4/1D: a version 13 state's depth on it (on
-        // Mod 3's) loads 26/28 as deep, stepping it as far as it did, and its value as saved, a version 14 state's
+        // A source's Division reaches 8/1 since version 13, two steps below 4/1D: a version 12 state's depth on it (on
+        // Mod 3's) loads 26/28 as deep, stepping it as far as it did, and its value as saved, a version 13 state's
         // depth as saved too. A depth on its Rate loads as saved.
         ParamValues p{};
         for (int i = 0; i < kParamCount; ++i)
@@ -3358,14 +3358,14 @@ void unisonModeChecks() {
             return std::tuple(read ? loaded[slotAmountIndex(0, 0)] : -1.0, loaded[slotAmountIndex(0, 1)],
                               loaded[paramIndex(2, SourceParam::Division)]);
         };
-        const auto [older, olderRate, olderDivision] = loadedAt(13);
-        const auto [now, nowRate, nowDivision] = loadedAt(14);
-        std::printf("      a depth of 0.28 on a source's Division: %.4f from a version 13 state, %.4f from 14\n", older,
+        const auto [older, olderRate, olderDivision] = loadedAt(12);
+        const auto [now, nowRate, nowDivision] = loadedAt(13);
+        std::printf("      a depth of 0.28 on a source's Division: %.4f from a version 12 state, %.4f from 13\n", older,
                     now);
         auto near = [](double a, double b) { return std::abs(a - b) < 1e-12; };
         check(near(older, 0.26) && olderRate == 0.28 && olderDivision == 7.0 && now == 0.28 && nowRate == 0.28 &&
                   nowDivision == 7.0,
-              "a version 13 state's depth on a source's Division loads 26/28 as deep, a version 14 state's as saved");
+              "a version 12 state's depth on a source's Division loads 26/28 as deep, a version 13 state's as saved");
     }
 
     // An A4's copies at 100 cents: what each one plays where, from a sine's lines.
