@@ -1765,7 +1765,8 @@ one may have changed since it last did.
 - **Stepping lists**: a voice filter's and the filter effect's type, a voice shaper's and the shaper effect's curve, the
   amp's model and cabinet, the reverb's algorithm and an LFO's shape (its icon and name between the arrows) have an arrow at each end of their list's button, in place of the chevron: ‹ steps to
   the entry before the one shown and › to the one after, in the list's order, round its ends (from the last on to the
-  first), skipping an entry the list can't pick; each click is an undo step, as a pick from the list is, and closes the
+  first), skipping an entry the list can't pick, as fast as they are clicked (a quick second click is a step, not a
+  double-click); each click is an undo step, as a pick from the list is, and closes the
   list if it is open. The arrow under the mouse lights in the list's color and says what it steps to (Previous type,
   Next curve, ...). A click on the rest of the button opens the list. An LFO holding the retired Custom shape, which a
   state can, steps onto the first or last shape offered, its widened card going back to its size as a pick does.

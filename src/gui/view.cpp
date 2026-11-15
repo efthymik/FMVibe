@@ -11854,9 +11854,10 @@ void View::doubleClick(Point p, Modifiers mods) {
     if (hit && (hit->kind == Kind::Key || hit->kind == Kind::Octave || hit->kind == Kind::UndoButton ||
                 hit->kind == Kind::PresetStep || hit->kind == Kind::FxPower || hit->kind == Kind::FxNodePower ||
                 hit->kind == Kind::SlotBypass || (hit->kind == Kind::ShapeGrid && hit->b != 0) ||
-                hit->kind == Kind::ShapeTool || drawsStep(*hit, mods))) {
+                hit->kind == Kind::ShapeTool || hit->kind == Kind::ListStep || drawsStep(*hit, mods))) {
         // Windows turns a quick second click into a double-click instead of a press:
-        // play it as a press so fast repeated notes, octave steps, undos and steps aren't dropped.
+        // play it as a press so fast repeated notes, octave steps, undos, a list's arrows' steps and steps aren't
+        // dropped.
         mouseDown(p, mods);
         return;
     }

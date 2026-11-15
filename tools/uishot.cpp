@@ -10245,11 +10245,19 @@ void run(const std::filesystem::path &dir, float scale) {
         view.undo();
         const bool stepUndone = std::lround(model.value(type)) == static_cast<long>(FilterType::LowPass);
         view.undo();
+        // Clicked quickly, the second click comes as a double-click (as Windows sends it): a step all the same.
+        model.set(type, static_cast<double>(FilterType::LowPass));
+        click(view, listStep(button, 1));
+        view.doubleClick(listStep(button, 1), {});
+        view.mouseUp(listStep(button, 1), {});
+        const bool quick = std::lround(model.value(type)) == static_cast<long>(FilterType::BandPass);
+        model.set(type, static_cast<double>(kTypes - 1));
         if (hovered <= idle + 8)
             std::printf("      the arrow's corner: %u idle, %u under the mouse\n", idle, hovered);
-        check(stepsShot && hovered > idle + 8 && wrapped && round && on && stepUndone &&
+        check(stepsShot && hovered > idle + 8 && wrapped && round && on && stepUndone && quick &&
                   std::lround(model.value(type)) == static_cast<long>(kTypes - 1),
-              "the arrows in a filter's type list step it round the list's ends, undoably, lit under the mouse");
+              "the arrows in a filter's type list step it round the list's ends, undoably, lit under the mouse, and a "
+              "quick second click steps again");
         model.set(type, static_cast<double>(FilterType::LowPass));
     }
     // A morph's slope's list and notch switch, side by side where the slope's list is: 24 dB picked from the list
