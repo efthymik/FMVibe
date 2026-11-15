@@ -215,10 +215,11 @@ bool isFilterTypeList(int param) {
 }
 
 // A list whose button has arrows that step along it (see View::stepList()): a filter's type and a shaper's curve (a
-// voice's or an effect's), and an amp's model and cabinet.
+// voice's or an effect's), an amp's model and cabinet, the reverb's algorithm and an LFO's shape.
 bool isSteppableList(int param) {
     const FxParam field = fxFieldOf(param);
-    return isFilterTypeList(param) || isClipMode(param) || field == FxParam::AmpModel || field == FxParam::AmpCab;
+    return isFilterTypeList(param) || isClipMode(param) || field == FxParam::AmpModel || field == FxParam::AmpCab ||
+           field == FxParam::ReverbType || isLfoShape(param);
 }
 
 // A voice filter's morph mode, or the filter effect's: whether its Morph type goes through the notch (a switch).
@@ -915,6 +916,9 @@ void View::stepList(int param, int dir) {
             continue;
         if (to != shown)
             edit(param, to);
+        // An LFO holding the retired Custom shape (a state can) goes back to its size as it takes another, as a pick does.
+        if (isLfoShape(param) && sourceOf(param) == wideLfo_)
+            wideLfo_ = -1;
         return;
     }
 }
@@ -8310,8 +8314,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const bool steps = isSteppableList(w.param);
         const float left = w.rect.x + (steps ? kListStepW + 2.0f : 10.0f);
         if (isLfoShape(w.param))
-            lfoShapeIcon(c, {w.rect.x + 10.0f, w.rect.center().y - 5.0f, 16.0f, 10.0f}, static_cast<LfoShape>(shown),
-                         color);
+            lfoShapeIcon(c, {left, w.rect.center().y - 5.0f, 16.0f, 10.0f}, static_cast<LfoShape>(shown), color);
         if (filterType) {
             const Rect icon = filterTypeIconRect(w.rect);
             filterIcon(c, {icon.x + left - (w.rect.x + 10.0f), icon.y, icon.w, icon.h}, static_cast<FilterType>(shown),
@@ -9573,6 +9576,8 @@ void View::paintTooltip(Canvas &c) {
     else if (hover_->kind == Kind::ListStep) {
         const bool next = hover_->b > 0;
         text = tr(isClipMode(param)                 ? (next ? Str::TipNextCurve : Str::TipPrevCurve)
+                  : isLfoShape(param)               ? (next ? Str::TipNextShape : Str::TipPrevShape)
+                  : field == FxParam::ReverbType    ? (next ? Str::TipNextAlgorithm : Str::TipPrevAlgorithm)
                   : field == FxParam::AmpModel      ? (next ? Str::TipNextModel : Str::TipPrevModel)
                   : field == FxParam::AmpCab        ? (next ? Str::TipNextCabinet : Str::TipPrevCabinet)
                                                     : (next ? Str::TipNextType : Str::TipPrevType));

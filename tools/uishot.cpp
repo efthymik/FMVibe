@@ -1101,6 +1101,22 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     check(wheeledDown && std::lround(model.value(paramIndex(0, SourceParam::Shape))) ==
                              static_cast<long>(LfoShape::Square),
           "the wheel over an LFO's shape list steps along the shapes it offers, Square the last");
+    {
+        // The arrows in its button step along the same shapes, round the list's ends: on from Square to Sine, back to
+        // Square, each click an undo step; the icon and name between them (rendered).
+        const Rect button = detail::lfoShapeButton(0.0f);
+        const int shape = paramIndex(0, SourceParam::Shape);
+        click(view, listStep(button, 1));
+        const bool round = std::lround(model.value(shape)) == static_cast<long>(LfoShape::Sine);
+        view.mouseMove(listStep(button, 1), {});
+        const bool shot = renderer.save(view, dir / "10b-lfo-shape-steps.png");
+        click(view, listStep(button, -1));
+        const bool back = std::lround(model.value(shape)) == static_cast<long>(LfoShape::Square);
+        view.undo();
+        check(round && back && shot && std::lround(model.value(shape)) == static_cast<long>(LfoShape::Sine),
+              "the arrows in an LFO's shape list step its shape round the list's ends, each an undo step");
+        view.undo();
+    }
     // The Random source, in the next card: synced on quarter notes as it starts, as an LFO is.
     addSource(view, SourceType::Random);
     const bool randomSynced = model.value(paramIndex(1, SourceParam::Sync)) == 1.0 &&
@@ -1469,6 +1485,19 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, {fxCardX(model, 1) + 40.0f, 265.0f + 22.0f}); // Room
     check(listed && model.value(paramIndex(1, FxParam::ReverbType)) == static_cast<double>(ReverbType::Room),
           "the reverb's list picks its algorithm");
+    {
+        // Its arrows step the algorithm: on from Room to Plate, back, and back again past Hall round to Shimmer.
+        const Rect button{fxCardX(model, 1) + 14.0f, 180.0f + 44.0f, fxCardW(model, 1) - 28.0f, 22.0f};
+        const int type = paramIndex(1, FxParam::ReverbType);
+        click(view, listStep(button, 1));
+        const bool plate = model.value(type) == static_cast<double>(ReverbType::Plate);
+        click(view, listStep(button, -1));
+        click(view, listStep(button, -1));
+        click(view, listStep(button, -1));
+        const bool shimmer = model.value(type) == static_cast<double>(ReverbType::Shimmer);
+        model.set(type, static_cast<double>(ReverbType::Room));
+        check(plate && shimmer, "the arrows in the reverb's list step its algorithm round the list's ends");
+    }
     model.set(paramIndex(1, FxParam::ReverbSize), 0.1);
     view.mouseMove({600.0f, 328.0f}, {});
     const bool smallRoom = renderer.save(view, dir / "21d-reverb-small-room.png");
