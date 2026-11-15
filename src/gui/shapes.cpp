@@ -660,14 +660,15 @@ bool View::shapeKey(Key key) {
         return true;
     }
     if (key == Key::SelectAll) {
-        // The shape under the mouse, else the big editor's, else a widened card's.
+        // The shape under the mouse, else the big editor's, else a widened card's, unless the SEQ view shows beside
+        // it: Ctrl+A there picks the roll's notes.
         int shape = -1;
         if (hover_ && (hover_->kind == Kind::ShapeArea || hover_->kind == Kind::ShapePoint ||
                        hover_->kind == Kind::ShapeCurve))
             shape = hover_->a;
         else if (shapeEditing() >= 0)
             shape = shapeEditing();
-        else if (wideLfo() >= 0)
+        else if (wideLfo() >= 0 && !seqWide())
             shape = wideLfo();
         if (shape < 0 || !shapeEditable(shape))
             return false;

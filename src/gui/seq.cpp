@@ -1152,6 +1152,7 @@ bool View::seqKey(Key key, bool shift) {
     if (seqCurveLane() && key == Key::SelectAll && hover_ && hover_->kind == Kind::SeqLane) {
         std::vector<int> all(seqCurvePoints(seqLaneCurve()).size());
         std::iota(all.begin(), all.end(), 0);
+        clearShapePick();
         setSeqCurvePick(std::move(all));
         return true;
     }
@@ -1161,6 +1162,7 @@ bool View::seqKey(Key key, bool shift) {
         seqSelectionPattern_ = pattern;
     }
     if (key == Key::SelectAll) {
+        clearShapePick(); // so that Delete then removes the notes, not a shape's points picked before
         seqSelection_.clear();
         for (const SeqNote &n : seqNotes())
             seqSelection_.push_back(n.slot);

@@ -549,7 +549,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     step, stopping as a whole at a neighbor not picked and at the top, Ctrl+click adding a point and taking one away,
     a click on one of several picked picking it alone, Ctrl+A and Delete removing all but the two kept, undoably, and a
     click on empty space letting them go; on a symmetric voice shaper's page the middle point picked with another
-    staying in the middle; and on the SEQ view's BEND lane, with Select, a box picking its points (ringed, read off
+    staying in the middle; with the Curve card still widened beside the SEQ view, Ctrl+A over the roll picking its
+    notes, not the shape's points, and Delete removing them; and on the SEQ view's BEND lane, with Select, a box picking its points (ringed, read off
     the rendered pixels), moved together and stopping at a neighbor, undoably, Shift+click adding one, with Draw a
     picked point moving the others too, Ctrl+A over the lane and Delete removing them, undoably, and a click off the
     lane letting them go;
