@@ -166,9 +166,10 @@ int Sequencer::sourceStep(int64_t step) const {
     case SeqOrder::PingPong: {
         if (length == 1)
             return loopStart_;
-        const int64_t period = 2 * length - 2;
+        // The end steps play twice at each turn, so the pattern keeps its meter (a loop of L steps takes 2L).
+        const int64_t period = 2 * length;
         const int64_t i = wrap(step, period);
-        return loopStart_ + static_cast<int>(i < length ? i : period - i);
+        return loopStart_ + static_cast<int>(i < length ? i : period - 1 - i);
     }
     case SeqOrder::Random:
         return loopStart_ + std::min(static_cast<int>(unit(step, -1, 3) * static_cast<double>(length)),
@@ -183,7 +184,7 @@ bool Sequencer::backward(int64_t step) const {
     if (order_ == SeqOrder::Reverse)
         return true;
     if (order_ == SeqOrder::PingPong && length > 1)
-        return wrap(step, 2 * length - 2) >= length;
+        return wrap(step, 2 * length) >= length;
     return false;
 }
 

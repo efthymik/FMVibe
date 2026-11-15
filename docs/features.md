@@ -713,7 +713,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     length; **Velocity** scales the notes' velocities (at 0 % every note plays at 100); **Humanize** delays the notes by
     up to a quarter of a step and moves their velocity up to 30 % either way, the same way every time round;
     **Octave** (±3) and **Transpose** (±24 semitones) move the whole pattern. **Order** runs the loop's steps forward,
-    backward, to and fro, or each one at random (the same way each time round), the notes starting in a step at the
+    backward, to and fro (the first and last steps play twice at each turn, so a loop of 16 steps takes 32 and stays
+    in its meter), or each one at random (the same way each time round), the notes starting in a step at the
     same place in it.
   - **Curves**: each pattern also has a **bend** curve and a **mod wheel** curve, drawn in the lane under the roll:
     up to 64 points each, at any step, each segment straight or bent. As the pattern plays, the bend curve (±1, a share

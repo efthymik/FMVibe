@@ -3847,7 +3847,7 @@ void sequencerChecks() {
             }
             last = now;
         }
-        // 40 steps: the loop round twice (Forward, Reverse at steps 16 and 32), or Ping-Pong turning twice (15 and 30).
+        // 40 steps: the loop round twice (Forward, Reverse at steps 16 and 32), or Ping-Pong turning twice (16 and 32).
         const int expected = 2;
         std::printf("      playhead, %s: %d jumps, %d the wrong way\n",
                     order == SeqOrder::Forward ? "forward" : order == SeqOrder::Reverse ? "reversed" : "ping-pong", jumps,
@@ -4091,9 +4091,47 @@ void sequencerChecks() {
     }
 }
 
+// The tempo a preset was saved at, which the layout keeps for the hosts that let the editor set the tempo: read back
+// as written, a tempo the editor doesn't offer as none, and a layout from before it (cut short of it) as none too.
+void savedTempoChecks() {
+    std::printf("saved tempo:\n");
+    auto roundTrip = [](float bpm, bool cut) {
+        gui::UiLayout ui;
+        ui.savedTempo = bpm;
+        const auto values = std::make_unique<ParamValues>();
+        for (int i = 0; i < kParamCount; ++i)
+            (*values)[i] = paramTable()[i].def;
+        std::vector<unsigned char> bytes;
+        const clap_ostream_t out = memoryOut(bytes);
+        writePatch(&out, *values, ui, true);
+        if (cut) // the layout, the patch's last chunk, as saved before the field came: a float shorter
+            for (size_t at = bytes.size() - 4; at >= 4; at -= 4) {
+                uint32_t count = 0;
+                std::memcpy(&count, bytes.data() + at - 4, 4);
+                if ((at + count * sizeof(float)) == bytes.size()) {
+                    --count;
+                    std::memcpy(bytes.data() + at - 4, &count, 4);
+                    bytes.resize(bytes.size() - sizeof(float));
+                    break;
+                }
+            }
+        MemoryReader reader{bytes.data(), bytes.size(), 0};
+        const clap_istream_t in = memoryIn(reader);
+        const auto loaded = std::make_unique<ParamValues>();
+        readParams(&in, *loaded);
+        return readLayout(&in).savedTempo;
+    };
+    const float kept = roundTrip(128.5f, false), none = roundTrip(0.0f, false), slow = roundTrip(5.0f, false);
+    const float before = roundTrip(128.5f, true);
+    std::printf("      128.5 -> %.2f, 0 -> %.2f, 5 -> %.2f, from before it -> %.2f\n", kept, none, slow, before);
+    check(kept == 128.5f && none == 0.0f && slow == 0.0f && before == 0.0f,
+          "a preset's saved tempo reads back as written, and as none below 20 BPM or from before it was kept");
+}
+
 int main() {
     const int factors[] = {1, 2, 4, 8};
     sequencerChecks();
+    savedTempoChecks();
     // --- The decimator: flat up to 20 kHz, and what would fold into the audible band gone.
     std::printf("decimator (dB):\n");
     for (int factor : {2, 4, 8}) {
