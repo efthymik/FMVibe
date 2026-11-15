@@ -1934,11 +1934,12 @@ bool View::isRatioTarget(int param) {
 bool View::isStepperParam(int param) {
     if (param < 0)
         return false;
-    // An operator's Pitch stays a knob, in its row of knobs beside the Ratio readout, and so does the header's Bend.
+    // An operator's Pitch stays a knob, in its row of knobs beside the Ratio readout, and so do the header's Bend and
+    // the shimmer's Pitch.
     if (param >= kOpBase && param < kMatrixBase &&
         (param - kOpBase) % kOpParamCount == static_cast<int>(OpParam::Transpose))
         return false;
-    if (param == paramIndex(GlobalParam::BendRange))
+    if (param == paramIndex(GlobalParam::BendRange) || fxFieldOf(param) == FxParam::ReverbShimmerPitch)
         return false;
     switch (paramTable()[param].kind) {
     case ParamKind::Count:
@@ -2524,8 +2525,8 @@ std::vector<View::Widget> View::widgets() const {
                 if (phaser) {
                     knobs({rate, at(FxParam::PhaserDepth), at(FxParam::PhaserCenter)},
                           {tr(Str::LabelRate), tr(Str::LabelDepth), tr(Str::LabelCenter)}, 206.0f);
-                    knobs({at(FxParam::PhaserFeedback), at(FxParam::PhaserStages), at(FxParam::PhaserMix)},
-                          {tr(Str::LabelFeedback), tr(Str::LabelStages), tr(Str::LabelMix)}, 266.0f);
+                    knobs({at(FxParam::PhaserStages), at(FxParam::PhaserFeedback), at(FxParam::PhaserMix)},
+                          {tr(Str::LabelStages), tr(Str::LabelFeedback), tr(Str::LabelMix)}, 266.0f);
                     break;
                 }
                 knobs({rate, at(FxParam::FlangerDepth), at(FxParam::FlangerDelay)},
