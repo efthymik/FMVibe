@@ -1,5 +1,6 @@
 #include "plugincore.h"
 
+#include "factory.h"
 #include "params.h"
 #include "uistrings.h"
 
@@ -366,10 +367,12 @@ bool PluginCore::loadState(const clap_istream_t *stream, bool settings) {
         std::string preset;
         bool edited = false;
         if (readPresetChunk(stream, preset, edited)) {
-            // Save writes the patch over the preset named here, so a project names only a preset file: any other
-            // path (a project made by hand, say) shows as an edited patch with no preset.
-            std::wstring file = widePath(preset);
-            std::wstring extension = std::filesystem::path(file).extension().wstring();
+            // Save writes the patch over the preset named here, so a project names only a preset file or a factory
+            // preset: any other path (a project made by hand, say) shows as an edited patch with no preset. A copy
+            // of a factory preset the plugin once wrote into the preset folder is that factory preset.
+            std::wstring file = PresetLibrary::resolve(widePath(preset));
+            const bool factory = PresetLibrary::factoryPreset(file) != nullptr;
+            std::wstring extension = factory ? L".fmv" : std::filesystem::path(file).extension().wstring();
             for (wchar_t &c : extension)
                 c = c >= L'A' && c <= L'Z' ? static_cast<wchar_t>(c - L'A' + L'a') : c;
             if (!file.empty() && extension != L".fmv") {
@@ -431,15 +434,29 @@ void PluginCore::resetPreset() {
     clearHistory();
 }
 
-// A preset file holds the same bytes as the host's state.
-bool PluginCore::loadPreset(const std::wstring &path) {
+// A preset file holds the same bytes as the host's state; a factory preset's are built in.
+bool PluginCore::loadPreset(const std::wstring &chosen) {
+    const std::wstring path = PresetLibrary::resolve(chosen);
+    if (const FactoryPreset *preset = PresetLibrary::factoryPreset(path)) {
+        MemoryReader reader{preset->data.data(), preset->data.size()};
+        const clap_istream_t stream = memoryIn(reader);
+        return loadPresetFrom(&stream, path);
+    }
+    if (path.starts_with(PresetLibrary::kFactoryPrefix))
+        return false; // a factory preset no longer built in
     FILE *file = nullptr;
     if (_wfopen_s(&file, path.c_str(), L"rb") != 0 || !file)
         return false;
     const clap_istream_t stream = fileIn(file);
+    const bool loaded = loadPresetFrom(&stream, path);
+    std::fclose(file);
+    return loaded;
+}
+
+bool PluginCore::loadPresetFrom(const clap_istream_t *stream, const std::wstring &path) {
     const auto told = std::make_unique<ParamValues>();
     valuesInto(*told);
-    const bool loaded = loadState(&stream, false);
+    const bool loaded = loadState(stream, false);
     if (loaded) {
         // A host that lets the editor set the tempo plays the preset at the tempo it was saved at.
         if (hasTempo() && layout_.savedTempo > 0.0f)
@@ -449,7 +466,6 @@ bool PluginCore::loadPreset(const std::wstring &path) {
         setPreset(path);
         clearHistory();
     }
-    std::fclose(file);
     return loaded;
 }
 
@@ -457,6 +473,8 @@ bool PluginCore::savePreset(const std::wstring &path) {
     // Written beside the file first and put in its place once whole, so a write that fails (a full disk, a file
     // another program holds) leaves the preset it would replace as it was. The scan lists only .fmv files.
     namespace fs = std::filesystem;
+    if (path.starts_with(PresetLibrary::kFactoryPrefix)) // a factory preset is built in: Save As saves it anew
+        return false;
     const fs::path target(path), part(path + L".part");
     FILE *file = nullptr;
     if (_wfopen_s(&file, part.c_str(), L"wb") != 0 || !file)
@@ -481,6 +499,7 @@ bool PluginCore::savePreset(const std::wstring &path) {
 }
 
 void PluginCore::choosePreset(bool save) {
+    PresetLibrary::makeFolder(); // where the dialogs start
     if (editor_)
         editor_->choosePreset(save);
 }
@@ -494,7 +513,11 @@ int PluginCore::presetIndex() const {
 }
 
 std::string PluginCore::presetName() const {
-    return presetFile().empty() ? tr(Str::PresetInit) : utf8(std::filesystem::path(presetFile()).stem());
+    if (presetFile().empty())
+        return tr(Str::PresetInit);
+    if (const FactoryPreset *preset = PresetLibrary::factoryPreset(presetFile()))
+        return preset->name;
+    return utf8(std::filesystem::path(presetFile()).stem());
 }
 
 bool PluginCore::loadPresetAt(int index) {

@@ -87,6 +87,9 @@ public:
     void resetPreset() override;
     bool loadPreset(const std::wstring &path) override;
     bool savePreset(const std::wstring &path) override;
+    bool presetWritable() const override {
+        return presetHasFile() && !presetFile().starts_with(PresetLibrary::kFactoryPrefix);
+    }
     void choosePreset(bool save) override;
     void rescanPresets() override { presets_.rescan(); }
     const std::vector<gui::PresetEntry> &presets() const override { return presets_.entries(); }
@@ -252,6 +255,8 @@ private:
     // What a preset leaves as it is (gui::keepEditorLayout()): how big the editor is, whether the modulation panel
     // is collapsed, the shape editor's grid, the view shown.
     void keepEditorLayout(const gui::UiLayout &from);
+    // Loads a preset's bytes, which came from `path` (a file, or a factory preset's), as the patch's preset.
+    bool loadPresetFrom(const clap_istream_t *stream, const std::wstring &path);
 
     // A key of the editor's virtual keyboard, on its way to the audio thread.
     struct KeyEvent {

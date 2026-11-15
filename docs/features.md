@@ -1816,9 +1816,10 @@ one may have changed since it last did.
   dot where the newest voice is; its points and bends edit like the note source's curve, and its reset button
   brings back the straight line. Its right-click menu, and its handle's, make it unipolar or bipolar, as the note
   source's do.
-- **Presets**: presets are `.fmv` files in `Documents\FMVibe\presets` and its subfolders. The first time the
-  library is used (the browser, the arrows or a file dialog), FMVibe makes that folder with its factory presets in the
-  `Factory` subfolder. Each name starts with two letters for its category, so the library lists them in groups:
+- **Presets**: the library holds the factory presets, built into the plugin, and the `.fmv` files in
+  `Documents\FMVibe\presets` and its subfolders. The factory presets show under **Factory**, as a subfolder's would;
+  nothing of them is written into the folder, which FMVibe makes only when a file dialog or OPEN FOLDER needs it
+  (empty: it holds the presets saved there). Each factory preset's name starts with two letters for its category, so the library lists them in groups:
   BA bass, DR drum, FX effect, KY keys (bells and organs too), LD lead (brass too), PD pad (moving textures too),
   PL pluck and SQ sequence (rhythmic, gated). They are KY Electric Piano, BA FM Bass, KY Glass Bell, PD Warm Pad, KY Drawbar
   Organ, PL Pluck Delay; PD Crystal Motion, which uses everything at once (all six operators in three layers, two
@@ -1884,18 +1885,18 @@ one may have changed since it last did.
   Crunch amp into a closed 4x12 and a small room: a rhythm guitar for chords); LD Overdrive Lead (a mono, gliding
   lead through the Lead amp into an open 2x12, a vibrato that an envelope fades in as a note holds, the mod wheel
   turning up the amp's Gain, then ping-pong echoes and a plate); and BA Driven Bass (a round FM bass with a sub an
-  octave down, through the Bass amp's grit into a 4x10, its lows staying clean). A folder made
-  before an example came gets it the next time the library is used; `%APPDATA%\FMVibe\settings.txt` counts the examples
-  given, so deleted ones stay gone. It also notes the version of FMVibe that wrote them out: a newer one writes the
-  factory presets still in the `Factory` subfolder again as it has them, so they take its tuning and its routing
-  graphs' layouts (a change saved over one of them is lost then; save it under another name to keep it), and leaves
-  those taken out of it out. Their routing graphs are laid out with no node on another, and no wire, line to OUT or
-  label running over a node it doesn't join. The plugin carries the factory presets built in and writes them out as they are:
-  they hold only the params that differ from Init, so their files are small, and load like any other.
+  octave down, through the Bass amp's grit into a 4x10, its lows staying clean). Each release brings
+  them as it tunes them. Being built in, they can't be saved over: Save on a changed one saves it as a new preset, as
+  Save As does. Versions before 0.12 wrote them out into the folder's `Factory` subfolder: a copy there still as it
+  was written (or gone) counts as the built-in one, so the list shows it once and a project that named it loads the
+  built-in one, while a copy changed since shows beside it as a preset of its own. Their routing graphs are laid out with no node on another, and no wire, line to OUT or
+  label running over a node it doesn't join. They hold only the params that differ from Init, so they are small, and
+  load like any other preset.
   - The **preset bar** in the middle of the title bar shows the preset loaded or saved last, or **- Init -** (as
     a new instance does), with a dot while the patch has changed since. Its arrows step to the previous or next
-    preset in the folder, round from the last to the first. Clicking the name opens the **browser**: the presets
-    at the top of the folder, then each subfolder's under its name, the current one marked; a click loads one
+    preset in the library, round from the last to the first. Clicking the name opens the **browser**: the presets
+    at the top of the folder, then each subfolder that holds presets under its name (the factory presets under
+    Factory's), the current one marked; a click loads one
     and closes the browser (if the patch has changed, it asks first, over the browser, which stays open when the
     load is called off); **OPEN FOLDER** shows the folder in Explorer, and the × or a click around it closes it.
     While it is open, the browser takes the keyboard for its **search**, in its title row: what is typed narrows
@@ -1915,8 +1916,9 @@ one may have changed since it last did.
     preset's name. The file holds the same data as the host's
     saved state, apart from the settings.
   - **Save** (the disk) writes the patch over the file of the preset it is, after asking ("Overwrite …?"), and
-    tells in a message that it saved or couldn't. It is on only for a preset loaded (or saved) from a file that has
-    changed since; otherwise, and always for Init, it is greyed out and does nothing. Save As is greyed out too on
+    tells in a message that it saved or couldn't. It is on only for a preset loaded (or saved) that has
+    changed since; otherwise, and always for Init, it is greyed out and does nothing. On a factory preset, which is
+    built in, it asks nothing and opens Save As's dialog instead. Save As is greyed out too on
     Init until the patch changes. In the browser demo, which has no files, both say so.
   - Init and loading ask first only while the patch has changed since it was loaded, saved or reset, or when the
     host brought a patch that isn't a preset, since the patch they replace can't be undone back (undoing every edit
