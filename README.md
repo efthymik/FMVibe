@@ -12,6 +12,8 @@ In-browser demo: [https://pcdlin.github.io/FMVibe/](https://pcdlin.github.io/FMV
 
 ![FMVibe UI](docs/fx-graph.png)
 
+![FMVibe UI](docs/seq.png)
+
 Implemented using Claude Code.
 
 The full feature reference is in [docs/features.md](docs/features.md).

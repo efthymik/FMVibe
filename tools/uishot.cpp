@@ -2937,7 +2937,7 @@ void checkAlgorithmMenu(const std::filesystem::path &dir, Renderer &renderer) {
 }
 
 void renderExample(const std::filesystem::path &dir, Renderer &renderer, const std::string &name,
-                   const std::string &prefix, size_t effects, const std::string &theme = "", bool playing = false) {
+                   const std::string &prefix, size_t effects, const std::string &theme = "", bool playing = false, bool seq = false) {
     FakeController model;
     if (!theme.empty())
         model.themeName = theme;
@@ -2988,6 +2988,11 @@ void renderExample(const std::filesystem::path &dir, Renderer &renderer, const s
     view.mouseMove({600.0f, 600.0f}, {});
     shots = shots && model.ui.fxGraphView &&
             renderer.save(view, dir / (prefix + "-fx-graph-panel.png"), &panel);
+    if (seq) { // its SEQ view (the README's)
+        click(view, {308.0f, 116.0f});
+        view.mouseMove({600.0f, 600.0f}, {});
+        shots = shots && renderer.save(view, dir / (prefix + "-seq.png"), &panel); // the panel alone, as the FX one
+    }
     if (!theme.empty()) { // in a theme other than the checks' Midnight, its effects as a row and its MODS view too
         click(view, detail::fxModeButton(0).center());
         view.mouseMove({600.0f, 600.0f}, {});
@@ -2996,7 +3001,7 @@ void renderExample(const std::filesystem::path &dir, Renderer &renderer, const s
         view.mouseMove({600.0f, 600.0f}, {});
         shots = shots && renderer.save(view, dir / (prefix + "-mods.png"));
     }
-    check(shots && fxChain(model).size() == effects,
+    check(shots && (effects == SIZE_MAX || fxChain(model).size() == effects), // SIZE_MAX: any number
           ("render " + name + "'s routing, matrix and " + std::to_string(effects) +
            " effects, and its effects' panel as a chain and as a graph")
               .c_str());
@@ -11482,6 +11487,8 @@ void run(const std::filesystem::path &dir, float scale) {
     renderExample(dir, renderer, "PD Crystal Motion", "24-example", 6, "Spectrum");
     renderExample(dir, renderer, "LD Screamer", "24c-screamer-example", 4, "Spectrum", true); // a note playing
     renderExample(dir, renderer, "BA Neon Pluck", "24b-split-example", 4, "Spectrum");
+    renderExample(dir, renderer, "SQ Future Plucks", "24d-seq-example", SIZE_MAX, "Spectrum", false,
+                  true); // its SEQ view (the README's)
     renderExample(dir, renderer, "PD Crystal Motion", "42-porcelain-crystal", 6, "Porcelain");
     renderExample(dir, renderer, "BA Neon Pluck", "43-porcelain-neon", 4, "Porcelain");
     renderExample(dir, renderer, "BA Reese Bass", "25-reese", 4);
