@@ -276,6 +276,8 @@ private:
         ListButton,   // param = a choice (an LFO's shape, the shaper's curve, the reverb's algorithm): opens its list
         ListMenu,     // a = 1 on the open list, 0 around it (a click there closes it)
         ListItem,     // param, b = the value it picks: an entry of the list
+        ListStep,     // param = a list's choice (a filter's type, a shaper's curve, an amp's model or cabinet), b = -1
+                      // or 1: an arrow in its button that steps to the entry before or after, round the list's ends
         PeqTypeButton, // param = the band's type, a = effect slot, b = band: the shape on its chip, which opens the
                        // list of band shapes
         PeqTypeMenu,  // a = 1 on the open list, 0 around it (a click there closes it)
@@ -707,6 +709,9 @@ private:
     bool listItemFits(int param, int item) const;
     // The entry a list shows as picked: its value, or for a slope the one that plays.
     int listShown(int param) const;
+    // Steps a list's choice to the entry before (dir -1) or after (1) the one shown, round its ends (its button's
+    // arrows).
+    void stepList(int param, int dir);
     bool nodeOn(int node) const;
     void switchOnRoute(int from, int to);
     std::vector<int> enabledNodes() const;

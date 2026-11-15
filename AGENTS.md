@@ -599,6 +599,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
     setting Position and Distance in one undo step and double-clicked back; its drive meter following the telemetry
     and its display following Treble and the mic's position (read off the rendered pixels); and its title's menu
     picking its oversampling, the one in force checked;
+  - the arrows in a list's button: a filter's type (on its page and the filter effect's card), a shaper's curve (on
+    its page and the shaper effect's card), the amp's model and cabinet, the reverb's algorithm and an LFO's shape
+    stepping along the list, round its ends,
+    each click an undo step (a quick second click, which comes as a double-click, a step too), the arrow lit under
+    the mouse (read off the rendered pixels);
   - the utility's card: added last from the list of effects (under STEREO & PHASE), leaving the sound as it is (Mono
     Bass Off); the handles on its display setting Mono Bass, Pan, Width and Gain, each drag an undo step, the band
     narrowing into its middle below Mono Bass's line (read off the rendered pixels), and a double-click putting Mono

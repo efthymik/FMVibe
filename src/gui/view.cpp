@@ -214,6 +214,14 @@ bool isFilterTypeList(int param) {
     return false;
 }
 
+// A list whose button has arrows that step along it (see View::stepList()): a filter's type and a shaper's curve (a
+// voice's or an effect's), an amp's model and cabinet, the reverb's algorithm and an LFO's shape.
+bool isSteppableList(int param) {
+    const FxParam field = fxFieldOf(param);
+    return isFilterTypeList(param) || isClipMode(param) || field == FxParam::AmpModel || field == FxParam::AmpCab ||
+           field == FxParam::ReverbType || isLfoShape(param);
+}
+
 // A voice filter's morph mode, or the filter effect's: whether its Morph type goes through the notch (a switch).
 bool isMorphMode(int param) {
     const int filter = filterOfParam(param);
@@ -889,6 +897,30 @@ bool View::listItemFits(int param, int item) const {
     if (isSplitSlope(param)) // 6, 12 or 24 dB; three bands 12 or 24
         return item != 2 && !(item == 0 && splitThree(splitOf(param)));
     return !isFilterSlope(param) || slopeFits(static_cast<FilterType>(std::lround(value(slopeTypeParam(param)))), item);
+}
+
+void View::stepList(int param, int dir) {
+    // From the entry shown (from the list's end, for a value it doesn't offer) to the next one it can pick that way,
+    // round its ends, as a pick from the list would: one undo step, the list closed.
+    const int items = listCount(param);
+    const int shown = listShown(param);
+    int at = dir > 0 ? -1 : items;
+    for (int item = 0; item < items; ++item)
+        if (listItemValue(param, item) == shown)
+            at = item;
+    listMenu_ = -1;
+    for (int k = 1; k <= items; ++k) {
+        const int item = ((at + dir * k) % items + items) % items;
+        const int to = listItemValue(param, item);
+        if (!listItemFits(param, to))
+            continue;
+        if (to != shown)
+            edit(param, to);
+        // An LFO holding the retired Custom shape (a state can) goes back to its size as it takes another, as a pick does.
+        if (isLfoShape(param) && sourceOf(param) == wideLfo_)
+            wideLfo_ = -1;
+        return;
+    }
 }
 
 Color View::clipColor(int unit) const {
@@ -2021,6 +2053,13 @@ std::vector<View::Widget> View::widgets() const {
         w.a = a;
         w.b = b;
         list.push_back(w);
+        if (kind == Kind::ListButton && isSteppableList(param)) // its arrows, over it
+            for (int dir : {-1, 1}) {
+                w.kind = Kind::ListStep;
+                w.rect = listStepButton(rect, dir);
+                w.b = dir;
+                list.push_back(w);
+            }
     };
     auto merge = [&list](size_t from) { mergeButtons(list, from); };
     // A wire's or OUT label in the graph: the label, then, while it is a pill (see labelPill()), its mode's part and its
@@ -8271,16 +8310,34 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // An LFO's shape and a filter's type show their icons before their names.
         const bool filterType = isFilterTypeList(w.param);
         const float indent = isLfoShape(w.param) ? 24.0f : filterType ? 30.0f : 0.0f;
+        // A list with arrows has them at its ends (see the ListStep widgets), and no chevron.
+        const bool steps = isSteppableList(w.param);
+        const float left = w.rect.x + (steps ? kListStepW + 2.0f : 10.0f);
         if (isLfoShape(w.param))
-            lfoShapeIcon(c, {w.rect.x + 10.0f, w.rect.center().y - 5.0f, 16.0f, 10.0f}, static_cast<LfoShape>(shown),
-                         color);
-        if (filterType)
-            filterIcon(c, filterTypeIconRect(w.rect), static_cast<FilterType>(shown), color);
-        c.text({w.rect.x + 10.0f + indent, w.rect.y, w.rect.w - 30.0f - indent, w.rect.h}, listItemName(w.param, shown),
+            lfoShapeIcon(c, {left, w.rect.center().y - 5.0f, 16.0f, 10.0f}, static_cast<LfoShape>(shown), color);
+        if (filterType) {
+            const Rect icon = filterTypeIconRect(w.rect);
+            filterIcon(c, {icon.x + left - (w.rect.x + 10.0f), icon.y, icon.w, icon.h}, static_cast<FilterType>(shown),
+                       color);
+        }
+        const float right = w.rect.right() - (steps ? kListStepW + 2.0f : 20.0f);
+        c.text({left + indent, w.rect.y, right - left - indent, w.rect.h}, listItemName(w.param, shown),
                kTextBody, text, Align::Left, true);
-        const Point m{w.rect.right() - 13.0f, w.rect.center().y};
-        const Point chevron[] = {{m.x - 4.0f, m.y - 2.0f}, {m.x, m.y + 2.5f}, {m.x + 4.0f, m.y - 2.0f}};
-        c.polyline(chevron, 3, text, 1.5f);
+        if (!steps) {
+            const Point m{w.rect.right() - 13.0f, w.rect.center().y};
+            const Point chevron[] = {{m.x - 4.0f, m.y - 2.0f}, {m.x, m.y + 2.5f}, {m.x + 4.0f, m.y - 2.0f}};
+            c.polyline(chevron, 3, text, 1.5f);
+        }
+        break;
+    }
+    case Kind::ListStep: { // an arrow pointing the way it steps, lit under the mouse
+        const Color color = listColor(w.param);
+        if (hovered)
+            c.fillRect(w.rect, color.alpha(look.flat ? 0.24f : 0.18f), kRadiusMark);
+        const Point m = w.rect.center();
+        const float d = w.b > 0 ? 1.0f : -1.0f;
+        const Point arrow[] = {{m.x - 1.5f * d, m.y - 4.0f}, {m.x + 2.0f * d, m.y}, {m.x - 1.5f * d, m.y + 4.0f}};
+        c.polyline(arrow, 3, hovered ? kText : kDim, 1.5f);
         break;
     }
     case Kind::ListMenu:
@@ -9294,7 +9351,7 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::FxInsert && hover_->kind != Kind::DynBand && hover_->kind != Kind::FxMode &&
          hover_->kind != Kind::FxNode && hover_->kind != Kind::FxSlot && hover_->kind != Kind::FxGap &&
          hover_->kind != Kind::FxNodeRemove && hover_->kind != Kind::FxNodeDelete && hover_->kind != Kind::FxClear &&
-         hover_->kind != Kind::NodeDelete &&
+         hover_->kind != Kind::NodeDelete && hover_->kind != Kind::ListStep &&
          hover_->kind != Kind::WireStart &&
          hover_->kind != Kind::DynGrip && hover_->kind != Kind::DynZone && !(hover_->kind == Kind::Knob && dynKnobTip(hover_->param) != Str::Count) &&
          !(hover_->kind == Kind::ListButton && (isSlopeList(hover_->param) || isMidiInput(hover_->param))) &&
@@ -9516,6 +9573,15 @@ void View::paintTooltip(Canvas &c) {
         text = tr(value(param) >= 0.5 ? Str::TipFxOn : Str::TipFxOff);
     else if (isLfoSync(param))
         text = tr(Str::TipLfoSync);
+    else if (hover_->kind == Kind::ListStep) {
+        const bool next = hover_->b > 0;
+        text = tr(isClipMode(param)                 ? (next ? Str::TipNextCurve : Str::TipPrevCurve)
+                  : isLfoShape(param)               ? (next ? Str::TipNextShape : Str::TipPrevShape)
+                  : field == FxParam::ReverbType    ? (next ? Str::TipNextAlgorithm : Str::TipPrevAlgorithm)
+                  : field == FxParam::AmpModel      ? (next ? Str::TipNextModel : Str::TipPrevModel)
+                  : field == FxParam::AmpCab        ? (next ? Str::TipNextCabinet : Str::TipPrevCabinet)
+                                                    : (next ? Str::TipNextType : Str::TipPrevType));
+    }
     else if (hover_->kind == Kind::ListButton && isSplitSlope(param))
         text = tr(Str::TipSlope);
     else if (hover_->kind == Kind::ListButton && isFilterSlope(param))
@@ -10823,6 +10889,9 @@ void View::mouseDown(Point p, Modifiers mods) {
             break; // a comb has no slope: its list stays shut
         listMenu_ = listMenu_ == w.param ? -1 : w.param;
         break;
+    case Kind::ListStep:
+        stepList(w.param, w.b);
+        break;
     case Kind::LabelMode:
         listMenu_ = listMenu_ == w.param ? -1 : w.param;
         break;
@@ -11785,9 +11854,10 @@ void View::doubleClick(Point p, Modifiers mods) {
     if (hit && (hit->kind == Kind::Key || hit->kind == Kind::Octave || hit->kind == Kind::UndoButton ||
                 hit->kind == Kind::PresetStep || hit->kind == Kind::FxPower || hit->kind == Kind::FxNodePower ||
                 hit->kind == Kind::SlotBypass || (hit->kind == Kind::ShapeGrid && hit->b != 0) ||
-                hit->kind == Kind::ShapeTool || drawsStep(*hit, mods))) {
+                hit->kind == Kind::ShapeTool || hit->kind == Kind::ListStep || drawsStep(*hit, mods))) {
         // Windows turns a quick second click into a double-click instead of a press:
-        // play it as a press so fast repeated notes, octave steps, undos and steps aren't dropped.
+        // play it as a press so fast repeated notes, octave steps, undos, a list's arrows' steps and steps aren't
+        // dropped.
         mouseDown(p, mods);
         return;
     }
