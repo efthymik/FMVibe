@@ -439,6 +439,7 @@ constexpr Point kOutCore = detail::kOutCore; // the routing graph's OUT
 // What covers the routing panel alone (the note curve's and the partial editor) moved with it, right of the lens.
 constexpr float kRoutingDx = detail::kRouting.x - 16.0f;
 const Point kPitchKnob = detail::opKnobCenter(0);
+const Point kDetuneKnob = detail::opKnobCenter(1);
 // On the UNISON tab, under its display: Unison (the copies) first, Blend fourth, Rnd Phase last.
 constexpr Point kUnisonKnob{detail::kInspector.x + 16.0f + 268.0f / 5.0f * 0.5f, detail::kUnisonKnobsY};
 constexpr Point kBlendKnob{detail::kInspector.x + 16.0f + 268.0f / 5.0f * 3.5f, detail::kUnisonKnobsY};
@@ -8786,7 +8787,7 @@ void testModsSearch(const std::filesystem::path &dir, Renderer &renderer) {
           "the target menu's search lights the first match that can be picked, which Enter takes");
 }
 
-// Eight LFOs on Op A's Pitch: under the knob, a depth handle and a "+7" pill, nothing drawn outside the knob's
+// Eight LFOs on Op A's Detune: under the knob, a depth handle and a "+7" pill, nothing drawn outside the knob's
 // column (read off the rendered pixels). The pill opens the list of all eight, whose rows bypass, set the depth of
 // and remove their modulation as a card's rows do; a click elsewhere closes it. A macro's handle held over the pill
 // opens the list under it, and let go of on a row makes the macro that row's aux; let go of anywhere else, the list
@@ -8794,21 +8795,21 @@ void testModsSearch(const std::filesystem::path &dir, Renderer &renderer) {
 void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
-    // Beside the knob, between its column and the next ones' (the Ratio readout's and Detune's), at the depth handles' height.
-    const float handleY = kPitchKnob.y + 0.5f * detail::kOpKnobD - 1.0f;
+    // Beside the knob, between its column and the next ones' (Pitch's and Phase's), at the depth handles' height.
+    const float handleY = kDetuneKnob.y + 0.5f * detail::kOpKnobD - 1.0f;
     auto beside = [&] {
         std::vector<uint32_t> pixels;
         for (float y = handleY - 5.0f; y < handleY + 6.0f; y += 1.0f)
             for (float x = 17.0f; x < 27.0f; x += 1.0f) {
-                pixels.push_back(renderer.pixel({kPitchKnob.x - x, y}));
-                pixels.push_back(renderer.pixel({kPitchKnob.x + x, y}));
+                pixels.push_back(renderer.pixel({kDetuneKnob.x - x, y}));
+                pixels.push_back(renderer.pixel({kDetuneKnob.x + x, y}));
             }
         return pixels;
     };
     view.mouseMove({600.0f, 328.0f}, {});
     renderer.save(view, dir / "40-pill-none.png");
     const std::vector<uint32_t> none = beside();
-    const int pitch = paramIndex(0, OpParam::Transpose);
+    const int pitch = paramIndex(0, OpParam::Detune);
     for (int s = 0; s < 8; ++s) {
         model.set(paramIndex(s, SourceParam::Type), static_cast<double>(SourceType::Lfo));
         model.set(slotTargetIndex(s, 0), slotTargetValue(pitch));
@@ -8821,7 +8822,7 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     // The pill sits 2 px right of the handle: 21 px across, centered under the knob, its middle 4.5 px right of the
     // knob's. Its list, 265 px wide and 8 more for its scrollbar, centered under it: the rows 24 px apart from 24 px
     // down, as on a card, six of them shown.
-    const Point pill{kPitchKnob.x + 4.5f, handleY};
+    const Point pill{kDetuneKnob.x + 4.5f, handleY};
     const float listX = pill.x - 136.5f + 6.0f, rowsY = pill.y + 4.5f + 6.0f + 24.0f;
     auto row = [&](int k, float x) { return Point{listX + x, rowsY + k * 24.0f + 10.0f}; };
     view.mouseMove(pill, {});
@@ -9567,6 +9568,55 @@ void run(const std::filesystem::path &dir, float scale) {
     check(layout.opTab == InspectorTab::Unison, "the UNISON tab shows the operator's unison");
     drag(view, kUnisonKnob, {kUnisonKnob.x, kUnisonKnob.y - 30.0f});
     check(model.value(paramIndex(0, OpParam::Unison)) == 4.0, "the unison knob steps through copy counts");
+
+    // Its count is a stepper, as every stepped number is: a field reaching out half a column less 6 px either side (the
+    // first of its row, with nothing at its left), its - and + at the ends stepping it as a notch of the wheel does,
+    // each an undo step, a quick second click stepping again, and - doing nothing at 1 copy; its + faint at rest and lit
+    // under the mouse (read off the rendered pixels). The header's Bend likewise, its field under its label.
+    {
+        const int unison = paramIndex(0, OpParam::Unison);
+        const float d = detail::kOpKnobD, half = 268.0f / 5.0f * 0.5f - 6.0f;
+        const float bottom = kUnisonKnob.y + 0.5f * d - 5.5f, top = bottom - 20.0f;
+        const Point plus{kUnisonKnob.x + half - 7.5f, top + 7.5f}, minus{kUnisonKnob.x - half + 7.5f, top + 7.5f};
+        const Point away{600.0f, 328.0f};
+        view.mouseMove(away, {});
+        renderer.save(view, dir / "3s-stepper.png");
+        const int rest = ringLevel(renderer, {plus.x, plus.y - 3.0f}, 6.0f);
+        view.mouseMove(plus, {});
+        const bool hoverShot = renderer.save(view, dir / "3s-stepper-hover.png");
+        const int lit = ringLevel(renderer, {plus.x, plus.y - 3.0f}, 6.0f);
+        click(view, plus);
+        const bool up = model.value(unison) == 5.0;
+        doubleClick(view, plus);
+        const bool twice = model.value(unison) == 7.0;
+        click(view, minus);
+        const bool down = model.value(unison) == 6.0;
+        view.undo();
+        view.undo();
+        view.undo();
+        const bool undone = model.value(unison) == 5.0;
+        view.undo();
+        const bool back = model.value(unison) == 4.0;
+        model.set(unison, 1.0);
+        view.poll();
+        click(view, minus);
+        const bool floor = model.value(unison) == 1.0;
+        model.set(unison, 4.0);
+        view.poll();
+        // The header's Bend: its field under its label, its + at the field's right end.
+        const int bend = paramIndex(GlobalParam::BendRange);
+        const float bendX = detail::headerKnobX(3) + 2.0f, bendTop = detail::kStripY + 12.0f + 15.0f;
+        const Point bendPlus{bendX + std::min(detail::kHeaderKnobPlaces[3] - 6.0f, 64.0f) - 7.5f, bendTop + 8.0f};
+        const double bendWas = model.value(bend);
+        click(view, bendPlus);
+        const bool bent = model.value(bend) == bendWas + 1.0;
+        view.undo();
+        view.mouseMove(away, {});
+        std::printf("      a stepper's + at %d resting, %d under the mouse\n", rest, lit);
+        check(hoverShot && up && twice && down && undone && back && floor && bent && model.value(bend) == bendWas &&
+                  lit > rest + 40,
+              "a stepper's - and + step it, an undo step each, and its + lights under the mouse");
+    }
     drag(view, kPhaseKnob, {kPhaseKnob.x, kPhaseKnob.y - 100.0f});
     check(std::abs(model.value(paramIndex(0, OpParam::PhaseRandom)) - 0.5) < 1e-6,
           "the phase knob sets the operator's phase randomization");

@@ -1899,9 +1899,41 @@ bool View::isRatioTarget(int param) {
     return param >= 0 && paramTable()[param].kind == ParamKind::OpRatio;
 }
 
+bool View::isStepperParam(int param) {
+    if (param < 0)
+        return false;
+    switch (paramTable()[param].kind) {
+    case ParamKind::Count:
+    case ParamKind::VoiceCount:
+    case ParamKind::Semitones:
+    case ParamKind::Transpose:
+    case ParamKind::NotePitch:
+    case ParamKind::FixedMult:
+    case ParamKind::SyncDivision:
+    case ParamKind::SeqRate:
+    case ParamKind::SeqBars:
+        return true;
+    default:
+        return false;
+    }
+}
+
+bool View::isStepper(const Widget &w) {
+    return w.kind == Kind::Knob && w.well.w > 0.0f;
+}
+
+int View::stepperButton(const Widget &w, Point p) {
+    if (!isStepper(w) || !w.well.contains(p))
+        return 0;
+    constexpr float kZone = 14.0f; // each end's button, as far in as its glyph and a little past it
+    return p.x < w.well.x + kZone ? -1 : p.x > w.well.right() - kZone ? 1 : 0;
+}
+
 Point View::knobCenter(const Widget &w) {
     if (isRatioDisplay(w))
         return kRatioBox.center();
+    if (isStepper(w))
+        return w.well.center();
     if (!w.compact)
         return {w.rect.center().x, w.rect.y + w.rect.w * 0.5f};
     return w.shrunk ? Point{w.rect.x + 16.0f, w.rect.y + 16.0f} : Point{w.rect.x + 18.0f, w.rect.y + 20.0f};
@@ -1926,6 +1958,8 @@ bool View::onValue(const Widget &w, Point p) {
         return true;
     if (w.kind != Kind::Knob || isRatioDisplay(w)) // the Ratio readout's digits are its number
         return false;
+    if (isStepper(w)) // its label, as a knob's (the field resets, as a knob does)
+        return w.compact ? p.y < w.well.y : p.y >= w.rect.y + w.rect.w;
     return w.compact ? p.x >= w.rect.x + compactTextX(w) - 4.0f : p.y >= w.rect.y + w.rect.w;
 }
 
@@ -2284,15 +2318,15 @@ std::vector<View::Widget> View::widgets() const {
                 for (int i = 0; i < 3; ++i)
                     add(Kind::Toggle, {card.x + 14.0f + i * w, under, w - 4.0f, 18.0f}, at(switches[i]));
                 merge(first);
-                // Synced, the time knobs pick note values and show them as their labels. Linked, the
+                // Synced, the time knobs are steppers picking note values. Linked, the
                 // left one sets both sides.
                 const bool synced = value(at(FxParam::DelaySync)) >= 0.5;
                 const int timeL = synced ? at(FxParam::DelayDivisionL) : at(FxParam::DelayTimeL);
                 const int timeR = synced ? at(FxParam::DelayDivisionR) : at(FxParam::DelayTimeR);
                 const bool linked = value(at(FxParam::DelayLink)) >= 0.5;
                 knobs({timeL, linked ? -1 : timeR, at(FxParam::DelayFeedback)},
-                      {synced ? nullptr : tr(linked ? Str::LabelTime : Str::LabelTimeL),
-                       synced ? nullptr : tr(Str::LabelTimeR), tr(Str::LabelFeedback)},
+                      {tr(linked ? Str::LabelTime : Str::LabelTimeL),
+                       tr(Str::LabelTimeR), tr(Str::LabelFeedback)},
                       206.0f);
                 knobs({at(FxParam::DelayTone), at(FxParam::DelayWidth), at(FxParam::DelayMix)},
                       {tr(Str::LabelTone), tr(Str::LabelWidth), tr(Str::LabelMix)}, 266.0f);
@@ -2425,7 +2459,7 @@ std::vector<View::Widget> View::widgets() const {
             case FxType::Flanger: {
                 // Under the display: at the left, over the Rate knob, SYNC (the delay's metronome), then STEREO, two
                 // switches of their own; at the right the polarity, + and - as one choice. Synced, the Rate knob
-                // picks a note value and shows it as its label.
+                // is a stepper picking a note value.
                 const bool phaser = type == FxType::Phaser;
                 const int sync = at(phaser ? FxParam::PhaserSync : FxParam::FlangerSync);
                 const Rect display = fxDisplayIn(card, type);
@@ -2443,13 +2477,13 @@ std::vector<View::Widget> View::widgets() const {
                                         : at(phaser ? FxParam::PhaserRate : FxParam::FlangerRate);
                 if (phaser) {
                     knobs({rate, at(FxParam::PhaserDepth), at(FxParam::PhaserCenter)},
-                          {synced ? nullptr : tr(Str::LabelRate), tr(Str::LabelDepth), tr(Str::LabelCenter)}, 206.0f);
+                          {tr(Str::LabelRate), tr(Str::LabelDepth), tr(Str::LabelCenter)}, 206.0f);
                     knobs({at(FxParam::PhaserFeedback), at(FxParam::PhaserStages), at(FxParam::PhaserMix)},
                           {tr(Str::LabelFeedback), tr(Str::LabelStages), tr(Str::LabelMix)}, 266.0f);
                     break;
                 }
                 knobs({rate, at(FxParam::FlangerDepth), at(FxParam::FlangerDelay)},
-                      {synced ? nullptr : tr(Str::LabelRate), tr(Str::LabelDepth), tr(Str::LabelDelay)}, 206.0f);
+                      {tr(Str::LabelRate), tr(Str::LabelDepth), tr(Str::LabelDelay)}, 206.0f);
                 knobs({at(FxParam::FlangerFeedback), -1, at(FxParam::FlangerMix)},
                       {tr(Str::LabelFeedback), nullptr, tr(Str::LabelMix)}, 266.0f);
                 break;
@@ -3073,7 +3107,7 @@ std::vector<View::Widget> View::widgets() const {
                 knob(paramIndex(s, SourceParam::RandomSmooth), randomKnob(card, 0), 30.0f, tr(Str::LabelSmooth));
                 knob(paramIndex(s, SourceParam::RandomChaos), randomKnob(card, 1), 30.0f, tr(Str::LabelChaos));
             }
-            // Synced, the knob picks a note value instead of a rate and shows it as its label.
+            // Synced, the knob is a stepper picking a note value instead of a rate.
             add(Kind::Toggle, sourceSync(card), paramIndex(s, SourceParam::Sync));
             // Its clock modes under the shape list, one of them lit, as Poly | Mono; each sets Free, Anchor and
             // One-Shot for it (see setLfoClock()), and stands for them all. Unipolar under the sync switch.
@@ -3088,7 +3122,7 @@ std::vector<View::Widget> View::widgets() const {
                 add(Kind::Toggle, lfoUnipolarSwitch(card), paramIndex(s, SourceParam::Unipolar));
             const bool synced = value(paramIndex(s, SourceParam::Sync)) >= 0.5;
             knob(synced ? paramIndex(s, SourceParam::Division) : paramIndex(s, SourceParam::Rate),
-                 lfoKnob(card, 0), 30.0f, synced ? nullptr : tr(Str::LabelRate));
+                 lfoKnob(card, 0), 30.0f, tr(Str::LabelRate));
             if (!random)
                 knob(paramIndex(s, SourceParam::Phase), lfoKnob(card, 1), 30.0f, tr(Str::LabelPhase));
         } else if (sourceTypeOf(s) == SourceType::Env) {
@@ -3133,6 +3167,54 @@ std::vector<View::Widget> View::widgets() const {
     add(Kind::NoteDisplay, noteDisplay(macros), -1, kNoteSource);
     add(Kind::MacroHandle, velocityHandle(macros), -1, kVelocitySource);
     add(Kind::NoteDisplay, velocityDisplay(macros), -1, kVelocitySource);
+
+    // The steppers' fields. Under the knob's place, over its depth handles, as wide as the widgets beside it leave room
+    // for (two steppers side by side sharing what is between them), from 36 to 56 px; on a side with nothing beside it
+    // (the end of a row of knobs, whose card's edge is half a column out), half the way to the knob on the other side,
+    // less 6 px. In the header and a title row, under its label where the knob and its number were.
+    for (size_t i = 0; i < list.size(); ++i) {
+        Widget &w = list[i];
+        if (w.kind != Kind::Knob || !isStepperParam(w.param) || isRatioDisplay(w))
+            continue;
+        const Rect r = w.rect;
+        if (w.compact) {
+            w.well = {r.x + 2.0f, r.y + 15.0f, std::min(r.w - 6.0f, 64.0f), 21.0f};
+            continue;
+        }
+        const float h = r.w >= 32.0f ? 22.0f : 20.0f;
+        const float bottom = r.y + r.w - 5.5f; // clear of the depth handles under it
+        const float cx = r.center().x, top = bottom - h;
+        float sides[2] = {28.0f, 28.0f}; // left, right
+        bool open[2] = {true, true};
+        float column = 0.0f; // to the nearest knob beside it, center to center
+        for (size_t j = 0; j < list.size(); ++j) {
+            const Widget &o = list[j];
+            if (j == i || o.kind == Kind::ModDot || o.kind == Kind::ModPill)
+                continue;
+            const bool isKnob = o.kind == Kind::Knob && !o.compact;
+            const Rect b = isKnob ? Rect{o.rect.x, o.rect.y, o.rect.w, o.rect.w} : o.rect;
+            if (b.bottom() <= top || b.y >= bottom || (b.x < cx && b.right() > cx))
+                continue; // above or below it, or behind it (its card, its panel)
+            const int side = b.x >= cx ? 1 : 0;
+            const float dx = side ? b.x - cx : cx - b.right();
+            open[side] = false;
+            if (isKnob) {
+                const float apart = std::abs(o.rect.center().x - cx);
+                column = column > 0.0f ? std::min(column, apart) : apart;
+            }
+            sides[side] = std::min(sides[side], isKnob && isStepperParam(o.param)
+                                                    ? std::abs(o.rect.center().x - cx) * 0.5f - 2.0f
+                                                    : dx - 4.0f);
+        }
+        for (int side = 0; side < 2; ++side)
+            if (open[side] && column > 0.0f)
+                sides[side] = std::min(sides[side], column * 0.5f - 6.0f);
+        float half = std::min(sides[0], sides[1]);
+        if (w.clip.w > 0.0f)
+            half = std::min({half, cx - w.clip.x - 6.0f, w.clip.right() - cx - 6.0f});
+        half = std::max(half, 18.0f);
+        w.well = {cx - half, top, 2.0f * half, h};
+    }
 
     // Depth handles in the gap under each modulated knob, and small ones in the bottom right corner of each
     // modulated wire label and the top right of each matrix cell and source's depth bar (another source modulating
@@ -3204,12 +3286,19 @@ std::vector<View::Widget> View::widgets() const {
         }
         // Under a knob, 10 px apart and centered; a header knob's go under its knob, at its left.
         // The Ratio readout's go along its box's bottom edge.
-        const Point base = isRatioDisplay(list[i]) ? Point{r.center().x, kRatioBox.bottom() - 1.0f}
-                           : list[i].compact       ? Point{r.x + 18.0f, r.y + 37.0f}
-                                                   : Point{r.center().x, r.y + r.w - 1.0f};
+        // A stepper's go under its field, across it.
+        const bool stepper = isStepper(list[i]);
+        const Rect well = list[i].well;
+        const Point base = isRatioDisplay(list[i])         ? Point{r.center().x, kRatioBox.bottom() - 1.0f}
+                           : stepper && list[i].compact ? Point{well.center().x, well.bottom() + 4.5f}
+                           : list[i].compact            ? Point{r.x + 18.0f, r.y + 37.0f}
+                                                        : Point{r.center().x, r.y + r.w - 1.0f};
         // The Ratio readout keeps its handles clear of its box's rounded corners.
         constexpr float kStep = 10.0f;
-        const float width = isRatioDisplay(list[i]) ? r.w - 9.0f : list[i].compact ? 34.0f : r.w;
+        const float width = isRatioDisplay(list[i]) ? r.w - 9.0f
+                            : stepper               ? well.w - 6.0f
+                            : list[i].compact       ? 34.0f
+                                                    : r.w;
         const float dot = sizes.dot; // the handles stay inside that width at the user's size
         const int fit = static_cast<int>((width - 2.0f * dot) / kStep) + 1;
         // Past that, as many as fit beside the pill, 2 px left of it.
@@ -3511,7 +3600,7 @@ std::optional<View::Widget> View::hitTest(Point p) const {
         } else if (it->kind == Kind::FxWire) {
             if (it->rect.contains(p) && fxWireHit(*it, p))
                 return *it;
-        } else if (it->rect.contains(p)) {
+        } else if (it->rect.contains(p) || (isStepper(*it) && it->well.contains(p))) {
             return *it;
         }
     }
@@ -7327,6 +7416,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::Knob:
         if (isRatioDisplay(w))
             paintRatio(c, w);
+        else if (isStepper(w))
+            paintStepper(c, w);
         else
             paintKnob(c, w);
         break;
@@ -9026,6 +9117,32 @@ std::string View::modRangeText(int source, int slot) const {
     return text;
 }
 
+// In a theme that colors knobs by what they belong to: a source's or an effect's in its card's color, a filter's or a
+// shaper's in its node's, as the switches on its page are; an operator's in the accent, as its page's switches are, its
+// own color kept for the graph.
+Color View::knobColor(int param) const {
+    if (!look.flat)
+        return kAccent;
+    if (const int s = sourceOf(param); s >= 0)
+        return kSourceColors[s];
+    if (const int slot = fxSlotOf(param); slot >= 0)
+        return fxTypeColor(fxSlotType(slot));
+    // A filter's, and the depths of the routes into or out of one (an operator's send, another filter's link, its
+    // modulation of an operator), which its INPUTS tab shows, as the routes take its color.
+    if (param >= kFilterModBase && param < kShaperBase)
+        return kFilterColor;
+    if (shaperOf(param) >= 0)
+        return kShaperColor;
+    if (param >= kOpBase && param < kMatrixBase) {
+        const int field = (param - kOpBase) % kOpParamCount;
+        if (field >= static_cast<int>(OpParam::Sends) && field < static_cast<int>(OpParam::ShaperSends))
+            return kFilterColor;
+        if (field >= static_cast<int>(OpParam::ShaperSends) && field < static_cast<int>(OpParam::Fixed))
+            return kShaperColor;
+    }
+    return kAccent;
+}
+
 void View::paintKnob(Canvas &c, const Widget &w) {
     const ParamDef &def = table_[w.param];
     const bool focused = isHovered(w) || isActive(w);
@@ -9043,32 +9160,7 @@ void View::paintKnob(Canvas &c, const Widget &w) {
                         : w.param == fxInputIndex(fxSumNode(sum), 0, FxInputField::Level) ? 1
                         : w.param == fxInputIndex(fxSumNode(sum), 1, FxInputField::Level) ? 2
                                                                                           : 3;
-    // In a theme that colors knobs by what they belong to: a source's or an effect's in its card's color, a filter's
-    // or a shaper's in its node's, as the switches on its page are; an operator's in the accent, as its page's switches
-    // are, its own color kept for the graph.
-    auto owner = [&](int param) {
-        if (!look.flat)
-            return kAccent;
-        if (const int s = sourceOf(param); s >= 0)
-            return kSourceColors[s];
-        if (const int slot = fxSlotOf(param); slot >= 0)
-            return fxTypeColor(fxSlotType(slot));
-        // A filter's, and the depths of the routes into or out of one (an operator's send, another filter's link,
-        // its modulation of an operator), which its INPUTS tab shows, as the routes take its color.
-        if (param >= kFilterModBase && param < kShaperBase)
-            return kFilterColor;
-        if (shaperOf(param) >= 0)
-            return kShaperColor;
-        if (param >= kOpBase && param < kMatrixBase) {
-            const int field = (param - kOpBase) % kOpParamCount;
-            if (field >= static_cast<int>(OpParam::Sends) && field < static_cast<int>(OpParam::ShaperSends))
-                return kFilterColor;
-            if (field >= static_cast<int>(OpParam::ShaperSends) && field < static_cast<int>(OpParam::Fixed))
-                return kShaperColor;
-        }
-        return kAccent;
-    };
-    const Color plain = sum >= 0 ? laneColor(levelOf) : owner(w.param);
+    const Color plain = sum >= 0 ? laneColor(levelOf) : knobColor(w.param);
     const Color own = macro >= 0 ? kSourceColors[kMaxSources + macro] : plain;
     // A bipolar macro moves nothing at the knob's middle, so its arc starts there.
     const bool fromMiddle = isBipolar(def.kind) || (macro >= 0 && sourceBipolar(kMaxSources + macro));
@@ -9251,6 +9343,122 @@ void View::paintRatio(Canvas &c, const Widget &w) {
 
     c.text({w.rect.x, kOpLabelY, w.rect.w, 16.0f}, w.label ? w.label : "", kTextLabel,
            focused ? kText : kDim);
+}
+
+// A stepper: its number in a field, a unit after it smaller and dimmer, and - and + at the field's ends, faint at rest
+// where the number leaves them room and lit under the mouse (the unit making way where they need its room). Along the
+// field's foot its steps: a tick each where they fit, else a track, with each modulation's reach in its source's color
+// over them, as the Ratio readout's track has it, and the value's place.
+void View::paintStepper(Canvas &c, const Widget &w) {
+    const ParamDef &def = table_[w.param];
+    const bool dragged = drag_.kind == DragKind::Value && drag_.widget.same(w);
+    const bool hovered = isHovered(w);
+    const bool focused = hovered || dragged;
+    const Rect well = w.well;
+    const Color own = knobColor(w.param);
+    c.fillRect(well, kDisplayColor, kRadiusControl);
+    if (outlined() || focused) // in a flat theme, as its other displays, outlined only under the mouse
+        c.strokeRect(well, focused ? kFaint : kBorder, 1.0f, kRadiusControl);
+
+    const double v = value(w.param);
+    char text[64];
+    formatParam(w.param, v, text, sizeof(text));
+    std::string number = text, unit;
+    if (constexpr std::string_view st = " st"; number.size() > st.size() && number.ends_with(st)) {
+        unit = number.substr(number.size() - st.size() + 1);
+        number.resize(number.size() - st.size());
+    }
+    const float size = w.compact ? kTextValue : kTextBody;
+    constexpr float kZone = 14.0f; // each end's button (see stepperButton())
+    const float numberW = std::ceil(c.textWidth(number, size, true));
+    float unitW = unit.empty() ? 0.0f : std::ceil(c.textWidth(unit, kTextSmall)) + 2.0f;
+    const bool room = numberW + unitW + 4.0f <= well.w - 2.0f * kZone; // 2 px clear of each glyph's zone
+    if (hovered && !room) {
+        unit.clear();
+        unitW = 0.0f;
+    }
+    const float textH = well.h - 5.0f; // above the steps
+    const float x = std::round(well.center().x - (numberW + unitW) * 0.5f);
+    c.text({x, well.y, numberW + 2.0f, textH}, number, size, kText, Align::Left, true);
+    if (!unit.empty())
+        c.text({x + numberW + 2.0f, well.y + 1.5f, unitW, textH}, unit, kTextSmall, kDim, Align::Left);
+
+    if (room || focused) {
+        const int under = hovered ? stepperButton(w, hoverPoint_) : 0;
+        const float y = well.y + textH * 0.5f;
+        for (const int side : {-1, 1}) {
+            const bool end = side < 0 ? v <= def.min + 1e-9 : v >= def.max - 1e-9;
+            const float bx = side < 0 ? well.x + 7.5f : well.right() - 7.5f;
+            if (under == side && !end)
+                c.fillRect({bx - 6.0f, y - 6.0f, 12.0f, 12.0f}, own.alpha(0.18f), kRadiusMark);
+            const Color ink = end              ? kFaint.alpha(focused ? 0.7f : 0.35f)
+                              : under == side ? kText
+                              : focused       ? kDim
+                                              : kDim.alpha(0.45f);
+            c.line({bx - 3.0f, y}, {bx + 3.0f, y}, ink, 1.5f);
+            if (side > 0)
+                c.line({bx, y - 3.0f}, {bx, y + 3.0f}, ink, 1.5f);
+        }
+    }
+
+    // The steps: a tick each, 2.5 px apart or more, or a track; a value `n` (normalized) placed on a tick's middle or
+    // along the track, which fills from 0 where the range has it in its middle (a pitch), as a bipolar knob's arc does.
+    const Rect track{well.x + 6.0f, well.bottom() - 4.5f, well.w - 12.0f, 2.0f};
+    const int steps = std::max(2, static_cast<int>(std::lround(def.max - def.min)) + 1);
+    const float pitch = track.w / static_cast<float>(steps);
+    const bool ticks = pitch >= 2.5f;
+    const double n = norm(w.param);
+    auto along = [&](double at) {
+        const double t = std::clamp(at, 0.0, 1.0);
+        return ticks ? track.x + (static_cast<float>(t) * static_cast<float>(steps - 1) + 0.5f) * pitch
+                     : track.x + static_cast<float>(t) * track.w;
+    };
+    // A switched-off source's reach is faint; the one whose depth handle is under the mouse goes over the others.
+    std::vector<std::pair<std::pair<double, double>, Color>> reaches, focus;
+    forEachMod(w.param, [&](const Assignment &m) {
+        const auto [down, up] = modReach(m);
+        const bool wide = modFocused(m);
+        const float alpha = (sourceOn(m.source) && !m.bypassed ? 1.0f : 0.35f) * (wide ? 1.0f : 0.8f);
+        (wide ? focus : reaches)
+            .push_back({{n + std::min(down, up), n + std::max(down, up)}, kSourceColors[m.source].alpha(alpha)});
+    });
+    reaches.insert(reaches.end(), focus.begin(), focus.end());
+    const int on = static_cast<int>(std::lround(v - def.min));
+    if (ticks) {
+        for (int k = 0; k < steps; ++k) {
+            const double at = static_cast<double>(k) / (steps - 1);
+            Color color = k == on ? own : kTrack;
+            if (k != on)
+                for (const auto &[span, reach] : reaches)
+                    if (at >= span.first - 1e-9 && at <= span.second + 1e-9)
+                        color = reach;
+            c.fillRect({track.x + k * pitch + 0.5f, track.y, pitch - 1.0f, track.h}, color, kRadiusMark);
+        }
+    } else {
+        c.fillRect(track, kTrack, kRadiusMark);
+        const float from = def.min < 0.0 && def.max > 0.0 ? along(-def.min / (def.max - def.min)) : track.x;
+        c.fillRect({std::min(from, along(n)), track.y, std::abs(along(n) - from), track.h}, own.alpha(0.5f),
+                   kRadiusMark);
+        for (const auto &[span, reach] : reaches) {
+            const float a = along(span.first), b = along(span.second);
+            c.fillRect({a, track.y, std::max(b - a, 1.0f), track.h}, reach, kRadiusMark);
+        }
+        c.fillRect({along(n) - 1.0f, track.y - 1.5f, 2.0f, track.h + 3.0f}, kText, kRadiusMark);
+    }
+    // Where modulation currently takes the newest voice, or with no note playing where the macros take it; one modulated
+    // in steps on the step it plays.
+    float offset = liveOffset(w.param);
+    if (offset != 0.0f && modulatedInSteps(w.param))
+        offset = static_cast<float>(std::clamp(std::round(v + offset), def.min, def.max) - v);
+    if (offset != 0.0f)
+        c.fillCircle({along(n + offset / (def.max - def.min)), track.center().y}, 2.5f, kText);
+
+    const Rect r = w.rect;
+    if (w.compact)
+        c.text({r.x + 2.0f, r.y, r.w - 2.0f, 15.0f}, w.label ? w.label : "", kTextLabel, kDim, Align::Left);
+    else
+        c.text({r.x - 14.0f, r.y + r.w + 2.0f, r.w + 28.0f, 16.0f}, w.label ? w.label : "", kTextLabel,
+               focused ? kText : kDim);
 }
 
 // What the play switches do, below the one under the mouse.
@@ -9732,6 +9940,7 @@ void View::paintModOverlay(Canvas &c, const std::vector<Widget> &list) {
             continue;
         }
         if (w.popup || covered(isRatioDisplay(w)      ? kRatioBox.inset(-4.0f)
+                               : isStepper(w)         ? w.well.inset(-4.0f)
                                : w.kind == Kind::Knob ? Rect{w.rect.x - 7.0f, w.rect.y - 7.0f, w.rect.w + 14.0f,
                                                              w.rect.w + 14.0f}
                                                       : w.rect.inset(-4.0f)))
@@ -9765,6 +9974,8 @@ void View::paintModOverlay(Canvas &c, const std::vector<Widget> &list) {
         const Color ring = color.alpha(over ? 1.0f : 0.35f);
         if (isRatioDisplay(w)) {
             c.strokeRect(kRatioBox.inset(-4.0f), ring, over ? 2.5f : 1.5f, kRadiusCard);
+        } else if (isStepper(w)) {
+            c.strokeRect(w.well.inset(-4.0f), ring, over ? 2.5f : 1.5f, kRadiusControl + 4.0f);
         } else if (w.kind == Kind::Knob) {
             c.strokeCircle(knobCenter(w), knobRadius(w) + 6.0f, ring, over ? 2.5f : 1.5f);
         } else {
@@ -9833,6 +10044,8 @@ void View::paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int sour
             c.strokeRect(pill->rect.inset(-2.0f), color, 1.5f, pill->rect.h * 0.5f + 2.0f);
         if (isRatioDisplay(w))
             c.strokeRect(kRatioBox.inset(-3.0f), color.alpha(0.5f), 1.0f, kRadiusCard);
+        else if (isStepper(w))
+            c.strokeRect(w.well.inset(-3.0f), color.alpha(0.5f), 1.0f, kRadiusControl + 3.0f);
         else if (w.kind == Kind::Knob)
             c.strokeCircle(knobCenter(w), knobRadius(w) + 5.0f, color.alpha(0.5f), 1.0f);
         else
@@ -9870,6 +10083,10 @@ Rect View::typingField() const {
     const Widget &w = typing_->widget;
     if (isRatioDisplay(w)) // over its digits
         return {kRatioBox.x, kRatioBox.y + 9.0f, kRatioBox.w, 22.0f};
+    if (isStepper(w)) { // over its field, at least as wide as a knob's
+        const float width = std::max(w.well.w, 60.0f);
+        return {w.well.center().x - width * 0.5f, w.well.center().y - 10.0f, width, 20.0f};
+    }
     if (w.kind == Kind::Knob && w.compact)
         return {w.rect.x + compactTextX(w) - 4.0f, w.rect.y + (w.shrunk ? 14.0f : 17.0f), w.rect.w + 2.0f - (compactTextX(w) - 4.0f), 20.0f};
     if (w.kind == Kind::Knob)
@@ -10307,7 +10524,8 @@ bool View::mouseMove(Point p, Modifiers mods) {
         bool changed = cardChanged || ctrlChanged || gridEdge || hit.has_value() != hover_.has_value() ||
                        (hit && !same(*hit, *hover_)) ||
                        (hit && hit->kind == Kind::PartialArea) ||
-                       (hit && isRatioDisplay(*hit) && ratioDigit(p.x) != ratioDigit(before.x)); // its lit digit
+                       (hit && isRatioDisplay(*hit) && ratioDigit(p.x) != ratioDigit(before.x)) || // its lit digit
+                       (hit && stepperButton(*hit, p) != stepperButton(*hit, before)); // its lit - or +
         hover_ = std::move(hit);
         // In a cascading menu, the mouse over a category opens it beside it, and over an entry closes what is open
         // past its level.
@@ -10419,6 +10637,11 @@ void View::mouseDown(Point p, Modifiers mods) {
         drag_.snap = snap;
         drag_.step = true;
         drag_.shapeBefore = std::move(before);
+        return;
+    }
+    // A stepper's - and + step it as a notch of the wheel does, an undo step each.
+    if (const int side = stepperButton(w, p); side != 0) {
+        edit(w.param, notchValue(w.param, side));
         return;
     }
     drag_.widget = w;
@@ -11785,7 +12008,7 @@ void View::doubleClick(Point p, Modifiers mods) {
     if (hit && (hit->kind == Kind::Key || hit->kind == Kind::Octave || hit->kind == Kind::UndoButton ||
                 hit->kind == Kind::PresetStep || hit->kind == Kind::FxPower || hit->kind == Kind::FxNodePower ||
                 hit->kind == Kind::SlotBypass || (hit->kind == Kind::ShapeGrid && hit->b != 0) ||
-                hit->kind == Kind::ShapeTool || drawsStep(*hit, mods))) {
+                hit->kind == Kind::ShapeTool || stepperButton(*hit, p) != 0 || drawsStep(*hit, mods))) {
         // Windows turns a quick second click into a double-click instead of a press:
         // play it as a press so fast repeated notes, octave steps, undos and steps aren't dropped.
         mouseDown(p, mods);
@@ -12106,20 +12329,22 @@ void View::wheel(Point p, float steps, Modifiers mods) {
         return;
     }
     const UndoScope notches(controller_, true); // a run of notches on one knob undoes at once
-    const double v = value(hit->param);
+    if (snapsToSteps(def.kind))
+        edit(hit->param, notchValue(hit->param, whole));
+    else
+        edit(hit->param, value(hit->param) + steps * (def.max - def.min) * (mods.shift ? 0.002 : 0.01));
+}
+
+double View::notchValue(int param, int whole) const {
+    const ParamDef &def = table_[param];
+    const double v = value(param);
     if (def.kind == ParamKind::VoiceCount) { // about 20 % per notch, at least one voice
         const double scaled = std::round(v * std::exp2(whole * 0.25));
-        edit(hit->param, whole > 0 ? std::max(v + 1.0, scaled) : std::min(v - 1.0, scaled));
-        return;
+        return whole > 0 ? std::max(v + 1.0, scaled) : std::min(v - 1.0, scaled);
     }
-    if (def.kind == ParamKind::Transpose || def.kind == ParamKind::NotePitch) { // to the next whole semitone, and on
-        edit(hit->param, whole > 0 ? std::floor(v + whole) : std::ceil(v + whole));
-        return;
-    }
-    if (isStepped(def.kind))
-        edit(hit->param, v + whole);
-    else
-        edit(hit->param, v + steps * (def.max - def.min) * (mods.shift ? 0.002 : 0.01));
+    if (def.kind == ParamKind::Transpose || def.kind == ParamKind::NotePitch) // to the next whole semitone, and on
+        return whole > 0 ? std::floor(v + whole) : std::ceil(v + whole);
+    return v + whole;
 }
 
 // Menu commands from here on clear all of a source's slots; those from 100 up to here remove one slot.

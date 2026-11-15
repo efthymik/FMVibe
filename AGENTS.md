@@ -577,6 +577,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the UNISON tab starting on Alternate, its buttons picking the copies' curve (Supersaw) and pan (Ramp) and its
     Blend knob, each an undo step, the display's lowest copy moving from the right to the left (read off the rendered
     pixels), and a pan button's tooltip;
+  - a stepper (the unison count's, and the header's Bend's): its - and + stepping it, an undo step each, a quick
+    second click stepping again and - doing nothing at 1 copy, its + faint at rest and lit under the mouse (read off
+    the rendered pixels);
   - the play switches and the glide knob;
   - an LFO starting synced in quarter notes, and its sync switch freeing it; its Phase knob, marked on its display
     and faint while the LFO is free, and lit while it is anchored (read off the rendered pixels); its clock modes

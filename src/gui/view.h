@@ -404,6 +404,9 @@ private:
         Rect group{};
         float partLeft = 0.0f, partRight = 0.0f;
         bool modeGlyph = false; // a wire label in the graph showing its route's mode (not Phase) inside it
+        // A stepper's field (see isStepper()): drawn in place of its knob, and hit as its rect is. It may reach past the
+        // rect's sides, as far as the widgets beside it leave room.
+        Rect well{};
 
         bool same(const Widget &o) const { return kind == o.kind && param == o.param && a == o.a && b == o.b; }
     };
@@ -1468,6 +1471,15 @@ private:
     static bool isRatioDisplay(const Widget &w);
     // An operator's Ratio, whose depth handles drag on its log curve, an octave every 60 px.
     static bool isRatioTarget(int param);
+    // A knob whose value moves only in whole steps (a count, semitones, a note, a note value, a factor), drawn as a
+    // stepper: its number in a field with - and + at its ends and its steps along its foot (see Widget::well).
+    static bool isStepper(const Widget &w);
+    static bool isStepperParam(int param);
+    // The stepper's - (-1) or + (1) under `p`, or 0.
+    static int stepperButton(const Widget &w, Point p);
+    // The value a notch of the wheel takes `param` to, `whole` notches up (down when negative): a step, and for the
+    // voice limit about a fifth more or less.
+    double notchValue(int param, int whole) const;
     static float compactTextX(const Widget &w);
     static float knobRadius(const Widget &w);
     // Whether `p` is on the number widget `w` shows, where a double-click starts typing.
@@ -1605,6 +1617,8 @@ private:
     bool opHeard(int op) const;
     void paintKnob(Canvas &c, const Widget &w);
     void paintRatio(Canvas &c, const Widget &w);
+    void paintStepper(Canvas &c, const Widget &w);
+    Color knobColor(int param) const;
     std::string modRangeText(int source, int slot) const;
     void paintModOverlay(Canvas &c, const std::vector<Widget> &list);
     // A route's amount where modulation takes the newest voice right now (0..1), or as set while nothing plays.
