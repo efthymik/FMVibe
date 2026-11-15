@@ -310,6 +310,8 @@ private:
     const std::unique_ptr<const Telemetry> noTelemetry_ = std::make_unique<const Telemetry>(); // what nothing playing shows
     std::atomic<bool> editorOpen_{false};
     std::atomic<bool> idleLfosShown_{false}; // see setIdleLfosShown()
+    // The tempo the synth played the last block at (the host's), 0 before the first: what a preset saved records.
+    std::atomic<double> playedTempo_{0.0};
     std::atomic<int> scopeOp_{-1}; // what the editor's scope shows (see Controller::setScope())
     std::atomic<int> scopeCycles_{2};
     unsigned int csr_ = 0; // the audio thread's floating-point control word, while a block is processed

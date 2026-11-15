@@ -1419,8 +1419,11 @@ one may have changed since it last did.
   field sits between the name and the preset bar: a metronome, then the tempo in BPM (20–999, 140 to begin with),
   which every synced LFO, delay and sweep follows. Dragged up or down it moves a BPM every 2 px, onto whole ones (a
   tenth of one with Shift); the wheel steps it a BPM a notch (a tenth with Shift); a double-click or Ctrl+Click types
-  one, with or without `BPM` after it, held to the range. It is the host's, not the patch's: presets and undo leave
-  it alone. A plugin host's tempo is its own, so in a DAW the title bar shows none. Under it, the
+  one, with or without `BPM` after it, held to the range. It is the host's, not the patch's: undo leaves it alone,
+  but a preset saved keeps the tempo it was saved at (in any host, a DAW's tempo too), and loading one saved at a
+  tempo sets this field to it, so a sequencer pattern plays as it was made (the demo's first preset too, as the page
+  opens); Init, a preset saved before this, and a host's project restored leave it as it is. A plugin host's tempo is
+  its own, so in a DAW the title bar shows none, and a preset loaded leaves the host's tempo alone. Under it, the
   **global strip** spreads across the editor, from the output scope under the name to the voice count at its right
   end. First the output scope:
   the output after Volume (its two sides' mean) over two periods of the newest note's pitch (kept once the note has

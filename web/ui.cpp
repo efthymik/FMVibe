@@ -156,6 +156,8 @@ public:
             return false;
         values_ = values;
         replaceLayout(layout);
+        if (layout.savedTempo > 0.0f) // the page plays an example at the tempo it was saved at
+            setTempo(layout.savedTempo);
         js_all_params(values_.data(), kParamCount);
         layoutChanged();
         setPreset(fileOf(index));

@@ -331,6 +331,9 @@ void layoutFields(Io &io, Layout &ui) {
     io.number(ui.seqLane, 0.0f, static_cast<float>(gui::SeqLane::Count) - 1.0f, rounded<gui::SeqLane>);
     io.number(ui.seqLow, 0.0f, 127.0f, rounded<int>);
     io.number(ui.seqFold, 0.0f, 1.0f, [](float value) { return value >= 0.5f; });
+    // The tempo the patch was saved as a preset at: 0 for none, or a tempo the editor offers.
+    io.number(ui.savedTempo, 0.0f, static_cast<float>(gui::kMaxTempo), AsIs{},
+              [](float bpm) { return bpm == 0.0f || bpm >= static_cast<float>(gui::kMinTempo); });
 }
 
 } // namespace

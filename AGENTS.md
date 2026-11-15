@@ -283,6 +283,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     EQ's, the phase disperser's and the voice filters' analyzers (falling away as fast at 96 kHz as at 48), and that each example preset holds valid values
     and sounds at a sane level;
   - each factory preset's file being sparse, as the preset tool writes it;
+  - the tempo a preset was saved at reading back as written, and as none below 20 BPM or from a layout before it;
   - the mod wheel leaving the FM alone until it is assigned, and the output meter's peaks, fall and clip light;
   - a macro's knob modulated: along a chain of macros out of their numbers' order (the telemetry saying where the
     knobs stand), in a loop a state holds, steadily and alike each time, and per voice by velocity, a loud note's
@@ -1165,8 +1166,10 @@ itself.
   scope's cycle count, the wires bent away from their first bow (by route), the MODS view's empty modulations
   (each its source + 1 and its target's id + 1, 0 for none), how shapes are edited (Steps, then Snap), which
   effect cards past the 16th slot are folded, the node the effects graph's inspector shows, whether the FX view shows
-  the graph, the band each split shows and which splits' containers are folded, and the SEQ view's roll (whether it
-  draws, its snap, its lane, its lowest row and whether it is folded to the scale).
+  the graph, the band each split shows and which splits' containers are folded, the SEQ view's roll (whether it
+  draws, its snap, its lane, its lowest row and whether it is folded to the scale), and the tempo the patch was last
+  saved as a preset at (0 for none), which a host that lets the editor set the tempo (`Controller::hasTempo()`)
+  takes up as the preset loads.
   The host's state goes on with
   the settings chunk (the oversampling, MPE and MPE's bend range) and a preset chunk (whether the patch changed since its preset, then the preset file's path
   in UTF-8, left out past 64 KB); preset files stop after the layout. Params and layout fields a

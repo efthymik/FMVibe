@@ -180,6 +180,7 @@ void PluginCore::endBlock() {
         telemetry_.store(t);
     }
     telemetryOpen_ = open;
+    playedTempo_.store(synth_.tempo(), std::memory_order_relaxed);
     _mm_setcsr(csr_);
 }
 
@@ -440,6 +441,9 @@ bool PluginCore::loadPreset(const std::wstring &path) {
     valuesInto(*told);
     const bool loaded = loadState(&stream, false);
     if (loaded) {
+        // A host that lets the editor set the tempo plays the preset at the tempo it was saved at.
+        if (hasTempo() && layout_.savedTempo > 0.0f)
+            setTempo(gui::clampTempo(layout_.savedTempo));
         notifyParams(*told);
         layoutChanged();
         setPreset(path);
@@ -457,6 +461,10 @@ bool PluginCore::savePreset(const std::wstring &path) {
     FILE *file = nullptr;
     if (_wfopen_s(&file, part.c_str(), L"wb") != 0 || !file)
         return false;
+    // The tempo it plays at goes with it: the editor's where the host lets it set one, else the host's last block's.
+    const double bpm = hasTempo() ? tempo() : playedTempo_.load(std::memory_order_relaxed);
+    if (bpm > 0.0)
+        layout_.savedTempo = static_cast<float>(gui::clampTempo(bpm));
     const clap_ostream_t stream = fileOut(file);
     const bool saved = saveState(&stream, false);
     const bool closed = std::fclose(file) == 0;

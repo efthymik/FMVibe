@@ -115,6 +115,11 @@ struct UiLayout {
     SeqLane seqLane = SeqLane::Velocity;
     int seqLow = 48;
     bool seqFold = false;
+    // The tempo the patch was last saved as a preset at, in BPM (the host's, whatever host it was), 0 for none (a
+    // preset saved before it was kept, Init). A host that lets the editor set the tempo (see Controller::hasTempo())
+    // takes it up as the preset loads, so a sequencer pattern plays at the tempo it was made at; a plugin host's tempo
+    // stays its own. Part of the patch, like the node places, but not undone.
+    float savedTempo = 0.0f;
 };
 
 // What a preset or Init leaves as it is, taken from the layout before it: how big the editor is, which panels are

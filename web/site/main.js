@@ -185,6 +185,36 @@ const host = {
   },
 };
 
+// --- Tempo --------------------------------------------------------------------------------------------------
+
+// The page stands in for a host's transport: its tempo is what synced LFOs, delays and sweeps follow. The editor's
+// title bar shows it, to drag, scroll or type (ui.cpp hands it here), and it is kept in the browser's storage like
+// the theme, which the editor reads it from too. An example saved at a tempo sets it as it loads, the first one too
+// as the editor starts, so this comes before the editor does.
+const TEMPO_MIN = 20;
+const TEMPO_MAX = 999;
+let tempo = 140;
+
+function clampTempo(bpm) {
+  return Math.min(TEMPO_MAX, Math.max(TEMPO_MIN, Math.round(bpm * 100) / 100));
+}
+
+function setTempo(bpm) {
+  if (!Number.isFinite(bpm))
+    return;
+  tempo = clampTempo(bpm);
+  send({type: 'tempo', bpm: tempo});
+  host.setSetting('tempo', String(tempo));
+}
+
+{
+  const stored = parseFloat(host.setting('tempo') ?? '');
+  if (Number.isFinite(stored))
+    tempo = clampTempo(stored);
+}
+
+// --- The editor's start -------------------------------------------------------------------------------------
+
 let ui;
 let dirty = true;
 let viewWidth = 1;  // the editor's size in its own units; resize() asks it
@@ -523,33 +553,6 @@ document.addEventListener('mousedown', (e) => {
     afterInput();
   }
 });
-
-// --- Tempo --------------------------------------------------------------------------------------------------
-
-// The page stands in for a host's transport: its tempo is what synced LFOs, delays and sweeps follow. The editor's
-// title bar shows it, to drag, scroll or type (ui.cpp hands it here), and it is kept in the browser's storage like
-// the theme, which the editor reads it from too.
-const TEMPO_MIN = 20;
-const TEMPO_MAX = 999;
-let tempo = 140;
-
-function clampTempo(bpm) {
-  return Math.min(TEMPO_MAX, Math.max(TEMPO_MIN, Math.round(bpm * 100) / 100));
-}
-
-function setTempo(bpm) {
-  if (!Number.isFinite(bpm))
-    return;
-  tempo = clampTempo(bpm);
-  send({type: 'tempo', bpm: tempo});
-  host.setSetting('tempo', String(tempo));
-}
-
-{
-  const stored = parseFloat(host.setting('tempo') ?? '');
-  if (Number.isFinite(stored))
-    tempo = clampTempo(stored);
-}
 
 // --- Keyboard -----------------------------------------------------------------------------------------------
 

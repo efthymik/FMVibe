@@ -4886,6 +4886,7 @@ int main(int argc, char **argv) {
         layout.push_back(5.0f);                                   // splits' containers folded
         // The SEQ view's roll: drawing, at 1/8, on the chance lane, from C2 up, folded to the scale.
         layout.insert(layout.end(), {1.0f, 2.0f, 1.0f, 36.0f, 1.0f});
+        layout.push_back(128.5f); // the tempo it was saved at as a preset
 
         MemoryStream big;
         auto put = [&](const void *data, size_t size) {
