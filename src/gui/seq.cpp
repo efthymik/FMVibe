@@ -415,13 +415,13 @@ void View::seqWidgets(std::vector<Widget> &list) const {
         add(Kind::Choice, {kSeqCardControls + p * 62.0f, kSeqPlayY, 60.0f, 22.0f}, paramIndex(SeqParam::Play), -1, p);
     mergeButtons(list, from);
     // Two rows of four: at the left the steppers (Rate and Length over Octave and Transpose), at the right the knobs
-    // (Swing and Gate over Velocity and Humanize).
+    // (Swing and Gate over Humanize and Velocity).
     const int knobs[8] = {paramIndex(SeqParam::Rate),   paramIndex(pattern, SeqPatternParam::Length),
                           paramIndex(SeqParam::Swing),  paramIndex(SeqParam::Gate),
                           paramIndex(SeqParam::Octave), paramIndex(SeqParam::Transpose),
-                          paramIndex(SeqParam::Velocity), paramIndex(SeqParam::Humanize)};
+                          paramIndex(SeqParam::Humanize), paramIndex(SeqParam::Velocity)};
     const Str labels[8] = {Str::LabelRate,   Str::LabelLength,    Str::LabelSwing,    Str::LabelGate,
-                           Str::LabelOctave, Str::LabelTranspose, Str::LabelVelocity, Str::LabelHumanize};
+                           Str::LabelOctave, Str::LabelTranspose, Str::LabelHumanize, Str::LabelVelocity};
     for (int i = 0; i < 8; ++i) {
         const Rect at = seqKnobCenterRect(i);
         add(Kind::Knob, knobRect({at.x, at.y}, kSeqKnobD), knobs[i]);

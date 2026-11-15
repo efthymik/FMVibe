@@ -783,7 +783,7 @@ one may have changed since it last did.
     button that copies it, its length, loop, notes and curves, into the next empty pattern (no notes, and no points
     on its curves); **PLAY** Host | Key | Latch; the
     two rows of four, at the left the steppers (see Steppers) Rate and Length (the pattern's, in bars) over Octave
-    and Transpose, at the right the big knobs Swing and Gate over Velocity and Humanize; **ORDER** as
+    and Transpose, at the right the big knobs Swing and Gate over Humanize and Velocity; **ORDER** as
     arrows (forward, back, to and fro, a die for random); **SCALE**: the root (dragged up and down or scrolled, a
     semitone a step; a double-click puts it back on C4), the scale's list (Chromatic, Major, Minor, Dorian, Phrygian,
     Lydian, Mixolydian, Harmonic Minor, Melodic Minor, Pentatonic Major and Minor, Blues; wider than its button, and
