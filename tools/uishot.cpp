@@ -10076,6 +10076,18 @@ void run(const std::filesystem::path &dir, float scale) {
         view.poll();
         click(view, minus);
         const bool floor = model.value(unison) == 1.0;
+        // At 16, too long to leave - and + room at rest, they still show under the mouse on its number, which clears
+        // their glyphs (read off the rendered pixels).
+        model.set(unison, 16.0);
+        view.poll();
+        view.mouseMove(away, {});
+        renderer.save(view, dir / "3s-stepper-16.png");
+        const int minusRest = ringLevel(renderer, {minus.x, minus.y - 1.0f}, 2.0f);
+        view.mouseMove({kUnisonKnob.x, top + 7.5f}, {});
+        renderer.save(view, dir / "3s-stepper-16-hover.png");
+        const int minusShown = ringLevel(renderer, {minus.x, minus.y - 1.0f}, 2.0f);
+        std::printf("      a stepper at 16's - at %d resting, %d with the mouse on its number\n", minusRest, minusShown);
+        check(minusShown > minusRest + 40, "a stepper's - and + show under the mouse where its number leaves room");
         model.set(unison, 4.0);
         view.poll();
         view.mouseMove(away, {});

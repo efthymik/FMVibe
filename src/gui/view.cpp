@@ -9470,11 +9470,14 @@ void View::paintStepper(Canvas &c, const Widget &w) {
         left = well.x + 3.0f;
         right = well.right() - 3.0f;
     } else if (!room) {
-        // Under the mouse with too long a number: the unit makes way for - and +, then the number takes the small
-        // size; and if it still runs into them, only the one under the mouse shows, the number moving off it into
-        // the other's room (with the mouse on the number, neither shows).
+        // Under the mouse with too long a number: the unit makes way for - and +, the number then needing only to
+        // clear their glyphs (2 px), not all of their zones; then it takes the small size; and if it still runs into
+        // them, only the one under the mouse shows, the number moving off it into the other's room (with the mouse on
+        // the number, neither shows).
         unit.clear();
         unitW = 0.0f;
+        left = well.x + 12.5f;
+        right = well.right() - 12.5f;
         if (numberW > right - left) {
             size = kTextSmall;
             numberW = std::ceil(c.textWidth(number, size, true));
