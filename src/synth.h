@@ -757,6 +757,24 @@ private:
     int fxTailBlock(const ParamValues &params, uint32_t frames);
     double volumeGain_ = -1.0; // Volume's gain after the effects, gliding toward the knob (-1: not yet set)
     double volumeGlide_ = 0.0;
+    // The DC blocker on the voices' sum going into the effects, a channel each: pulses off 50 %, a Ring route at
+    // unison, feedback and Exp FM all put out DC, which would bias the effects' detectors and drive, build up in
+    // their feedback and take headroom at the output. (The effects that make DC of their own, the shapers and the
+    // amp, block it themselves.) A Butterworth high-pass of two poles at 5 Hz (-0.02 dB at 20 Hz): what it holds
+    // of a note is about (5 Hz / its pitch) squared of its level, so a note cut short (a choke, modulation taking it
+    // away) leaves next to nothing ringing on, where one pole would leave 5 Hz / its pitch. With no voice sounding
+    // it is cleared (see renderSpan()), which takes that little away at once: silence stays silence.
+    struct DcBlocker {
+        double z1 = 0.0, z2 = 0.0;
+        float run(float x, const std::array<double, 5> &k) { // b0, b1, b2, a1, a2
+            const double y = k[0] * x + z1;
+            z1 = k[1] * x - k[3] * y + z2;
+            z2 = k[2] * x - k[4] * y;
+            return static_cast<float>(y);
+        }
+    };
+    std::array<DcBlocker, 2> dcBlockers_{};
+    std::array<double, 5> dcCoefs_{};
     // The output meter's peaks and clip light (see Telemetry), taken off what render() puts out.
     std::array<double, 2> outPeak_{};
     double clipHold_ = 0.0;

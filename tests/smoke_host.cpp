@@ -510,6 +510,9 @@ int main(int argc, char **argv) {
         return peak;
     };
     const uint32_t blocksPerSecond = static_cast<uint32_t>(kSampleRate / kBlock);
+    // How long a note taken down by modulation takes to fall silent: the DC blocker before the effects lets a
+    // note cut short ring on, far below hearing at 5 Hz, for a fifth of a second (see Synth::DcBlocker).
+    const uint32_t blockerSettle = blocksPerSecond / 4;
     const auto chokeAll = [] {
         clap_event_note_t ev = noteEvent(CLAP_EVENT_NOTE_CHOKE, -1, -1);
         ev.port_index = -1;
@@ -573,6 +576,7 @@ int main(int argc, char **argv) {
     note7Peak = std::max(note7Peak, runBlocks(8));
     const clap_event_param_mod_t duck7 = paramModEvent(carrierOut, 7, -1.0);
     runBlock({&duck7.header});
+    runBlocks(blockerSettle);
     check(runBlocks(4) < note7Peak / 100.0f, "per-voice param modulation reaches its voice");
     runBlock({&on8.header});
     check(runBlocks(4) > note7Peak / 2.0f, "a new voice starts without the other voice's modulation");
@@ -590,14 +594,14 @@ int main(int argc, char **argv) {
     const clap_event_param_value_t envSustain = paramEvent(paramIndex(env1, SourceParam::Sustain), 1.0);
     const clap_event_note_t on9 = noteEvent(CLAP_EVENT_NOTE_ON, 9, 60);
     runBlock({&envType.header, &envTarget.header, &envAmount.header, &envSustain.header, &on9.header});
-    runBlocks(2);
+    runBlocks(blockerSettle);
     check(runBlocks(8) < 1e-4f, "mod envelope slot drives its target param");
     const clap_event_param_value_t envBypass = paramEvent(slotBypassIndex(env1, 0), 1.0);
     runBlock({&envBypass.header});
     const bool bypassed = runBlocks(4) > 0.05f;
     const clap_event_param_value_t envActive = paramEvent(slotBypassIndex(env1, 0), 0.0);
     runBlock({&envActive.header});
-    runBlocks(2);
+    runBlocks(blockerSettle);
     check(bypassed && runBlocks(4) < 1e-4f, "a bypassed slot stops modulating, and modulates again once let go");
     // Bipolar, the envelope swings its target about its middle level: at full sustain, -100 % takes A's output
     // down by half rather than all the way.
@@ -664,7 +668,7 @@ int main(int argc, char **argv) {
         const clap_event_param_value_t type =
             paramEvent(paramIndex(place, SourceParam::Type), static_cast<double>(SourceType::Env));
         runBlock({&type.header});
-        runBlocks(2);
+        runBlocks(blockerSettle);
         const bool heardOnceFilled = runBlocks(8) < 1e-4f;
         const clap_event_param_value_t switchOff = paramEvent(sourceEnabledIndex(place), 0.0);
         runBlock({&switchOff.header});

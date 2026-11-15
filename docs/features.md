@@ -641,7 +641,11 @@ What the plugin does and how its editor works, in full. Building and installing 
   for chords and stacked operators; at 0 dB a full-scale operator comes out at full scale. The voices go into the
   effects at a level of their own, 12 dB down, so the effects' drive and thresholds don't depend on it, and Volume
   gives those 12 dB back. A project or preset saved by FMVibe 0.1, whose Volume didn't, loads it 12 dB lower, so
-  it sounds as loud as it did. Hosts modulate it globally, and LFOs and envelopes through the newest voice, as they
+  it sounds as loud as it did. A DC blocker, a 5 Hz high-pass of two poles, takes the DC out of the voices' sum
+  going into the effects: a pulse squeezed off 50 %, a Ring route at unison, strong feedback or Exp FM would
+  otherwise bias the effects' compressors and drive, build up in their feedback and take headroom at the output.
+  (The effects that make DC of their own, the shapers and the amp, block it themselves.) It is cleared while no
+  voice sounds, so a choke or the last note's end is silence at once. Hosts modulate it globally, and LFOs and envelopes through the newest voice, as they
   do effect knobs), FM Amount, Pitch (±48 semitones, handy as an envelope target for drums), Pan, **Bend** Range for
   MIDI pitch bend (its knob in the header, after Pitch), **Mod Wheel**, which moves what is assigned to it (nothing to begin with), **Pitch Bend**
   (±100 %, at rest in the middle), and **Voices**, the polyphony limit (1–512, default 16). Pitch Bend is the

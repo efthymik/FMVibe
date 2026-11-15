@@ -287,6 +287,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - each factory preset's file being sparse, as the preset tool writes it;
   - the tempo a preset was saved at reading back as written, and as none below 20 BPM or from a layout before it;
   - the mod wheel leaving the FM alone until it is assigned, and the output meter's peaks, fall and clip light;
+  - the DC blocker before the effects: a squeezed square coming out with no DC, a Ring route at unison going into
+    a hard shaper as its octave alone (clipped evenly, no 4th harmonic), and the output exactly silent once the
+    note has rung out, the effects resting;
   - a macro's knob modulated: along a chain of macros out of their numbers' order (the telemetry saying where the
     knobs stand), in a loop a state holds, steadily and alike each time, and per voice by velocity, a loud note's
     knob silencing it while a soft one played with it plays as it would alone;
