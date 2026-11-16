@@ -144,8 +144,13 @@ public:
     // How many voices may sound at once, from the Voices param.
     int voiceLimit() const;
 
-    // Main thread, while inactive: allocates the voices, for the current voice limit and oversampling.
+    // Main thread, while inactive: allocates the voices, for the current voice limit and oversampling, and takes the
+    // latency the host is told.
     void activate(double sampleRate);
+    // How many samples late the output is, as activate() worked it out: the voices' decimator's delay and the
+    // effects' latest path's (see fxlag.h), rounded. An edit that moves it asks the host for a restart, which takes the
+    // new one. Any thread.
+    int latency() const { return latency_.load(); }
     void deactivate() { telemetry_.store(*noTelemetry_); } // from one made ahead, not a 45 KB one on the stack
     // Main thread, while not processing (or the audio thread, between blocks).
     void resetVoices() { synth_.reset(); }
@@ -224,7 +229,8 @@ protected:
     virtual void hostVoicesChanged() {}
     // The editor would be this big now (in physical pixels): its height follows the modulation panel.
     virtual void hostResizeEditor(uint32_t width, uint32_t height) = 0;
-    // Any thread: a deactivate and activate, for more voices than are allocated or another oversampling factor.
+    // Any thread: a deactivate and activate, for more voices than are allocated, another oversampling factor or
+    // another latency (which the activate tells the host).
     virtual void hostRequestRestart() = 0;
     // Any thread: onMainThread(), soon.
     virtual void hostRequestCallback() = 0;
@@ -245,9 +251,11 @@ private:
     void voiceLimitChanged();
     // A new oversampling factor takes a deactivate/activate, like more voices.
     void restartIfNeeded();
-    // Asks the host for a restart when the voices or the oversampling need one, unless it was asked for this
-    // already. Thread-safe.
+    // Asks the host for a restart when the voices, the oversampling or the latency need one, unless it was asked for
+    // this already. Thread-safe.
     void askRestart();
+    // The latency the params make now, at the rate and oversampling activate() took (see latency()).
+    int latencyNow() const;
     // The editor's height follows the modulation panel; asks the host to resize the window.
     void editorFitChanged();
     // Tells the host of every param that changed since `before`, as edits.
@@ -266,10 +274,15 @@ private:
     };
 
     Synth synth_;
-    // Raising the voice limit past the allocated voices, or a new oversampling factor, needs a deactivate/activate:
-    // what the restart was last asked for (the voices times 16, plus the factor), or 0. A host that doesn't restart
-    // is asked again once something else needs one.
+    // Raising the voice limit past the allocated voices, a new oversampling factor or a new latency needs a
+    // deactivate/activate: what the restart was last asked for (the voices times 16 plus the factor, times 4096, plus
+    // the latency), or 0. A host that doesn't restart is asked again once something else needs one.
     std::atomic<int> restartAskedFor_{0};
+    // The latency the host was told at activate() (see latency()), and how late each part of it is at that rate: one
+    // path up and down at 2, 4 and 8 times it, and the voices' decimator. Set on the main thread while inactive.
+    std::atomic<int> latency_{0};
+    std::array<double, FxLag::kKinds> pathDelays_{};
+    double voicesDelay_ = 0.0;
     // Main thread: an undo or redo step being applied, and whether an edit in it marks the project changed.
     bool applyingStep_ = false;
     bool dirtyAfterStep_ = false;

@@ -347,15 +347,23 @@ void ampChecks() {
         const std::vector<float> in = sine(220.0, 0.25, 9600);
         const Run mono = run(in, {}, true), stereo = run(in, {{FxParam::AmpStereo, 1.0}}, true);
         const Run dry = run(in, {{FxParam::AmpMix, 0.0}});
+        // As it was but for going up to the amp's oversampling (4x to begin with) and back down, as its wet sound does,
+        // so the two stay in step (see fxlag.h).
+        std::vector<float> late = in;
+        UpDown path;
+        path.prepare(kSampleRate, ampOversampling(kDefaultAmpOversampling));
+        for (size_t i = 0; i < late.size(); i += 64)
+            path.run(late.data() + i, static_cast<int>(std::min<size_t>(64, late.size() - i)));
         double gap = 0.0;
         for (size_t i = 0; i < in.size(); ++i)
-            gap = std::max(gap, static_cast<double>(std::abs(dry.left[i] - in[i])));
+            gap = std::max(gap, static_cast<double>(std::abs(dry.left[i] - late[i])));
         // (After the 5 ms the effect fades in over as it starts, while what went in still shows through.)
         const bool same = std::equal(mono.left.begin() + 4800, mono.left.end(), mono.right.begin() + 4800);
         check(same && rms(mono.right, 4800) > 0.01 && rms(stereo.right, 0) == 0.0 &&
                   rms(stereo.left, 4800) > 0.01,
               "the amp runs once on both sides' sum in mono, and once a side in stereo");
-        check(gap < 1e-6, "the amp's Mix at 0 leaves the sound alone");
+        std::printf("      Mix at 0: off the sound through the amp's oversampling's path by %.2g at most\n", gap);
+        check(gap < 1e-6, "the amp's Mix at 0 leaves the sound alone, as late as its oversampling");
     }
     // DC: the Fuzz's lopsided stages at full Gain put out none (the mean of a second's output).
     {
@@ -4353,6 +4361,161 @@ void dcChecks() {
     }
 }
 
+// The effects that run oversampled (the shaper and filter effects at twice the rate, an amp at its oversampling) are a
+// few samples late, later toward the top: paths that meet beside them are put through as much up and down, so they
+// meet in step (see fxlag.h). Measured on an impulse once the effects have settled, through effects that leave the
+// sound as it is (a filter and an amp at Mix 0), across 20 Hz to 18 kHz: flat where they meet, and as late as the
+// plugin says.
+void latencyChecks() {
+    std::printf("effects latency:\n");
+    auto from = [](int node, int input) { return fxInputIndex(node, input, FxInputField::From); };
+    auto level = [](int node, int input) { return fxInputIndex(node, input, FxInputField::Level); };
+    auto port = [](int p) { return fxPortValue(p); };
+    auto fresh = [&] {
+        auto p = std::make_unique<ParamValues>();
+        for (int i = 0; i < kParamCount; ++i)
+            (*p)[i] = paramTable()[i].def;
+        (*p)[from(kFxOutNode, 0)] = 0.0;
+        return p;
+    };
+    // An effect leaving the sound as it is, but for running oversampled: a filter at Mix 0, an amp at Mix 0.
+    auto filterAtNoMix = [](ParamValues &p, int slot) {
+        p[paramIndex(slot, FxParam::Type)] = static_cast<double>(FxType::Filter);
+        p[paramIndex(slot, FxParam::FilterMix)] = 0.0;
+    };
+    auto ampAtNoMix = [](ParamValues &p, int slot, int factorValue) {
+        p[paramIndex(slot, FxParam::Type)] = static_cast<double>(FxType::Amp);
+        p[paramIndex(slot, FxParam::AmpMix)] = 0.0;
+        p[paramIndex(slot, FxParam::AmpOversampling)] = factorValue; // 1 << it
+    };
+    struct Response {
+        double flatDb;   // the farthest the level strays from 0 dB, 20 Hz to 18 kHz
+        double centroid; // how late, in samples (its impulse response's centroid)
+    };
+    auto measure = [&](const ParamValues &p) {
+        auto fx = std::make_unique<Effects>();
+        fx->prepare(kSampleRate);
+        constexpr uint32_t kPiece = 64;
+        float left[kPiece], right[kPiece];
+        for (int i = 0; i < 100; ++i) { // the effects fading in
+            std::fill_n(left, kPiece, 0.0f);
+            std::fill_n(right, kPiece, 0.0f);
+            fx->process(left, right, kPiece, p, 120.0, 60.0);
+        }
+        constexpr int kLength = 4096;
+        std::vector<double> h(kLength);
+        for (int t = 0; t < kLength; t += kPiece) {
+            std::fill_n(left, kPiece, 0.0f);
+            std::fill_n(right, kPiece, 0.0f);
+            if (t == 0)
+                left[0] = right[0] = 1.0f;
+            fx->process(left, right, kPiece, p, 120.0, 60.0);
+            for (uint32_t s = 0; s < kPiece; ++s)
+                h[t + s] = left[s];
+        }
+        Response r{0.0, 0.0};
+        double moment = 0.0, sum = 0.0;
+        for (int n = 0; n < kLength; ++n) {
+            moment += n * h[n];
+            sum += h[n];
+        }
+        r.centroid = moment / sum;
+        for (double hz = 20.0; hz <= 18000.0; hz *= std::exp2(1.0 / 12.0)) {
+            std::complex<double> at;
+            for (int n = 0; n < kLength; ++n)
+                at += h[n] * std::polar(1.0, -2.0 * std::numbers::pi * hz * n / kSampleRate);
+            r.flatDb = std::max(r.flatDb, std::abs(20.0 * std::log10(std::abs(at))));
+        }
+        return r;
+    };
+    std::array<double, FxLag::kKinds> delays;
+    for (int kind = 0; kind < FxLag::kKinds; ++kind)
+        delays[kind] = upDownDelay(kSampleRate, FxLag::factorOf(kind));
+    auto lagOf = [](const ParamValues &p) { return fxOutputLag([&p](int i) { return p[i]; }); };
+
+    // The input straight out beside a filter at Mix 0, at half each: in step, flat, where unaligned they'd cancel
+    // near 5 kHz. Switched off, the filter is as late (its dry sound goes up and down too), so they stay in step.
+    auto parallel = fresh();
+    filterAtNoMix(*parallel, 0);
+    (*parallel)[from(0, 0)] = port(kFxPortIn);
+    (*parallel)[from(kFxOutNode, 0)] = port(fxSlotPort(0));
+    (*parallel)[from(kFxOutNode, 1)] = port(kFxPortIn);
+    (*parallel)[level(kFxOutNode, 0)] = 0.5;
+    (*parallel)[level(kFxOutNode, 1)] = 0.5;
+    const Response beside = measure(*parallel);
+    (*parallel)[paramIndex(0, FxParam::Enabled)] = 0.0;
+    const Response besideOff = measure(*parallel);
+    const double besideLate = fxLagSamples(lagOf(*parallel), delays);
+
+    // A split at 3 kHz, its low band through an amp at 4x and its high one through a filter, into its join: the
+    // bands sum back flat, both as late as the amp and the filter one after the other.
+    auto split = fresh();
+    ampAtNoMix(*split, 0, 2);
+    filterAtNoMix(*split, 1);
+    (*split)[paramIndex(0, SplitParam::Used)] = 1.0;
+    (*split)[paramIndex(0, SplitParam::Low)] = normFromCutoff(3000.0);
+    (*split)[paramIndex(0, SumParam::Used)] = 1.0;
+    (*split)[from(fxSplitNode(0), 0)] = port(kFxPortIn);
+    (*split)[from(0, 0)] = port(fxBandPort(0, 0));
+    (*split)[from(1, 0)] = port(fxBandPort(0, kFxBands - 1));
+    (*split)[from(fxSumNode(0), 0)] = port(fxSlotPort(1));
+    (*split)[from(fxSumNode(0), 1)] = port(fxSlotPort(0));
+    (*split)[from(kFxOutNode, 0)] = port(fxSumPort(0));
+    const Response bands = measure(*split);
+    const double bandsLate = fxLagSamples(lagOf(*split), delays);
+    // The crossover's all-pass makes the split itself late at low frequencies, with or without effects on its bands:
+    // the same split with its bands straight into the join, against which the effects add their lag.
+    auto bare = fresh();
+    for (const int i : {paramIndex(0, SplitParam::Used), paramIndex(0, SplitParam::Low), paramIndex(0, SumParam::Used),
+                        from(fxSplitNode(0), 0), from(kFxOutNode, 0)})
+        (*bare)[i] = (*split)[i];
+    (*bare)[from(fxSumNode(0), 0)] = port(fxBandPort(0, kFxBands - 1));
+    (*bare)[from(fxSumNode(0), 1)] = port(fxBandPort(0, 0));
+    const Response crossover = measure(*bare);
+
+    // Two filters one after the other, beside an amp at 8x, both out at half.
+    auto mixed = fresh();
+    filterAtNoMix(*mixed, 0);
+    filterAtNoMix(*mixed, 1);
+    ampAtNoMix(*mixed, 2, 3);
+    (*mixed)[from(0, 0)] = port(kFxPortIn);
+    (*mixed)[from(1, 0)] = port(fxSlotPort(0));
+    (*mixed)[from(2, 0)] = port(kFxPortIn);
+    (*mixed)[from(kFxOutNode, 0)] = port(fxSlotPort(1));
+    (*mixed)[from(kFxOutNode, 1)] = port(fxSlotPort(2));
+    (*mixed)[level(kFxOutNode, 0)] = 0.5;
+    (*mixed)[level(kFxOutNode, 1)] = 0.5;
+    const Response kinds = measure(*mixed);
+    const double kindsLate = fxLagSamples(lagOf(*mixed), delays);
+
+    // Nothing oversampled: on time.
+    auto plain = fresh();
+    (*plain)[from(kFxOutNode, 0)] = port(kFxPortIn);
+    const Response none = measure(*plain);
+
+    std::printf("      one path up and down at 2x, 4x, 8x: %.2f, %.2f, %.2f samples late; the voices' decimator at 2x "
+                "%.2f\n",
+                delays[0], delays[1], delays[2], decimatorDelay(kSampleRate, 2));
+    std::printf("      in beside a filter: within %.3f dB, %.2f samples late (said %.2f); the filter off: within %.3f "
+                "dB, %.2f late\n",
+                beside.flatDb, beside.centroid, besideLate, besideOff.flatDb, besideOff.centroid);
+    std::printf("      split, an amp at 4x and a filter on its bands: within %.3f dB, %.2f late past the crossover's %.2f "
+                "(said %.2f)\n",
+                bands.flatDb, bands.centroid - crossover.centroid, crossover.centroid, bandsLate);
+    std::printf("      two filters beside an amp at 8x: within %.3f dB, %.2f late (said %.2f); nothing oversampled: "
+                "within %.3f dB, %.2f late\n",
+                kinds.flatDb, kinds.centroid, kindsLate, none.flatDb, none.centroid);
+    auto near = [](double a, double b) { return std::abs(a - b) < 0.05; };
+    check(beside.flatDb < 0.05 && besideOff.flatDb < 0.05 && near(beside.centroid, besideLate) &&
+              near(besideOff.centroid, besideLate) && besideLate > 3.0,
+          "a path beside an oversampled effect meets it in step, switched on or off");
+    check(bands.flatDb < 0.05 && kinds.flatDb < 0.05,
+          "a split's bands through effects oversampled differently sum back flat, and so do paths that meet");
+    check(near(bands.centroid - crossover.centroid, bandsLate) && near(kinds.centroid, kindsLate) && none.flatDb < 1e-6 &&
+              std::abs(none.centroid) < 1e-6,
+          "the output is as late as its latest path, as the plugin reports, and on time with none oversampled");
+}
+
 int main() {
     const int factors[] = {1, 2, 4, 8};
     dcChecks();
@@ -5614,6 +5777,7 @@ int main() {
     }
 
     effectsChainChecks();
+    latencyChecks();
     stackChecks();
     ampChecks();
 

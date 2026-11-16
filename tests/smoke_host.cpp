@@ -47,6 +47,10 @@ const clap_host_gui_t kHostGui = {
     [](const clap_host_t *, bool) {},          // closed
 };
 
+// How often an activate told the host its latency changed.
+int latencyChanges = 0;
+const clap_host_latency_t kHostLatency = {[](const clap_host_t *) { ++latencyChanges; }};
+
 const clap_host_t kHost = {
     CLAP_VERSION_INIT,
     nullptr,
@@ -55,6 +59,8 @@ const clap_host_t kHost = {
     "",
     "0",
     [](const clap_host_t *, const char *id) -> const void * {
+        if (std::strcmp(id, CLAP_EXT_LATENCY) == 0)
+            return &kHostLatency;
         return std::strcmp(id, CLAP_EXT_GUI) == 0 ? &kHostGui : nullptr;
     },
     [](const clap_host_t *) { ++restartRequests; },
@@ -4111,6 +4117,40 @@ int main(int argc, char **argv) {
         check(saved && loaded && voices == 60.0 && restartRequests == 1,
               "loading a state with a voice limit past the allocated voices requests a restart");
         runBlock({&forty.header}); // back to 40 for the rest of the tests
+        reactivate();
+
+        // Latency: the voices' decimator's at 2x, a couple of samples, and with a shaper effect (which runs at twice
+        // the rate) in the line about 5 more. A state that moves it, loaded while active, asks for a restart, whose
+        // activate tells the host (its latency extension's changed()) and reports the new one.
+        const auto *latency = static_cast<const clap_plugin_latency_t *>(plugin->get_extension(plugin, CLAP_EXT_LATENCY));
+        MemoryStream kept;
+        const bool keptSaved = state->save(plugin, &kept.out);
+        const auto typesKept = fxTypes;
+        std::vector<std::pair<int, double>> none;
+        for (int slot = 0; slot < kFxSlots; ++slot)
+            none.push_back({paramIndex(slot, FxParam::Type), static_cast<double>(FxType::None)});
+        setParams(none);
+        reactivate();
+        const uint32_t plain = latency ? latency->get(plugin) : 0;
+        setParams({{paramIndex(0, FxParam::Type), static_cast<double>(FxType::Shaper)}});
+        MemoryStream shaped;
+        const bool shapedSaved = state->save(plugin, &shaped.out);
+        setParams(none);
+        reactivate();
+        restartRequests = 0;
+        latencyChanges = 0;
+        const bool shapedLoaded = state->load(plugin, &shaped.in);
+        const int asked = restartRequests;
+        reactivate();
+        const uint32_t withShaper = latency ? latency->get(plugin) : 0;
+        std::printf("      latency: %u samples, with a shaper effect %u; restarts asked for %d, host told %d times\n",
+                    plain, withShaper, asked, latencyChanges);
+        check(latency && keptSaved && shapedSaved && shapedLoaded && plain >= 1 && plain <= 4 &&
+                  withShaper >= plain + 4 && withShaper <= plain + 6 && asked == 1 && latencyChanges == 1,
+              "the latency is the voices' and an oversampled effect's, and a state that moves it restarts the plugin, "
+              "telling the host");
+        state->load(plugin, &kept.in); // as the tests before left it
+        fxTypes = typesKept;
         reactivate();
     }
 

@@ -551,6 +551,13 @@ void Effects::prepare(double sampleRate) {
     set(lowPass2_, BiquadType::LowPass, kEqHighHz);
     set(highPass2_, BiquadType::HighPass, kEqHighHz);
     set(allPass2_, BiquadType::AllPass, kEqHighHz);
+    if (!lags_)
+        lags_ = std::make_unique<Lags>();
+    for (int kind = 0; kind < FxLag::kKinds; ++kind)
+        for (UpDown &side : lags_->fresh[kind])
+            side.prepare(sampleRate, FxLag::factorOf(kind));
+    for (SlotDry &dry : lags_->dry) // none, to take one designed for this rate (see slotDry())
+        dry.now = dry.was = {};
     reset();
 }
 
@@ -568,6 +575,14 @@ void Effects::reset() {
     clearGraph();
     for (auto &node : wires_)
         node.fill(Wire{});
+    if (lags_) { // every pad's paths back in the pool, and the slots' dry sound starting again from silence
+        lags_->taken.fill(false);
+        for (SlotDry &dry : lags_->dry) {
+            dry.wasFade = 0.0;
+            dry.live = false;
+        }
+    }
+    pads_ = {};
     running_.fill(false);
     frozen_.fill(false);
     ranBefore_.fill(false);
@@ -873,7 +888,7 @@ bool Effects::idleChunk(const float *const *io, uint32_t n, const ParamValues &p
         for (int input = 0; input < fxInputCount(node); ++input) {
             const Wire &w = wires_[node][input];
             const int set = wirePort(node, input, p);
-            if (w.now.port != set || w.was.port >= 0 ||
+            if (w.now.port != set || w.was.port >= 0 || (set >= 0 && w.now.pad != pads_[node][input]) ||
                 (set >= 0 && (w.now.fade < 1.0 || w.now.level != wireTarget(node, input, p))))
                 return false;
         }
@@ -948,18 +963,22 @@ void Effects::runSlot(int slot, float *const *io, uint32_t n, const ParamValues 
         fx.running = type;
     const bool on = !flushing_ && fx.running == type && type != FxType::None &&
                     p[paramIndex(slot, FxParam::Enabled)] >= 0.5;
+    // What went in, as late as the effect makes its wet sound: for fading, passing it while off, and an amp's Mix.
+    const bool ampMix = fx.running == FxType::Amp && fx.fade > 0.0 &&
+                        (fx.amp->mix < 1.0 || p[paramIndex(slot, FxParam::AmpMix)] < 1.0);
+    float dry[2][kChunk];
+    slotDry(slot, io, dry, n, p, !(on && fx.fade >= 1.0) || ampMix);
     if (!on && fx.fade <= 0.0) {
         reduction_[slot] = {};
         bandLevel_[slot] = {};
         bandGain_[slot] = {};
         fx.analyzed.bands = {};
+        std::copy_n(dry[0], n, io[0]);
+        std::copy_n(dry[1], n, io[1]);
         return;
     }
     if (fx.fade <= 0.0)
         start(slot, p, tempo);
-    float dry[2][kChunk];
-    std::copy_n(io[0], n, dry[0]);
-    std::copy_n(io[1], n, dry[1]);
     switch (fx.running) {
     case FxType::Shaper:
         runShaper(slot, io, n, p);
@@ -990,7 +1009,7 @@ void Effects::runSlot(int slot, float *const *io, uint32_t n, const ParamValues 
             keep = std::max(keep, static_cast<int64_t>(0.05 * sampleRate_));
         break;
     case FxType::Amp:
-        runAmp(slot, io, n, p);
+        runAmp(slot, io, n, p, dry);
         break;
     case FxType::Utility:
         runUtility(slot, io, n, p);
@@ -1082,11 +1101,99 @@ void Effects::setWires(int node, const ParamValues &p) {
     orderStale_ = true;
     for (int input = 0; input < fxInputCount(node); ++input) {
         const int port = wirePort(node, input, p);
-        wires_[node][input] = {{port, wireTarget(node, input, p), port >= 0 ? 1.0 : 0.0}, {}};
+        Wire &w = wires_[node][input];
+        dropEnd(w.was);
+        w.was = {};
+        setEnd(w.now, port, wireTarget(node, input, p), port >= 0 ? 1.0 : 0.0,
+               port >= 0 ? pads_[node][input] : FxLag{});
     }
 }
 
-void Effects::runAmp(int slot, float *const *io, uint32_t n, const ParamValues &p) {
+void Effects::dropEnd(WireEnd &e) {
+    for (int k = 0; k < e.paths && lags_; ++k)
+        lags_->taken[e.path[k]] = false;
+    e.paths = 0;
+}
+
+void Effects::setEnd(WireEnd &e, int port, double level, double fade, const FxLag &pad) {
+    dropEnd(e);
+    e.port = port;
+    e.level = level;
+    e.fade = fade;
+    e.pad = port >= 0 ? pad : FxLag{};
+    if (!lags_ || e.pad.none() || e.pad.count() > kEndPaths)
+        return;
+    // All of its paths or none: one put through only some of them would be no nearer in step at the top.
+    int found = 0;
+    for (int i = 0; i < kPoolPaths && found < e.pad.count(); ++i)
+        if (!lags_->taken[i])
+            e.path[found++] = static_cast<int16_t>(i);
+    if (found < e.pad.count())
+        return;
+    int k = 0;
+    for (int kind = 0; kind < FxLag::kKinds; ++kind)
+        for (int j = 0; j < e.pad.paths[kind]; ++j) {
+            const int i = e.path[k++];
+            lags_->taken[i] = true;
+            lags_->pool[i] = lags_->fresh[kind]; // cleared, at that factor
+        }
+    e.paths = found;
+}
+
+void Effects::padEnd(const WireEnd &e, const float *const *from, float (*out)[kChunk], uint32_t n) {
+    for (int c = 0; c < 2; ++c) {
+        if (from[c])
+            std::copy_n(from[c], n, out[c]);
+        else
+            std::fill_n(out[c], n, 0.0f); // a node not running: its silence, through the pad as anything else
+        for (int k = 0; k < e.paths; ++k)
+            lags_->pool[e.path[k]][c].run(out[c], static_cast<int>(n));
+    }
+}
+
+void Effects::slotDry(int slot, const float *const *io, float (*dry)[kChunk], uint32_t n, const ParamValues &p,
+                      bool needed) {
+    std::copy_n(io[0], n, dry[0]);
+    std::copy_n(io[1], n, dry[1]);
+    SlotDry &d = lags_->dry[slot];
+    const int factor = fxSlotFactor([&p](int i) { return p[i]; }, slot);
+    if (factor != d.now[0].factor() && d.wasFade <= 0.0) { // another path: the one it had fades out
+        d.was = d.now;
+        for (int c = 0; c < 2; ++c)
+            d.now[c] = factor >= 2 ? lags_->fresh[FxLag::kindOf(factor)][c] : UpDown{};
+        d.wasFade = d.live ? 1.0 : 0.0;
+    }
+    if (!needed) { // the effect fully in: its dry sound isn't heard, and starts again from silence when it is
+        d.live = false;
+        d.wasFade = 0.0;
+        return;
+    }
+    if (!d.live) {
+        for (UpDown &side : d.now)
+            side.reset();
+        d.live = true;
+    }
+    float was[2][kChunk];
+    const bool crossing = d.wasFade > 0.0;
+    for (int c = 0; c < 2; ++c) {
+        if (crossing) {
+            std::copy_n(dry[c], n, was[c]);
+            d.was[c].run(was[c], static_cast<int>(n));
+        }
+        d.now[c].run(dry[c], static_cast<int>(n));
+    }
+    if (!crossing)
+        return;
+    const double fadeStep = 1.0 / (0.005 * sampleRate_);
+    for (uint32_t s = 0; s < n; ++s) {
+        d.wasFade = std::max(d.wasFade - fadeStep, 0.0);
+        const float w = static_cast<float>(0.5 - 0.5 * std::cos(std::numbers::pi * d.wasFade));
+        for (int c = 0; c < 2; ++c)
+            dry[c][s] += (was[c][s] - dry[c][s]) * w;
+    }
+}
+
+void Effects::runAmp(int slot, float *const *io, uint32_t n, const ParamValues &p, const float (*dry)[kChunk]) {
     AmpFx &a = *slots_[slot].amp;
     auto at = [&](FxParam f) { return p[paramIndex(slot, f)]; };
     const AmpConfig config = ampConfig(p, slot);
@@ -1098,14 +1205,13 @@ void Effects::runAmp(int slot, float *const *io, uint32_t n, const ParamValues &
         a.now.start(config, knobs);
         a.wasFade = 1.0;
     }
-    float dry[2][kChunk];
-    std::copy_n(io[0], n, dry[0]);
-    std::copy_n(io[1], n, dry[1]);
+    float old[2][kChunk]; // what went in, for the amp it leaves
+    if (a.wasFade > 0.0) {
+        std::copy_n(io[0], n, old[0]);
+        std::copy_n(io[1], n, old[1]);
+    }
     double drive = a.now.process(io, n, knobs);
     if (a.wasFade > 0.0) {
-        float old[2][kChunk];
-        std::copy_n(dry[0], n, old[0]);
-        std::copy_n(dry[1], n, old[1]);
         float *const oldIo[2] = {old[0], old[1]};
         drive = std::max(drive, a.was.process(oldIo, n, knobs));
         const double fadeStep = 1.0 / (0.01 * sampleRate_);
@@ -1150,8 +1256,10 @@ bool Effects::graphParamsChanged(const ParamValues &p) {
     for (int node = 0; node < kFxNodes; ++node)
         for (int input = 0; input < fxInputCount(node); ++input)
             take(p[fxInputIndex(node, input, FxInputField::From)]);
-    for (int slot = 0; slot < kFxSlots; ++slot)
+    for (int slot = 0; slot < kFxSlots; ++slot) {
         take(p[paramIndex(slot, FxParam::Type)]);
+        take(p[paramIndex(slot, FxParam::AmpOversampling)]);
+    }
     for (int split = 0; split < kFxSplits; ++split)
         take(p[paramIndex(split, SplitParam::Used)]);
     for (int sum = 0; sum < kFxSums; ++sum)
@@ -1251,6 +1359,10 @@ void Effects::orderGraph(const ParamValues &p, bool asSet) {
             graphOrder_[graphOrderCount_++] = node;
         --depth;
     }
+    // How late each path is as set, and what each wire is to be put through to meet the others into its node in step
+    // (see fxlag.h), which mixInputs() then crossfades each wire to.
+    if (asSet)
+        fxGraphLags([&p](int i) { return p[i]; }, wants, &pads_);
     if (looped_ && asSet && loopsAsSet(p)) // a loop as set (which the editor doesn't make) plays a chunk late
         looped_ = false;
     if (looped_ && asSet)
@@ -1265,6 +1377,10 @@ void Effects::orderGraph(const ParamValues &p, bool asSet) {
             setWires(node, p);
         } else if (!runs && ranBefore_[node]) { // nothing hears it any more
             orderStale_ = true; // as it changes the wires, once more next time
+            for (Wire &w : wires_[node]) {
+                dropEnd(w.now);
+                dropEnd(w.was);
+            }
             wires_[node].fill(Wire{});
             if (node < kFxSlots)
                 idleSlot(node);
@@ -1297,6 +1413,7 @@ void Effects::mixInputs(int node, float (*mix)[kChunk], uint32_t n, const ParamV
     for (int c = 0; c < 2; ++c)
         std::fill_n(mix[c], n, 0.0f);
     const double fadeStep = 1.0 / (0.005 * sampleRate_);
+    float padded[2][kChunk]; // what an end with a pad reads, through it
     // One end of a wire into the mix, its level gliding to `target` across the chunk (or, in a chunk shorter than the
     // shortest ramp, that far toward it) as it fades toward `fadeTo` along a raised cosine over 5 ms, as a
     // parametric EQ band switched does.
@@ -1305,13 +1422,20 @@ void Effects::mixInputs(int node, float (*mix)[kChunk], uint32_t n, const ParamV
             return;
         if (e.fade <= 0.0 && fadeTo <= 0.0) { // out: free for the next move
             orderStale_ = orderStale_ || e.port >= 0;
-            e.port = -1;
+            setEnd(e, -1, 0.0, 0.0, {});
             return;
         }
         if (e.level < 0.0) // takes its level at once as it fades in
             e.level = target;
         const float *from[2] = {nullptr, nullptr};
-        const bool heard = portOut(e.port, from); // a node not running reads silence
+        bool heard = portOut(e.port, from); // a node not running reads silence
+        if (e.paths > 0) { // through its pad, which runs on silence too
+            const float *const none[2] = {nullptr, nullptr};
+            padEnd(e, heard ? from : none, padded, n);
+            from[0] = padded[0];
+            from[1] = padded[1];
+            heard = true;
+        }
         const double step = rampStep(e.level, target, n, rampShortest_);
         const double end = rampEnds(e.level, target, n, rampShortest_) ? target : e.level + step * n;
         double level = e.level, fade = e.fade;
@@ -1344,18 +1468,22 @@ void Effects::mixInputs(int node, float (*mix)[kChunk], uint32_t n, const ParamV
             continue;
         }
         // A wire moved or taken away crossfades: what it came from fades out as what it comes from now fades in. Moved
-        // again while the one before still fades out, it fades out where it is first and only then takes the move.
+        // again while the one before still fades out, it fades out where it is first and only then takes the move. A
+        // new pad (the paths into the node no longer as late as they were) crossfades the same way.
         const int set = wirePort(node, input, p);
-        if (set != w.now.port) {
+        const FxLag pad = set >= 0 ? pads_[node][input] : FxLag{};
+        if (set != w.now.port || pad != w.now.pad) {
             orderStale_ = true;
             if (w.now.fade <= 0.0) {
-                w.now = {set, -1.0, 0.0};
+                setEnd(w.now, set, -1.0, 0.0, pad);
             } else if (w.was.fade <= 0.0) {
+                dropEnd(w.was);
                 w.was = w.now;
-                w.now = {set, -1.0, 0.0};
+                w.now.paths = 0; // its pad's paths go with it, to `was`
+                setEnd(w.now, set, -1.0, 0.0, pad);
             }
         }
-        const bool asSet = w.now.port == set;
+        const bool asSet = w.now.port == set && w.now.pad == pad;
         add(w.now, asSet ? wireTarget(node, input, p) : w.now.level, asSet ? 1.0 : 0.0);
         add(w.was, w.was.level, 0.0);
     }

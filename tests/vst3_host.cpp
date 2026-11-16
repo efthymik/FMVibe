@@ -803,6 +803,10 @@ int main(int argc, char **argv) {
     plugin.component->setActive(false);
     plugin.component->setActive(true);
     plugin.processor->setProcessing(true);
+    // Its latency, the CLAP plugin's: the voices' decimator's at 2x, a couple of samples, with no effect oversampled.
+    const uint32 latency = plugin.processor->getLatencySamples();
+    std::printf("      latency: %u samples\n", static_cast<unsigned>(latency));
+    check(latency >= 1 && latency <= 4, "the latency reported is the voices' decimator's");
 
     // --- State: the same bytes the CLAP plugin saves, through a stream that moves 5 bytes at a time.
     plugin.processor->setProcessing(false);

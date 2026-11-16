@@ -412,7 +412,17 @@ What the plugin does and how its editor works, in full. Building and installing 
     (an effect removed, a split taken out with its join) keeps playing what goes into it until the wires out of it
     have faded, so the sound moves to its new path without a click or a gap; one coming into it starts from what goes
     into it, as the wires into what follows fade in. A split's slope changed crossfades from its filters at the old
-    slope to fresh ones at the new over 5 ms. Only what the output hears runs: an effect no wire takes on to the
+    slope to fresh ones at the new over 5 ms. **Latency**: the shaper and filter effects run at twice the host rate
+    and the amp at its oversampling, up and back down through half-band filters, which comes out a few samples late
+    (about 5 at 48 kHz for twice the rate) and later still toward the top. Where paths meet (a join, a node more than
+    one wire goes into, the output), each path is put through the same filters up and down as many more times as it
+    lacks against the latest one, so they meet in step at every frequency: a split's bands sum back flat whatever runs
+    on them, and a path beside one of these effects doesn't comb with it. Such an effect is as late switched off as on
+    (what it passes then, and what it fades from, goes up and down too), so switching it moves nothing; a new effect,
+    another oversampling or a wire moved that changes how late a path is crossfades that path over 5 ms. The output is
+    then as late as its latest path, which, with the voices' decimator's couple of samples, is the latency the plugin
+    reports to the host; a change that moves it asks the host to restart the plugin, which takes up the new one (see
+    Restarting, under CLAP and VST3). Only what the output hears runs: an effect no wire takes on to the
     output costs nothing, and starts again cleared once one does. A patch starts with no effects, its input straight
     out, and one saved while the effects ran as a chain loads that chain as the line.
   - **Shaper**: picked from a list: Hard (a flat ceiling), Soft (tanh), Asymmetric (the lower half clips twice as
@@ -472,7 +482,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     20 ms. Each model is trimmed so that at its middle knobs a sine at −12 dBFS comes out as loud as it went in (with
     the cabinet), and as Gain rises the level grows less and less, the stages clipping. The stages run at 1, 2, 4
     (to begin with) or 8 times the host rate, picked in the card's right-click menu (**Oversampling**), and come back
-    down through the same half-band filters as the voices, with no latency: at 4x, Heavy at full Gain and Volume on a
+    down through the same half-band filters as the voices, a few samples late (see Latency, under the effects): at 4x,
+    Heavy at full Gain and Volume on a
     C7 keeps what isn't a harmonic of the note about 42 dB down (20 dB at 1x, 63 dB at 8x). **Stereo** (off to begin
     with) runs an amp for each side; off, one amp runs on their sum, at half the cost, and puts it out on both.
     The **cabinet** (on to begin with) comes after it, at the host rate: **1x12 Open**, **2x12 Open**, **4x12 Closed**
@@ -761,8 +772,10 @@ What the plugin does and how its editor works, in full. Building and installing 
   out the ones past it at once, as stealing does. Voices are stereo all the way through the filters.
   Voices without any unison spread run their filters once, so they cost no more than mono voices.
 - **Oversampling**: the voices (operators, shapers, filters and their drive) run at 1, 2, 4 or 8 times the host rate, 2 by
-  default, and come back down through a polyphase IIR half-band decimator: flat to 20 kHz, no latency. This keeps
-  bright FM, strong feedback and filter drive from aliasing. The effects run at the host rate. Levels, sends and
+  default, and come back down through a polyphase IIR half-band decimator: flat to 20 kHz, about 2 samples late at
+  2x (the plugin reports it to the host, see Latency). This keeps bright FM, strong feedback and filter drive from
+  aliasing. The effects run at the host rate, but for the shaper and filter effects (twice it) and the amp (its
+  oversampling). Levels, sends and
   routing amounts ramp sample by sample, and the ramps don't depend on how the host splits the block.
 
 An operator or filter that is switched off is silent and costs no CPU. It is left out of the routing graph and
@@ -2057,6 +2070,11 @@ against the VST3 interfaces, with no wrapper in between, as one object that is b
 controller. Its state is the same bytes as the CLAP plugin's, so a `.fmv` preset loads in either; hosts see them
 as two different plugins, though, so a project made with one doesn't switch to the other by itself.
 
+Both report their **latency** (CLAP's latency extension, VST3's `getLatencySamples()`): the voices' decimator's delay
+at the oversampling (about 2 samples at 2x, none at 1x) and the effects' latest path's (see Latency, under the effects),
+rounded to whole samples, as the plugin was last activated. An edit or a state that moves it asks the host for a
+restart, whose activate reports the new one (a CLAP host is told through its latency extension's `changed()`).
+
 Hosts are given 1,317 of FMVibe's 24,930 parameters: the globals, the operators, the matrix and the routes' modes,
 the filters, the shapers, the macros' knobs, the note source's, the mod wheel's, velocity's and the pitch bend's own,
 and every modulation's depth and Amount (16 slots for each of the 28 sources, used or not). The rest are set in the editor only:
@@ -2079,7 +2097,8 @@ What the VST3 plugin does its own way:
   finger's sideways movement as Tuning, its movement along the key as Brightness and how hard it presses as
   Pressure. A note-on's tuning (in cents) tunes the note from its start.
 - **Parameters** are grouped in units, as their modules are (Operators, Op A, Filters, ...).
-- **Restarting**: raising the voice limit past the voices allocated (a project loaded may too), or changing the
-  oversampling, asks the host to deactivate and reactivate the plugin (through a latency change, which has hosts do that).
+- **Restarting**: raising the voice limit past the voices allocated (a project loaded may too), changing the
+  oversampling or a change to the effects that moves the latency asks the host to deactivate and reactivate the plugin
+  (through a latency change, which has hosts do that).
 - **Not in VST3**: CLAP's per-voice and global host modulation, Bitwig's remote-control pages, and the note-end
   reports that per-voice modulation needs.
