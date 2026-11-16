@@ -163,7 +163,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     overlapping notes and skips detached ones unless Always is on (checked by tracking the pitch);
   - a lower voice limit applies immediately, while a higher one requests a restart (again once lowered and raised
     before the host restarts) and is reported through voice-info after reactivation, and a state with a higher one,
-    loaded while active, requests one too.
+    loaded while active, requests one too;
+  - the latency extension reporting the voices' decimator's couple of samples, and about 5 more with a shaper effect
+    in the line, a state that moves it, loaded while active, asking for a restart, and the reactivation telling the
+    host's latency extension.
 
   It opens the editor inside a hidden host window, where the preset bar's next arrow loads a preset with no param
   events, the host asked to rescan the values and marking the project changed, and drags the Volume knob with mouse
@@ -217,7 +220,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     energy off the fundamental growing with Gain (Heavy's more than Clean's), Heavy's aliasing at full Gain and
     Volume on a C7 falling as the oversampling rises (35 dB down at 4x) and the cost of each, Treble and Bass tilting
     the tone their ways, the cabinet taking the top away and the mic at the cone's edge darker than at its center,
-    one amp on both sides' sum in mono and one a side in stereo, Mix at 0 leaving the sound alone, the Fuzz putting out
+    one amp on both sides' sum in mono and one a side in stereo, Mix at 0 leaving the sound alone (but as late as its oversampling), the Fuzz putting out
     no DC, the mic a metre back hearing the room's last reflection, and the model, cabinet, mic, cabinet switch and
     oversampling changed under a note crossfading rather than clicking;
   - the three-band dynamics on a sine in its mid band: a quiet one lifted and a loud one pulled down as its
@@ -245,7 +248,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     440 Hz and 5 kHz about as loud as it went in, with 2, 3, 4 and 6; and its Feedback full up either way staying
     steady as Voices drops from 6 to 2 under a loud sine, then dying away;
   - the reverb's tails: every algorithm's late spectrum without lasting resonances and its two sides unalike, an
-    undamped tail falling 60 dB around 1 kHz in its decay time, and a reverb with a 200 ms pre-delay ringing on
+    undamped tail falling 60 dB around 1 kHz in its decay time (and around 8 kHz in nearly as long, its lines' reads
+    between samples taking nothing from its top), and a reverb with a 200 ms pre-delay ringing on
     until its tail has been heard, and stopping after; a sample that isn't a number, and one louder than any sound,
     going into a delay and a reverb leaving them sane, ringing out and playing on; a delay switched off and on again playing back nothing it
     held, its lines part written or written all round, and its times then turned to their longest and shortest (as a
@@ -269,16 +273,21 @@ the plain CMake commands and installing into a host are in the [README](README.m
     stacked eight high ending with its voice;
   - a drawn shaper curve's points moved gliding in rather than clicking, in whole blocks and in single frames, and
     dragged up and down putting out no DC, made symmetric too;
-  - a quiet, slow sine through a drawn shaper curve coming out as drawn, without spikes where it crosses the
-    curve's table steps; a symmetric drawn curve that doesn't pass through the middle putting out silence for
+  - a quiet, slow sine through a drawn shaper curve coming out as drawn (a few samples late, for the shaper's twice
+    the rate), without spikes where it crosses the curve's table steps; a symmetric drawn curve that doesn't pass through the middle putting out silence for
     silence, and an input that isn't a number reading inside its table;
   - the filter effect switched to another type or slope and back (every newer type among them, and the analog
     types, which share their stages, from one another and from a morph), and a plate switched to a hall and back,
     playing nothing their stages held before; and the effects running on until a shaper's DC blocker has settled;
   - the phaser's and flanger's polarity: negative moving their notches to where the positive peaks were, and
     turned over mid-sine fading through nothing rather than clicking;
-  - a frequency shifter's mirror image 40 dB under the shifted note from 50 Hz to 10 kHz, at 44.1, 48, 96 and
+  - a frequency shifter's mirror image 60 dB under the shifted note from 50 Hz to 10 kHz, at 44.1, 48, 96 and
     192 kHz;
+  - the effects keeping the top where their knobs don't take it: a quiet 15 kHz sine through a soft shaper and a
+    driven high-pass filter effect within 1.5 dB of a 1 kHz one, the parametric EQ's bands up high (a bell, a dip, a
+    high shelf, a low cut and a high cut) sounding within 1.25 dB of their drawn curves from 3 to 15 kHz, and a
+    delay's sixth echo of a 10 kHz burst, at a time between two samples, within 0.5 dB of Feedback's fifth power
+    under its first;
   - the Random source's steps and glides, and at 0 Hz a value for each note, anywhere, at once and held (a mono
     retrigger taking a new one), a freeform shape's points at one time (a vertical line, its last
     counting, and a point at the cycle's end holding a one-shot there), a Curve source playing sample for sample as
@@ -358,6 +367,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     standing where the playhead is (back through a step played reversed, a bent segment off the straight line, held
     before the first point), doing nothing without points or while it doesn't play, and through the synth a bend curve
     bending what it plays by Bend Range and a mod wheel curve moving the mod wheel's slot;
+  - the effects' latency, on an impulse through effects that run oversampled and leave the sound as it is (a filter
+    and an amp at Mix 0): the input straight out beside a filter, the filter on and off, a split with an amp at 4x on
+    one band and a filter on the other, and two filters beside an amp at 8x, each flat within 0.05 dB from 20 Hz to
+    18 kHz (the paths meeting in step) and as late as fxlag.h works out, and nothing oversampled on time;
   - the CPU cost of each factor.
 - **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`, in Midnight,
   the theme its pixel checks were written in, but for the checks and examples that pick another (the README's
@@ -816,7 +829,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     silent, an anchored LFO standing where the process context's position puts it, more changes than a block sorts
     (a note's end past them still ending it, a param's last point winning), a flush without audio taken, the
     controller's copy of a value from the host left alone while processing, and a voice limit past the voices
-    allocated asking the host for a restart;
+    allocated asking the host for a restart, and the latency the CLAP plugin reports (the voices' decimator's);
   - the state: the CLAP plugin's bytes, through a stream that moves 5 bytes at a time, the controller's own state
     empty, a value from the host taken while not processing, loading bringing the saved value back and having the
     host read the values again, and a foreign blob refused;
@@ -1047,6 +1060,7 @@ breakpoints in `src/` then hit.
 | `src/amp.h`, `src/amp.cpp` | The Amp effect's sound: its models (preamp stages, tone stack, power amp), cabinets and mics, its oversampling, and the responses the editor draws |
 | `src/analyzer.cpp` | The spectrum analyzer (FFT) behind the Param EQ's, filter effect's, phase disperser's and voice filters' displays |
 | `src/envelope.h` | AHDSR used by operators and mod envelopes |
+| `src/fxlag.h` | How late each path through the effects graph is from the effects that run oversampled, the pads that keep paths meeting in step, and the output's latency |
 | `src/unison.h` | Where an operator's unison copies go: their detune, place and level by its Unison Curve, Pan and Blend, for the voices and the UNISON tab alike |
 | `src/warp.h` | An operator's warps: where along its cycle it reads its wave, how much they squeeze it and where they bend it |
 | `src/gui/view.cpp` | The editor: its widgets, drawing and mouse and keyboard handling, and the model access behind them. Window-free, so it also renders offscreen |
@@ -1264,7 +1278,10 @@ itself.
   allocates. Lowering the limit takes effect at once: the voices past it fade out as stolen ones do. Raising it past what is allocated calls
   `host->request_restart()` (in VST3, `restartComponent(kLatencyChanged)`, on the main thread), and the host then
   deactivates and reactivates the plugin (a host that doesn't is asked again once more voices or another
-  oversampling factor need one). What VST3 only allows on the main thread, and the audio thread may ask for,
+  oversampling factor need one). So does an edit or a state that moves the latency (`PluginCore::latency()`: the
+  voices' decimator's delay and the effects' latest path's, see `src/fxlag.h`), which the plugin reports to hosts as
+  of its last activate (CLAP's latency extension, telling the host's `changed()` from activate, and VST3's
+  `getLatencySamples()`). What VST3 only allows on the main thread, and the audio thread may ask for,
   goes through a message-only window there. Each voice takes about
   66 KB at 48 kHz, mostly the two comb filters' delay lines, which grow with the oversampling: at the default
   2x, about 105 KB, so 512 voices reserve about 54 MB. Voices isn't automatable for the same reason. The comb lines,

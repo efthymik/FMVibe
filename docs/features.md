@@ -415,7 +415,17 @@ What the plugin does and how its editor works, in full. Building and installing 
     (an effect removed, a split taken out with its join) keeps playing what goes into it until the wires out of it
     have faded, so the sound moves to its new path without a click or a gap; one coming into it starts from what goes
     into it, as the wires into what follows fade in. A split's slope changed crossfades from its filters at the old
-    slope to fresh ones at the new over 5 ms. Only what the output hears runs: an effect no wire takes on to the
+    slope to fresh ones at the new over 5 ms. **Latency**: the shaper and filter effects run at twice the host rate
+    and the amp at its oversampling, up and back down through half-band filters, which comes out a few samples late
+    (about 5 at 48 kHz for twice the rate) and later still toward the top. Where paths meet (a join, a node more than
+    one wire goes into, the output), each path is put through the same filters up and down as many more times as it
+    lacks against the latest one, so they meet in step at every frequency: a split's bands sum back flat whatever runs
+    on them, and a path beside one of these effects doesn't comb with it. Such an effect is as late switched off as on
+    (what it passes then, and what it fades from, goes up and down too), so switching it moves nothing; a new effect,
+    another oversampling or a wire moved that changes how late a path is crossfades that path over 5 ms. The output is
+    then as late as its latest path, which, with the voices' decimator's couple of samples, is the latency the plugin
+    reports to the host; a change that moves it asks the host to restart the plugin, which takes up the new one (see
+    Restarting, under CLAP and VST3). Only what the output hears runs: an effect no wire takes on to the
     output costs nothing, and starts again cleared once one does. A patch starts with no effects, its input straight
     out, and one saved while the effects ran as a chain loads that chain as the line.
   - **Shaper**: picked from a list: Hard (a flat ceiling), Soft (tanh), Asymmetric (the lower half clips twice as
@@ -440,7 +450,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     further than its upper half (to −1.25 and 0.83), which adds even harmonics and an offset that grows as it is
     driven harder. It runs as a gain stage of a pedal does, a high-pass at 20 Hz before the drive like the capacitor
     between two stages, and nothing rounding its top off: each stage lifts back what its anti-aliasing's average takes
-    off the top, and the shaper effect runs the stages at twice the host rate (the voices' run at their
+    off the top, and the shaper effect runs at twice the host rate (the voices' run at their
     oversampling), so stacked eight high at 0 dB, quiet sines to 15 kHz come out within half a dB of their level. The
     DC blocker follows. Its **Stack** knob (1–8, 1 to begin with), after Drive, where it shows only for the Stack curve, runs
     that many stages in a row, each driven by Drive and brought back down after it by as much as Link would (whether
@@ -451,8 +461,11 @@ What the plugin does and how its editor works, in full. Building and installing 
     as a note ends rings on a moment past it as a low thump (stacked eight high at full drive, about half a second
     above −60 dB) before it stops (what a high-pass puts out is taken 10⁻⁹ toward 0 before it is driven, so nothing
     far below hearing is brought up for ever). The display draws the stages' curves one after another, with the
-    gain between them, without their filters. The curves are anti-aliased (first-order antiderivative), each Stack stage too, so
-    high drive stays clean without oversampling, though folding at the highest drives gets duller for it.
+    gain between them, without their filters. The curves are anti-aliased (first-order antiderivative), each Stack stage too, and
+    the shaper effect runs every curve at twice the host rate, so high drive stays clean and a quiet sound's top comes
+    through (a 15 kHz sine within about a dB of a 1 kHz one, where the anti-aliasing's average at the host rate took
+    5 dB off it), though folding at the highest drives gets duller for it. Band-limited so, a hard curve's peaks
+    overshoot its ceiling a little, as the voices' shapers' do.
   - **Amp**: a guitar amp, then a speaker cabinet heard through a mic. **Model** picks the amp: its preamp stages
     (each a coupling high-pass, a gain, a curve with a bias whose lower side is softer, which adds even harmonics, and
     a low-pass), its tone stack and its power amp. **Clean** (one gentle stage, lots of headroom), **Blues** (two
@@ -472,7 +485,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     20 ms. Each model is trimmed so that at its middle knobs a sine at −12 dBFS comes out as loud as it went in (with
     the cabinet), and as Gain rises the level grows less and less, the stages clipping. The stages run at 1, 2, 4
     (to begin with) or 8 times the host rate, picked in the card's right-click menu (**Oversampling**), and come back
-    down through the same half-band filters as the voices, with no latency: at 4x, Heavy at full Gain and Volume on a
+    down through the same half-band filters as the voices, a few samples late (see Latency, under the effects): at 4x,
+    Heavy at full Gain and Volume on a
     C7 keeps what isn't a harmonic of the note about 42 dB down (20 dB at 1x, 63 dB at 8x). **Stereo** (off to begin
     with) runs an amp for each side; off, one amp runs on their sum, at half the cost, and puts it out on both.
     The **cabinet** (on to begin with) comes after it, at the host rate: **1x12 Open**, **2x12 Open**, **4x12 Closed**
@@ -493,7 +507,9 @@ What the plugin does and how its editor works, in full. Building and installing 
     and a high-pass above it (20 Hz up to 4 kHz), applied to every repeat; Width, from the echoes' full stereo
     down to mono; Ping-Pong, which starts the echoes on the left and bounces them across, each after its side's
     time; and Mix, where the dry signal stays at full level up to 50 % and the echoes reach full level there. Time
-    changes glide like tape rather than click. The plugin keeps processing until the echoes have died away.
+    changes glide like tape rather than click, read between samples on a cubic as they do, and the times land on whole
+    samples, so the repeats lose nothing of their top to the reads (only Tone darkens them). The plugin keeps
+    processing until the echoes have died away.
   - **DJ EQ**: a three-band isolator with Linkwitz-Riley crossovers (24 dB/octave) at 250 Hz and 2.5 kHz. Each
     band goes from kill to +6 dB, and with all three at 0 dB it is flat.
   - **Param EQ**: three bands, each with Frequency (20 Hz–20 kHz), Gain (±18 dB) and Q (0.3–10), a shape:
@@ -501,7 +517,10 @@ What the plugin does and how its editor works, in full. Building and installing 
     gain does nothing there) or Notch (taking its frequency away, Q setting how narrowly; the gain does nothing
     there either), and an **On** switch. All three start on, flat (at 250 Hz, 1 kHz and 4 kHz). A band switched off leaves the sound
     alone, fading out and back in over 5 ms. **Amount** (100 % to begin with) mixes what the bands put out with
-    what goes in, as a Mix knob does: at 0 % the EQ leaves the sound alone.
+    what goes in, as a Mix knob does: at 0 % the EQ leaves the sound alone. The bands sound as their display draws
+    them in the top octaves too, within about a dB up to 15 kHz: their poles and zeros go where the analog band's are
+    (the high cut's zeros matching its level at 0 Hz, its corner and the half rate instead), where the usual bilinear
+    design squeezed a bell or shelf up there narrower and lower than drawn.
   - **Filter**: the voice filters' types (low-pass, high-pass, band-pass, notch, comb, ladder, diode, Sallen-Key LP
     and HP, formant, morph; a list across its card under its title, as the shaper's curves are, with the list of
     slopes under the response, a morph's with its notch switch (the notch's icon) beside it, and a formant's Vowel or a morph's Morph
@@ -509,7 +528,9 @@ What the plugin does and how its editor works, in full. Building and installing 
     slopes, 6 to 24 dB, on
     the whole mix, with Cutoff, Resonance, **Key Track**, Drive and Mix. Key Track (0 to begin with) moves the
     cutoff with the newest voice's pitch, from C4 on, as a voice filter's does; once the notes end, it stays where
-    the last one left it. Like the Param EQ, its display shows what it puts out behind its response.
+    the last one left it. Like the Param EQ, its display shows what it puts out behind its response. It runs at
+    twice the host rate, as the voice filters run oversampled, so the analog types' saturation and Drive alias far
+    less and Drive keeps the top.
   - **Compressor**: stereo-linked and peak-sensing, with Threshold (−60–0 dB), Ratio (1:1–20:1), a soft Knee
     (0–24 dB), Attack (1–500 ms), Release (1 ms–2 s), Makeup (0–24 dB) and Mix for parallel compression.
   - **3-Band Dynamics**: upward and downward compression in three bands, which Linkwitz-Riley crossovers (Low X,
@@ -550,8 +571,10 @@ What the plugin does and how its editor works, in full. Building and installing 
   - **Reverb**: a feedback delay network of sixteen lines (29 to 89 ms at full size, spread evenly on a log
     scale), mixed through a Hadamard matrix, which spreads each line's sound evenly over all of them every time
     round, so the echoes thicken fast. Each line's length wavers slowly (a fraction of a millisecond, each at its
-    own pace between 0.3 and 1 Hz), so the tail's resonances smear instead of ringing on as a metallic tone.
-    Each side of the input goes through the pre-delay and its own all-passes, then into half the lines, and the
+    own pace between 0.3 and 1 Hz), so the tail's resonances smear instead of ringing on as a metallic tone; each
+    line is read between samples through a first-order all-pass, which passes every frequency at its level, so the
+    tail's top lasts as long as Damping says (undamped, the octave around 8 kHz falls 60 dB in nearly the decay time
+    the octave around 1 kHz does). The pre-delay lands on whole samples. Each side of the input goes through the pre-delay and its own all-passes, then into half the lines, and the
     two sides of the output take the lines with signs that don't match, so the tail comes out wide even from a
     mono sound. Four algorithms: **Hall** (that network, four all-passes a side); **Room** (lines under half as
     long, a darker tail and tighter wavering, with six distinct early reflections that spread with the size);
@@ -582,7 +605,9 @@ What the plugin does and how its editor works, in full. Building and installing 
     the wet sound is added to the dry one or taken from it: negative turns the wet sound over, and the feedback
     with it, so every notch moves to where a peak was (between the positive ones) and Feedback keeps its sense
     either way. Switched, it fades over 10 ms rather than clicking.
-  - **Flanger**: a 1–15 ms Delay that an LFO (Rate, 0–20 Hz) sweeps by Depth, with Feedback of either sign (a
+  - **Flanger**: a 1–15 ms Delay that an LFO (Rate, 0–20 Hz) sweeps by Depth (from 1 − 0.95 Depth times it to
+    1 + 0.95 Depth times it, evenly in octaves, so the notches move as evenly in pitch both ways; its line is read
+    between samples on a cubic, so what goes round keeps its top), with Feedback of either sign (a
     negative one gives the hollower sound) and Mix, which runs to 100 %, half wet, like the phaser's (and starts
     there). **Sync** works like the phaser's, two bars a sweep to begin with, and so does **Stereo**, under its
     display, but on to begin with: the right side a quarter cycle ahead. So does its polarity: negative puts a notch
@@ -621,7 +646,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     whole travel; Spread takes the right side the other
     way, Feedback sends the shifted sound round again for spiraling sweeps, and Mix. A pair of all-pass chains makes
     the 90-degree copy it needs, which keeps the mirror image (as far below the old frequency as the shift moves it
-    above) 45 dB down or more from 50 Hz up; its chains are worked out for the sample rate, longer at higher ones,
+    above) 65 dB down or more from 50 Hz up; its chains are worked out for the sample rate, longer at higher ones,
     so it holds at 96 and 192 kHz too.
   - **Utility**: the level and the stereo image, in the order the sound goes through them. **Mono Bass** high-passes
     the sides (left minus right) at 12 dB an octave, so the sound below it comes out in the middle: Off at the
@@ -750,8 +775,10 @@ What the plugin does and how its editor works, in full. Building and installing 
   out the ones past it at once, as stealing does. Voices are stereo all the way through the filters.
   Voices without any unison spread run their filters once, so they cost no more than mono voices.
 - **Oversampling**: the voices (operators, shapers, filters and their drive) run at 1, 2, 4 or 8 times the host rate, 2 by
-  default, and come back down through a polyphase IIR half-band decimator: flat to 20 kHz, no latency. This keeps
-  bright FM, strong feedback and filter drive from aliasing. The effects run at the host rate. Levels, sends and
+  default, and come back down through a polyphase IIR half-band decimator: flat to 20 kHz, about 2 samples late at
+  2x (the plugin reports it to the host, see Latency). This keeps bright FM, strong feedback and filter drive from
+  aliasing. The effects run at the host rate, but for the shaper and filter effects (twice it) and the amp (its
+  oversampling). Levels, sends and
   routing amounts ramp sample by sample, and the ramps don't depend on how the host splits the block.
 
 An operator or filter that is switched off is silent and costs no CPU. It is left out of the routing graph and
@@ -2129,6 +2156,11 @@ against the VST3 interfaces, with no wrapper in between, as one object that is b
 controller. Its state is the same bytes as the CLAP plugin's, so a `.fmv` preset loads in either; hosts see them
 as two different plugins, though, so a project made with one doesn't switch to the other by itself.
 
+Both report their **latency** (CLAP's latency extension, VST3's `getLatencySamples()`): the voices' decimator's delay
+at the oversampling (about 2 samples at 2x, none at 1x) and the effects' latest path's (see Latency, under the effects),
+rounded to whole samples, as the plugin was last activated. An edit or a state that moves it asks the host for a
+restart, whose activate reports the new one (a CLAP host is told through its latency extension's `changed()`).
+
 Hosts are given 1,317 of FMVibe's 25,378 parameters: the globals, the operators, the matrix and the routes' modes,
 the filters, the shapers, the macros' knobs, the note source's, the mod wheel's, velocity's and the pitch bend's own,
 and every modulation's depth and Amount (16 slots for each of the 28 sources, used or not). The rest are set in the editor only:
@@ -2151,7 +2183,8 @@ What the VST3 plugin does its own way:
   finger's sideways movement as Tuning, its movement along the key as Brightness and how hard it presses as
   Pressure. A note-on's tuning (in cents) tunes the note from its start.
 - **Parameters** are grouped in units, as their modules are (Operators, Op A, Filters, ...).
-- **Restarting**: raising the voice limit past the voices allocated (a project loaded may too), or changing the
-  oversampling, asks the host to deactivate and reactivate the plugin (through a latency change, which has hosts do that).
+- **Restarting**: raising the voice limit past the voices allocated (a project loaded may too), changing the
+  oversampling or a change to the effects that moves the latency asks the host to deactivate and reactivate the plugin
+  (through a latency change, which has hosts do that).
 - **Not in VST3**: CLAP's per-voice and global host modulation, Bitwig's remote-control pages, and the note-end
   reports that per-voice modulation needs.

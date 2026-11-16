@@ -1,6 +1,8 @@
 #include "plugincore.h"
 
 #include "factory.h"
+#include "fxlag.h"
+#include "oversampler.h"
 #include "params.h"
 #include "uistrings.h"
 
@@ -60,6 +62,8 @@ void PluginCore::performSetValue(int index, double value) {
     if (index == paramIndex(GlobalParam::Voices)) {
         voiceLimitChanged();
         hostVoicesChanged();
+    } else if (fxLagParam(index)) { // an effect or wire that makes the output later or sooner
+        askRestart();
     }
 }
 
@@ -67,7 +71,17 @@ void PluginCore::performSetValue(int index, double value) {
 void PluginCore::activate(double sampleRate) {
     sampleRate_ = sampleRate;
     synth_.prepare(sampleRate, voiceLimit(), oversampling_.load());
+    for (int kind = 0; kind < FxLag::kKinds; ++kind)
+        pathDelays_[kind] = upDownDelay(sampleRate, FxLag::factorOf(kind));
+    voicesDelay_ = decimatorDelay(sampleRate, synth_.oversampling());
+    latency_.store(latencyNow());
     restartAskedFor_.store(0);
+}
+
+// The voices' decimator, then the effects' latest path (see fxlag.h), at the rate and oversampling activate() took.
+int PluginCore::latencyNow() const {
+    const FxLag lag = fxOutputLag([this](int i) { return values_[i].load(std::memory_order_relaxed); });
+    return static_cast<int>(std::lround(voicesDelay_ + fxLagSamples(lag, pathDelays_)));
 }
 
 int PluginCore::voiceLimit() const {
@@ -96,11 +110,12 @@ void PluginCore::performStepEnd() {
 // Thread-safe: each format's hostRequestRestart() may be called from any thread.
 void PluginCore::askRestart() {
     const int capacity = synth_.capacity(), voices = voiceLimit(), factor = oversampling_.load();
-    if (capacity <= 0 || (voices <= capacity && factor == synth_.oversampling())) {
+    const int latency = capacity > 0 ? latencyNow() : 0;
+    if (capacity <= 0 || (voices <= capacity && factor == synth_.oversampling() && latency == latency_.load())) {
         restartAskedFor_.store(0); // so the same need, should it come back, asks again
         return;
     }
-    const int need = std::max(voices, capacity) * 16 + factor;
+    const int need = (std::max(voices, capacity) * 16 + factor) * 4096 + std::clamp(latency, 0, 4095);
     if (restartAskedFor_.exchange(need) != need)
         hostRequestRestart();
 }
