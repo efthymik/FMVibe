@@ -61,7 +61,7 @@ struct PresetInfo {
 };
 // The most characters typed into each, and the most bytes saved (room for UTF-8 from a file).
 constexpr size_t kMaxPresetAuthor = 32;
-constexpr size_t kMaxPresetCategory = 20;
+constexpr size_t kMaxPresetCategory = 6; // a new one's name, as long as the built-in ones' at most (Pluck)
 constexpr size_t kMaxPresetDescription = 80;
 constexpr size_t kMaxPresetName = 48;
 
@@ -81,7 +81,7 @@ inline constexpr BuiltInCategory kPresetCategories[] = {
     {"Lead", Str::CategoryLead, Str::CategoryLeadPill, "LD"},
     {"Pad", Str::CategoryPad, Str::CategoryPadPill, "PD"},
     {"Pluck", Str::CategoryPluck, Str::CategoryPluckPill, "PL"},
-    {"Sequence", Str::CategorySequence, Str::CategorySequencePill, "SQ"},
+    {"Seq", Str::CategorySeq, Str::CategorySeqPill, "SQ"},
 };
 constexpr int kBuiltInCategories = static_cast<int>(std::size(kPresetCategories));
 // A category of the user's own: its name and its color, one of kCustomCategoryColors after the built-in ones'.

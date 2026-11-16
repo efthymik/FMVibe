@@ -1873,7 +1873,7 @@ one may have changed since it last did.
   `Documents\FMVibe\presets` and its subfolders. The factory presets show under **Factory**, as a subfolder's would;
   nothing of them is written into the folder, which FMVibe makes only when a file dialog needs it
   (empty: it holds the presets saved there). Each factory preset is in one or two categories (see Preset info, below):
-  Bass, Drum, FX, Keys (bells and organs too), Lead (brass too), Pad (moving textures too), Pluck and Sequence
+  Bass, Drum, FX, Keys (bells and organs too), Lead (brass too), Pad (moving textures too), Pluck and Seq
   (rhythmic, gated). Up to 0.11 each name began with its category's two letters ("LD Screamer"); a project saved then
   still names the preset that way, and it loads the preset as it is named now. They are Electric Piano, FM Bass, Glass Bell, Warm Pad, Drawbar
   Organ, Pluck Delay; Crystal Motion, which uses everything at once (all six operators in three layers, two
@@ -1957,8 +1957,9 @@ one may have changed since it last did.
   - **Preset info**: a preset says who made it (**Author**), what kind of sound it is (**Category**) and what it
     does, in a **Description** of one line (up to 80 characters). They are saved with the patch, in its layout chunk,
     so a preset file carries them and so does the host's project; a preset saved before them has none, and still
-    loads. The categories are Bass, Drum, FX, Keys, Lead, Pad, Pluck and Sequence, each in a color of its own, and any
-    the user adds (**+** by CATEGORIES in the browser, or **+ New** in the Save dialog): a name and one of five colors,
+    loads. The categories are Bass, Drum, FX, Keys, Lead, Pad, Pluck and Seq, each in a color of its own, and any the
+    user adds (**+ New** in the Save dialog): a name of 6 characters at most (a built-in one's picking that one) and
+    one of five colors,
     kept in the user's settings, so every FMVibe offers them. A preset stores its category by name, so one made on
     another computer with a category this one doesn't know still shows it, in grey. The factory presets are FMVibe's,
     each in one category, with a line about it.

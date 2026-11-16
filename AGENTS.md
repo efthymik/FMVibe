@@ -909,7 +909,7 @@ To add or change one:
 1. Make it in the plugin and save it into `presets/Factory` (the preset bar's Save, then the file dialog).
 2. Make the file sparse: `build\release\fmvibe-presettool.exe "presets\Factory\<name>.fmv"`. A factory preset says
    it is FMVibe's, in a built-in category, with a line about it (the quality test checks): set them with
-   `--author=FMVibe --category=<Bass, Drum, FX, Keys, Lead, Pad, Pluck or Sequence> --description=<one line, at most 80
+   `--author=FMVibe --category=<Bass, Drum, FX, Keys, Lead, Pad, Pluck or Seq> --description=<one line, at most 80
    characters>` before the file. With `--arrange` first
    (`fmvibe-presettool --arrange <file>...`), it also lays the routing graph out again where its nodes, wires, lines to
    OUT or labels run over each other (`arrangeRouting()` in `src/gui/arrange.h`: each node moved to the place on a

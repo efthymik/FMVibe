@@ -9805,9 +9805,18 @@ void testPresetLibrary(const std::filesystem::path &dir, Renderer &renderer) {
     renderer.save(view, dir / "23h-new-category.png");
     view.typeKey(View::Key::Enter);
     const bool category = categoryAsked && model.categories.size() == 2 && model.categories[1].name == "Vocal";
+    // A name takes 6 characters at most, and the name a built-in category shows (Seq) picks that one.
+    click(view, {366.0f, 279.0f}); // + New, after Vocal now
+    type(view, "Melodic");
+    view.typeKey(View::Key::SelectAll);
+    const bool cut = view.copyText(false) == "Melodi";
+    type(view, "Seq");
+    view.typeKey(View::Key::Enter);
+    const bool seqBuiltIn = cut && !view.nameMenuShown() && model.categories.size() == 2;
     view.typeKey(View::Key::Escape); // the Save dialog closes
-    check(asked && made && category && !view.saveShown(),
-          "the browser's + by FOLDERS makes a folder, and the Save dialog's + New a category");
+    check(asked && made && category && seqBuiltIn && !view.saveShown(),
+          "the browser's + by FOLDERS makes a folder, and the Save dialog's + New a category (of 6 characters at most, "
+          "Seq picking the built-in one)");
     click(view, detail::kPresetName.center()); // the browser again, for what follows
 
     // Edit Info, from the info card, on a preset without any: its author, category and line written into its file

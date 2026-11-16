@@ -24,7 +24,9 @@ constexpr uint32_t kPresetMagic = 0x54535250;   // "PRST"
 constexpr size_t kMaxMacroName = 24; // bytes of a macro's name that are saved
 // Bytes of a preset's info that are saved: what can be typed, three times over for UTF-8 from a file.
 constexpr size_t kMaxInfoAuthor = 3 * gui::kMaxPresetAuthor;
-constexpr size_t kMaxInfoCategory = 3 * gui::kMaxPresetCategory;
+// A category's stays as it was saved since the info came in (20 characters), longer than a new one can be typed now
+// (gui::kMaxPresetCategory), so presets and projects with a longer one keep it whole.
+constexpr size_t kMaxInfoCategory = 3 * 20;
 constexpr size_t kMaxInfoDescription = 3 * gui::kMaxPresetDescription;
 // The most of a layout chunk the loader reads, any more is skipped: plenty of room past the most this version
 // writes (see layoutFields()), which is its fixed fields, every route kept (a node's output and its route into
