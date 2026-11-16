@@ -12616,8 +12616,11 @@ constexpr int kAmpOversamplingCommand = 30;
 constexpr int kMoveBandCommand = 40;
 // And from here on, each sets the mode of the route the menu was opened on (see RouteMode).
 constexpr int kRouteModeCommand = 16;
+// Typing a modulation's aux depth, from its depth handle's or its aux chip's menu.
+constexpr int kEditAuxDepthCommand = 48;
 static_assert(kRouteModeCommand + static_cast<int>(RouteMode::Count) <= kAmpOversamplingCommand &&
-              kAmpOversamplingCommand + kAmpOversamplings <= kMoveBandCommand && kMoveBandCommand + 3 < 100);
+              kAmpOversamplingCommand + kAmpOversamplings <= kMoveBandCommand && kMoveBandCommand + 3 < 100 &&
+              kEditAuxDepthCommand > kMoveBandCommand + 3 && kEditAuxDepthCommand < 100);
 
 std::vector<MenuItem> View::contextMenu(Point p) {
     endTyping(true);
@@ -12726,7 +12729,7 @@ std::vector<MenuItem> View::contextMenu(Point p) {
             if (hit->kind == Kind::ModDot || hit->kind == Kind::ModsAuxDepth) {
                 menuAuxDepth_ = *hit;
                 menuAuxDepth_->param = slotAuxDepthIndex(hit->a, hit->b);
-                items.push_back({12, tr(Str::MenuEditAuxDepth)});
+                items.push_back({kEditAuxDepthCommand, tr(Str::MenuEditAuxDepth)});
             }
             items.push_back({kAuxClearCommand + hit->a * kSlots + hit->b, trf(Str::MenuRemoveAux, {sourceName(aux)})});
         }
@@ -12874,7 +12877,7 @@ void View::menuCommand(int command) {
         removeSource(menuSource_);
     } else if (command == 11 && menuValue_) {
         startTyping(*menuValue_);
-    } else if (command == 12 && menuAuxDepth_) {
+    } else if (command == kEditAuxDepthCommand && menuAuxDepth_) {
         startTyping(*menuAuxDepth_);
     } else if ((command == kUnipolarCommand || command == kBipolarCommand) && menuSource_ >= 0) {
         setSourcePolarity(menuSource_, command == kBipolarCommand);
