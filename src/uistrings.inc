@@ -745,10 +745,10 @@ STR(BandButtonHigh, "HIGH")
 STR(ButtonAddEffect, "ADD EFFECT")
 STR(ButtonClearFx, "Remove All") // the confirm dialog's button that removes every effect
 STR(ButtonClearSeq, "Clear") // the confirm dialog's button that removes every note of a pattern
+STR(ButtonRemoveCategory, "Remove") // the confirm dialog's button that removes one of the user's categories
 STR(ButtonAddSource, "ADD SOURCE") // the dashed card after the sources: opens the list of source types
 STR(ButtonEffect, "EFFECT") // + EFFECT and + SOURCE, after a drawn plus
 STR(ButtonSource, "SOURCE")
-STR(ButtonOpenFolder, "OPEN FOLDER")
 STR(ButtonCancel, "Cancel")
 STR(ButtonInit, "Discard")
 STR(ButtonLoad, "Load")
@@ -818,14 +818,96 @@ STR(SettingsVersion, "FMVibe {1}") // the version number, at the bottom
 STR(SettingsLicense, "Released under the MIT license")
 
 // The preset browser, and the question before a preset replaces a changed patch.
-STR(PresetsTitle, "Presets")
-STR(PresetsCountOne, "1 in the folder")
-STR(PresetsCount, "{1} in the folder")
-STR(PresetsNone, "No presets yet.")
 STR(PresetsNoneHint, "Save a preset with the disk icon, or place .fmv files into the presets folder.")
 STR(PresetsSearchHint, "Type to search")
-STR(PresetsMatching, "{1} of {2} match") // presets that match the search, of all in the folder
-STR(PresetsNoMatch, "No presets match \"{1}\"")
+STR(PresetsAll, "All")
+STR(PresetsFavorites, "Favorites")
+STR(PresetsRecent, "Recent")
+STR(PresetsFolders, "FOLDERS")
+STR(PresetsCategories, "CATEGORIES")
+STR(PresetsFactory, "Factory") // the factory presets' folder in the browser's tree
+STR(PresetsUser, "User") // the preset folder itself, atop its subfolders in the tree
+STR(PresetsSubfolders, "Subfolders") // the switch: a folder lists its subfolders' presets too
+STR(PresetsClear, "Clear") // takes the category filters off
+STR(PresetsNoneCategory, "None") // presets without a category
+STR(PresetsShown, "{1} / {2}") // presets listed, of all of them
+STR(PresetsNoneHere, "No presets")
+STR(PresetsNoMatchShort, "No matches.")
+STR(PresetsNoDescription, "No description")
+STR(PresetsClose, "Close") // the browser's button that closes it
+STR(PresetsEditInfo, "Edit Info…")
+STR(PresetsAddInfo, "Add Info…")
+STR(PresetsSaveCopy, "Save Copy…")
+STR(PresetsBy, "by {1}") // the preset's author
+STR(PresetsReadOnly, "Read-only") // a factory preset's info card
+STR(PresetsShowInBrowser, "Show in Browser")
+STR(PresetsFactoryTempo, "{1} BPM") // the tempo a preset was saved at
+STR(TipPresetInfo, "Preset info")
+STR(TipFavorite, "Add to Favorites")
+STR(TipUnfavorite, "Remove from Favorites")
+STR(TipShowFile, "Show in Explorer")
+STR(TipShowFileFactory, "Factory preset")
+STR(TipNewFolder, "New folder")
+STR(TipSubfolders, "List presets in all subfolders")
+STR(TipRemoveCategory, "Remove category")
+STR(TipExpandFolder, "Expand")
+STR(TipCollapseFolder, "Collapse")
+STR(MsgFolderNotMade, "Could not create folder")
+STR(MsgNameEmpty, "Enter a name")
+STR(MsgNameInvalid, "Names can't contain \\ / : * ? \" < > |")
+
+// The built-in preset categories: as the editor names them, and in capitals on their pills.
+STR(CategoryBass, "Bass")
+STR(CategoryDrum, "Drum")
+STR(CategoryFx, "FX")
+STR(CategoryKeys, "Keys")
+STR(CategoryLead, "Lead")
+STR(CategoryPad, "Pad")
+STR(CategoryPluck, "Pluck")
+STR(CategorySequence, "Sequence")
+STR(CategoryBassPill, "BASS")
+STR(CategoryDrumPill, "DRUM")
+STR(CategoryFxPill, "FX")
+STR(CategoryKeysPill, "KEYS")
+STR(CategoryLeadPill, "LEAD")
+STR(CategoryPadPill, "PAD")
+STR(CategoryPluckPill, "PLUCK")
+STR(CategorySequencePill, "SEQ")
+
+// The Save Preset dialog (Save As), which also edits a preset's info, and its New Category and New Folder forms.
+STR(SaveTitle, "Save Preset")
+STR(SaveInfoTitle, "Preset Info")
+STR(SaveName, "Name")
+STR(SaveAuthor, "Author")
+STR(SaveCategory, "Category")
+STR(SaveDescription, "Description")
+STR(SaveFolder, "Folder")
+STR(SaveNewFolder, "New Folder")
+STR(MenuNewFolder, "New Folder") // the Save dialog's folder tree's right-click menu: a folder in the one clicked
+STR(MenuOpenInExplorer, "Open in Explorer") // and that folder shown in Explorer
+STR(MenuRenameFolder, "Rename...") // and renamed, in a small form
+STR(MenuDeleteFolder, "Delete...") // and moved to the Recycle Bin, asking first
+STR(RenameFolderTitle, "Rename Folder")
+STR(ButtonRenameFolder, "Rename")
+STR(MsgFolderExists, "A folder with that name already exists")
+STR(MsgFolderNotRenamed, "Could not rename folder")
+STR(MsgFolderNotDeleted, "Could not delete folder")
+STR(SaveNewCategory, "New Category")
+STR(SaveNew, "New") // the category picker's button for a new one
+STR(SaveCount, "{1} / {2}") // characters typed, of the most
+STR(SaveExists, "\"{1}\" already exists in this folder.")
+STR(SaveToFile, "Save to File…")
+STR(SaveSave, "Save")
+STR(SaveReplace, "Replace")
+STR(SaveCancel, "Cancel")
+STR(SaveAdd, "Add")
+STR(SaveCreate, "Create")
+STR(SaveNameHint, "Preset name")
+STR(SaveAuthorHint, "Your name")
+STR(SaveDescriptionHint, "Preset description")
+STR(SaveCategoryHint, "Category name")
+STR(SaveFolderHint, "Folder name")
+STR(TipCategoryColor, "Color")
 STR(ConfirmTitle, "Discard the current patch?")
 STR(ConfirmLoadPreset, "Loading {1} replaces every setting.")
 STR(ConfirmInit, "Resets all settings to defaults.")
@@ -836,6 +918,15 @@ STR(ConfirmFxClearTitle, "Really remove all FX?")
 STR(ConfirmFxClear, "All effects are removed.")
 STR(ConfirmSeqClearTitle, "Clear pattern {1}?")
 STR(ConfirmSeqClear, "Removes every note.")
+STR(ConfirmFolderDeleteTitle, "Delete folder {1}?")
+STR(ConfirmFolderDeleteEmpty, "The folder is empty")
+STR(ConfirmFolderDeleteOne, "The preset in the folder will be moved to the Recycle Bin.")
+STR(ConfirmFolderDelete, "The {1} contained presets will be moved to the Recycle Bin.")
+STR(ButtonDeleteFolder, "Delete") // the confirm dialog's button that moves a preset folder to the Recycle Bin
+STR(ConfirmCategoryRemoveTitle, "Remove category {1}?")
+STR(ConfirmCategoryRemoveUnused, "No preset uses this category.")
+STR(ConfirmCategoryRemoveOne, "The existing preset will keep the category.")
+STR(ConfirmCategoryRemove, "The {1} existing presets will keep the category.")
 STR(ConfirmMidBandTitle, "Change to two bands?") // a three-band split switched to two, its middle band holding effects
 STR(ConfirmMidBand, "The mid band holds {1} effects. Where should they go?")
 STR(ConfirmMidBandOne, "The mid band holds an effect. Where should it go?")
@@ -988,10 +1079,9 @@ STR(TipSwitchNodeOn, "Turn on {1}")
 STR(TipNodeGhost, "{1} is off. Click to turn on")
 STR(TipPreviousPreset, "Previous preset")
 STR(TipNextPreset, "Next preset")
-STR(TipPresetChanged, "Modified  ·  browse presets")
-STR(TipPresetName, "Browse presets")
+STR(TipPresetChanged, "Modified  ·  Browse Presets")
+STR(TipPresetName, "Browse Presets")
 STR(TipTempo, "Tempo for synced LFOs and effects. Drag, scroll or double-click to type")
-STR(TipOpenFolder, "Open preset folder")
 STR(TipInit, "Reset all settings")
 STR(TipLoad, "Load preset")
 STR(TipSave, "Save changes to {1}")
@@ -1176,7 +1266,6 @@ STR(MsgTwoPoints, "A shape needs two points")
 STR(MsgSourcesFull, "Only supports up to {1} sources")
 STR(MsgPresetUnreadable, "Preset could not be read")
 STR(MsgNoPresets, "Preset folder is empty")
-STR(MsgPresetSaved, "Saved {1}")
 STR(MsgPresetNotSaved, "Could not save preset")
 STR(MsgBadValue, "Invalid value for {2}: \"{1}\"")
 

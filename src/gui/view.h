@@ -9,6 +9,7 @@
 #include <memory>
 #include <optional>
 #include <random>
+#include <set>
 #include <span>
 #include <utility>
 #include <string>
@@ -157,7 +158,18 @@ public:
     // A dialog over the editor (a confirm dialog, the settings) takes Enter, which presses its lit button, and Escape,
     // which cancels it or closes the settings; the panel of algorithms takes Escape, which closes it. While one is open
     // the window should send it those keys: true if one was taken.
-    bool dialogOpen() const { return settingsOpen_ || confirm_ >= 0 || algorithmMenuOpen_; }
+    bool dialogOpen() const { return settingsOpen_ || confirm_ >= 0 || algorithmMenuOpen_ || infoCardOpen_ || browserOpen_; }
+    // What the preset browser, the info card and the Save dialog show: whether each is open, the presets the browser
+    // lists (in its order) and the one picked.
+    bool browserShown() const { return browserOpen_; }
+    bool infoCardShown() const { return infoCardOpen_; }
+    bool confirmShown() const { return confirm_ >= 0; }
+    bool saveShown() const { return saveMode_ != SaveMode::None; }
+    bool nameMenuShown() const { return nameMenu_ != 0; }
+    std::vector<int> browserListed() const { return browserRows(); }
+    int browserPicked() const { return browserPick_; }
+    float browserSideScrolled() const { return browserSideScroll_; } // how far its sidebar is scrolled, in px
+    std::vector<int> browserCategoryCounted() const { return browserCategoryCounts(); } // by browserCategoryList()'s rows
     bool dialogKey(Key key);
     // Ctrl going down or up, from the keyboard while the window has it (mouse messages bring it too): while it is held
     // over a graph, its grid's points show, and a node dragged snaps to them. True if a repaint is due.
@@ -309,10 +321,36 @@ private:
         PresetStep,   // a = -1 or 1: the previous or next preset in the library
         PresetNameBox, // the current preset's name: opens the preset browser
         TempoBox,     // the host's tempo (see Controller::hasTempo()): drag up and down, scroll, or double-click to type
+        PresetInfoButton, // the (i) in the preset bar: opens the preset's info card
+        InfoCard,     // a = 1 on the open info card, 0 around it (a click there closes it)
+        InfoAction,   // a = 0 the star (a favorite), 1 Show in Browser, 2 Save As or Edit Info (see infoCardWidgets())
         BrowserBackdrop, // a = 1 on the browser itself, 0 around it (a click there closes it)
-        BrowserRow,   // a = preset index: loads it
-        BrowserClose,
-        BrowserFolder, // opens the preset folder
+        BrowserRow,   // a = preset index: picks it, a double-click loads it
+        BrowserFav,   // a = preset index: its star, a favorite or not
+        BrowserSubfolders, // the switch: a folder lists its subfolders' presets too
+        BrowserLibrary, // a = BrowserScope: All, Favorites or Recent, atop the sidebar
+        BrowserTree,  // a = row of browserTree(): shows that folder
+        BrowserTreeToggle, // a = row of browserTree(): opens or closes it in the tree
+        BrowserCategory, // a = row of browserCategoryList(): filters by it, or not
+        BrowserCategoryRemove, // a = row of browserCategoryList(), one of the user's own: removes it, asking first
+        BrowserCatClear, // takes the category filters off
+        BrowserNew,   // the + by FOLDERS: opens the New Folder form
+        BrowserCrumb, // a = how many of the folder's parts: shows that folder
+        BrowserChip,  // a = row of browserCategoryList(): a filter by it, whose click takes it off
+        BrowserClose, // closes the browser
+        BrowserSideScroll, // the sidebar's scrollbar, at its right edge: drag the thumb, or click the track
+        BrowserShowFile, // shows the file of the preset picked in Explorer
+        SaveBackdrop, // a = 1 on the Save dialog itself, 0 around it (a click there closes it)
+        SaveCategory, // a = row of saveCategoryList(), or -1 for None: the preset's category
+        SaveNewCategory, // + New: opens the New Category form
+        SaveFolderRow, // a = row of the folders (0 the preset folder, then presetFolders() + 1): where it goes
+        SaveNewFolder, // New Folder: opens its form
+        SaveToFile,   // Save to File...: the file dialog, which puts it anywhere
+        SaveButton,   // a = 1 saves (or replaces), 0 cancels
+        SaveClose,
+        NameMenu,     // a = 1 on the New Category or New Folder form, 0 around it (a click there closes it)
+        NameColor,    // a = color: the new category's
+        NameButton,   // a = 1 adds the category or makes the folder, 0 cancels
         SearchField,  // a = Field: a text field (the browser's search, the MODS view's filter, the target menu's
                       // search): click to put the caret there, drag to select, double-click for a word
         SearchClear,  // a = Field: the x in a text field: empties it
@@ -442,6 +480,7 @@ private:
         Bend,       // a wire, sideways: how far it bows
         ModsScroll, // the MODS view's thumb
         InputsScroll, // the INPUTS tab's thumb
+        BrowserSideScroll, // the preset browser's sidebar's thumb
         ModListScroll, // a pill's open list's thumb
         Pan,        // the middle button: what a panel that scrolls shows, along with the mouse (a = PanArea)
         SplitPoint, // a split's crossover handle, across
@@ -497,6 +536,7 @@ private:
         size_t anchor = 0;
         std::vector<float> stops;
         float shift = 0.0f;
+        size_t most = 40; // the most characters it holds
 
         // Its selection, from the anchor to the caret, either way round.
         std::pair<size_t, size_t> selection() const { return std::minmax(caret, anchor); }
@@ -516,7 +556,24 @@ private:
         std::vector<std::string> words() const;
         static bool holds(std::string_view text, const std::vector<std::string> &words);
     };
-    enum class Field { Browser, ModsFilter, CascadeSearch };
+    enum class Field { Browser, ModsFilter, CascadeSearch, SaveName, SaveAuthor, SaveDescription, NewName };
+    // What the preset browser shows: every preset, the favorites, the recent ones, the factory presets, or a folder's.
+    enum class BrowserScope { All, Favorites, Recent, Factory, Folder };
+    // A row of the browser's folder tree: the factory presets', the preset folder's (at its top) or a subfolder's.
+    struct TreeRow {
+        BrowserScope scope; // Factory, or Folder
+        std::string folder; // with Folder, its parts joined by '/' ("" the preset folder)
+        int depth = 0;
+        bool hasKids = false;
+        bool open = false;
+    };
+    // A row of the category lists: its name as presets store it ("" for None), as shown, and its color (-1 grey).
+    struct CategoryRow {
+        std::string name;
+        std::string label;
+        int color = -1;
+        bool divider = false; // a line before it: the user's own come after the built-in ones, None after them
+    };
 
     struct Assignment {
         int source;
@@ -1280,7 +1337,7 @@ private:
     // effects graph, by pixels. How long each is, how much of it shows, where it is scrolled to and its thumb.
     enum class ScrollArea { Fx, Sources, FxGraph };
     // What the middle button drags along: those rows, the MODS view's rows or the preset browser's list.
-    enum class PanArea { Fx, Sources, Mods, Browser, Inputs, ModList, Seq };
+    enum class PanArea { Fx, Sources, Mods, Browser, Inputs, ModList, Seq, BrowserSide };
     void applyPan(Point p);
     // What the middle button (or a finger) would pan at `p`, and where it is scrolled to now; none over a dialog, an
     // open list or menu that doesn't scroll, or while a drag goes on.
@@ -1737,7 +1794,7 @@ private:
     void paintBrowser(Canvas &c);
     // Its rows: each preset's index and name, with a header (-1 and the subfolder) before each subfolder's. While
     // something is typed in its search, only the presets whose subfolder and name hold every word of it.
-    std::vector<std::pair<int, std::string>> browserRows() const;
+    std::vector<int> browserRows(bool byCategory = true) const; // false: whatever the categories filter by
     // The browser takes the keyboard while it is open: what is typed goes into its search, Up and Down pick a
     // preset from the list, Enter loads it, and Escape empties the search, or then closes the browser.
     void browserKey(Key key);
@@ -1748,11 +1805,75 @@ private:
     TextField &field(Field f);
     void fieldChanged(Field f);
     void clearField(Field f);
-    void paintField(Canvas &c, Field f, Rect box, Rect typed, std::string_view hint, std::string_view after = {});
+    void paintField(Canvas &c, Field f, Rect box, Rect typed, std::string_view hint, std::string_view after = {},
+                    bool lens = true);
     // Scrolls the list so the preset's row shows: about in the middle, or just inside the list.
     void revealBrowserRow(int preset, bool middle);
+
+    // The preset bar's info, the info card, the browser and the Save dialog (see presetui.cpp).
+    void paintPresetBar(Canvas &c, const Widget &w, bool hovered);
+    std::vector<Widget> infoCardWidgets() const;
+    void paintInfoCard(Canvas &c);
+    // Opens the browser on the preset loaded, in its folder; or on `preset`.
+    void openBrowser(int preset = -1);
+    void rememberBrowserPlace(); // the sidebar's entry picked, kept in the user's settings for the next browser
+    Rect browserListArea() const;
+    int browserVisible() const;
+    std::vector<TreeRow> browserTree() const;
+    std::vector<CategoryRow> browserCategoryList() const;
+    static bool ownCategory(const CategoryRow &row);
+    int presetsInCategory(const std::string &name) const; // of all of the library's, whatever the case
+    int presetsInFolder(const std::string &folder) const;
+    std::vector<int> browserCategoryCounts() const;
+    // The category rows the Save dialog offers: the built-in ones and the user's own.
+    std::vector<CategoryRow> saveCategoryList() const;
+    // How the browser's sidebar lays out its rows, scrolled: each its kind, its row and where it is.
+    struct SideItem {
+        Kind kind;
+        int a = -1;
+        Rect rect;
+    };
+    std::vector<SideItem> browserSide() const;
+    float browserSideEnd() const;
+    Rect browserSideArea() const;  // the sidebar, and its scrollbar's track and thumb
+    Rect browserSideTrack() const;
+    Rect browserSideThumb() const; // how far it scrolls
+    // Whether a preset's category is one the browser filters by (or no filter is on).
+    bool categoryShown(const PresetEntry &entry) const;
+    // Opens the Save dialog: to save the patch as a preset (Save As), or to edit the info of the library's preset
+    // `index`.
+    void openSave(int index = -1);
+    std::vector<Widget> saveWidgets() const;
+    void paintSave(Canvas &c);
+    void saveKey(Key key);
+    void runSave();
+    struct SaveLayout {
+        Rect panel, name, author, description, folders, warning, toFile, cancel, save, close;
+        std::vector<Rect> chips; // saveCategoryList(), then None, then + New
+    };
+    SaveLayout saveLayout() const;
+    // The folders the Save dialog lists: the preset folder ("") first, then presetFolders().
+    std::vector<std::string> saveFolders() const;
+    // The New Category or New Folder form.
+    void openNameMenu(int mode, Point at);
+    std::vector<Widget> nameMenuWidgets() const;
+    void paintNameMenu(Canvas &c);
+    Rect nameMenuPanel() const;
+    void nameMenuKey(Key key);
+    void runNameMenu();
+    // The press, double-click, wheel and tooltip of what the above show; false (or empty) for anything else.
+    bool presetPress(const Widget &w, Point p, Modifiers mods);
+    bool presetDoubleClick(const Widget &w);
+    bool presetWheel(Point p, float steps);
+    std::string presetTip(const Widget &w) const;
+    bool paintPresetWidget(Canvas &c, const Widget &w, bool hovered);
+    // A category's color (see categoryColor()): a built-in one's, a user's own, or -1 for one this computer doesn't
+    // know.
+    int presetCategoryColor(const std::string &category) const;
+    // A preset's pill: its category's in capitals, on its color; nothing for none. Its width.
+    float paintCategoryPill(Canvas &c, Point at, float height, const std::string &category, float textSize);
     // Loads a preset of the library, asking first if the patch changed since the last.
-    void openPreset(int index);
+    void openPreset(int index, bool close = true);
     void stepPreset(int direction);
     // Whether a route shows its wire: it is on, or it was and has only been turned down to 0 %.
     bool wired(int param) const;
@@ -1824,6 +1945,8 @@ private:
     int menuFx_ = -1;                        // the effect slot of the open context menu
     int menuSource_ = -1;                    // the source of the open context menu
     std::optional<Widget> menuValue_;        // what the open context menu's "Edit value" types into
+    std::optional<std::string> menuFolder_;  // the Save dialog's folder the open context menu was opened on
+    Rect menuFolderRow_;                     // and where its row is
     std::pair<int, int> menuPoint_{-1, -1}; // lfo and shape point of the open context menu
     std::optional<ModListOpen> modList_;     // a pill's open list
     int shapeEditor_ = -1;                   // the LFO whose shape the routing panel shows, or -1
@@ -1939,12 +2062,39 @@ private:
     static constexpr int kConfirmMidBand = 5; // asking where a split's middle band's effects go, back in two bands
     static constexpr int kConfirmSplitRemove = 6; // asking whether a split's bands' effects stay, as it is removed
     static constexpr int kConfirmSeqClear = 7;    // asking before every note of the sequencer's pattern goes
+    static constexpr int kConfirmCategoryRemove = 8; // asking before one of the user's own categories goes
+    static constexpr int kConfirmFolderDelete = 9;   // asking before a preset folder goes to the Recycle Bin
+    std::string confirmFolder_;                      // which, by its parts joined by '/'
+    std::string renameFolder_;                       // the folder the name form renames (nameMenu_ 4)
+    std::string confirmCategory_;                    // which, by its name
     int confirmSplit_ = -1; // the split kConfirmMidBand or kConfirmSplitRemove asks about
     size_t confirmEffects_ = 0; // how many effects it asks about, counted as it opens
     int pendingPreset_ = -1;                 // the library preset a confirmed Load loads, or -1 for a file
+    bool pendingClose_ = true;               // and whether loading it closes the browser
     bool browserOpen_ = false;
+    BrowserScope browserScope_ = BrowserScope::Factory;
+    std::string browserFolder_;                 // with Folder: which ("" the preset folder)
+    std::set<std::string> browserOpenFolders_;  // opened in the tree ("" the preset folder)
+    std::set<std::string> browserCategories_;   // filtered by, as stored ("" for None), in lower case
+    bool browserSubfolders_ = true;             // a folder lists its subfolders' presets too
+    float browserSideScroll_ = 0.0f;            // how far the sidebar is scrolled, in px
+    mutable std::vector<std::pair<int, Rect>> browserCrumbRects_; // where the folder's parts were painted
+    mutable std::vector<std::pair<int, Rect>> browserChipRects_;  // and the category filters
+    bool infoCardOpen_ = false;
+    enum class SaveMode { None, Save, Info };
+    SaveMode saveMode_ = SaveMode::None;
+    int saveIndex_ = -1;          // editing info: the library's preset
+    std::string saveFolder_;      // saving: where
+    std::string saveCategory_;    // the category picked, as stored ("" for None)
+    float saveFolderScroll_ = 0.0f;
+    TextField saveName_, saveAuthor_, saveDescription_, newName_;
+    Field saveFocus_ = Field::SaveName;
+    int nameMenu_ = 0; // the form open: 1 New Category, 2 New Folder from the browser, 3 from the Save dialog, 4 Rename
+    Point nameMenuAt_;
+    int nameColor_ = kBuiltInCategories;
     int browserScroll_ = 0;                  // rows scrolled past, before clamping
     TextField browserSearch_;                // what is typed in its search
+    bool browserSearching_ = false;          // and whether it has the keyboard: from a click on it to one elsewhere
     TextField modsFilter_;                   // the MODS view's filter
     bool modsFiltering_ = false;             // and whether it has the keyboard
     TextField cascadeSearch_;                // the search atop the open target menu

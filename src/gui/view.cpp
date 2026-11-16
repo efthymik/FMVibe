@@ -3398,6 +3398,8 @@ std::vector<View::Widget> View::widgets() const {
         add(Kind::TempoBox, kTempoBox);
     add(Kind::PresetStep, presetStep(-1), -1, -1);
     add(Kind::PresetNameBox, kPresetName);
+    if (controller_.presetHasFile())
+        add(Kind::PresetInfoButton, {kPresetName.right() - 48.0f, kPresetName.center().y - 10.0f, 20.0f, 20.0f});
     add(Kind::PresetStep, presetStep(1), -1, 1);
     for (int action = 0; action < 4; ++action)
         add(Kind::PresetButton, toolbarButton(action), -1, action);
@@ -3615,11 +3617,15 @@ std::vector<View::Widget> View::widgets() const {
 
 std::optional<View::Widget> View::hitTest(Point p) const {
     const DerivedScope scope(*this); // asked while painting, the widgets painted
-    const bool overlay = settingsOpen_ || confirm_ >= 0 || browserOpen_;
-    const std::vector<Widget> dialog = settingsOpen_   ? settingsWidgets()
-                                       : confirm_ >= 0 ? confirmWidgets()
-                                       : browserOpen_  ? browserWidgets()
-                                                       : std::vector<Widget>();
+    const bool overlay =
+        settingsOpen_ || confirm_ >= 0 || nameMenu_ != 0 || saveMode_ != SaveMode::None || browserOpen_ || infoCardOpen_;
+    const std::vector<Widget> dialog = settingsOpen_                  ? settingsWidgets()
+                                       : confirm_ >= 0                ? confirmWidgets()
+                                       : nameMenu_ != 0               ? nameMenuWidgets()
+                                       : saveMode_ != SaveMode::None  ? saveWidgets()
+                                       : browserOpen_                 ? browserWidgets()
+                                       : infoCardOpen_                ? infoCardWidgets()
+                                                                      : std::vector<Widget>();
     const std::vector<Widget> &list = overlay ? dialog : scopedWidgets();
     for (auto it = list.rbegin(); it != list.rend(); ++it) {
         if ((it->clip.w > 0.0f && !it->clip.contains(p)) || it->disabled)
@@ -3969,8 +3975,14 @@ void View::paint(Canvas &c, Rect area) {
         paintCascade(c);
     if (typing_)
         paintTyping(c);
+    if (infoCardOpen_)
+        paintInfoCard(c);
     if (browserOpen_)
         paintBrowser(c);
+    if (saveMode_ != SaveMode::None)
+        paintSave(c);
+    if (nameMenu_ != 0)
+        paintNameMenu(c);
     if (settingsOpen_) {
         paintSettings(c);
         paintTooltip(c); // its sliders'
@@ -7459,6 +7471,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     const bool active = isActive(w);
     if (paintSeqWidget(c, w, hovered)) // the SEQ view's own (see seq.cpp)
         return;
+    if (paintPresetWidget(c, w, hovered)) // the presets' (see presetui.cpp)
+        return;
     switch (w.kind) {
     case Kind::Knob:
         if (isRatioDisplay(w))
@@ -8781,21 +8795,6 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             }
         }
         break;
-    case Kind::PresetNameBox: {
-        // The preset's name, a dot while it has changed since it was loaded, and a chevron for the browser.
-        const bool lit = hovered || browserOpen_;
-        c.fillRect(w.rect, lit ? kTrack : kRaised, kRadiusControl);
-        if (outlined())
-            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
-        c.text({w.rect.x + 28.0f, w.rect.y, w.rect.w - 56.0f, w.rect.h}, controller_.presetName(), kTextBody, kText,
-               Align::Center, true);
-        if (controller_.patchEdited())
-            c.fillCircle({w.rect.right() - 30.0f, w.rect.center().y}, 2.5f, kAccent);
-        const Point m{w.rect.right() - 14.0f, w.rect.center().y};
-        const Point chevron[] = {{m.x - 4.0f, m.y - 2.0f}, {m.x, m.y + 2.5f}, {m.x + 4.0f, m.y - 2.0f}};
-        c.polyline(chevron, 3, lit ? kText : kDim, 1.5f);
-        break;
-    }
     case Kind::TempoBox: {
         // A metronome, then the tempo and its unit, centered in the room right of it.
         const bool lit = hovered || active;
@@ -8829,28 +8828,6 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         c.polyline(chevron, 3, hovered ? kText : kDim, 1.5f);
         break;
     }
-    case Kind::BrowserRow: {
-        // The preset loaded in the accent; the one picked from the keyboard, like a hovered one, outlined.
-        const bool current = controller_.presetIndex() == w.a;
-        const bool picked = browserPick_ == w.a;
-        if (look.flat) { // without outlines, as the menus' rows: the picked one, like a hovered one, shaded
-            if (current)
-                c.fillRect(w.rect, kAccent.alpha(0.18f), kRadiusControl);
-            paintMenuRow(c, w.rect, hovered || picked, false);
-        } else {
-            if (current)
-                c.fillRect(w.rect, kAccent.alpha(0.18f), kRadiusControl);
-            else if (hovered || picked)
-                c.fillRect(w.rect, kTrack, kRadiusControl);
-            if (current || picked)
-                c.strokeRect(w.rect, picked ? kText.alpha(0.6f) : kAccent.alpha(0.6f), 1.0f, kRadiusControl);
-        }
-        const std::vector<PresetEntry> &presets = controller_.presets();
-        if (w.a < static_cast<int>(presets.size()))
-            c.text({w.rect.x + 14.0f, w.rect.y, w.rect.w - 28.0f, w.rect.h}, presets[w.a].name, kTextBody,
-                   current || hovered || picked ? kText : kDim, Align::Left, current);
-        break;
-    }
     case Kind::SearchClear: {
         if (w.a == static_cast<int>(Field::CascadeSearch))
             break; // drawn with its menu
@@ -8860,20 +8837,6 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         c.line({m.x - 3.5f, m.y + 3.5f}, {m.x + 3.5f, m.y - 3.5f}, color, 1.3f);
         break;
     }
-    case Kind::BrowserClose: {
-        c.fillRect(w.rect, hovered ? kTrack : kPanel, kRadiusControl);
-        const Point m = w.rect.center();
-        const Color color = hovered ? kText : kDim;
-        c.line({m.x - 5.0f, m.y - 5.0f}, {m.x + 5.0f, m.y + 5.0f}, color, 1.5f);
-        c.line({m.x - 5.0f, m.y + 5.0f}, {m.x + 5.0f, m.y - 5.0f}, color, 1.5f);
-        break;
-    }
-    case Kind::BrowserFolder:
-        c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
-        if (outlined())
-            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
-        c.text(w.rect, tr(Str::ButtonOpenFolder), kTextLabel, hovered ? kText : kDim, Align::Center, true);
-        break;
     case Kind::ConfirmButton: {
         // A button's face: lit in `color` (the way ahead, or a band's), else plain; in a flat theme, as its switches, filled
         // solid with the color or set in a well, without an outline. Gives the ink for its label.
@@ -8906,6 +8869,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                                : confirm_ == kConfirmSplitRemove                  ? Str::ButtonSplitKeep
                                : confirm_ == kConfirmFxClear                      ? Str::ButtonClearFx
                                : confirm_ == kConfirmSeqClear                     ? Str::ButtonClearSeq
+                               : confirm_ == kConfirmCategoryRemove               ? Str::ButtonRemoveCategory
+                               : confirm_ == kConfirmFolderDelete                 ? Str::ButtonDeleteFolder
                                : confirm_ == static_cast<int>(PresetAction::Init) ? Str::ButtonInit
                                : confirm_ == static_cast<int>(PresetAction::Save) ? Str::ButtonOverwrite
                                                                                   : Str::ButtonLoad);
@@ -9565,8 +9530,8 @@ void View::paintStepper(Canvas &c, const Widget &w) {
 
 // What the play switches do, below the one under the mouse.
 void View::paintTooltip(Canvas &c) {
-    if (hover_ && drag_.kind == DragKind::None) // the SEQ view's own (see seqTip())
-        if (const std::string seq = seqTip(*hover_); !seq.empty()) {
+    if (hover_ && drag_.kind == DragKind::None) // the SEQ view's own (see seqTip()), and the presets'
+        if (const std::string seq = seqTip(*hover_).empty() ? presetTip(*hover_) : seqTip(*hover_); !seq.empty()) {
             const float width = std::min(std::ceil(c.textWidth(seq, kTextBody)) + 24.0f, View::kWidth - 16.0f);
             const float x = std::clamp(hover_->rect.center().x - width * 0.5f, 8.0f, View::kWidth - 8.0f - width);
             const float below = hover_->kind == Kind::SeqKeys || hover_->kind == Kind::SeqRuler
@@ -9582,7 +9547,7 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::FxRemove && hover_->kind != Kind::SourceRemove &&
          hover_->kind != Kind::PresetButton &&
          hover_->kind != Kind::PresetStep && hover_->kind != Kind::PresetNameBox &&
-         hover_->kind != Kind::TempoBox && hover_->kind != Kind::BrowserFolder &&
+         hover_->kind != Kind::TempoBox &&
          hover_->kind != Kind::SettingsButton && hover_->kind != Kind::UndoButton &&
          hover_->kind != Kind::SettingsHue && hover_->kind != Kind::SettingsGlow &&
          hover_->kind != Kind::SettingsLinks && hover_->kind != Kind::SettingsGrid &&
@@ -9718,8 +9683,6 @@ void View::paintTooltip(Canvas &c) {
         text = tr(controller_.patchEdited() ? Str::TipPresetChanged : Str::TipPresetName);
     else if (hover_->kind == Kind::TempoBox)
         text = tr(Str::TipTempo);
-    else if (hover_->kind == Kind::BrowserFolder)
-        text = tr(Str::TipOpenFolder);
     else if (hover_->kind == Kind::PresetButton)
         switch (static_cast<PresetAction>(hover_->a)) {
         case PresetAction::Init:
@@ -10579,6 +10542,14 @@ void View::applyDrag(Point p) {
             scrollMods(static_cast<float>(drag_.startValue) + (p.y - drag_.start.y) / room * modsEnd(), false);
         break;
     }
+    case DragKind::BrowserSideScroll: { // the preset browser's sidebar follows its thumb
+        const float room = browserSideTrack().h - browserSideThumb().h;
+        if (room > 0.0f)
+            browserSideScroll_ = std::clamp(static_cast<float>(drag_.startValue) +
+                                                (p.y - drag_.start.y) / room * browserSideEnd(),
+                                            0.0f, browserSideEnd());
+        break;
+    }
     case DragKind::InputsScroll: { // the INPUTS tab's rows follow its thumb
         const int op = controller_.layout().selectedNode;
         const float room = inputsScrollTrack().h - inputsThumb(op).h;
@@ -10742,6 +10713,10 @@ void View::mouseDown(Point p, Modifiers mods) {
     if (!(hit && (hit->kind == Kind::SearchField || hit->kind == Kind::SearchClear) &&
           hit->a == static_cast<int>(Field::ModsFilter)))
         modsFiltering_ = false;
+    // So does the preset browser's search.
+    if (!(hit && (hit->kind == Kind::SearchField || hit->kind == Kind::SearchClear) &&
+          hit->a == static_cast<int>(Field::Browser)))
+        browserSearching_ = false;
     // A pill's open list closes at a click anywhere else, which does nothing more; but not at a source's handle,
     // which can then be dragged onto one of its rows.
     if (modList_ && !(hit && (hit->popup || hit->kind == Kind::ModPill || hit->kind == Kind::SourceHandle ||
@@ -10752,6 +10727,8 @@ void View::mouseDown(Point p, Modifiers mods) {
     if (!hit)
         return;
     const Widget &w = *hit;
+    if (presetPress(w, p, mods)) // the presets' (see presetui.cpp)
+        return;
     // Ctrl+Click types a value into whatever shows one: a knob, a modulation's depth, a route.
     if (mods.ctrl && (w.kind == Kind::Knob || w.kind == Kind::ValueText || w.kind == Kind::WireLabel ||
                       w.kind == Kind::OutLabel || w.kind == Kind::GridCell || w.kind == Kind::TempoBox)) {
@@ -11258,33 +11235,12 @@ void View::mouseDown(Point p, Modifiers mods) {
         drag_.kind = DragKind::Tempo;
         drag_.startValue = controller_.tempo();
         break;
-    case Kind::PresetNameBox: {
-        controller_.rescanPresets();
-        browserOpen_ = true;
-        clearField(Field::Browser);
-        revealBrowserRow(controller_.presetIndex(), true); // the current preset about in the middle
-        hover_.reset();
-        break;
-    }
-    case Kind::BrowserBackdrop:
-        if (w.a == 0) // a click around the browser closes it
-            browserOpen_ = false;
-        break;
-    case Kind::BrowserRow:
-        openPreset(w.a);
-        break;
-    case Kind::BrowserClose:
-        browserOpen_ = false;
-        hover_.reset();
-        break;
-    case Kind::BrowserFolder:
-        controller_.openPresetFolder();
-        break;
-    case Kind::SearchClear: // the MODS view's filter keeps the keyboard, for what is typed next
+    case Kind::SearchClear: // the field keeps the keyboard, for what is typed next
         clearField(static_cast<Field>(w.a));
         if (w.a == static_cast<int>(Field::Browser))
             revealBrowserRow(controller_.presetIndex(), true);
         modsFiltering_ = w.a == static_cast<int>(Field::ModsFilter);
+        browserSearching_ = w.a == static_cast<int>(Field::Browser);
         hover_.reset();
         break;
     case Kind::SearchField: { // the caret where it is clicked, and a drag selects; with Shift, from where it was
@@ -11296,6 +11252,7 @@ void View::mouseDown(Point p, Modifiers mods) {
             break;
         }
         modsFiltering_ = w.a == static_cast<int>(Field::ModsFilter);
+        browserSearching_ = w.a == static_cast<int>(Field::Browser);
         t.caret = t.stopAt(p.x);
         if (!mods.shift)
             t.anchor = t.caret;
@@ -11621,6 +11578,7 @@ void View::mouseUp(Point p, Modifiers) {
     case DragKind::Bend: // each move set it already
     case DragKind::ModsScroll:
     case DragKind::InputsScroll:
+    case DragKind::BrowserSideScroll:
     case DragKind::ModListScroll:
     case DragKind::Pan: // the left button let go of mid-pan ends it too
     case DragKind::None:
@@ -11764,6 +11722,7 @@ void View::finishDrag() {
     case DragKind::Bend:
     case DragKind::ModsScroll:
     case DragKind::InputsScroll:
+    case DragKind::BrowserSideScroll:
     case DragKind::ModListScroll:
     case DragKind::Connect:
     case DragKind::Reroute:
@@ -11900,10 +11859,15 @@ bool View::widgetDimmed(const Widget &w, const std::vector<DimArea> &areas) cons
 std::optional<std::pair<View::PanArea, float>> View::panAt(Point p) const {
     if (drag_.kind != DragKind::None || settingsOpen_ || confirm_ >= 0) // a left-button drag, or a dialog, goes on
         return std::nullopt;
-    if (browserOpen_) { // only its list, over everything else
-        if (!browserList(browserPanel(height())).contains(p))
+    if (saveMode_ != SaveMode::None || nameMenu_ != 0 || infoCardOpen_)
+        return std::nullopt;
+    if (browserOpen_) { // only its list and its sidebar, over everything else
+        if (browserSideArea().contains(p))
+            return browserSideEnd() > 0.0f ? std::optional(std::pair{PanArea::BrowserSide, browserSideScroll_})
+                                           : std::nullopt;
+        if (!browserListArea().contains(p))
             return std::nullopt;
-        const int most = std::max(static_cast<int>(browserRows().size()) - browserVisibleRows(browserPanel(height())), 0);
+        const int most = std::max(static_cast<int>(browserRows().size()) - browserVisible(), 0);
         return std::pair{PanArea::Browser, static_cast<float>(std::clamp(browserScroll_, 0, most))};
     }
     // A pill's open list moves its rows when they scroll. Another open list or menu takes nothing.
@@ -11944,7 +11908,7 @@ void View::middleDown(Point p) {
     const auto [area, first] = *pan;
     // Open lists and menus close as a click there closes them, since what they were opened on may scroll away; but
     // not a pill's list that is being scrolled.
-    if (area != PanArea::Browser && area != PanArea::ModList) {
+    if (area != PanArea::Browser && area != PanArea::BrowserSide && area != PanArea::ModList) {
         modList_.reset();
         cascade_.reset();
         fxMenuOpen_ = false;
@@ -12173,9 +12137,12 @@ void View::applyPan(Point p) {
         seqScrollX_ = seqScroll();
         seqShowFromRow(seqPanStart_.y + down / seqRowH());
         break;
+    case PanArea::BrowserSide: // what was under the mouse follows it
+        browserSideScroll_ = hold(first - down, browserSideEnd());
+        break;
     case PanArea::Browser: { // in whole rows
-        const int rows = static_cast<int>(browserRows().size()) - browserVisibleRows(browserPanel(height()));
-        browserScroll_ = static_cast<int>(std::lround(hold(first - down / kBrowserRowH, static_cast<float>(rows))));
+        const int rows = static_cast<int>(browserRows().size()) - browserVisible();
+        browserScroll_ = static_cast<int>(std::lround(hold(first - down / 28.0f, static_cast<float>(rows))));
         break;
     }
     }
@@ -12193,6 +12160,8 @@ void View::doubleClick(Point p, Modifiers mods) {
         !(hit && (hit->kind == Kind::Key || drawsStep(*hit, mods))))
         return;
     if (hit && seqDoubleClick(*hit, p, mods)) // the SEQ view's own
+        return;
+    if (hit && presetDoubleClick(*hit)) // the presets'
         return;
     if (hit && (hit->kind == Kind::Key || hit->kind == Kind::Octave || hit->kind == Kind::UndoButton ||
                 hit->kind == Kind::PresetStep || hit->kind == Kind::FxPower || hit->kind == Kind::FxNodePower ||
@@ -12331,8 +12300,8 @@ void View::doubleClick(Point p, Modifiers mods) {
     }
 }
 
-// The wheel's targets besides the params (see wheelNotches()): the preset browser's list, and the shape grid's axes.
-constexpr int kWheelBrowser = kParamCount;
+// The wheel's targets besides the params (see wheelNotches()): the shape grid's axes (kParamCount was the preset
+// browser's list's), and the tempo.
 constexpr int kWheelGrid = kParamCount + 1; // and + 2, the grid's two axes
 constexpr int kWheelTempo = kParamCount + 3;
 
@@ -12356,12 +12325,8 @@ void View::wheel(Point p, float steps, Modifiers mods) {
     endTyping(true);
     if (settingsOpen_ || confirm_ >= 0) // a dialog over everything: nothing behind it scrolls or turns
         return;
-    if (browserOpen_) { // three rows a notch
-        const int rows = static_cast<int>(browserRows().size());
-        const int most = std::max(rows - browserVisibleRows(browserPanel(height())), 0);
-        browserScroll_ = std::clamp(std::clamp(browserScroll_, 0, most) - wheelNotches(kWheelBrowser, steps * 3.0f), 0, most);
+    if (presetWheel(p, steps)) // the browser's list and sidebar, the Save dialog's folders, and nothing under them
         return;
-    }
     keepRoutes(); // as in mouseDown(): scrolling can take a route down to 0 % too
     const auto hit = hitTest(p);
     if (hit && !hit->popup && seqWheel(*hit, p, steps, mods)) // the SEQ view's own
@@ -12555,6 +12520,12 @@ constexpr int kAmpOversamplingCommand = 30;
 constexpr int kMoveBandCommand = 40;
 // And from here on, each sets the mode of the route the menu was opened on (see RouteMode).
 constexpr int kRouteModeCommand = 16;
+// The Save dialog's folder tree: a new folder in the folder the menu was opened on, and that folder in Explorer.
+constexpr int kNewFolderCommand = 44;
+constexpr int kOpenFolderCommand = 45;
+constexpr int kRenameFolderCommand = 46;
+constexpr int kDeleteFolderCommand = 47;
+static_assert(kNewFolderCommand > kMoveBandCommand + 3 && kDeleteFolderCommand < 50); // under the SEQ view's
 static_assert(kRouteModeCommand + static_cast<int>(RouteMode::Count) <= kAmpOversamplingCommand &&
               kAmpOversamplingCommand + kAmpOversamplings <= kMoveBandCommand && kMoveBandCommand + 3 < 100);
 
@@ -12567,9 +12538,33 @@ std::vector<MenuItem> View::contextMenu(Point p) {
     menuSource_ = -1;
     menuPoint_ = {-1, -1};
     menuValue_.reset();
+    menuFolder_.reset();
     const auto hit = hitTest(p);
     if (!hit)
         return items;
+    // A folder of the Save dialog's tree, or of the browser's (not Factory, which is built in).
+    const bool browserTree = browserOpen_ && (hit->kind == Kind::BrowserTree || hit->kind == Kind::BrowserTreeToggle);
+    if (hit->kind == Kind::SaveFolderRow || browserTree) {
+        if (browserTree) {
+            const std::vector<TreeRow> tree = this->browserTree();
+            if (hit->a >= 0 && hit->a < static_cast<int>(tree.size()) && tree[hit->a].scope == BrowserScope::Folder)
+                menuFolder_ = tree[hit->a].folder;
+        } else if (const std::vector<std::string> folders = saveFolders();
+                   hit->a >= 0 && hit->a < static_cast<int>(folders.size())) {
+            menuFolder_ = folders[hit->a];
+        }
+        if (menuFolder_) {
+            menuFolderRow_ = hit->rect;
+            items.push_back({kNewFolderCommand, tr(Str::MenuNewFolder)});
+            items.push_back({kOpenFolderCommand, tr(Str::MenuOpenInExplorer)});
+            if (!menuFolder_->empty()) { // a subfolder, not the preset folder itself
+                items.push_back({0, ""});
+                items.push_back({kRenameFolderCommand, tr(Str::MenuRenameFolder)});
+                items.push_back({kDeleteFolderCommand, tr(Str::MenuDeleteFolder)});
+            }
+        }
+        return items;
+    }
     if (seqContextMenu(*hit, p, items)) // the SEQ view's roll's
         return items;
     if ((hit->kind == Kind::FxNode && hit->a >= kFxSlots) || hit->kind == Kind::FxBoxGrip) { // a split or a join
@@ -12760,6 +12755,32 @@ void View::menuCommand(int command) {
         seqMenuCommand(command - kSeqMenuCommands);
         return;
     }
+    if (menuFolder_ && (saveMode_ == SaveMode::Save || browserOpen_)) {
+        if (command == kNewFolderCommand && saveMode_ == SaveMode::Save) { // the New Folder form, in the one picked
+            saveFolder_ = *menuFolder_;
+            openNameMenu(3, {menuFolderRow_.x, menuFolderRow_.bottom() + 4.0f});
+        } else if (command == kNewFolderCommand) { // in the browser: in the folder clicked, which it shows
+            browserScope_ = BrowserScope::Folder;
+            browserFolder_ = *menuFolder_;
+            browserScroll_ = 0;
+            rememberBrowserPlace();
+            openNameMenu(2, {menuFolderRow_.x - 8.0f, menuFolderRow_.bottom() + 4.0f});
+        } else if (command == kOpenFolderCommand) {
+            controller_.openPresetFolder(*menuFolder_);
+        } else if (command == kRenameFolderCommand && !menuFolder_->empty()) { // its name, all selected, to type over
+            renameFolder_ = *menuFolder_;
+            openNameMenu(4, {menuFolderRow_.x, menuFolderRow_.bottom() + 4.0f});
+            const size_t slash = renameFolder_.rfind('/');
+            newName_.text = slash == std::string::npos ? renameFolder_ : renameFolder_.substr(slash + 1);
+            newName_.anchor = 0;
+            newName_.caret = newName_.text.size();
+        } else if (command == kDeleteFolderCommand && !menuFolder_->empty()) {
+            confirmFolder_ = *menuFolder_;
+            confirm_ = kConfirmFolderDelete;
+            hover_.reset();
+        }
+        return;
+    }
     if (command == 1 && menuParam_ >= 0) {
         edit(menuParam_, resetValue(menuParam_));
     } else if (command == 2 && menuParam_ >= 0) {
@@ -12906,6 +12927,14 @@ void View::typeKey(Key key, bool shift) {
             break;
         case Field::CascadeSearch:
             cascadeKey(key);
+            break;
+        case Field::SaveName:
+        case Field::SaveAuthor:
+        case Field::SaveDescription:
+            saveKey(key);
+            break;
+        case Field::NewName:
+            nameMenuKey(key);
             break;
         }
         return;
@@ -13099,6 +13128,9 @@ CursorKind View::cursor() const {
     case Kind::SettingsBackdrop:
     case Kind::ConfirmBackdrop:
     case Kind::BrowserBackdrop:
+    case Kind::InfoCard:
+    case Kind::SaveBackdrop:
+    case Kind::NameMenu:
     // An open list's own panel and what is around it, where a click picks nothing (though around it, it closes it),
     // and a pill's list's rows, which only take a source's handle dropped on them.
     case Kind::WaveMenu:

@@ -8,6 +8,7 @@
 #include "gui/controller.h"
 #include "gui/view.h"
 #include "params.h"
+#include "state.h"
 #include "synth.h"
 #include "uistrings.h"
 
@@ -50,7 +51,7 @@ EM_JS(void, js_set_setting, (const char *key, const char *value),
       { Module.fmvHost.setSetting(UTF8ToString(key), UTF8ToString(value)); });
 
 constexpr int kDefaultOversampling = 2;
-constexpr char kFirstPreset[] = "SQ Future Plucks"; // a sequenced patch: a held key plays its riff
+constexpr char kFirstPreset[] = "Future Plucks"; // a sequenced patch: a held key plays its riff
 
 std::string setting(const char *key) {
     char buffer[256];
@@ -74,8 +75,13 @@ public:
         examples_ = factoryPresets();
         std::sort(examples_.begin(), examples_.end(),
                   [](const FactoryPreset &a, const FactoryPreset &b) { return lessNoCase(a.name, b.name); });
-        for (const FactoryPreset &preset : examples_)
-            library_.push_back({preset.name, "Factory"});
+        for (const FactoryPreset &preset : examples_) {
+            PresetEntry entry{preset.name, {}, true, {}};
+            MemoryReader reader{preset.data.data(), preset.data.size()};
+            const clap_istream_t stream = memoryIn(reader);
+            readPresetInfo(&stream, entry.info);
+            library_.push_back(std::move(entry));
+        }
         theme_ = setting("theme");
         const std::string glow = setting("glow");
         glow_ = glow.empty() ? 0.5 : std::clamp(std::atof(glow.c_str()), 0.0, 1.0);
@@ -135,6 +141,17 @@ public:
     bool savePreset(const std::wstring &) override { return false; }
     void choosePreset(bool) override { js_toast(tr(Str::DemoNoFiles)); }
     bool writesPresetFiles() const override { return false; }
+    bool presetWritable() const override { return false; } // every example is built in, as a factory preset
+    // Favorites and the recent examples, for as long as the page.
+    bool presetFavorite(int index) const override {
+        return std::find(favorites_.begin(), favorites_.end(), index) != favorites_.end();
+    }
+    void setPresetFavorite(int index, bool on) override {
+        favorites_.erase(std::remove(favorites_.begin(), favorites_.end(), index), favorites_.end());
+        if (on)
+            favorites_.push_back(index);
+    }
+    std::vector<int> recentPresets() const override { return recent_; }
     void rescanPresets() override {}
     const std::vector<PresetEntry> &presets() const override { return library_; }
     int presetIndex() const override {
@@ -162,13 +179,16 @@ public:
         layoutChanged();
         setPreset(fileOf(index));
         clearHistory();
+        recent_.erase(std::remove(recent_.begin(), recent_.end(), index), recent_.end());
+        recent_.insert(recent_.begin(), index);
+        if (recent_.size() > 12)
+            recent_.resize(12);
         return true;
     }
     std::wstring presetFolder() const override {
         const std::string name = tr(Str::DemoPresetFolder);
         return std::wstring(name.begin(), name.end()); // the browser shows a folder as far as it is ASCII
     }
-    void openPresetFolder() override { js_toast(tr(Str::DemoNoFiles)); }
 
     int oversampling() const override { return oversampling_; }
     void setOversampling(int factor) override {
@@ -253,6 +273,7 @@ private:
     int scopeCycles_ = 2;
     std::vector<FactoryPreset> examples_;
     std::vector<PresetEntry> library_;
+    std::vector<int> favorites_, recent_;
     Telemetry received_{};
     double stampMs_ = 0.0;
     bool heard_ = false;

@@ -24,8 +24,6 @@ std::wstring widePath(std::string_view text);
 class PresetLibrary {
 public:
     static constexpr std::wstring_view kFactoryPrefix = L"factory:";
-    // The category the factory presets show under, as the subfolder the plugin once wrote them into.
-    static constexpr const char *kFactoryCategory = "Factory";
 
     // The preset folder, or "" when Windows doesn't say where the documents are.
     static std::wstring folderPath();
@@ -39,21 +37,43 @@ public:
     // versions up to 0.11 wrote them out: projects saved then name it.
     static std::wstring resolve(const std::wstring &file);
 
-    // Lists the factory presets and the folder's presets, leaving out its Factory subfolder (see resolve()). The
-    // folder isn't made for it.
+    // The file of the preset `name` in the subfolder `folder` (its parts joined by '/'), or "" for a name or a folder
+    // that can't be a file's (see validName()).
+    static std::wstring presetFile(const std::string &folder, const std::string &name);
+    // Whether `name` can be a file's or a folder's name: not empty, none of the characters Windows refuses in one,
+    // nor a name it keeps for itself.
+    static bool validName(const std::string &name);
+
+    // Lists the factory presets and the folder's presets, each with its info, and the folder's subfolders, leaving
+    // out its Factory subfolder (see resolve()). The folder isn't made for it.
     void rescan();
-    // Shows the folder, made first if it isn't there yet.
-    void openFolder();
-    // The top folder's presets first, then each subfolder's (the factory presets as the Factory subfolder's), each
-    // by name.
+    // Shows the folder, or its subfolder `folder`, made first if it isn't there yet.
+    void openFolder(const std::string &folder = {});
+    // Shows the entry's file in Explorer, picked.
+    void showFile(int index) const;
+    // Makes the subfolder `folder` and scans again.
+    bool makeFolder(const std::string &folder);
+    // Renames the subfolder `from` to `to`, and moves one into the Recycle Bin with all it holds; each scans again.
+    bool renameFolder(const std::string &from, const std::string &to);
+    bool deleteFolder(const std::string &folder);
+    // The subfolder `folder`'s path ("" the preset folder's), or "" for a name that can't be one.
+    static std::wstring subfolderPath(const std::string &folder);
+    // The factory presets first, then the top folder's presets, then each subfolder's, each by name.
     const std::vector<gui::PresetEntry> &entries() const { return entries_; }
     const std::vector<std::wstring> &files() const { return files_; }
+    // The subfolders, each after the one it is in, by name.
+    const std::vector<std::string> &folders() const { return folders_; }
     // The entry whose file `file` is, or -1 for "" or a file from elsewhere.
     int indexOf(const std::wstring &file) const;
 
 private:
     std::vector<gui::PresetEntry> entries_;
     std::vector<std::wstring> files_;
+    std::vector<std::string> folders_;
 };
+
+// A folder's path (its parts joined by '/') as it sorts: each folder right after the one it is in, by name whatever
+// the case.
+std::string folderSortKey(const std::string &folder);
 
 } // namespace fmvibe

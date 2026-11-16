@@ -1,6 +1,8 @@
 #pragma once
 
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace fmvibe {
 
@@ -16,7 +18,15 @@ struct UserSettings {
     double links = 0.75; // how strongly the dashed lines from a source to its targets are drawn
     double grid = 0.5;   // how strongly the SEQ view's roll draws its grid lines
     double zoom = 0.0; // the editor size new instances open at, relative to the default; 0 if never resized
+    // The preset library's: the favorite presets' files and the ones loaded last (the last first), in UTF-8 (a factory
+    // preset's as its "file", see PresetLibrary::kFactoryPrefix), the user's own categories (each its name and its
+    // color) and where the browser opens (see Controller::presetBrowserPlace()).
+    std::vector<std::string> favorites;
+    std::vector<std::string> recent;
+    std::vector<std::pair<std::string, int>> categories;
+    std::string browserPlace;
 };
+constexpr size_t kMaxRecentPresets = 12;
 extern UserSettings userSettings; // as the settings file has them; editors only run on the main thread
 
 void readUserSettings();

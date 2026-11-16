@@ -97,7 +97,22 @@ public:
     std::string presetName() const override;
     bool loadPresetAt(int index) override;
     std::wstring presetFolder() const override;
-    void openPresetFolder() override;
+    void showPresetFile(int index) override { presets_.showFile(index); }
+    std::vector<std::string> presetFolders() const override { return presets_.folders(); }
+    bool makePresetFolder(const std::string &folder) override { return presets_.makeFolder(folder); }
+    bool renamePresetFolder(const std::string &from, const std::string &to) override;
+    bool deletePresetFolder(const std::string &folder) override { return presets_.deleteFolder(folder); }
+    bool savePresetIn(const std::string &folder, const std::string &name, const gui::PresetInfo &info) override;
+    bool presetExists(const std::string &folder, const std::string &name) const override;
+    bool setPresetInfo(int index, const gui::PresetInfo &info) override;
+    bool presetFavorite(int index) const override;
+    void setPresetFavorite(int index, bool on) override;
+    std::vector<int> recentPresets() const override;
+    std::vector<gui::PresetCategory> userCategories() const override;
+    void addUserCategory(const gui::PresetCategory &category) override;
+    void removeUserCategory(const std::string &name) override;
+    std::string presetBrowserPlace() const override;
+    void setPresetBrowserPlace(const std::string &place) override;
     int oversampling() const override { return oversampling_.load(); }
     void setOversampling(int factor) override;
     bool mpe() const override { return mpe_.load(); }
@@ -257,6 +272,9 @@ private:
     void keepEditorLayout(const gui::UiLayout &from);
     // Loads a preset's bytes, which came from `path` (a file, or a factory preset's), as the patch's preset.
     bool loadPresetFrom(const clap_istream_t *stream, const std::wstring &path);
+    // Puts the preset loaded from `path` first among the recent ones, in the user's settings.
+    void rememberRecent(const std::wstring &path);
+    void openPresetFolder(const std::string &folder) override { presets_.openFolder(folder); }
 
     // A key of the editor's virtual keyboard, on its way to the audio thread.
     struct KeyEvent {

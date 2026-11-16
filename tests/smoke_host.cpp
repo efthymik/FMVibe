@@ -26,6 +26,8 @@ namespace {
 int failures = 0;
 int restartRequests = 0;
 int processRequests = 0;
+int valueRescans = 0; // the params extension's rescan with CLAP_PARAM_RESCAN_VALUES
+int dirtyMarks = 0;   // the state extension's mark_dirty
 
 void check(bool ok, const char *what) {
     std::printf("%s  %s\n", ok ? "ok  " : "FAIL", what);
@@ -47,6 +49,19 @@ const clap_host_gui_t kHostGui = {
     [](const clap_host_t *, bool) {},          // closed
 };
 
+const clap_host_params_t kHostParams = {
+    [](const clap_host_t *, clap_param_rescan_flags flags) {
+        if (flags & CLAP_PARAM_RESCAN_VALUES)
+            ++valueRescans;
+    },
+    [](const clap_host_t *, clap_id, clap_param_clear_flags) {}, // clear
+    [](const clap_host_t *) {},                                   // request_flush
+};
+
+const clap_host_state_t kHostState = {
+    [](const clap_host_t *) { ++dirtyMarks; },
+};
+
 const clap_host_t kHost = {
     CLAP_VERSION_INIT,
     nullptr,
@@ -55,6 +70,10 @@ const clap_host_t kHost = {
     "",
     "0",
     [](const clap_host_t *, const char *id) -> const void * {
+        if (std::strcmp(id, CLAP_EXT_PARAMS) == 0)
+            return &kHostParams;
+        if (std::strcmp(id, CLAP_EXT_STATE) == 0)
+            return &kHostState;
         return std::strcmp(id, CLAP_EXT_GUI) == 0 ? &kHostGui : nullptr;
     },
     [](const clap_host_t *) { ++restartRequests; },
@@ -4210,6 +4229,35 @@ int main(int argc, char **argv) {
 
         // At 900 px wide the view is drawn at 0.75 scale; the Volume knob sits at (201, 64) in view units.
         HWND editor = GetWindow(parent, GW_CHILD);
+
+        // A preset loaded from the editor (the preset bar's next arrow, at (807, 18) in view units): the host reads
+        // the values again and marks the project changed, hearing no edit of any param, which it would record as
+        // automation and in its undo.
+        MemoryStream beforePreset; // the patch put back after, for the checks that follow
+        state->save(plugin, &beforePreset.out);
+        valueRescans = 0;
+        dirtyMarks = 0;
+        out.paramEventTypes.clear();
+        if (editor) {
+            SendMessageW(editor, WM_PAINT, 0, 0);
+            pumpMessages(100);
+            SendMessageW(editor, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(605, 14));
+            SendMessageW(editor, WM_LBUTTONUP, 0, MAKELPARAM(605, 14));
+            pumpMessages(100);
+        }
+        in.events.clear();
+        params->flush(plugin, &in.list, &out.list);
+        std::printf("      preset load: %d values rescans, %d dirty marks, %zu param events\n", valueRescans, dirtyMarks,
+                    out.paramEventTypes.size());
+        check(editor && valueRescans > 0 && dirtyMarks > 0 && out.paramEventTypes.empty(),
+              "a preset loaded in the editor has the host read the values again and marks the project changed, with "
+              "no param edits");
+        check(state->load(plugin, &beforePreset.in), "the patch before the preset loads back");
+        if (editor) {
+            SendMessageW(editor, WM_PAINT, 0, 0);
+            pumpMessages(100);
+        }
+
         double volumeBefore = 0.0, volumeAfter = 0.0;
         params->get_value(plugin, idOfIndex(volume), &volumeBefore);
         out.paramEventTypes.clear();
@@ -4891,6 +4939,13 @@ int main(int argc, char **argv) {
         // The SEQ view's roll: drawing, at 1/8, on the chance lane, from C2 up, folded to the scale.
         layout.insert(layout.end(), {1.0f, 2.0f, 1.0f, 36.0f, 1.0f});
         layout.push_back(128.5f); // the tempo it was saved at as a preset
+        // The preset's author, category and line, each as long as is saved (three bytes for each character one can
+        // type, for UTF-8): its length, then its bytes, any from a space up.
+        for (const int most : {3 * 32, 3 * 20, 3 * 80}) {
+            layout.push_back(static_cast<float>(most));
+            for (int k = 0; k < most; ++k)
+                layout.push_back(static_cast<float>(32 + (k * 7 + most) % 224));
+        }
 
         MemoryStream big;
         auto put = [&](const void *data, size_t size) {
