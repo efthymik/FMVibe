@@ -2724,8 +2724,9 @@ int main(int argc, char **argv) {
     // A slot's depth is scaled by its Amount and its aux: a macro turned up, at -100 % on A's output, silences A; at 50 %
     // Amount it takes A down by half. With velocity for its aux, which runs per voice, a note at full velocity is
     // silenced and one at half velocity halved, each in its own voice; with the mod wheel for its aux, the wheel down
-    // leaves A alone. Bypassed, the macro's slot leaves A alone, with an aux running per voice or not, and so does
-    // velocity's, which at -100 % silences A at full velocity until it is bypassed.
+    // leaves A alone. At 70 % aux depth, the wheel down still takes A down by 30 %, and half velocity by 65 %. Bypassed,
+    // the macro's slot leaves A alone, with an aux running per voice or not, and so does velocity's, which at -100 %
+    // silences A at full velocity until it is bypassed.
     {
         setParams({{slotTargetIndex(kMaxSources, 0), slotTargetValue(paramIndex(0, OpParam::Out))},
                    {slotAmountIndex(kMaxSources, 0), -1.0},
@@ -2744,7 +2745,11 @@ int main(int argc, char **argv) {
         const float halved = peakAt(1.0);
         setParams({{slotScaleIndex(kMaxSources, 0), 1.0}, {slotAuxIndex(kMaxSources, 0), slotAuxValue(kVelocitySource)}});
         const float hard = peakAt(1.0), soft = peakAt(0.5);
+        setParams({{slotAuxDepthIndex(kMaxSources, 0), 0.7}});
+        const float hardShallow = peakAt(1.0), softShallow = peakAt(0.5);
         setParams({{slotAuxIndex(kMaxSources, 0), slotAuxValue(kWheelSource)}});
+        const float wheelDownShallow = peakAt(1.0);
+        setParams({{slotAuxDepthIndex(kMaxSources, 0), 1.0}});
         const float wheelDown = peakAt(1.0);
         setParams({{slotAuxIndex(kMaxSources, 0), 0.0}, {slotBypassIndex(kMaxSources, 0), 1.0}});
         const float macroBypassed = peakAt(1.0);
@@ -2771,6 +2776,11 @@ int main(int argc, char **argv) {
         check(hard < 0.005f && std::abs(soft / unscaled - 0.5f) < 0.03f,
               "an aux that runs per voice scales a macro's slot in each voice");
         check(std::abs(wheelDown - unscaled) < 1e-3f, "an aux at 0 leaves its slot's target alone");
+        std::printf("      aux depth 70 %%: velocity as aux %.3f at full, %.3f at half; mod wheel (down) as aux %.3f\n",
+                    hardShallow, softShallow, wheelDownShallow);
+        check(hardShallow < 0.005f && std::abs(softShallow / unscaled - 0.35f) < 0.03f &&
+                  std::abs(wheelDownShallow / unscaled - 0.7f) < 0.03f,
+              "an aux at 70 % depth takes its slot down by 70 % at most, per voice or not");
         std::printf("      bypassed: macro %.3f, with velocity as aux %.3f; velocity at -100 %% %.3f, bypassed %.3f\n",
                     macroBypassed, macroBypassedPerVoice, velocityMuted, velocityBypassed);
         check(std::abs(macroBypassed - unscaled) < 1e-3f && std::abs(macroBypassedPerVoice - unscaled) < 1e-3f &&

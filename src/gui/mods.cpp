@@ -181,6 +181,7 @@ void View::moveModulation(int source, int slot, int to) {
         {slotAmountIndex(to, free), value(slotAmountIndex(source, slot))},
         {slotScaleIndex(to, free), value(slotScaleIndex(source, slot))},
         {slotCurveIndex(to, free), value(slotCurveIndex(source, slot))},
+        {slotAuxDepthIndex(to, free), value(slotAuxDepthIndex(source, slot))},
         {slotAuxIndex(to, free), slotAuxValue(aux == to ? -1 : aux)},
         {slotBypassIndex(to, free), slotBypassed(source, slot) ? 1.0 : 0.0}};
     editMany(changes);
@@ -234,8 +235,18 @@ void View::retarget(int source, int slot, int target) {
     }
 }
 
+// Taking the aux away puts its depth back to all of it, for the next aux; another aux keeps it.
 void View::setAux(int source, int slot, int aux) {
-    edit(slotAuxIndex(source, slot), slotAuxValue(aux == source ? -1 : aux));
+    if (aux == source)
+        aux = -1;
+    if (aux >= 0) {
+        edit(slotAuxIndex(source, slot), slotAuxValue(aux));
+        return;
+    }
+    std::vector<std::pair<int, double>> changes{{slotAuxIndex(source, slot), 0.0},
+                                                {slotAuxDepthIndex(source, slot), 1.0}};
+    const UndoScope step(controller_);
+    editMany(changes);
 }
 
 void View::addEmptyMod(int source) {

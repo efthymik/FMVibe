@@ -1133,7 +1133,7 @@ itself.
   curves 13000 + 50·shaper (their points past the 16th 21000 + 200·shaper), every slot's aux and Amount
   22000 + 40·source (a pair per slot, by the sources' number: the places, the macros, the note source, the mod wheel,
   velocity and the pitch bend; a source added later takes the next block), and every slot's curve 24000 + 20·source (by the
-  sources' number likewise); the effects graph's splits 34000 + 20·split, the wires into its
+  sources' number likewise), and every slot's aux depth 49000 + 20·source (likewise); the effects graph's splits 34000 + 20·split, the wires into its
   slots and splits 34200 + 20·node (the slots, then the splits; a From and a Level an input) and the wires into its
   output 35000+, its sums 35100 + 20·sum and the wires into them 35200 + 20·sum. A wire's From stores its port + 1
   (0 = none): the input, then each slot's output, each split's bands, low to high, then each sum's output. The graph's
@@ -1171,7 +1171,7 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 1,317 of the 24,930 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 1,317 of the 25,378 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 896 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain's retired order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'

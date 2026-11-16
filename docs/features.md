@@ -270,7 +270,10 @@ What the plugin does and how its editor works, in full. Building and installing 
   value. One source can so open a cutoff in a straight line and swell an operator's level slowly at once.
   Each modulation also has an **Amount** (0–100 %, all of it to begin with), which scales its depth, and can have an
   **aux**: another source whose output scales it too, as a unipolar source puts it out (0 to 1), so a macro can
-  fade an LFO's vibrato in, or velocity open an envelope's sweep wider. Set either in the MODS view (see the
+  fade an LFO's vibrato in, or velocity open an envelope's sweep wider. The aux's **depth** (0–100 %, all of it to
+  begin with) says how far down the aux can take the modulation: at 100 % an aux at 0 silences it, at 70 % it keeps
+  30 % of its depth (an aux at half keeps 65 %), and at 0 % the aux does nothing. Taking the aux away puts its depth
+  back to 100 %; another aux in its place keeps it. Set either in the MODS view (see the
   editor); the aux also by dropping a source's handle on the modulation's depth handle, or on its aux cell in the MODS view. An aux that runs per voice
   (an LFO, an envelope, the note source, velocity, the pitch bend) scales it in each voice by its own output there, as
   of the last 32-sample block (or this one, for a source that comes before it, and velocity and the pitch bend, known
@@ -1352,8 +1355,10 @@ one may have changed since it last did.
       straight and in the source's color once it is bent; dragged up or down it bends (100 px from straight to
       either end), and a double-click straightens it. Its tooltip gives its value;
     - the **Amount**, a bar from none at its left to all of it at its right, dragged or clicked, with its value;
-    - the **aux**: a chip in its color with its name and an × that takes it away, or a dashed **+ Aux**; a click on
-      either opens the menu of sources, None first, the row's own source faint;
+    - the **aux**: a chip in its color with its name, its depth and an × that takes it away, or a dashed **+ Aux**; a
+      click on the name or + Aux opens the menu of sources, None first, the row's own source faint. The depth, a
+      number before the ×, drags left and right (100 % in 100 px, finer with Shift); a double-click puts it back to
+      100 %, and Ctrl+Click types one. A bar along the chip's foot, in the aux's color, fills as far as the depth;
     - the × that removes the modulation. Removing a modulation, here or anywhere else, removes whatever modulates
       its depth with it, in the same undo step.
 
@@ -1700,8 +1705,8 @@ one may have changed since it last did.
     ring or bar marks that end (in every theme; the Ratio readout's track has its arrow instead). The dots stay
     inside their knob's column, label or cell at each handle size; past
     what fits, the rest go into a "+n" pill. Drag that dot to set the depth; double-click it
-    to remove the modulation, or right-click it for a menu that types its depth, bypasses it, removes its aux (when
-    it has one) or removes it. While the dot is under the mouse or dragged, its range (the ring, or
+    to remove the modulation, or right-click it for a menu that types its depth, bypasses it, types its aux depth and removes its aux
+    (when it has one) or removes it. While the dot is under the mouse or dragged, its range (the ring, or
     the bar on a label, cell or depth bar) is drawn wider, over the other modulations' ranges where they overlap,
     and while its source's handle is on screen, a dashed line runs from the handle to the dot, as when the handle
     is hovered; with an aux, a dotted line runs from the aux's handle too. A source can modulate another source's depth too (drop its handle on
@@ -1715,7 +1720,8 @@ one may have changed since it last did.
     draws its dashed line to the pill, ringed in the source's color. A click opens the pill's list, under it (over
     it, short of room below), in the accent color while it is open: the target's name and every modulation of it,
     a row each: its bypass dot, the source's name, its aux (while one of the rows has one, the list is wider by a
-    column for them: a chip in the aux's color with its name and an × that takes it away), its depth bar and its
+    column for them: a chip in the aux's color with its name, its depth, as in the MODS view, and an × that takes it
+    away), its depth bar and its
     remove (right-clicking a row gives the depth handle's menu; hovering a row draws its range
     wider; a source's name too long for its row is drawn smaller to fit, down to about 9 px, and past that ends in
     "…"). It shows six rows at most; past that, it is 8 px wider for a scrollbar at its right, and the rows scroll by
@@ -1727,7 +1733,9 @@ one may have changed since it last did.
     modulation the pill holds is bypassed or its source switched off, the pill is hollow.
   - **Aux**: a source's handle dropped on another source's depth handle, on a MODS row's aux cell, or on a row of a pill's list (while it
     is dragged, the depth handles and rows are ringed faintly, the one under it brightly) makes the dropped source
-    that modulation's aux, in place of any it had; the depth handle then has a ring in the aux's color. A
+    that modulation's aux, in place of any it had; the depth handle then has a ring in the aux's color, as much of
+    it as the aux's depth, clockwise from the top, and the rest of it faint. Alt-dragging the depth handle up or down sets the aux depth
+    (100 % in 100 px, finer with Shift), and its menu's Edit aux depth types one. A
     modulation's ring on its knob, and its range on a label or cell, show how far its depth and Amount take it,
     which an aux lets it go at most.
   - **Bypass**: the dot at the start of a modulation's row in the MODS view or a pill's list switches that
@@ -2121,7 +2129,7 @@ against the VST3 interfaces, with no wrapper in between, as one object that is b
 controller. Its state is the same bytes as the CLAP plugin's, so a `.fmv` preset loads in either; hosts see them
 as two different plugins, though, so a project made with one doesn't switch to the other by itself.
 
-Hosts are given 1,317 of FMVibe's 24,930 parameters: the globals, the operators, the matrix and the routes' modes,
+Hosts are given 1,317 of FMVibe's 25,378 parameters: the globals, the operators, the matrix and the routes' modes,
 the filters, the shapers, the macros' knobs, the note source's, the mod wheel's, velocity's and the pitch bend's own,
 and every modulation's depth and Amount (16 slots for each of the 28 sources, used or not). The rest are set in the editor only:
 the effects, the LFOs', envelopes' and other sources' own knobs, what each modulation targets and its aux, curve and

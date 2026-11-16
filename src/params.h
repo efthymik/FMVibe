@@ -298,8 +298,8 @@ constexpr int kVelocityParamCount = static_cast<int>(VelocityParam::Count);
 enum class BendParam { Slots, Bipolar = Slots + 2 * kSlots, Count };
 constexpr int kBendParamCount = static_cast<int>(BendParam::Count);
 // Each slot of every source also has an Aux and an Amount (see slotAuxIndex()): its depth is scaled by Amount (0..1,
-// all of it to begin with) and, while it has an aux, by what that other source puts out now, 0..1, taken as unipolar
-// (see auxValue()). Aux holds the aux's source number + 1 (0 = none): wiring like a target, set in the editor. Stored
+// all of it to begin with) and, while it has an aux, by what that other source puts out now, 0..1, taken as unipolar,
+// as far as its aux depth says (see auxScale() and slotAuxDepthIndex()). Aux holds the aux's source number + 1 (0 = none): wiring like a target, set in the editor. Stored
 // in projects by number: only append.
 enum class SlotAuxParam { Aux, Amount, Count };
 constexpr int kSlotAuxFields = static_cast<int>(SlotAuxParam::Count);
@@ -922,11 +922,14 @@ constexpr int kStripBypassBase = kSlotAuxBase + kAllSources * kSlots * kSlotAuxF
 // Each slot's curve (-1..1, 0 a straight line), which bends what its source puts out before the depth takes it, as
 // an envelope segment's curve bends the segment (see slotCurveValue()): kSlots a source, for every source in turn.
 constexpr int kSlotCurveBase = kStripBypassBase + (kAllSources - kMaxSources) * kSlots;
+// Each slot's aux depth (0..1, all of it to begin with): how far down its aux can take it (see auxScale()), kSlots a
+// source, for every source in turn. Set in the editor and hidden from hosts, like the curve.
+constexpr int kSlotAuxDepthBase = kSlotCurveBase + kAllSources * kSlots;
 // How each route into an operator acts on it (see RouteMode): a block per node it comes from (the operators, the
 // filters, then the shapers), a field per operator it goes into. An operator's own field, its feedback, is always
 // Phase and hidden.
 constexpr int kRouteSources = kOps + kFilters + kShapers;
-constexpr int kRouteModeBase = kSlotCurveBase + kAllSources * kSlots;
+constexpr int kRouteModeBase = kSlotAuxDepthBase + kAllSources * kSlots;
 // The effects chain's order as a state from before version 9 holds it: the slot at each of its kFxSlots places, in the
 // order they ran (see fxOrder()). Loading one wires them as the effects graph's line (see readParams()); since then the
 // graph's wires alone hold the order, and these do nothing.
@@ -1394,6 +1397,10 @@ constexpr int slotScaleIndex(int source, int slot) {
     return kSlotAuxBase + (source * kSlots + slot) * kSlotAuxFields + static_cast<int>(SlotAuxParam::Amount);
 }
 constexpr int slotCurveIndex(int source, int slot) { return kSlotCurveBase + source * kSlots + slot; }
+constexpr int slotAuxDepthIndex(int source, int slot) { return kSlotAuxDepthBase + source * kSlots + slot; }
+// What a slot's depth is scaled by while its aux puts out `out` (0..1), at aux depth `depth` (0..1): at 1 by all of
+// `out` (silenced at 0), at 0.7 by 30 % at least, at 0 not at all. At 1 it is `out` exactly.
+constexpr double auxScale(double depth, double out) { return 1.0 - depth + depth * out; }
 // How the route from node `from` (an operator, then the filters, then the shapers, as the routing graph numbers them)
 // into operator `to` acts on it.
 constexpr int routeModeIndex(int from, int to) { return kRouteModeBase + from * kOps + to; }
@@ -1481,6 +1488,8 @@ constexpr Section kSections[] = {
     {kStripBypassBase, kAllSources - kMaxSources, kSlots, 9320, 20},
     // A block per source, in source order, as the auxes'.
     {kSlotCurveBase, kAllSources, kSlots, 24000, 20},
+    // A block per source, in source order, as the auxes'.
+    {kSlotAuxDepthBase, kAllSources, kSlots, 49000, 20},
     // A block per node a route comes from, in the routing graph's order: ids that were never used, between the
     // shapers' and the filters'.
     {kRouteModeBase, kRouteSources, kOps, 700, 10},
@@ -1871,6 +1880,9 @@ static_assert(idOfIndex(slotCurveIndex(0, 0)) == 24000 && idOfIndex(slotCurveInd
                   idOfIndex(slotCurveIndex(kVelocitySource, kSlots - 1)) == 24535 &&
                   idOfIndex(slotCurveIndex(kBendSource, kSlots - 1)) == 24555,
               "slot curve param ids moved");
+static_assert(idOfIndex(slotAuxDepthIndex(0, 0)) == 49000 && idOfIndex(slotAuxDepthIndex(0, kSlots - 1)) == 49015 &&
+                  idOfIndex(slotAuxDepthIndex(kBendSource, kSlots - 1)) == 49555,
+              "slot aux depth param ids moved");
 static_assert(idOfIndex(routeModeIndex(0, 0)) == 700 && idOfIndex(routeModeIndex(1, 0)) == 710 &&
                   idOfIndex(routeModeIndex(kRouteSources - 1, kOps - 1)) == 795,
               "route mode param ids moved");
@@ -2792,7 +2804,7 @@ void runMacroGraph(const MacroGraph &g, const Get &get, MacroKnobs &knobs, const
                 const double out = runsPerVoice(aux) ? voiceAux(aux) : knob(aux);
                 if (out < 0.0)
                     continue;
-                scale *= out;
+                scale *= auxScale(get(slotAuxDepthIndex(link.source, link.slot)), out);
             }
             const bool bipolar = sourceBipolar(get, link.source);
             const double offset = slotCurveValue(knob(link.source) - (bipolar ? 0.5 : 0.0),
@@ -2852,7 +2864,9 @@ void forEachMacroMod(const Get &get, const MacroKnobs &knobs, const Add &add) {
             const int aux = slotAux(get, source, slot);
             if (aux >= 0 && runsPerVoice(aux))
                 continue;
-            const double scale = get(slotScaleIndex(source, slot)) * (aux >= 0 ? knobs[knobOf(aux)] : 1.0);
+            const double scale =
+                get(slotScaleIndex(source, slot)) *
+                (aux >= 0 ? auxScale(get(slotAuxDepthIndex(source, slot)), knobs[knobOf(aux)]) : 1.0);
             add(target,
                 slotCurveValue(knob, get(slotCurveIndex(source, slot)), bipolar) * amount * scale *
                     (paramTable()[target].max - paramTable()[target].min),
