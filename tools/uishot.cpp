@@ -28,6 +28,7 @@
 #include <filesystem>
 #include <map>
 #include <numbers>
+#include <numeric>
 #include <string>
 #include <vector>
 
@@ -95,9 +96,15 @@ public:
     const std::vector<PresetEntry> &presets() const override { return library; }
     // As the plugin does: a preset's file is its name here, and loading one sets every param (each preset with its
     // own volume), lands on the preset, unchanged, and starts the undo history over.
+    // A preset's "file": its name, after its folder's where it has one, or as a factory preset's.
+    std::wstring fileOf(int index) const {
+        const PresetEntry &e = library[index];
+        const std::string file = e.factory ? "factory:" + e.name : e.folder.empty() ? e.name : e.folder + "/" + e.name;
+        return std::wstring(file.begin(), file.end());
+    }
     int presetIndex() const override {
         for (size_t i = 0; i < library.size(); ++i)
-            if (presetFile() == std::wstring(library[i].name.begin(), library[i].name.end()))
+            if (presetFile() == fileOf(static_cast<int>(i)))
                 return static_cast<int>(i);
         return -1;
     }
@@ -108,14 +115,102 @@ public:
     using Controller::setPreset;
     bool loadPresetAt(int index) override {
         values[paramIndex(GlobalParam::Volume)] = -20.0 + 2.0 * index;
-        setPreset(std::wstring(library[index].name.begin(), library[index].name.end()));
+        ui.presetInfo = library[index].info;
+        setPreset(fileOf(index));
         clearHistory();
+        recent.erase(std::remove(recent.begin(), recent.end(), index), recent.end());
+        recent.insert(recent.begin(), index);
         return true;
     }
-    std::wstring presetFolder() const override { return L"C:\\Users\\Someone\\Documents\\FMVibe\\presets"; }
-    void openPresetFolder() override { ++folderOpens; }
-    std::vector<PresetEntry> library{{"Init Bass", ""}, {"Bell", "Factory"}, {"Pad", "Factory"}};
+    // The library's folders, favorites, recent presets and the user's categories and name, as the plugin keeps them.
+    std::vector<std::string> folders;
+    std::vector<std::string> presetFolders() const override { return folders; }
+    bool makePresetFolder(const std::string &folder) override {
+        folders.push_back(folder);
+        std::sort(folders.begin(), folders.end());
+        return true;
+    }
+    static bool inFolder(const std::string &f, const std::string &folder) {
+        return f == folder || f.starts_with(folder + "/");
+    }
+    bool renamePresetFolder(const std::string &from, const std::string &to) override {
+        for (std::string &f : folders)
+            if (inFolder(f, from))
+                f = to + f.substr(from.size());
+        for (PresetEntry &e : library)
+            if (!e.factory && inFolder(e.folder, from))
+                e.folder = to + e.folder.substr(from.size());
+        std::sort(folders.begin(), folders.end());
+        return true;
+    }
+    bool deletePresetFolder(const std::string &folder) override {
+        std::erase_if(folders, [&](const std::string &f) { return inFolder(f, folder); });
+        ++folderDeletes;
+        return true;
+    }
+    int folderDeletes = 0;
+    std::vector<int> favorites;
+    bool presetFavorite(int index) const override {
+        return std::find(favorites.begin(), favorites.end(), index) != favorites.end();
+    }
+    void setPresetFavorite(int index, bool on) override {
+        favorites.erase(std::remove(favorites.begin(), favorites.end(), index), favorites.end());
+        if (on)
+            favorites.push_back(index);
+    }
+    std::vector<int> recent;
+    std::vector<int> recentPresets() const override { return recent; }
+    std::vector<PresetCategory> categories;
+    std::vector<PresetCategory> userCategories() const override { return categories; }
+    void addUserCategory(const PresetCategory &category) override { categories.push_back(category); }
+    void removeUserCategory(const std::string &name) override {
+        std::erase_if(categories, [&](const PresetCategory &category) { return category.name == name; });
+    }
+    std::string browserPlace;
+    std::string presetBrowserPlace() const override { return browserPlace; }
+    void setPresetBrowserPlace(const std::string &place) override { browserPlace = place; }
+    // As the plugin does: the patch saved as a preset in a folder, with its info, is that preset now.
+    bool savePresetIn(const std::string &folder, const std::string &name, const PresetInfo &info) override {
+        savedIn = folder;
+        ui.presetInfo = info;
+        int index = -1;
+        for (size_t i = 0; i < library.size(); ++i)
+            if (!library[i].factory && library[i].folder == folder && library[i].name == name)
+                index = static_cast<int>(i);
+        if (index < 0) {
+            library.push_back({name, folder, false, info});
+            index = static_cast<int>(library.size()) - 1;
+        }
+        library[index].info = info;
+        ++writes;
+        setPreset(fileOf(index));
+        return true;
+    }
+    std::string savedIn;
+    bool presetExists(const std::string &folder, const std::string &name) const override {
+        return std::any_of(library.begin(), library.end(),
+                           [&](const PresetEntry &e) { return !e.factory && e.folder == folder && e.name == name; });
+    }
+    bool setPresetInfo(int index, const PresetInfo &info) override {
+        if (library[index].factory)
+            return false;
+        library[index].info = info;
+        if (index == presetIndex())
+            ui.presetInfo = info;
+        ++infoWrites;
+        return true;
+    }
+    int infoWrites = 0;
+    void openPresetFolder(const std::string &folder) override {
+        ++folderOpens;
+        openedFolder = folder;
+    }
     int folderOpens = 0;
+    std::string openedFolder;
+    void showPresetFile(int index) override { shownFile = index; }
+    int shownFile = -1;
+    std::wstring presetFolder() const override { return L"C:\\Users\\Someone\\Documents\\FMVibe\\presets"; }
+    std::vector<PresetEntry> library{{"Init Bass", "", false, {}}, {"Bell", "", true, {}}, {"Pad", "", true, {}}};
     int oversampling() const override { return oversamplingFactor; }
     void setOversampling(int factor) override { oversamplingFactor = factor; }
     bool mpe() const override { return mpeOn; }
@@ -1590,9 +1685,9 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, nodeTab(0)); // back to operator A
 
     // Presets: the bar shows Init; the arrows step through the library, asking first while the patch has
-    // changed since it was loaded; the browser lists them by subfolder.
+    // changed since it was loaded; the browser opens on the preset's folder (the factory presets').
     check(model.presetName() == tr(Str::PresetInit) && model.patchEdited(), "a changed patch shows Init, changed");
-    const Point nextPreset{787.0f, 18.0f}, previousPreset{413.0f, 18.0f}, presetBox{600.0f, 18.0f};
+    const Point nextPreset{807.0f, 18.0f}, previousPreset{393.0f, 18.0f}, presetBox{600.0f, 18.0f};
     click(view, nextPreset);
     const Rect confirmPanel{420.0f, std::round((view.height() - 150.0f) * 0.5f), 360.0f, 150.0f};
     view.mouseMove({confirmPanel.right() - 64.0f, confirmPanel.bottom() - 38.0f}, {});
@@ -1604,25 +1699,39 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, previousPreset);
     click(view, previousPreset);
     check(stepped && model.presetIndex() == 2, "the arrows step through the presets, round from the first to the last");
-    // The browser: OPEN FOLDER shows the folder, and a preset picked loads and closes it. While it is open, its
-    // backdrop dims the header around it (read off the rendered pixels).
-    const Point headerGap{300.0f, 4.0f}; // in the title bar, clear of its buttons
+    // The browser: Open Folder shows the folder shown, a click on a preset picks it and a double-click loads it,
+    // closing the browser.
     view.mouseMove(presetBox, {});
     renderer.save(view, dir / "22a-preset-stepped.png");
-    const uint32_t clear = renderer.pixel(headerGap);
     click(view, presetBox);
-    const float browserTop = std::round((view.height() - 560.0f) * 0.5f); // the browser, centered in the editor
-    auto browserRow = [&](int row) { return Point{600.0f, browserTop + 56.0f + row * 24.0f + 12.0f}; };
-    view.mouseMove(browserRow(2), {});
-    check(renderer.save(view, dir / "22b-preset-browser.png"), "render the preset browser");
-    const uint32_t dimmed = renderer.pixel(headerGap);
-    click(view, {380.0f + 440.0f - 24.0f - 55.0f, browserTop + 560.0f - 27.0f}); // OPEN FOLDER
-    click(view, browserRow(2)); // Bell, under the Factory header
+    auto browserRow = [&](int row) { return Point{620.0f, 132.0f + row * 28.0f + 13.0f}; };
+    const Point userFolder{300.0f, 254.0f}, factoryFolder{300.0f, 228.0f};
+    view.mouseMove(browserRow(0), {});
+    check(renderer.save(view, dir / "22b-preset-browser.png") && view.browserListed() == std::vector<int>{1, 2},
+          "render the preset browser, opening on the factory presets");
+    click(view, userFolder);
+    click(view, factoryFolder);
+    click(view, browserRow(0)); // Bell: loaded at once, among the recent presets, the browser staying open
+    const bool loadedOpen = view.browserPicked() == 1 && model.presetIndex() == 1 && view.browserShown() &&
+                            model.recent.front() == 1;
+    click(view, browserRow(1)); // Pad
+    const bool padLoaded = model.presetIndex() == 2 && view.browserShown();
+    doubleClick(view, browserRow(0)); // Bell, and the browser closes
     view.mouseMove(presetBox, {});
     check(renderer.save(view, dir / "22c-preset-bar.png"), "render the preset bar");
-    const bool closed = renderer.pixel(headerGap) == clear && clear != dimmed;
-    check(model.presetIndex() == 1 && model.folderOpens == 1 && closed,
-          "the browser opens the folder, and loading a preset from it closes it");
+    check(loadedOpen && padLoaded && model.presetIndex() == 1 && !view.browserShown(),
+          "a click in the browser loads a preset, leaving it open, and a double-click loads one and closes it");
+    {
+        // Close, at the strip's right, closes it, the preset loaded staying.
+        click(view, presetBox);
+        click(view, browserRow(1)); // Pad
+        const Point close{943.0f, 42.0f + std::min(600.0f, view.height() - 54.0f) - 31.0f};
+        view.mouseMove(close, {});
+        const bool closeShot = renderer.save(view, dir / "22c-preset-browser-close.png");
+        click(view, close);
+        check(closeShot && !view.browserShown() && model.presetIndex() == 2,
+              "the browser's Close closes it, the preset loaded staying");
+    }
     // A preset loaded starts the undo history over: undo doesn't bring back the preset before, or an edit made to it.
     drag(view, kFmAmountKnob, {kFmAmountKnob.x, kFmAmountKnob.y - 20.0f});
     model.loadPresetAt(2);
@@ -1635,42 +1744,53 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     view.undo();
     check(changedPad && model.presetName() == "Pad" && !model.patchEdited(),
           "undoing the edits since a preset loaded leaves it unchanged again");
-    // While the patch has changed, a preset picked in the browser asks first, over it; going ahead loads it and
-    // closes the browser.
+    // While the patch has changed, a preset clicked in the browser asks first, over it; going ahead loads it, the browser
+    // staying open.
     drag(view, kFmAmountKnob, {kFmAmountKnob.x, kFmAmountKnob.y - 20.0f});
     click(view, presetBox);
-    click(view, browserRow(2)); // Bell
-    const bool asked = model.presetIndex() == 2;
+    click(view, browserRow(0)); // Bell
+    const bool asked = view.confirmShown() && model.presetIndex() == 2;
     click(view, {confirmPanel.right() - 64.0f, confirmPanel.bottom() - 38.0f}); // go ahead
     view.mouseMove(presetBox, {});
     renderer.save(view, dir / "22d-preset-loaded.png");
-    check(asked && model.presetIndex() == 1 && renderer.pixel(headerGap) == clear,
-          "a preset picked in the browser while the patch has changed asks first, then loads and closes it");
-    // The browser takes the keyboard for its search: the words typed narrow the list to the presets whose subfolder
-    // and name hold them all, the first one picked, and Enter loads it. With nothing found Enter does nothing; the
-    // search's x empties it, Up and Down pick from the list, from the preset loaded, and Escape empties the search,
-    // then closes the browser.
+    const bool loadedAsked = asked && model.presetIndex() == 1 && view.browserShown() && !model.patchEdited();
+    view.dialogKey(View::Key::Escape); // the browser closes
+    check(loadedAsked && !view.browserShown(),
+          "a preset clicked in the browser while the patch has changed asks first, then loads it, leaving it open");
+    // The browser's search takes the keyboard once clicked, and lets it go at a click anywhere else: the words typed
+    // narrow the list to the presets whose folder, name and info hold them all, the first one picked, and Enter loads
+    // it. With nothing found Enter does nothing; the search's x empties it, Up and Down pick from the list, from the
+    // preset loaded, and Escape empties the search, then closes the browser.
+    const Point search{500.0f, 68.0f};
     click(view, presetBox);
-    const bool takesKeys = view.typing();
+    const bool notYet = !view.typing();
+    click(view, search);
+    const bool takesKeys = notYet && view.typing();
+    click(view, browserRow(0)); // a preset in its list, elsewhere in the browser
+    const bool letGo = !view.typing() && view.browserShown();
+    click(view, search);
     for (char ch : std::string("fac p")) // Factory, Pad
         view.typeChar(static_cast<char32_t>(ch));
     check(renderer.save(view, dir / "22e-preset-search.png"), "render the preset browser's search");
     view.typeKey(View::Key::Enter);
-    check(takesKeys && model.presetIndex() == 2 && !view.typing(),
-          "typing in the preset browser searches it, and Enter loads the preset found");
+    check(takesKeys && letGo && model.presetIndex() == 2 && !view.typing(),
+          "the preset browser's search takes the keyboard once clicked and lets it go at a click elsewhere; typing in "
+          "it searches, and Enter loads the preset found");
     click(view, presetBox);
+    click(view, search);
     view.typeChar(U'z');
     view.typeKey(View::Key::Enter);
     const bool nothingFound = view.typing() && model.presetIndex() == 2;
-    click(view, {380.0f + 440.0f - 46.0f - 22.0f + 9.0f, browserTop + 26.0f}); // the search's x
-    view.typeKey(View::Key::Up); // from Pad: Bell, then Init Bass
-    view.typeKey(View::Key::Up);
+    click(view, {853.0f, 68.0f}); // the search's x
+    view.typeKey(View::Key::Up); // from Pad: Bell, Pad, Bell
     view.typeKey(View::Key::Down);
+    view.typeKey(View::Key::Up);
     view.mouseMove(presetBox, {});
     check(renderer.save(view, dir / "22f-preset-picked.png"), "render a preset picked from the keyboard");
     view.typeKey(View::Key::Enter);
     check(nothingFound && model.presetIndex() == 1, "Up and Down pick a preset from the browser's list");
     click(view, presetBox);
+    click(view, search);
     view.typeChar(U'b');
     view.typeKey(View::Key::Escape);
     const bool stillOpen = view.typing();
@@ -1682,6 +1802,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
         // jump to the ends (with Shift, selecting on the way), Ctrl+X cuts the selection and Ctrl+V pastes over
         // it, a line break as a space.
         click(view, presetBox);
+        click(view, search);
         type(view, "bell");
         view.typeKey(View::Key::Left, true);
         view.typeKey(View::Key::Left, true);
@@ -1698,8 +1819,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
               "the browser's search selects with Shift and the arrows, Home and End, and cuts and pastes");
         // The mouse, by where the characters were painted: a drag from the field's start to its end selects all of
         // it, a click puts the caret there, a Shift+click selects from the caret, and a double-click picks a word.
-        const float fieldY = browserTop + 26.0f, start = 380.0f + 440.0f - 46.0f - 180.0f + 4.0f,
-                    end = 740.0f; // past the text, short of the x
+        const float fieldY = 68.0f, start = 216.0f, end = 560.0f; // past the text, short of the count and the x
         drag(view, {start, fieldY}, {end, fieldY});
         const std::string dragged = view.copyText(false);
         const bool selectedShot = renderer.save(view, dir / "22h-preset-search-selected.png");
@@ -1811,7 +1931,7 @@ void testDialogKeys(const std::filesystem::path &dir, Renderer &renderer) {
 
     // The next-preset arrow on a changed patch asks first: Escape stays on Init, Enter loads the first preset.
     drag(view, kFmAmountKnob, {kFmAmountKnob.x, kFmAmountKnob.y - 20.0f});
-    const Point nextPreset{787.0f, 18.0f}, presetBox{600.0f, 18.0f};
+    const Point nextPreset{807.0f, 18.0f}, presetBox{600.0f, 18.0f};
     click(view, nextPreset);
     const bool presetAsked = view.dialogOpen() && model.presetIndex() == -1;
     view.dialogKey(View::Key::Escape);
@@ -1823,6 +1943,8 @@ void testDialogKeys(const std::filesystem::path &dir, Renderer &renderer) {
     // keyboard go; Enter there loads it and closes the browser.
     drag(view, kFmAmountKnob, {kFmAmountKnob.x, kFmAmountKnob.y - 20.0f});
     click(view, presetBox);
+    click(view, {300.0f, 115.0f}); // All of them
+    click(view, {500.0f, 68.0f});  // the search
     type(view, "bell");
     view.typeKey(View::Key::Enter);
     const bool overBrowser = view.dialogOpen() && !view.typing() && model.presetIndex() == 0 &&
@@ -2077,27 +2199,29 @@ void testTouchPan(const std::filesystem::path &dir, Renderer &renderer) {
         presets.library.push_back({"Preset " + std::to_string(n), ""});
     presets.loadPresetAt(0);
     click(presetView, {600.0f, 18.0f});
-    const float browserTop = std::round((presetView.height() - 560.0f) * 0.5f);
-    auto browserRow = [&](int row) { return Point{600.0f, browserTop + 58.0f + row * 24.0f + 11.0f}; };
+    click(presetView, {300.0f, 115.0f}); // All: the browser opens on Factory to begin with
+    auto browserRow = [&](int row) { return Point{620.0f, 132.0f + row * 28.0f + 13.0f}; };
     presetView.touchPanBegin(browserRow(10));
-    presetView.touchPanMove({600.0f, browserRow(5).y});
-    presetView.touchPanEnd({600.0f, browserRow(5).y});
+    presetView.touchPanMove({620.0f, browserRow(5).y});
+    presetView.touchPanEnd({620.0f, browserRow(5).y});
     click(presetView, browserRow(0));
-    check(presets.presetIndex() == 5, "two fingers pan the preset browser's list");
-    // One finger: dragged up the list it loads nothing, and a tap then loads the preset tapped.
+    check(presetView.browserPicked() == 5, "two fingers pan the preset browser's list");
+    // One finger: dragged up the list it picks nothing, and a tap then picks the preset tapped.
     FakeController browsed;
     View browsedView(browsed);
     browsed.library = presets.library;
     browsed.loadPresetAt(0);
     click(browsedView, {600.0f, 18.0f});
+    click(browsedView, {300.0f, 115.0f}); // All
     browsedView.touchDown(browserRow(10), false, kSlop);
-    browsedView.touchMove({600.0f, browserRow(8).y});
-    browsedView.touchMove({600.0f, browserRow(5).y});
-    browsedView.touchUp({600.0f, browserRow(5).y});
-    const bool nothingLoaded = browsed.presetIndex() == 0 && browsedView.typing(); // still open, its search typing
+    browsedView.touchMove({620.0f, browserRow(8).y});
+    browsedView.touchMove({620.0f, browserRow(5).y});
+    browsedView.touchUp({620.0f, browserRow(5).y});
+    const bool nothingLoaded = browsed.presetIndex() == 0 && browsedView.browserPicked() == 0 &&
+                               browsedView.browserShown(); // still open
     tap(browsedView, browserRow(0));
-    check(nothingLoaded && browsed.presetIndex() == 5,
-          "one finger pans the preset browser's list without loading what it went down on, and a tap loads one");
+    check(nothingLoaded && browsedView.browserPicked() == 5 && browsed.presetIndex() == 5 && browsedView.browserShown(),
+          "one finger pans the preset browser's list without picking what it went down on, and a tap loads one");
 
     // The effects graph, wider than its box: the wheel sideways to its end, where the Param EQ's node takes a click,
     // and two fingers back to its start.
@@ -2230,14 +2354,14 @@ void testMiddleDrag(const std::filesystem::path &dir, Renderer &renderer) {
         presets.library.push_back({"Preset " + std::to_string(n), ""});
     presets.loadPresetAt(0); // unchanged since, so picking another doesn't ask first
     click(presetView, {600.0f, 18.0f}); // the preset's name opens the browser
-    const float browserTop = std::round((presetView.height() - 560.0f) * 0.5f);
-    auto browserRow = [&](int row) { return Point{600.0f, browserTop + 58.0f + row * 24.0f + 11.0f}; };
+    click(presetView, {300.0f, 115.0f}); // All: it opens on Factory to begin with
+    auto browserRow = [&](int row) { return Point{620.0f, 132.0f + row * 28.0f + 13.0f}; };
     presetView.middleDown(browserRow(10));
-    presetView.mouseMove({600.0f, browserRow(5).y}, {});
+    presetView.mouseMove({620.0f, browserRow(5).y}, {});
     const bool browserShot = renderer.save(presetView, dir / "22i-preset-middle-drag.png");
-    presetView.middleUp({600.0f, browserRow(5).y});
+    presetView.middleUp({620.0f, browserRow(5).y});
     click(presetView, browserRow(0));
-    check(browserShot && presets.presetIndex() == 5, "the middle button drags the preset browser's list up and down");
+    check(browserShot && presetView.browserPicked() == 5, "the middle button drags the preset browser's list up and down");
 }
 
 // A modulation's depth handle under the mouse draws its range over the others, and wider: LFO 1's and Env 1's
@@ -2986,8 +3110,8 @@ void renderExample(const std::filesystem::path &dir, Renderer &renderer, const s
         check(false, ("the examples include " + name).c_str());
         return;
     }
-    model.library = {{name, "Factory"}}; // the preset bar shows its name
-    model.setPreset(std::wstring(name.begin(), name.end()));
+    model.library = {{name, "", true, model.ui.presetInfo}}; // the preset bar shows its name and info
+    model.setPreset(L"factory:" + std::wstring(name.begin(), name.end()));
     view.poll();
     if (playing) { // an A3 held, its operators sounding and going into the effects, the glows risen to it
         model.live.voices = 1;
@@ -9421,6 +9545,527 @@ void renderLfoOnLfo(const std::filesystem::path &dir, Renderer &renderer) {
 
 } // namespace
 
+// The preset library's info, browser and Save dialog: a library of factory presets and the user's, in folders, with
+// their info.
+FakeController &libraryModel(FakeController &model) {
+    auto info = [](const char *author, const char *category, const char *description) {
+        return PresetInfo{author, category, description};
+    };
+    model.library = {
+        {"Reese Bass", "", true, info("FMVibe", "Bass", "Heavy, growling drum and bass reese over a deep, steady sub.")},
+        {"Screamer", "", true, info("FMVibe", "Lead", "Screaming, aggressive lead; the mod wheel makes it scream harder.")},
+        {"Shimmer Pad", "", true, info("FMVibe", "Pad", "Wide, airy pad that blooms into a shimmering reverb.")},
+        {"Comb String", "", true, info("FMVibe", "Pluck", "Hollow plucked string; the mod wheel softens it.")},
+        {"Morning Keys", "", false, info("Alex", "Keys", "Mellow tine piano; velocity adds bark.")},
+        {"Test Patch 3", "", false, {}},
+        {"Growl Machine", "Basses", false, info("Alex", "Bass", "Sub-octave FM growl. M1 growl, M2 drive.")},
+        {"Sub Pressure", "Basses", false, info("Alex", "Bass", "Sine sub with a touch of 2nd harmonic.")},
+        {"Reese v2", "Basses/Reese", false, info("Alex", "Bass", "Narrower factory reese.")},
+        {"Intro Swell", "Live Set", false, info("Alex", "Pad", "Eight-bar swell for the opening.")},
+        {"Hook Lead", "Live Set/Act 1", false, info("Alex", "Lead", "Main hook. Mod wheel vibrato.")},
+        {"Opener", "Live Set/Act 1", false, info("Alex", "Bass", "Sequenced bass, A on verse, B on bridge. M1 filter.")},
+        {"Riser 8 Bars", "Live Set/Act 2", false, info("Alex", "FX", "Noise riser, eight bars at 118.")},
+        {"Glass Rain", "Sound Design", false, info("Alex", "Texture", "Scattered high partials.")},
+        {"Night Drift", "Sound Design", false, info("Mira K.", "Pad", "Chorused pad; mod wheel adds shimmer.")},
+    };
+    model.folders = {"Basses", "Basses/Reese", "Live Set", "Live Set/Act 1", "Live Set/Act 2", "Sound Design"};
+    model.categories = {{"Texture", kBuiltInCategories + 1}};
+    return model;
+}
+
+int libraryIndex(const FakeController &model, const char *name) {
+    for (size_t i = 0; i < model.library.size(); ++i)
+        if (model.library[i].name == name)
+            return static_cast<int>(i);
+    return -1;
+}
+
+void testPresetLibrary(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    libraryModel(model);
+    View view(model);
+    const Point away{600.0f, 960.0f};
+    const Rect titleBar{0.0f, 0.0f, View::kWidth, detail::kTitleBarH};
+    auto index = [&](const char *name) { return libraryIndex(model, name); };
+    auto listed = [&](std::initializer_list<const char *> names) {
+        std::vector<int> want;
+        for (const char *name : names)
+            want.push_back(index(name));
+        return view.browserListed() == want;
+    };
+    // The preset bar, on one line: the category's pill at the left, the name in the middle and "by" the author against
+    // the info button; the line about it as the name's tooltip.
+    const int opener = index("Opener");
+    model.loadPresetAt(opener);
+    view.mouseMove(away, {});
+    renderer.save(view, dir / "23a-preset-bar.png", &titleBar);
+    const Rect bar = detail::kPresetName;
+    // The name's ink across the bar's middle, 80 px either side of it (clear of the pill and the author): its first and
+    // last pixels off the bar's face are as far from the middle either way, within 2 px.
+    const float nameY = bar.center().y, from = bar.center().x - 80.0f, to = bar.center().x + 80.0f;
+    const uint32_t face = renderer.pixel({from, nameY});
+    float first = -1.0f, last = -1.0f;
+    for (float x = from; x <= to; x += 0.5f)
+        if (renderer.pixel({x, nameY}) != face) {
+            if (first < 0.0f)
+                first = x;
+            last = x;
+        }
+    const bool centered = first > 0.0f && std::abs((first + last) / 2.0f - bar.center().x) <= 2.0f;
+    // An amber pixel (Bass's dot) in the bar's first 20 px, and the author's ink between the name and the info button.
+    bool pill = false, author = false;
+    for (float x = bar.x + 8.0f; x <= bar.x + 20.0f; x += 0.5f)
+        pill = pill || amber(renderer.pixel({x, nameY}));
+    for (float x = to + 10.0f; x <= bar.right() - 52.0f; x += 0.5f)
+        author = author || renderer.pixel({x, nameY}) != face;
+    check(centered && pill && author, "the preset bar shows the category's dot at its left, the name in its middle and "
+                                      "the author at its right (read off the rendered pixels)");
+    const Point infoButton{detail::kPresetName.right() - 38.0f, detail::kPresetName.center().y};
+    view.mouseMove(detail::kPresetName.center(), {});
+    check(renderer.save(view, dir / "23b-preset-bar-tip.png"), "render the preset bar's tooltip");
+
+    // Its info card: the star making it a favorite, Edit Info editing the preset's info, Show in Browser opening the
+    // browser on it; a click around it closing it.
+    click(view, infoButton);
+    view.mouseMove(away, {});
+    const bool cardShot = renderer.save(view, dir / "23c-preset-info.png");
+    const Rect card{detail::kPresetName.center().x - 220.0f, detail::kTitleBarH + 6.0f, 440.0f, 152.0f};
+    click(view, {card.right() - 30.0f, card.y + 28.0f}); // the star
+    const bool starred = model.presetFavorite(opener) && view.infoCardShown();
+    click(view, {card.right() - 66.0f, card.y + 125.0f}); // Edit Info
+    const bool editing = view.saveShown() && !view.infoCardShown();
+    view.typeKey(View::Key::Escape);
+    click(view, infoButton);
+    click(view, {card.right() - 174.0f, card.y + 125.0f}); // Show in Browser
+    const bool browsing = view.browserShown() && view.browserPicked() == opener;
+    click(view, detail::kPresetName.center()); // which closes it again
+    click(view, infoButton);
+    const bool escaped = view.dialogKey(View::Key::Escape) && !view.infoCardShown();
+    click(view, infoButton);
+    click(view, away);
+    check(cardShot && starred && escaped && editing && browsing && !view.browserShown() && !view.infoCardShown(),
+          "the info card's star makes the preset a favorite, Edit Info edits its info, Show in Browser shows it, and "
+          "Escape or a click around it closes it");
+    model.loadPresetAt(index("Screamer"));
+    click(view, infoButton);
+    view.mouseMove(away, {});
+    const bool factoryShot = renderer.save(view, dir / "23d-preset-info-factory.png");
+    click(view, {card.right() - 66.0f, card.y + 125.0f}); // Save Copy
+    const bool copying = view.saveShown();
+    view.typeKey(View::Key::Escape);
+    check(factoryShot && copying, "a factory preset's info card offers to save a copy, its info being read-only");
+
+    // The browser: on the preset loaded, in its folder, opened down to it in the tree; the folder lists its
+    // subfolders' presets too unless Subfolders is off; a click picks a preset and a double-click loads it.
+    model.loadPresetAt(opener);
+    click(view, detail::kPresetName.center());
+    view.mouseMove(away, {});
+    const float top = 42.0f, bottom = top + std::min(600.0f, view.height() - 54.0f);
+    auto treeRow = [&](int row) { return Point{300.0f, 215.0f + row * 26.0f + 13.0f}; };
+    auto listRow = [&](int row) { return Point{620.0f, 132.0f + row * 28.0f + 13.0f}; };
+    const Point load{948.0f, bottom - 62.0f + 31.0f}, showFile{876.0f, bottom - 62.0f + 31.0f},
+        subfolders{932.0f, 68.0f};
+    const bool shot = renderer.save(view, dir / "23e-browser.png");
+    const bool onFolder = listed({"Hook Lead", "Opener"}) && view.browserPicked() == opener;
+    click(view, treeRow(3)); // Live Set
+    const bool withSubfolders = listed({"Intro Swell", "Hook Lead", "Opener", "Riser 8 Bars"});
+    // The categories count what the folder shows of them: Opener its one bass, every preset listed in one of them.
+    const std::vector<int> counted = view.browserCategoryCounted();
+    const bool countedHere = !counted.empty() && counted[0] == 1 &&
+                             std::accumulate(counted.begin(), counted.end(), 0) == 4;
+    click(view, subfolders);
+    const bool alone = listed({"Intro Swell"});
+    click(view, subfolders);
+    click(view, listRow(1)); // Hook Lead
+    const bool picked =
+        view.browserPicked() == index("Hook Lead") && model.presetIndex() == index("Hook Lead") && view.browserShown();
+    doubleClick(view, listRow(1));
+    check(shot && onFolder && withSubfolders && countedHere && alone && picked && model.presetIndex() == index("Hook Lead") &&
+              !view.browserShown(),
+          "the browser opens on the preset's folder, lists its subfolders' presets unless Subfolders is off, counts "
+          "the categories it shows, picks "
+          "with a click and loads with a double-click, closing");
+    {
+        // Where it was left, as the user's settings keep it: a new editor's browser opens on Live Set again; with
+        // nothing kept, on Factory.
+        View again(model);
+        click(again, detail::kPresetName.center());
+        const bool kept = model.browserPlace.starts_with("folder:") && again.browserListed().size() == 4;
+        FakeController fresh;
+        fresh.library = model.library;
+        View newView(fresh);
+        click(newView, detail::kPresetName.center());
+        const auto factories = static_cast<size_t>(std::count_if(model.library.begin(), model.library.end(),
+                                                                 [](const PresetEntry &e) { return e.factory; }));
+        const bool onFactory = newView.browserShown() && newView.browserListed().size() == factories;
+        // Close, where Load was, closing it, nothing loaded.
+        click(newView, load);
+        const bool nothingLoaded = fresh.presetIndex() < 0 && !newView.browserShown();
+        check(kept && onFactory &&
+                  fresh.browserPlace.empty() && nothingLoaded,
+              "the browser opens where it was left, kept in the user's settings, and on Factory to begin with, its Close "
+              "closing it");
+    }
+
+    // The sidebar: All, Favorites and Recent, the tree's folders opening and closing, and the categories filtering
+    // by one or more; a filter's chip and Clear taking them off.
+    click(view, detail::kPresetName.center());
+    click(view, {300.0f, 115.0f}); // All
+    const bool all = view.browserListed().size() == model.library.size();
+    click(view, subfolders); // greyed out here: User still lists its subfolders' presets below
+    click(view, {300.0f, 142.0f}); // Favorites
+    const bool favorites = listed({"Opener"});
+    click(view, {300.0f, 169.0f}); // Recent, the last loaded first
+    const bool recent = view.browserListed().front() == index("Hook Lead");
+    click(view, treeRow(1)); // User, every folder's
+    const float catY = 215.0f + 7.0f * 26.0f + 12.0f + 22.0f; // the categories' first row's top
+    click(view, {300.0f, catY + 12.0f}); // Bass
+    const bool basses = listed({"Growl Machine", "Sub Pressure", "Reese v2", "Opener"});
+    click(view, {300.0f, catY + 4.0f * 24.0f + 12.0f}); // and Lead
+    view.mouseMove(away, {});
+    const bool filterShot = renderer.save(view, dir / "23f-browser-filtered.png");
+    const bool twoFilters = listed({"Growl Machine", "Sub Pressure", "Reese v2", "Hook Lead", "Opener"});
+    click(view, {356.0f, 409.0f + 10.0f}); // Clear, in the categories' header
+    const bool cleared = view.browserListed().size() == 11;
+    click(view, {228.0f, treeRow(2).y}); // Basses' toggle opens it
+    const bool opened = listed({"Morning Keys", "Test Patch 3", "Growl Machine", "Sub Pressure", "Reese v2", "Intro Swell",
+                                "Hook Lead", "Opener", "Riser 8 Bars", "Glass Rain", "Night Drift"});
+    click(view, treeRow(3)); // Reese, now under it
+    check(all && favorites && recent && basses && filterShot && twoFilters && cleared && opened &&
+              listed({"Reese v2"}),
+          "the browser's sidebar shows every preset, the favorites and the recent ones, opens folders in its tree and "
+          "filters by categories, Clear taking the filters off, and Subfolders does nothing on All");
+    {
+        // The sidebar's scrollbar, at its right edge: its thumb dragged down scrolls it to its end, and a click on the
+        // track above the thumb back to the top; the middle button drags it too.
+        const Point thumbTop{405.0f, 106.0f};
+        view.mouseDown(thumbTop, {});
+        view.mouseMove({405.0f, 400.0f}, {});
+        view.mouseMove({405.0f, 700.0f}, {});
+        view.mouseUp({405.0f, 700.0f}, {});
+        const float end = view.browserSideScrolled();
+        view.mouseMove({300.0f, 300.0f}, {});
+        const bool barShot = renderer.save(view, dir / "23f-browser-sidebar-end.png");
+        click(view, {405.0f, 100.0f}); // the track's top
+        const bool atTop = view.browserSideScrolled() == 0.0f;
+        view.middleDown({300.0f, 400.0f});
+        view.mouseMove({300.0f, 360.0f}, {});
+        view.middleUp({300.0f, 360.0f});
+        const bool panned = std::abs(view.browserSideScrolled() - 40.0f) < 0.5f;
+        click(view, {405.0f, 100.0f}); // back to the top, for what follows
+        check(end > 0.0f && barShot && atTop && panned && view.browserSideScrolled() == 0.0f,
+              "the browser's sidebar scrolls by its scrollbar's thumb and track, and by the middle button");
+    }
+
+    // The folder's parts lead back up; the file's button shows the preset's file in Explorer, and none for a factory
+    // preset.
+    renderer.save(view, dir / "23f-browser-reese.png"); // where the folder's parts are, as painted
+    click(view, {437.0f, 112.0f}); // User
+    const bool up = view.browserListed().size() == 11;
+    click(view, treeRow(4)); // Live Set
+    click(view, listRow(0));
+    click(view, showFile);
+    const bool shownFile = model.shownFile == index("Intro Swell");
+    click(view, treeRow(0)); // Factory
+    click(view, listRow(0));
+    model.shownFile = -1;
+    click(view, showFile);
+    check(up && shownFile && model.shownFile == -1,
+          "the folder's parts lead back up and the file's button shows the preset's file, none for a factory preset");
+
+    // Search: across what the sidebar shows, the presets whose name, author, category or line hold every word.
+    click(view, {300.0f, 115.0f}); // All
+    click(view, {500.0f, 68.0f}); // the search
+    type(view, "pad");
+    const bool pads = listed({"Shimmer Pad", "Intro Swell", "Night Drift"});
+    type(view, " mira");
+    const bool mira = listed({"Night Drift"});
+    view.typeKey(View::Key::Escape);
+    check(pads && mira && view.browserListed().size() == model.library.size(),
+          "the browser's search finds presets by their name, category, author and line");
+
+    // + by FOLDERS makes a folder in the one shown; the Save dialog's + New a category of the user's own (the browser
+    // has no + for one).
+    click(view, treeRow(1)); // User
+    click(view, {392.0f, 193.0f + 10.0f}); // the folders' +
+    const bool asked = view.nameMenuShown();
+    type(view, "Drafts");
+    view.mouseMove(away, {});
+    renderer.save(view, dir / "23g-new-folder.png");
+    view.typeKey(View::Key::Enter);
+    const bool made = std::find(model.folders.begin(), model.folders.end(), "Drafts") != model.folders.end() &&
+                      !view.nameMenuShown() && view.browserListed().empty();
+    view.dialogKey(View::Key::Escape); // the browser closes
+    click(view, detail::toolbarButton(3).center()); // Save As, under the preset bar
+    // Its chips five a row: the eight built-in categories, Texture and None, then + New first on the third row.
+    click(view, {268.0f, 279.0f});
+    const bool categoryAsked = view.nameMenuShown();
+    type(view, "Vocal");
+    view.mouseMove(away, {});
+    renderer.save(view, dir / "23h-new-category.png");
+    view.typeKey(View::Key::Enter);
+    const bool category = categoryAsked && model.categories.size() == 2 && model.categories[1].name == "Vocal";
+    // A name takes 6 characters at most, and the name a built-in category shows (Seq) picks that one.
+    click(view, {366.0f, 279.0f}); // + New, after Vocal now
+    type(view, "Melodic");
+    view.typeKey(View::Key::SelectAll);
+    const bool cut = view.copyText(false) == "Melodi";
+    type(view, "Seq");
+    view.typeKey(View::Key::Enter);
+    const bool seqBuiltIn = cut && !view.nameMenuShown() && model.categories.size() == 2;
+    view.typeKey(View::Key::Escape); // the Save dialog closes
+    check(asked && made && category && seqBuiltIn && !view.saveShown(),
+          "the browser's + by FOLDERS makes a folder, and the Save dialog's + New a category (of 6 characters at most, "
+          "Seq picking the built-in one)");
+    click(view, detail::kPresetName.center()); // the browser again, for what follows
+
+    // Edit Info, from the info card, on a preset without any: its author, category and line written into its file
+    // alone.
+    view.dialogKey(View::Key::Escape); // the browser closes
+    model.loadPresetAt(index("Test Patch 3"));
+    const bool closed = !view.browserShown();
+    click(view, infoButton);
+    click(view, {card.right() - 66.0f, card.y + 125.0f}); // Add Info
+    const bool infoMode = view.saveShown();
+    view.mouseMove(away, {});
+    renderer.save(view, dir / "23i-edit-info.png");
+    type(view, "Plucky test");
+    view.typeKey(View::Key::Enter);
+    const PresetInfo &patch3 = model.library[index("Test Patch 3")].info;
+    check(closed && infoMode && model.infoWrites == 1 && patch3.description == "Plucky test" && patch3.author.empty() &&
+              !view.saveShown(),
+          "Escape closes the browser with its search not clicked into, and Edit Info, from the info card, writes a "
+          "preset's author and line into its file");
+
+    {
+        // One of the user's own categories removed by the x on its row, asking first: Cancel keeps it, Remove takes it
+        // out of the list, and a preset in it keeps it, listed in grey after the user's; a built-in one has no x.
+        FakeController own;
+        own.library = {{"Grain", "", false, {"", "Texture", ""}}};
+        own.categories = {{"Texture", kBuiltInCategories + 1}, {"Vocal", kBuiltInCategories + 3}};
+        View ownView(own);
+        click(ownView, detail::kPresetName.center());
+        click(ownView, {300.0f, 115.0f}); // All, where Grain is
+        // Factory and User in the tree, then the categories' first row, eight built in and a line before the user's.
+        const float firstRow = 215.0f + 2.0f * 26.0f + 12.0f + 22.0f;
+        const Point removeTexture{387.0f, firstRow + 8.0f * 24.0f + 9.0f + 12.0f},
+            removeVocal{removeTexture.x, removeTexture.y + 24.0f};
+        ownView.mouseMove(removeVocal, {});
+        const bool removeShot = renderer.save(ownView, dir / "23l-category-remove.png");
+        click(ownView, removeVocal);
+        const bool removeAsked = ownView.confirmShown() && own.categories.size() == 2;
+        ownView.dialogKey(View::Key::Escape);
+        const bool kept = !ownView.confirmShown() && own.categories.size() == 2 && ownView.browserShown();
+        click(ownView, removeVocal);
+        const bool askedAgain = renderer.save(ownView, dir / "23m-category-remove-ask.png");
+        ownView.dialogKey(View::Key::Enter);
+        const bool removed = own.categories.size() == 1 && own.categories[0].name == "Texture";
+        click(ownView, removeTexture);
+        ownView.dialogKey(View::Key::Enter);
+        const std::vector<int> ownCounted = ownView.browserCategoryCounted(); // the built-in ones, Texture, None
+        const bool listedGrey = own.categories.empty() && own.library[0].info.category == "Texture" &&
+                                ownCounted.size() == static_cast<size_t>(kBuiltInCategories) + 2 &&
+                                ownCounted[kBuiltInCategories] == 1;
+        click(ownView, {removeTexture.x, firstRow + 12.0f}); // where Bass's x would be: its row, filtering
+        const bool builtIn = !ownView.confirmShown() && ownView.browserListed().empty();
+        check(removeShot && removeAsked && kept && askedAgain && removed && listedGrey && builtIn,
+              "the x on one of the user's categories removes it, asking first, its presets keeping it, listed in grey; "
+              "a built-in category has none");
+    }
+
+    // Save As: the Save dialog, the name, author, category and line of the preset, in its folder; a name taken there
+    // replaces it, a new one saves a new preset, which the patch then is; its category picked from the chips, a new
+    // one from + New; a new folder from New Folder.
+    model.loadPresetAt(opener);
+    click(view, detail::toolbarButton(3).center());
+    view.mouseMove(away, {});
+    const bool saveShot = renderer.save(view, dir / "23j-save.png");
+    const bool asOpener = view.saveShown();
+    type(view, "Opener Two"); // over the name, all of it selected
+    view.mouseMove(away, {});
+    renderer.save(view, dir / "23k-save-new.png");
+    view.typeKey(View::Key::Enter);
+    const int two = index("Opener Two");
+    check(saveShot && asOpener && two >= 0 && model.savedIn == "Live Set/Act 1" && model.presetIndex() == two &&
+              model.library[two].info.category == "Bass" && model.library[two].info.author == "Alex" &&
+              !view.saveShown(),
+          "Save As saves the patch as a new preset in its preset's folder, with its info");
+    check(model.presetName() == "Opener Two" && !model.patchEdited(), "the preset saved is the patch's preset");
+
+    // The Save dialog's folder tree's right-click menu: Open in Explorer showing the folder clicked, and New Folder
+    // making one in it.
+    click(view, detail::toolbarButton(3).center());
+    const Point liveSet{800.0f, 277.0f}; // its row, under User, Basses, Reese and Drafts
+    const std::vector<MenuItem> folderMenu = view.contextMenu(liveSet);
+    const bool folderOffered = folderMenu.size() == 5 && folderMenu[0].label == tr(Str::MenuNewFolder) &&
+                               folderMenu[1].label == tr(Str::MenuOpenInExplorer);
+    view.menuCommand(folderOffered ? folderMenu[1].command : 0);
+    const bool folderShown = model.openedFolder == "Live Set" && model.folderOpens == 1;
+    view.contextMenu(liveSet);
+    view.menuCommand(folderOffered ? folderMenu[0].command : 0);
+    const bool folderAsked = view.nameMenuShown();
+    type(view, "Sketches");
+    view.mouseMove(away, {});
+    renderer.save(view, dir / "23n-save-folder-menu.png");
+    view.typeKey(View::Key::Enter);
+    const bool folderMade =
+        std::find(model.folders.begin(), model.folders.end(), "Live Set/Sketches") != model.folders.end();
+    view.typeKey(View::Key::Escape);
+    check(folderOffered && folderShown && folderAsked && folderMade && !view.saveShown(),
+          "the Save dialog's folder tree's right-click menu opens a folder in Explorer and makes a new folder in it");
+
+    // Rename and Delete, offered on a subfolder and not on User: Rename's form holding the folder's name to type over,
+    // a name another folder has refused, and a new one renaming it with its subfolders and presets; Delete asking first
+    // (how many presets go with it), Escape keeping it and Enter deleting it.
+    click(view, detail::toolbarButton(3).center());
+    const bool userPlain = view.contextMenu({800.0f, 173.0f}).size() == 2; // User
+    const std::vector<MenuItem> liveSetMenu = view.contextMenu(liveSet);
+    const bool offersBoth = liveSetMenu.size() == 5 && liveSetMenu[3].label == tr(Str::MenuRenameFolder) &&
+                            liveSetMenu[4].label == tr(Str::MenuDeleteFolder);
+    view.menuCommand(offersBoth ? liveSetMenu[3].command : 0);
+    const bool renameAsked = view.nameMenuShown() && view.copyText(false) == "Live Set";
+    type(view, "Drafts");
+    view.typeKey(View::Key::Enter);
+    const bool takenRefused = view.nameMenuShown() &&
+                              std::find(model.folders.begin(), model.folders.end(), "Live Set") != model.folders.end();
+    view.typeKey(View::Key::SelectAll);
+    type(view, "Live Show");
+    view.mouseMove(away, {});
+    renderer.save(view, dir / "23o-save-folder-rename.png");
+    view.typeKey(View::Key::Enter);
+    const bool renamed = !view.nameMenuShown() &&
+                         std::find(model.folders.begin(), model.folders.end(), "Live Show/Act 1") != model.folders.end() &&
+                         std::find(model.folders.begin(), model.folders.end(), "Live Set") == model.folders.end() &&
+                         model.library[opener].folder == "Live Show/Act 1";
+    view.contextMenu(liveSet); // Live Show, in Live Set's place
+    view.menuCommand(offersBoth ? liveSetMenu[4].command : 0);
+    const bool deleteAsked = view.confirmShown();
+    view.mouseMove(away, {});
+    renderer.save(view, dir / "23p-save-folder-delete.png");
+    view.dialogKey(View::Key::Escape);
+    const bool deleteKept = !view.confirmShown() && model.folderDeletes == 0;
+    view.contextMenu(liveSet);
+    view.menuCommand(offersBoth ? liveSetMenu[4].command : 0);
+    view.dialogKey(View::Key::Enter);
+    const bool deleted = model.folderDeletes == 1 &&
+                         std::none_of(model.folders.begin(), model.folders.end(),
+                                      [](const std::string &f) { return f.starts_with("Live Show"); });
+    view.typeKey(View::Key::Escape); // the Save dialog closes
+    check(userPlain && offersBoth && renameAsked && takenRefused && renamed && deleteAsked && deleteKept && deleted &&
+              !view.saveShown(),
+          "the folder tree's menu renames a subfolder, refusing a name another has, and deletes one, asking first");
+
+    // The browser's folder tree offers the same menu: nothing on Factory, New Folder and Open in Explorer on User, and
+    // Rename and Delete too on a subfolder (Basses, open, its Reese under it).
+    click(view, detail::kPresetName.center());
+    const bool factoryPlain = view.contextMenu(treeRow(0)).empty();
+    const bool userTwo = view.contextMenu(treeRow(1)).size() == 2;
+    const std::vector<MenuItem> bassesMenu = view.contextMenu(treeRow(2));
+    const bool bassesAll = bassesMenu.size() == 5 && bassesMenu[3].label == tr(Str::MenuRenameFolder);
+    view.menuCommand(bassesAll ? bassesMenu[3].command : 0);
+    const bool treeRename = view.nameMenuShown() && view.copyText(false) == "Basses";
+    type(view, "Bass Sounds");
+    view.typeKey(View::Key::Enter);
+    const bool treeRenamed =
+        std::find(model.folders.begin(), model.folders.end(), "Bass Sounds/Reese") != model.folders.end() &&
+        view.browserShown() && view.contextMenu(treeRow(3)).size() == 5; // still open: Reese under it
+    view.contextMenu(treeRow(2));
+    view.menuCommand(bassesAll ? bassesMenu[4].command : 0);
+    const bool treeAsked = view.confirmShown();
+    view.dialogKey(View::Key::Enter);
+    const bool treeDeleted = !view.confirmShown() && view.browserShown() &&
+                             std::none_of(model.folders.begin(), model.folders.end(),
+                                          [](const std::string &f) { return f.starts_with("Bass Sounds"); });
+    const std::vector<MenuItem> userMenu = view.contextMenu(treeRow(1));
+    view.menuCommand(userMenu.size() == 2 ? userMenu[0].command : 0);
+    type(view, "Ideas");
+    view.typeKey(View::Key::Enter);
+    const bool treeMade = std::find(model.folders.begin(), model.folders.end(), "Ideas") != model.folders.end() &&
+                          view.browserListed().empty(); // shown, and empty
+    const int opensBefore = model.folderOpens;
+    view.contextMenu(treeRow(1));
+    view.menuCommand(userMenu.size() == 2 ? userMenu[1].command : 0);
+    check(factoryPlain && userTwo && bassesAll && treeRename && treeRenamed && treeAsked && treeDeleted && treeMade &&
+              model.folderOpens == opensBefore + 1 && model.openedFolder.empty(),
+          "the browser's folder tree's right-click menu makes, opens, renames and deletes folders, Factory having none");
+}
+
+// The preset library's parts in every theme: the bar (and its tooltip), the info card of the user's preset and of a
+// factory one, the browser (and filtered by category), the New Folder and New Category forms, the Save dialog and
+// Edit Info, into presets-<theme>-<part>.png.
+void renderPresetThemes(const std::filesystem::path &dir, Renderer &renderer) {
+    bool all = true;
+    for (int t = 0; t < View::themeCount(); ++t) {
+        FakeController model;
+        libraryModel(model);
+        model.themeName = View::themeName(t);
+        model.glowLevel = 0.5;
+        std::string theme = View::themeName(t);
+        std::transform(theme.begin(), theme.end(), theme.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+        View view(model);
+        auto shot = [&](const char *part, const Rect *crop = nullptr) {
+            all = renderer.save(view, dir / ("presets-" + theme + "-" + part + ".png"), crop) && all;
+        };
+        const Point away{600.0f, 960.0f};
+        const Point infoButton{detail::kPresetName.right() - 38.0f, detail::kPresetName.center().y};
+        const Rect top{300.0f, 0.0f, 600.0f, 220.0f};
+        model.loadPresetAt(libraryIndex(model, "Opener"));
+        model.favorites = {libraryIndex(model, "Opener"), libraryIndex(model, "Screamer")};
+        view.mouseMove(detail::kPresetName.center(), {});
+        shot("1-bar-tooltip", &top);
+        click(view, infoButton);
+        view.mouseMove(away, {});
+        shot("2-info", &top);
+        view.dialogKey(View::Key::Escape);
+        model.loadPresetAt(libraryIndex(model, "Screamer"));
+        click(view, infoButton);
+        view.mouseMove(away, {});
+        shot("3-info-factory", &top);
+        view.dialogKey(View::Key::Escape);
+        model.loadPresetAt(libraryIndex(model, "Opener"));
+        const Rect browser{190.0f, 0.0f, 820.0f, 660.0f};
+        click(view, detail::kPresetName.center());
+        click(view, {300.0f, 215.0f + 3.0f * 26.0f + 13.0f}); // Live Set
+        view.mouseMove({806.0f, 68.0f}, {}); // over Subfolders, its tooltip showing
+        shot("4-browser", &browser);
+        // The factory presets: Open Folder and the file's button have nothing to show, as their tooltips say.
+        click(view, {300.0f, 215.0f + 13.0f}); // Factory
+        click(view, {620.0f, 132.0f + 13.0f}); // its first preset
+        const float stripMiddle = 42.0f + std::min(600.0f, view.height() - 54.0f) - 31.0f;
+        view.mouseMove({778.0f, stripMiddle}, {}); // the file's button
+        shot("4b-browser-factory", &browser);
+        view.mouseMove({929.0f, 68.0f}, {}); // Open Folder
+        shot("4c-browser-factory-folder", &browser);
+        click(view, {300.0f, 215.0f + 3.0f * 26.0f + 13.0f}); // Live Set again
+        click(view, {300.0f, 215.0f + 7.0f * 26.0f + 12.0f + 22.0f + 12.0f}); // Bass
+        click(view, {300.0f, 215.0f + 1.0f * 26.0f + 13.0f}); // User
+        view.mouseMove(away, {});
+        shot("5-browser-filtered", &browser);
+        click(view, {392.0f, 203.0f}); // + by FOLDERS
+        type(view, "Drafts");
+        shot("6-new-folder", &browser);
+        view.typeKey(View::Key::Escape);
+        view.dialogKey(View::Key::Escape); // the browser closes
+        const Rect middle{180.0f, 30.0f, 840.0f, 520.0f}; // the Save dialog, under the preset bar
+        click(view, detail::toolbarButton(3).center()); // Save As
+        view.mouseMove(away, {});
+        shot("8-save", &middle);
+        click(view, {268.0f, 279.0f}); // its + New, first on the chips' third row
+        type(view, "Vocal");
+        shot("7-new-category", &middle);
+        view.typeKey(View::Key::Escape);
+        view.typeKey(View::Key::Escape);
+        model.loadPresetAt(libraryIndex(model, "Test Patch 3"));
+        click(view, infoButton);
+        click(view, {detail::kPresetName.center().x + 220.0f - 66.0f, detail::kTitleBarH + 6.0f + 125.0f}); // Add Info
+        // Its description left empty, showing the field's hint.
+        view.mouseMove(away, {});
+        shot("9-edit-info", &middle);
+        view.typeKey(View::Key::Escape);
+    }
+    check(all, "render the preset library's parts in every theme");
+}
+
 void run(const std::filesystem::path &dir, float scale) {
     Renderer renderer(scale);
     FakeController model;
@@ -11854,6 +12499,15 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, kInitButton);
     click(view, ok);
     check(model.resets == 2, "the dialog's Init button resets the changed patch");
+    // Save As, and Save on a preset it can't write over, open the Save dialog (counted as a save here, and closed
+    // again), where the plugin has files.
+    auto presetClick = [&](Point p) {
+        click(view, p);
+        if (view.saveShown()) {
+            ++model.saves;
+            view.typeKey(View::Key::Escape);
+        }
+    };
     // A file still to be picked goes unsaid, so the dialog before one loads is a line shorter: a click just above
     // where the longer one ends falls outside it and cancels, and Save then gets its click.
     const Rect shorter{420.0f, std::round((view.height() - 132.0f) * 0.5f), 360.0f, 132.0f};
@@ -11861,7 +12515,7 @@ void run(const std::filesystem::path &dir, float scale) {
     view.mouseMove({shorter.right() - 64.0f, shorter.bottom() - 38.0f}, {});
     const bool fileConfirm = renderer.save(view, dir / "15a-confirm-file.png");
     click(view, {confirm.x + 40.0f, confirm.bottom() - 4.0f});
-    click(view, kSaveAsButton);
+    presetClick(kSaveAsButton);
     check(fileConfirm && model.loads == 1 && model.saves == 1, "the dialog before a file loads is a line shorter");
     click(view, kLoadButton);
     click(view, {shorter.right() - 64.0f, shorter.bottom() - 38.0f});
@@ -11874,8 +12528,8 @@ void run(const std::filesystem::path &dir, float scale) {
     const std::wstring presetBefore = model.presetFile();
     const bool editedBefore = model.patchEdited();
     model.setPreset(L"Bell"); // unchanged: Save is greyed out and does nothing
-    click(view, kSaveButton);
-    click(view, kSaveAsButton);
+    presetClick(kSaveButton);
+    presetClick(kSaveAsButton);
     view.mouseMove(kSaveButton, {});
     const bool unchangedShot = renderer.save(view, dir / "15c-save-unchanged.png");
     const uint32_t greyed = renderer.pixel({kSaveButton.x - 6.5f, kSaveButton.y}); // the disk's left edge
@@ -11886,38 +12540,38 @@ void run(const std::filesystem::path &dir, float scale) {
     const Point overwriteOk{shorter.right() - 64.0f, shorter.bottom() - 38.0f};
     const Point overwriteCancel{shorter.x + 170.0f + 40.0f, shorter.bottom() - 38.0f};
     model.setPreset(L"Bell", true);
-    click(view, kSaveButton);
+    presetClick(kSaveButton);
     view.mouseMove(overwriteOk, {});
     const bool overwriteShot = renderer.save(view, dir / "15d-confirm-overwrite.png");
     click(view, overwriteCancel);
     check(overwriteShot && model.writes == 0 && model.patchEdited(), "Save asks before overwriting, and Cancel keeps it");
-    click(view, kSaveButton);
+    presetClick(kSaveButton);
     click(view, overwriteOk);
     check(model.writes == 1 && model.written == L"Bell" && !model.patchEdited() && model.saves == 2,
           "Overwrite writes the patch over the preset's file, which is then unchanged");
     model.setPreset(L"Bell", true);
     model.writeFails = true;
-    click(view, kSaveButton);
+    presetClick(kSaveButton);
     click(view, overwriteOk);
     model.writeFails = false;
     check(model.writes == 2 && model.patchEdited(), "a preset that could not be written stays changed");
     // A factory preset is built in: Save, asking nothing, opens Save As's dialog (the Save As after it taken too).
     model.setPreset(L"factory:Bell", true);
-    click(view, kSaveButton);
-    click(view, kSaveAsButton);
+    presetClick(kSaveButton);
+    presetClick(kSaveAsButton);
     check(model.writes == 2 && model.saves == 4 && model.patchEdited(),
           "Save on a changed factory preset saves it as a new one, asking nothing");
     model.saves = 2;
     model.setPreset(L""); // Init, unchanged: neither saves
-    click(view, kSaveButton);
-    click(view, kSaveAsButton);
+    presetClick(kSaveButton);
+    presetClick(kSaveAsButton);
     check(model.writes == 2 && model.saves == 2, "Save and Save As do nothing on an unchanged Init");
     model.setPreset(L"", true); // Init, changed: only Save As, which asks nothing
-    click(view, kSaveButton);
-    click(view, kSaveAsButton);
+    presetClick(kSaveButton);
+    presetClick(kSaveAsButton);
     view.mouseMove(kSaveButton, {});
     const bool initShot = renderer.save(view, dir / "15e-save-init.png");
-    click(view, kSaveAsButton);
+    presetClick(kSaveAsButton);
     check(initShot && model.writes == 2 && model.saves == 4, "Save does nothing on a changed Init, and Save As goes ahead");
     model.setPreset(presetBefore, editedBefore);
 
@@ -12108,17 +12762,17 @@ void run(const std::filesystem::path &dir, float scale) {
     runMore(dir, renderer);
     // The README's, in the default theme (see release.ps1): Screamer's routing, Crystal Motion's effects as a chain and
     // Neon Pluck's as a graph, split low and high.
-    renderExample(dir, renderer, "PD Crystal Motion", "24-example", 6, "Spectrum");
-    renderExample(dir, renderer, "LD Screamer", "24c-screamer-example", 4, "Spectrum", true); // a note playing
-    renderExample(dir, renderer, "BA Neon Pluck", "24b-split-example", 4, "Spectrum");
-    renderExample(dir, renderer, "SQ Future Plucks", "24d-seq-example", SIZE_MAX, "Spectrum", false,
+    renderExample(dir, renderer, "Crystal Motion", "24-example", 6, "Spectrum");
+    renderExample(dir, renderer, "Screamer", "24c-screamer-example", 4, "Spectrum", true); // a note playing
+    renderExample(dir, renderer, "Neon Pluck", "24b-split-example", 4, "Spectrum");
+    renderExample(dir, renderer, "Future Plucks", "24d-seq-example", SIZE_MAX, "Spectrum", false,
                   true); // its SEQ view (the README's)
-    renderExample(dir, renderer, "PD Crystal Motion", "42-porcelain-crystal", 6, "Porcelain");
-    renderExample(dir, renderer, "BA Neon Pluck", "43-porcelain-neon", 4, "Porcelain");
-    renderExample(dir, renderer, "BA Reese Bass", "25-reese", 4);
-    renderExample(dir, renderer, "LD Folded Lead", "31-folded-lead", 2);
-    renderExample(dir, renderer, "BA Fuzz Bass", "32-fuzz-bass", 2);
-    renderExample(dir, renderer, "SQ Step Filter", "33-step-filter", 3);
+    renderExample(dir, renderer, "Crystal Motion", "42-porcelain-crystal", 6, "Porcelain");
+    renderExample(dir, renderer, "Neon Pluck", "43-porcelain-neon", 4, "Porcelain");
+    renderExample(dir, renderer, "Reese Bass", "25-reese", 4);
+    renderExample(dir, renderer, "Folded Lead", "31-folded-lead", 2);
+    renderExample(dir, renderer, "Fuzz Bass", "32-fuzz-bass", 2);
+    renderExample(dir, renderer, "Step Filter", "33-step-filter", 3);
     renderFactoryPresets(dir, renderer);
     checkAlgorithms(dir, renderer);
     checkAlgorithmMenu(dir, renderer);
@@ -12182,6 +12836,8 @@ void run(const std::filesystem::path &dir, float scale) {
     testFlatThemes(dir, renderer);
     testModPill(dir, renderer);
     testRatioDisplay(dir, renderer);
+    testPresetLibrary(dir, renderer);
+    renderPresetThemes(dir, renderer);
     testTempo(dir, renderer);
 }
 
@@ -12200,6 +12856,10 @@ int main(int argc, char **argv) {
     if (argc > 3 && std::strcmp(argv[3], "--presets") == 0) { // only the factory presets' routing views
         Renderer renderer(scale);
         renderFactoryPresets(dir, renderer);
+    } else if (argc > 3 && std::strcmp(argv[3], "--library") == 0) { // only the preset library's
+        Renderer renderer(scale);
+        testPresetLibrary(dir, renderer);
+        renderPresetThemes(dir, renderer);
     } else {
         run(dir, scale); // COM objects die before CoUninitialize
     }

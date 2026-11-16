@@ -849,6 +849,24 @@ int main(int argc, char **argv) {
 
         // At 900 px wide the view is drawn at 0.75 scale; the Volume knob sits at (201, 64) in view units.
         HWND editor = GetWindow(parent, GW_CHILD);
+
+        // A preset loaded from the editor (the preset bar's next arrow, at (807, 18) in view units): the host reads
+        // the values again (kParamValuesChanged) and the project is marked changed, with no beginEdit, performEdit or
+        // endEdit, which it would record as automation and in its undo.
+        handler.edits.clear();
+        handler.restarts = 0;
+        handler.dirty = false;
+        if (editor) {
+            SendMessageW(editor, WM_PAINT, 0, 0);
+            pumpMessages(100);
+            SendMessageW(editor, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(605, 14));
+            SendMessageW(editor, WM_LBUTTONUP, 0, MAKELPARAM(605, 14));
+            pumpMessages(100);
+        }
+        check(editor && handler.edits.empty() && (handler.restarts & kParamValuesChanged) != 0 && handler.dirty,
+              "a preset loaded in the editor has the host read the values again and marks the project changed, with "
+              "no edits");
+
         const double volumeBefore = plugin.normalized(volume);
         handler.edits.clear();
         if (editor) {

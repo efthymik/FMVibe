@@ -165,8 +165,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     before the host restarts) and is reported through voice-info after reactivation, and a state with a higher one,
     loaded while active, requests one too.
 
-  It opens the editor inside a hidden host window and drags the Volume knob with mouse messages. It checks that
-  the param changes and that the host receives gesture-begin, value and gesture-end events, and that an older
+  It opens the editor inside a hidden host window, where the preset bar's next arrow loads a preset with no param
+  events, the host asked to rescan the values and marking the project changed, and drags the Volume knob with mouse
+  messages. It checks that the param changes and that the host receives gesture-begin, value and gesture-end events, and that an older
   value the host hands back right after isn't taken; that on the SEQ tab a wheel message with Ctrl in its keys zooms
   the roll, though the thread's own idea of Ctrl is up (as while the host has the keyboard); that with nothing
   sounding processing sleeps, but not while the
@@ -284,7 +285,12 @@ the plain CMake commands and installing into a host are in the [README](README.m
     an LFO with the retired Custom shape did, the phaser's and flanger's sweeps synced to the host tempo, the parametric
     EQ's, the phase disperser's and the voice filters' analyzers (falling away as fast at 96 kHz as at 48), and that each example preset holds valid values
     and sounds at a sane level;
-  - each factory preset's file being sparse, as the preset tool writes it;
+  - each factory preset's file being sparse, as the preset tool writes it, and each saying it is FMVibe's, in a
+    built-in category, with a line of 80 characters at most; and a name from up to 0.11 ("LD Screamer") naming the
+    preset as it is named now;
+  - a preset's author, category and description reading back as written (UTF-8 too, from a sparse patch and a full
+    one, and as the library's scan reads them past the params), as none from a layout before them, and nothing from a
+    stream that isn't a state;
   - the tempo a preset was saved at reading back as written, and as none below 20 BPM or from a layout before it;
   - the mod wheel leaving the FM alone until it is assigned, and the output meter's peaks, fall and clip light;
   - the DC blocker before the effects: a squeezed square coming out with no DC, a Ring route at unison going into
@@ -661,14 +667,27 @@ the plain CMake commands and installing into a host are in the [README](README.m
     or a click around it, and the wheel scrolling nothing behind it;
   - undo and redo of drags, wheel runs, node moves, typed values and a removed effect with its modulation;
   - typing values into knobs, header knobs and target depths, with Enter, Escape and a click elsewhere;
-  - the preset bar's arrows (asking first while the patch has changed, the dialog a line shorter before a file
-    loads); Save greyed out (read off the rendered pixels) and doing nothing while the preset is unchanged, asking
-    before it overwrites the preset's file (Cancel keeping it, a failed write leaving the patch changed), on a changed factory
-    preset opening Save As's dialog without asking, and
-    doing nothing on Init, changed or not, where Save As does nothing until the patch changes and the preset browser, which loading a preset closes; its search narrowing the list as words are
-    typed, Enter loading the preset found, Up and Down picking one, Escape and the search's × emptying it, and
-    its editing: selecting with Shift and the arrows, Home and End, the mouse (a drag, a Shift+click, a
-    double-click for a word), cutting and pasting;
+  - the preset bar's arrows (asking first while the patch has changed, the dialog a line shorter before a file loads);
+    its category's dot at its left, its name in the middle and its author at its right (read off the rendered pixels),
+    and its tooltip; its info card's star making the preset a favorite, Edit Info, Show in Browser, Escape
+    and a click around it closing it, and a factory preset's offering Save Copy; the browser opening on Factory, then where it was left, Show in Browser on the preset's
+    folder, listing its subfolders' presets unless Subfolders is off, a click loading a preset and leaving it open, a
+    double-click loading one and closing it, and Close closing it; its sidebar's All, Favorites and Recent, its tree's folders opening and closing and its categories
+    filtering (two at once, Clear taking them off); the folder's path leading back up and the file's button
+    showing the preset's file (none for a factory preset); its search finding presets by
+    name, category, author and description; its + by FOLDERS making a folder and the Save dialog's + New a category;
+    the x on one of the user's categories removing it after asking, its presets keeping it, listed in grey;
+    Edit Info writing a preset's author and line into its file; a Save dialog's folder's right-click menu opening it in
+    Explorer, making a folder in it, renaming it (a name taken refused) and deleting it after asking, and the browser's tree's the same (none on Factory); Save As saving the patch as a new preset in its preset's
+    folder with its info, as the patch's preset; and every part (the bar, the info cards, the browser with its tooltips,
+    filtered, the New Folder and New Category forms, the Save dialog and Edit Info) rendered in every theme
+    (`fmvibe-uishot <dir> 1 --library` replays these alone); Save greyed out (read off the rendered pixels) and doing
+    nothing while the preset is unchanged, asking before it overwrites the preset's file (Cancel keeping it, a failed
+    write leaving the patch changed), on a changed factory preset opening Save As's dialog without asking, and doing
+    nothing on Init, changed or not, where Save As does nothing until the patch changes and the preset browser, which
+    loading a preset closes; its search, taking the keyboard once clicked and letting it go at a click elsewhere, narrowing the list as words are typed, Enter loading the preset found, Up and
+    Down picking one, Escape and the search's × emptying it, and its editing: selecting with Shift and the arrows, Home
+    and End, the mouse (a drag, a Shift+click, a double-click for a word), cutting and pasting;
   - drawing a Custom wave's partials, at 16 and 64 of them too (the wheel stepping through the counts), the ones a lower count hides kept as they were, the
     edit button (a pencil) by the keyboard switch opening the partial editor and closing it, as another node's tab
     in the inspector does (read off the rendered pixels), and the full-size shape editor hiding the inspector;
@@ -690,14 +709,14 @@ the plain CMake commands and installing into a host are in the [README](README.m
     preset browser's list and the effects graph, and nothing over a dialog; the wheel turned sideways scrolling the
     row, the source cards and the graph; one finger turning a knob it lands on (on a card in the row too, a double
     tap setting it back), tapping an effect's icon, and elsewhere panning the row, the source cards and the
-    browser's list (loading nothing it went down on, a tap then loading one);
+    browser's list (picking nothing it went down on, a tap then picking one);
   - Ctrl-dragging an effect card along the row, an effect's node and a split's (its join and its band's effect along)
     in the graph and a source card, each leaving a copy where it lands with the original's settings, one undo step;
     a plain drag moving instead, and a Ctrl-drag called off leaving nothing, not even an undo step;
   - Enter and Escape on the bin's dialog, the settings and the preset arrows' and the browser's "load anyway?"
     (over the browser, its search letting the keyboard go): Escape cancelling or closing, Enter going ahead;
-  - dragging the effects, the source cards, the MODS view's rows and the preset browser's list with the middle
-    button held: over a knob without turning it, stopping at the row's end and following back from there at once,
+  - dragging the effects, the source cards, the MODS view's rows and the preset browser's list and sidebar with
+    the middle button held: over a knob without turning it, stopping at the row's end and following back from there at once,
     and doing nothing while the left button drags a knob;
   - eight modulations on a knob and six on a matrix cell showing as many depth handles as fit and a "+n" pill,
     nothing drawn outside the knob's column or in the next cell (read off the rendered pixels); the pill's list
@@ -801,7 +820,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the state: the CLAP plugin's bytes, through a stream that moves 5 bytes at a time, the controller's own state
     empty, a value from the host taken while not processing, loading bringing the saved value back and having the
     host read the values again, and a foreign blob refused;
-  - the editor in a hidden host window: one at a time, resized keeping its aspect ratio, the Volume knob dragged
+  - the editor in a hidden host window: one at a time, resized keeping its aspect ratio, a preset loaded by the
+    preset bar's arrow with no edits (kParamValuesChanged and the project marked changed instead), the Volume knob dragged
     (beginEdit, performEdit, endEdit, and an older value the host hands back right after not taken), a state with
     the modulation panel collapsed asking the host for a shorter window, its window gone once it is removed, and
     opening again after.
@@ -876,7 +896,9 @@ The factory presets are preset files, `presets/Factory/<name>.fmv`, which the bu
 the browser demo alike, again whenever one changes. Neither writes them out: the preset library lists them from
 memory under Factory, beside the preset folder's files (`PresetLibrary::rescan()`), and a factory preset's "file" is
 `factory:` and its name (`PresetLibrary::kFactoryPrefix`), which the host's state names as it would a file. So a
-name, once released, is stored in projects: none is renamed or taken out. `presets/factory.txt` names them in the
+name, once released, is stored in projects: none is renamed or taken out. The one exception: up to 0.11 each name
+began with its category's two letters ("LD Screamer"), and since then the names go without them; such a name, from
+a project or the old `Factory` subfolder, finds the preset as it is named now (`factoryPresetNamed()`). `presets/factory.txt` names them in the
 order they came; a new one goes at the end. The build fails on a file the list doesn't name, or a name without its
 file.
 
@@ -885,7 +907,10 @@ others), then the editor layout, a kilobyte or so where a preset the plugin save
 To add or change one:
 
 1. Make it in the plugin and save it into `presets/Factory` (the preset bar's Save, then the file dialog).
-2. Make the file sparse: `build\release\fmvibe-presettool.exe "presets\Factory\<name>.fmv"`. With `--arrange` first
+2. Make the file sparse: `build\release\fmvibe-presettool.exe "presets\Factory\<name>.fmv"`. A factory preset says
+   it is FMVibe's, in a built-in category, with a line about it (the quality test checks): set them with
+   `--author=FMVibe --category=<Bass, Drum, FX, Keys, Lead, Pad, Pluck or Seq> --description=<one line, at most 80
+   characters>` before the file. With `--arrange` first
    (`fmvibe-presettool --arrange <file>...`), it also lays the routing graph out again where its nodes, wires, lines to
    OUT or labels run over each other (`arrangeRouting()` in `src/gui/arrange.h`: each node moved to the place on a
    grid and each wire given the bow that lowers a cost most, from where they are and from columns by their distance to
@@ -959,8 +984,8 @@ browser demo on Linux, with the Emscripten version `build-web.ps1` pins, and pub
 `.\release.ps1` does all of it: it needs `main`, a clean working tree, `main` level with origin and a free tag. It
 raises the minor version in `project()` at the top of `CMakeLists.txt` (`-Version 1.0` picks another), runs
 `build.ps1 -Validate` (every test and both validators), and copies the snapshots the tests render, in the Spectrum theme, over the README's:
-LD Screamer's routing view over `docs/editor.png`, PD Crystal Motion's effects' panel as a chain over `docs/fx-chain.png`, and
-BA Neon Pluck's effects' panel, a graph split low and high, over `docs/fx-graph.png`, and SQ Future Plucks' SEQ view over `docs/seq.png`. It then lists what it would do and asks; only an answer of `yes` commits
+Screamer's routing view over `docs/editor.png`, Crystal Motion's effects' panel as a chain over `docs/fx-chain.png`, and
+Neon Pluck's effects' panel, a graph split low and high, over `docs/fx-graph.png`, and Future Plucks' SEQ view over `docs/seq.png`. It then lists what it would do and asks; only an answer of `yes` commits
 `CMakeLists.txt` and the three screenshots as "Version X.Y" on `main`, tags it `vX.Y` and pushes `main` and the tag.
 Any other answer puts those files back as they were. `.\release.ps1 -Screenshots` does only the screenshots, on any
 branch: it builds and runs `fmvibe-uishot` and copies its renders over the three, leaving the version, the other tests
@@ -1008,7 +1033,7 @@ breakpoints in `src/` then hit.
 | `src/state.cpp` | The state's bytes: the patch (params, then the editor layout chunk, whose fields one list describes for writing and reading), the settings and preset chunks; independent of Windows |
 | `src/remotepages.cpp` | The remote control pages hosts show, built from the patch and the editor's source order |
 | `src/presets.cpp` | The preset library: the factory presets, built in, and the preset folder and its scan |
-| `src/usersettings.cpp` | The user's settings file in the roaming app data (theme, hue, glow, handle size, line strength, the editor's size) |
+| `src/usersettings.cpp` | The user's settings file in the roaming app data (theme, hue, glow, handle size, line strength, the editor's size, favorite and recent presets, the user's own categories and where the preset browser opens) |
 | `src/sharedtelemetry.h` | The telemetry the audio thread hands the editor, in atomics |
 | `src/params.h` | Parameter layout (index ↔ id), slot targets, value mappings |
 | `src/params.cpp` | Parameter table (names, ranges, defaults) and value text |
@@ -1033,7 +1058,8 @@ breakpoints in `src/` then hit.
 | `src/gui/shapes.cpp` | Editing drawn shapes: Curve sources' shapes, shaper curves and the note source's curve |
 | `src/gui/mods.cpp` | The MODS view: every modulation as a row, its filter, and the cascading menus (the target's with a search) that move it, retarget it and pick its aux |
 | `src/gui/seq.cpp` | The SEQ view: the sequencer's settings card, and the piano roll with its tools, ruler, keys and lane |
-| `src/gui/dialogs.cpp` | The settings and confirm dialogs, the preset browser with its search, and the text fields' editing |
+| `src/gui/dialogs.cpp` | The settings and confirm dialogs, the preset actions, and the text fields' editing |
+| `src/gui/presetui.cpp` | The preset bar's info and its card, the preset browser (its sidebar, list and search) and the Save dialog with its New Category and New Folder forms |
 | `src/gui/canvas.cpp` | Small Direct2D/DirectWrite drawing layer |
 | `src/gui/canvas_web.cpp` | The same drawing layer over the browser's 2D context, for the demo |
 | `src/gui/canvas_cairo.cpp` | The same drawing layer over Cairo, for the Linux development build |
@@ -1042,7 +1068,7 @@ breakpoints in `src/` then hit.
 | `src/gui/controller.cpp` | The undo history, which the plugin keeps for the editor |
 | `src/factory.cpp` | The factory presets' loading; the presets themselves are `presets/Factory/*.fmv`, built in by `cmake/embed_presets.cmake` (see [Factory presets](#factory-presets)) |
 | `presets/` | The factory presets' files, and `factory.txt`, the order they came in |
-| `tools/presettool.cpp` | `fmvibe-presettool`: makes preset files sparse, as the factory ones are stored, and lays their routing graphs out (`--arrange`) |
+| `tools/presettool.cpp` | `fmvibe-presettool`: makes preset files sparse, as the factory ones are stored, lays their routing graphs out (`--arrange`) and sets their info (`--author`, `--category`, `--description`) |
 | `src/gui/arrange.h` | Laying a routing graph out: its clashes (nodes, wires, lines to OUT, loops and labels over each other) and a search for a layout without them |
 | `tests/smoke_host.cpp` | Headless CLAP test host |
 | `tests/vst3_host.cpp` | Headless VST3 test host |
@@ -1163,11 +1189,12 @@ itself.
   own switch says.
 - Edits in the editor reach the host as `PARAM_GESTURE_BEGIN` / `PARAM_VALUE` / `PARAM_GESTURE_END` events (in
   VST3, `beginEdit()` / `performEdit()` / `endEdit()` on the main thread). Hosts
-  record automation and undo from these, and mark the project as changed. Loading a preset, or Init, sends them for
-  each param whose value changed. The queue they wait in keeps room for the end of each gesture begun, so a host is
+  record automation and undo from these, and mark the project as changed. Loading a preset and Init send none: the host is asked to read every value again (CLAP's values rescan,
+  VST3's kParamValuesChanged) and told the project changed, so it records none of it as automation or in its undo.
+  The queue they wait in keeps room for the end of each gesture begun, so a host is
   never left inside one (a gesture whose begin didn't fit goes without its end); edits that don't fit have the host
   read every value again instead (one values rescan, from the main-thread callback). For half a second after the plugin
-  tells the host a param's value, it takes no value for that param from the host: Bitwig hands values back a
+  tells the host a param's value (or a preset load changes it), it takes no value for that param from the host: Bitwig hands values back a
   little later, and taking them would flip a preset loaded meanwhile back to the one before, for a moment. VST3 hosts
   hand every edit back to the processor, which the same moment keeps out.
 - The state version rises at most once between two tagged releases. A change that needs older states loaded
@@ -1207,7 +1234,9 @@ itself.
   the graph, the band each split shows and which splits' containers are folded, the SEQ view's roll (whether it
   draws, its snap, its lane, its lowest row and whether it is folded to the scale), and the tempo the patch was last
   saved as a preset at (0 for none), which a host that lets the editor set the tempo (`Controller::hasTempo()`)
-  takes up as the preset loads.
+  takes up as the preset loads, then what the preset says about itself (`gui::PresetInfo`: its author, its category by
+  name and its one-line description, each as its length and its bytes in UTF-8), which the library's scan reads past
+  the params (`readPresetInfo()`) and an older plugin, reading a longer layout than it knows, skips.
   The host's state goes on with
   the settings chunk (the oversampling, MPE and MPE's bend range) and a preset chunk (whether the patch changed since its preset, then the preset file's path
   in UTF-8, left out past 64 KB); preset files stop after the layout. Params and layout fields a

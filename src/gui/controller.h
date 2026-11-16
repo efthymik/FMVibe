@@ -9,6 +9,7 @@
 #include <cmath>
 #include <iterator>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace fmvibe::gui {
@@ -48,6 +49,71 @@ constexpr std::array<int, kMaxSources> identitySourceOrder() {
     return order;
 }
 
+// What a preset says about itself: who made it, its category and a line about it. Saved with the patch, in the layout
+// chunk (see UiLayout::presetInfo), so a preset file and the host's project carry it; a preset saved before it has
+// none. The category is stored by name: a built-in one by its English name (see kPresetCategories), any other as typed.
+struct PresetInfo {
+    std::string author;
+    std::string category;
+    std::string description; // one line
+    bool empty() const { return author.empty() && category.empty() && description.empty(); }
+    bool operator==(const PresetInfo &) const = default;
+};
+// The most characters typed into each, and the most bytes saved (room for UTF-8 from a file).
+constexpr size_t kMaxPresetAuthor = 32;
+constexpr size_t kMaxPresetCategory = 6; // a new one's name, as long as the built-in ones' at most (Pluck)
+constexpr size_t kMaxPresetDescription = 80;
+constexpr size_t kMaxPresetName = 48;
+
+// The categories FMVibe offers, by the name presets store; each its color (see categoryColor()), and the two letters
+// a factory preset's name started with up to 0.11.
+struct BuiltInCategory {
+    const char *name;
+    Str label; // as the editor shows it
+    Str pill;  // in capitals, as its pill shows it
+    const char *prefix;
+};
+inline constexpr BuiltInCategory kPresetCategories[] = {
+    {"Bass", Str::CategoryBass, Str::CategoryBassPill, "BA"},
+    {"Drum", Str::CategoryDrum, Str::CategoryDrumPill, "DR"},
+    {"FX", Str::CategoryFx, Str::CategoryFxPill, "FX"},
+    {"Keys", Str::CategoryKeys, Str::CategoryKeysPill, "KY"},
+    {"Lead", Str::CategoryLead, Str::CategoryLeadPill, "LD"},
+    {"Pad", Str::CategoryPad, Str::CategoryPadPill, "PD"},
+    {"Pluck", Str::CategoryPluck, Str::CategoryPluckPill, "PL"},
+    {"Seq", Str::CategorySeq, Str::CategorySeqPill, "SQ"},
+};
+constexpr int kBuiltInCategories = static_cast<int>(std::size(kPresetCategories));
+// A category of the user's own: its name and its color, one of kCustomCategoryColors after the built-in ones'.
+// Kept in the user's settings, so every FMVibe offers it.
+constexpr int kCustomCategoryColors = 5;
+struct PresetCategory {
+    std::string name;
+    int color = 0; // 0 to kBuiltInCategories + kCustomCategoryColors - 1
+};
+// Whether two names are the same, whatever the case of their ASCII letters.
+inline bool sameName(std::string_view a, std::string_view b) {
+    return a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin(), [](char x, char y) {
+               return (x >= 'A' && x <= 'Z' ? x - 'A' + 'a' : x) == (y >= 'A' && y <= 'Z' ? y - 'A' + 'a' : y);
+           });
+}
+// The built-in category named `name` (whatever its case), or -1.
+inline int builtInCategory(std::string_view name) {
+    for (int i = 0; i < kBuiltInCategories; ++i)
+        if (sameName(kPresetCategories[i].name, name))
+            return i;
+    return -1;
+}
+// Up to 0.11, a factory preset's name started with its category's two letters and a space ("LD Screamer"), as a
+// project saved then names it: the category they name, or -1 (see factoryPresetNamed()).
+inline int prefixCategory(std::string_view name) {
+    if (name.size() < 4 || name[2] != ' ')
+        return -1;
+    for (int i = 0; i < kBuiltInCategories; ++i)
+        if (sameName(name.substr(0, 2), kPresetCategories[i].prefix))
+            return i;
+    return -1;
+}
 // Editor state that isn't a param but is saved with the patch.
 struct UiLayout {
     // Node positions in the routing graph, 0..1 within the graph area: the operators' circles, and the boxes of the
@@ -120,6 +186,9 @@ struct UiLayout {
     // takes it up as the preset loads, so a sequencer pattern plays at the tempo it was made at; a plugin host's tempo
     // stays its own. Part of the patch, like the node places, but not undone.
     float savedTempo = 0.0f;
+    // What the preset says about itself (see PresetInfo). Part of the patch, but not undone: it changes as a preset is
+    // saved, or its info edited.
+    PresetInfo presetInfo;
 };
 
 // What a preset or Init leaves as it is, taken from the layout before it: how big the editor is, which panels are
@@ -210,10 +279,12 @@ inline double clampTempo(double bpm) {
     return std::round(std::clamp(bpm, kMinTempo, kMaxTempo) * 100.0) / 100.0;
 }
 
-// A preset in the library: a .fmv file in the preset folder, or in one of its subfolders.
+// A preset in the library: a factory preset, built in, or a .fmv file in the preset folder or one of its subfolders.
 struct PresetEntry {
-    std::string name;     // the file's name without .fmv
-    std::string category; // the subfolder it is in, "" at the top
+    std::string name;   // the file's name without .fmv, or the factory preset's
+    std::string folder; // the subfolder it is in, its parts joined by '/', "" at the top (and for a factory preset)
+    bool factory = false;
+    PresetInfo info;    // as its file has it
 };
 
 // One step of the editor's undo history: the params it changed, with their values before and
@@ -319,7 +390,42 @@ public:
     virtual std::string presetName() const = 0;
     virtual bool loadPresetAt(int index) = 0;
     virtual std::wstring presetFolder() const = 0;
-    virtual void openPresetFolder() = 0;
+    // Shows the preset folder's subfolder `folder` (its parts joined by '/', "" the preset folder) in Explorer.
+    virtual void openPresetFolder(const std::string &) {}
+    // Shows the preset's file in Explorer, picked: not a factory preset's, which has none.
+    virtual void showPresetFile(int) {}
+    // The preset folder's subfolders, as the last scan found them, empty ones too: each its parts joined by '/', every
+    // folder after the one it is in, by name.
+    virtual std::vector<std::string> presetFolders() const { return {}; }
+    // Makes the subfolder `folder` (its parts joined by '/') and scans again; false if it can't be made.
+    virtual bool makePresetFolder(const std::string &) { return false; }
+    // Renames the subfolder `from` to `to` (in the same folder), and deletes one into the Recycle Bin with all it
+    // holds; each scans again. False if it can't. A preset's file in a folder renamed is kept track of.
+    virtual bool renamePresetFolder(const std::string &, const std::string &) { return false; }
+    virtual bool deletePresetFolder(const std::string &) { return false; }
+    // Whether the current preset is a factory preset, built in (its info can't be changed, nor its file shown).
+    bool presetFactory() const { return presetHasFile() && !presetWritable(); }
+    // Saves the patch as the preset `name` in the subfolder `folder`, with `info`: it is then the patch's preset, and
+    // the library lists it. Whether a preset of that name is there already, which saving replaces.
+    virtual bool savePresetIn(const std::string &, const std::string &, const PresetInfo &) { return false; }
+    virtual bool presetExists(const std::string &, const std::string &) const { return false; }
+    // Writes `info` into the file of the library's preset `index`, leaving its sound alone (and the patch, though it
+    // is that preset: only its info then changes, as the file's). Not a factory preset's.
+    virtual bool setPresetInfo(int, const PresetInfo &) { return false; }
+    // The user's favorite presets and the ones loaded last (the last first), by entry: kept in the user's settings.
+    virtual bool presetFavorite(int) const { return false; }
+    virtual void setPresetFavorite(int, bool) {}
+    virtual std::vector<int> recentPresets() const { return {}; }
+    // The user's own categories, kept in their settings after the built-in ones (see kPresetCategories).
+    virtual std::vector<PresetCategory> userCategories() const { return {}; }
+    virtual void addUserCategory(const PresetCategory &) {}
+    // Takes one of them out of the list by its name; the presets in it keep it (and show it as a category the list
+    // doesn't know).
+    virtual void removeUserCategory(const std::string &) {}
+    // Where the preset browser opens: the sidebar's entry picked last ("all", "favorites", "recent", "factory", or
+    // "folder:" and the folder, "" the preset folder itself), kept in the user's settings; "" for none yet.
+    virtual std::string presetBrowserPlace() const { return {}; }
+    virtual void setPresetBrowserPlace(const std::string &) {}
     // Whether the patch changed since a preset was loaded or saved, or since Init: replacing it asks first
     // then, and the preset's name shows it. A patch the host brought counts as changed unless it says otherwise.
     // Undo and redo bring this back, and which preset it was, with the params.

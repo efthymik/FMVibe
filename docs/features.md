@@ -1871,81 +1871,81 @@ one may have changed since it last did.
   source's do.
 - **Presets**: the library holds the factory presets, built into the plugin, and the `.fmv` files in
   `Documents\FMVibe\presets` and its subfolders. The factory presets show under **Factory**, as a subfolder's would;
-  nothing of them is written into the folder, which FMVibe makes only when a file dialog or OPEN FOLDER needs it
-  (empty: it holds the presets saved there). Each factory preset's name starts with two letters for its category, so the library lists them in groups:
-  BA bass, DR drum, FX effect, KY keys (bells and organs too), LD lead (brass too), PD pad (moving textures too),
-  PL pluck and SQ sequence (rhythmic, gated). They are KY Electric Piano, BA FM Bass, KY Glass Bell, PD Warm Pad, KY Drawbar
-  Organ, PL Pluck Delay; PD Crystal Motion, which uses everything at once (all six operators in three layers, two
-  filters, four LFOs and a mod envelope, and six effects); BA Reese Bass, a heavy drum and bass reese (two stacks
-  of detuned saws through a driven low-pass, a clean sub, clipping and three-band compression); BA Wobble Bass (an
-  eighth-note LFO throwing open a resonant filter and the FM together); PD Shimmer Pad (unison layers through two
-  filters, three LFOs and the shimmer reverb); SQ Trance Gate (supersaws chopped in sixteenths by a square LFO, a
-  filter sweep over two bars); LD FM Brass (two stacks that blat in, an envelope on the FM,
-  vibrato); FX Industrial Hit (a body dropping two octaves, band-passed noise, metallic partials and a sine-fold
-  shaper); LD Folded Lead (a mono lead whose modulator goes through a sine-fold shaper on its way to the carrier,
-  driven harder as each note starts); BA Fuzz Bass (an FM pair through an asymmetric shaper into a plucked
-  low-pass, the shaper also growling back onto the modulator, over a clean sub); PL Comb String (a noise burst
-  ringing a comb tuned to the note, on through a 6 dB low-pass; the mod wheel damps it); PL Chip Pluck (alternating,
+  nothing of them is written into the folder, which FMVibe makes only when a file dialog needs it
+  (empty: it holds the presets saved there). Each factory preset is in one or two categories (see Preset info, below):
+  Bass, Drum, FX, Keys (bells and organs too), Lead (brass too), Pad (moving textures too), Pluck and Seq
+  (rhythmic, gated). Up to 0.11 each name began with its category's two letters ("LD Screamer"); a project saved then
+  still names the preset that way, and it loads the preset as it is named now. They are Electric Piano, FM Bass, Glass Bell, Warm Pad, Drawbar
+  Organ, Pluck Delay; Crystal Motion, which uses everything at once (all six operators in three layers, two
+  filters, four LFOs and a mod envelope, and six effects); Reese Bass, a heavy drum and bass reese (two stacks
+  of detuned saws through a driven low-pass, a clean sub, clipping and three-band compression); Wobble Bass (an
+  eighth-note LFO throwing open a resonant filter and the FM together); Shimmer Pad (unison layers through two
+  filters, three LFOs and the shimmer reverb); Trance Gate (supersaws chopped in sixteenths by a square LFO, a
+  filter sweep over two bars); FM Brass (two stacks that blat in, an envelope on the FM,
+  vibrato); Industrial Hit (a body dropping two octaves, band-passed noise, metallic partials and a sine-fold
+  shaper); Folded Lead (a mono lead whose modulator goes through a sine-fold shaper on its way to the carrier,
+  driven harder as each note starts); Fuzz Bass (an FM pair through an asymmetric shaper into a plucked
+  low-pass, the shaper also growling back onto the modulator, over a clean sub); Comb String (a noise burst
+  ringing a comb tuned to the note, on through a 6 dB low-pass; the mod wheel damps it); Chip Pluck (alternating,
   half and abs sines like the classic FM chips, the note source easing the FM off up the keyboard, a hard clipper
-  going out beside it, and a Bite macro on FM Amount); SQ Step Filter (an organ wave and a pulse through a resonant
+  going out beside it, and a Bite macro on FM Amount); Step Filter (an organ wave and a pulse through a resonant
   18 dB low-pass that a drawn LFO shape opens on every eighth note, each its own height, into a cubic shaper; its
-  Cutoff and Accent macros, the latter deepening the pattern); SQ Glass Steps (a custom wave from 64 partials, the
-  Fibonacci ones, through a notch that jumps at random every sixteenth note); LD Vowel Lead (a vowel wave with a
+  Cutoff and Accent macros, the latter deepening the pattern); Glass Steps (a custom wave from 64 partials, the
+  Fibonacci ones, through a notch that jumps at random every sixteenth note); Vowel Lead (a vowel wave with a
   held bite and breath noise modulating it through a band-pass, gliding into every note, a bipolar envelope scooping
-  into pitch and the mod wheel bringing in vibrato, a frequency shifter detuning the sides); FX Laser Zap (a
+  into pitch and the mod wheel bringing in vibrato, a frequency shifter detuning the sides); Laser Zap (a
   one-shot LFO throwing the pitch down four octaves in a quarter second, a phase disperser and a staircase-curve
-  shaper crushing it; its Speed and Grit macros); FX Noise Riser (wide noise through a high-pass and a climbing
-  sine, swept evenly over eight seconds by an envelope, turning a frequency shifter's spiral faster); KY Temple Gong
+  shaper crushing it; its Speed and Grit macros); Noise Riser (wide noise through a high-pass and a climbing
+  sine, swept evenly over eight seconds by an envelope, turning a frequency shifter's spiral faster); Temple Gong
   (three pairs at inharmonic ratios, one of them modulated by a fixed 137 Hz operator, so each key grinds
-  differently, the modulators dying before their carriers and velocity driving every index); LD Feedback Lead (a
+  differently, the modulators dying before their carriers and velocity driving every index); Feedback Lead (a
   mono lead whose oscillator is a self-modulating operator, the mod wheel opening its feedback and index from flute
   to buzzing reed, a mod envelope's bite on each note and a vibrato that a second envelope, as its aux, fades in);
-  PD Six-Op Cascade (all six operators in one chain, F down to A, four slow LFOs breathing its links at rates that
-  never line up, and an Index macro deepening them all); BA Neon Pluck (a mono saw plucked by FM through a
+  Six-Op Cascade (all six operators in one chain, F down to A, four slow LFOs breathing its links at rates that
+  never line up, and an Index macro deepening them all); Neon Pluck (a mono saw plucked by FM through a
   resonant low-pass over a sine sub, a two-bar LFO turning its FM and grit, its effects as a graph: a split at
   180 Hz whose high band is widened and echoed while the low band stays tight, then a 3-band dynamics set as OTT;
   its Timbre, Filter, Grit and Space macros). Then two more for each category, one in the style of 1980s FM synths
-  (sine operators only, indexes falling fast and scaled by velocity) and one modern and heavy: BA Eighties Slap (a
-  1:1 pair with feedback for the body, a 9:1 click for the thumb and a sub sine) and BA Grind Bass (a fed-back pair
+  (sine operators only, indexes falling fast and scaled by velocity) and one modern and heavy: Eighties Slap (a
+  1:1 pair with feedback for the body, a 9:1 click for the thumb and a sub sine) and Grind Bass (a fed-back pair
   growled by a sub-octave linear FM through an asymmetric shaper and a driven low-pass, over a clean sub, its effects
   as a graph that keeps the lows below 140 Hz tight while the highs are clipped and widened; its Growl, Drive and
-  Width macros); DR Log Drum (a tuned log drum, a 3:1 knock dying in a blink as its pitch drops into the note) and DR
-  Hard Kick (a fixed-pitch sine swept down from about 600 Hz into an asymmetric shaper whose tail distorts, under a
-  noise click; its Pitch, Distortion, Length and Click macros); FX Jet Takeoff (a modulator at full feedback, driven
+  Width macros); Log Drum (a tuned log drum, a 3:1 knock dying in a blink as its pitch drops into the note) and Hard Kick (a fixed-pitch sine swept down from about 600 Hz into an asymmetric shaper whose tail distorts, under a
+  noise click; its Pitch, Distortion, Length and Click macros); Jet Takeoff (a modulator at full feedback, driven
   by an inharmonic one, roaring through its carrier, noise made by FM alone, a slow pitch envelope lifting it two
-  octaves under a flanger) and FX Crush Downer (an FM growl folded by a sine-fold shaper and falling three octaves
-  onto the note under band-passed noise falling with it); KY Funk Clav (a 1:1 pair with feedback for the nasal buzz
-  beside a 2:5 pair for the pluck) and KY Driven Tines (an FM tine piano through an asymmetric shaper, a cabinet's
-  band and a stereo phaser, velocity driving the amp too); LD Classic Synlead (a fed-back 1:1 pair's saw beside a
-  2:1 pair's square, detuned, with a bite on each note and a delayed vibrato the mod wheel deepens) and LD Screamer (a
+  octaves under a flanger) and Crush Downer (an FM growl folded by a sine-fold shaper and falling three octaves
+  onto the note under band-passed noise falling with it); Funk Clav (a 1:1 pair with feedback for the nasal buzz
+  beside a 2:5 pair for the pluck) and Driven Tines (an FM tine piano through an asymmetric shaper, a cabinet's
+  band and a stereo phaser, velocity driving the amp too); Classic Synlead (a fed-back 1:1 pair's saw beside a
+  2:1 pair's square, detuned, with a bite on each note and a delayed vibrato the mod wheel deepens) and Screamer (a
   square swept by a 2:1 modulator and unison saws, sine-folded and torn through a driven low-pass, the mod wheel
-  screaming the fold and feedback up); PD Vintage Strings (three fed-back pairs bowing in behind their carriers, an
-  octave on top, a slow drift on the indexes, chorused into a hall) and PD Distorted Swell (wide unison saws growled
+  screaming the fold and feedback up); Vintage Strings (three fed-back pairs bowing in behind their carriers, an
+  octave on top, a slow drift on the indexes, chorused into a hall) and Distorted Swell (wide unison saws growled
   by a sub-octave modulator through a driven low-pass into a sine-fold shaper, a slow LFO and a long envelope
-  opening it as it is held); PL Koto Pluck (a fed-back 1:1 pair and a 7:1 snap on one carrier, a 2:3 pair ringing an
-  octave up) and PL Razor Pluck (a fed-back pair driven by a 2:1 modulator through a snapping resonant low-pass over
-  a sub and a noise click, hard-clipped, squashed OTT-style and echoed); and SQ Mallet Steps (a marimba, a 1:1
+  opening it as it is held); Koto Pluck (a fed-back 1:1 pair and a 7:1 snap on one carrier, a 2:3 pair ringing an
+  octave up) and Razor Pluck (a fed-back pair driven by a 2:1 modulator through a snapping resonant low-pass over
+  a sub and a noise click, hard-clipped, squashed OTT-style and echoed); and Mallet Steps (a marimba, a 1:1
   carrier knocked by a 4:1 modulator, struck in sixteenths by the sequencer while a key is held, through octaves,
-  fifths and sevenths, each note's velocity its accent, louder and harder) and SQ Hammer Gate
+  fifths and sevenths, each note's velocity its accent, louder and harder) and Hammer Gate
   (a fed-back pair growled by a sub-octave linear FM through a driven, resonant low-pass into a hard clipper whose
-  output a drawn LFO gates in accented sixteenths, a second jumping octaves in the riff); and SQ Future Plucks (a
+  output a drawn LFO gates in accented sixteenths, a second jumping octaves in the riff); and Future Plucks (a
   carrier knocked by a saw modulator through a low-pass an envelope plucks open, velocity brightening it and two
   Random sources wandering the indexes, playing the sequencer's Phrygian riff while a key is held, an octave down,
   humanized and with chords on some steps, through a chain of EQs, a disperser, compression, chorus, echoes and a
   reverb).
-  Then three that play through the Amp: PL Crunch Rhythm (a string-like FM pluck, two carriers a few cents apart,
+  Then three that play through the Amp: Crunch Rhythm (a string-like FM pluck, two carriers a few cents apart,
   a feedback modulator for the saw's edge and a short bright one for the pick, velocity digging in, through the
-  Crunch amp into a closed 4x12 and a small room: a rhythm guitar for chords); LD Overdrive Lead (a mono, gliding
+  Crunch amp into a closed 4x12 and a small room: a rhythm guitar for chords); Overdrive Lead (a mono, gliding
   lead through the Lead amp into an open 2x12, a vibrato that an envelope fades in as a note holds, the mod wheel
-  turning up the amp's Gain, then ping-pong echoes and a plate); and BA Driven Bass (a round FM bass with a sub an
+  turning up the amp's Gain, then ping-pong echoes and a plate); and Driven Bass (a round FM bass with a sub an
   octave down, through the Bass amp's grit into a 4x10, its lows staying clean). Then three more that play the
-  sequencer: SQ Acid Rubber (a mono saw knocked by a fed-back 1:1 sine through a driven, resonant 24 dB ladder, a
+  sequencer: Acid Rubber (a mono saw knocked by a fed-back 1:1 sine through a driven, resonant 24 dB ladder, a
   two-bar C minor line in sixteenths while a key is held, two octaves down, its accents as velocities deepening the
   filter envelope and its slides gliding, the pattern's mod wheel curve opening the filter across the second bar,
-  into grit, a dotted echo and a room); SQ Offbeat Stabs (a fed-back FM keys stab through a plucked low-pass, Dorian
+  into grit, a dotted echo and a room); Offbeat Stabs (a fed-back FM keys stab through a plucked low-pass, Dorian
   seventh chords on the off-beats and a bass on the downbeats, swung, with the host's transport; pattern B a pushed,
   busier variation; each pattern's bend curve dipping the pitch like tape at its end, through chorus, echoes, a plate
-  and a compressor); and SQ Random Glass (a glassy 7:1 tone with a twelfth above, its sixteen minor-pentatonic steps
+  and a compressor); and Random Glass (a glassy 7:1 tone with a twelfth above, its sixteen minor-pentatonic steps
   played in random order, many left to chance, humanized, a Random source stepping the index, into ping-pong echoes
   and a shimmer). Each release brings
   them as it tunes them. Being built in, they can't be saved over: Save on a changed one saves it as a new preset, as
@@ -1954,33 +1954,91 @@ one may have changed since it last did.
   built-in one of that name. Their routing graphs are laid out with no node on another, and no wire, line to OUT or
   label running over a node it doesn't join. They hold only the params that differ from Init, so they are small, and
   load like any other preset.
+  - **Preset info**: a preset says who made it (**Author**), what kind of sound it is (**Category**) and what it
+    does, in a **Description** of one line (up to 80 characters). They are saved with the patch, in its layout chunk,
+    so a preset file carries them and so does the host's project; a preset saved before them has none, and still
+    loads. The categories are Bass, Drum, FX, Keys, Lead, Pad, Pluck and Seq, each in a color of its own, and any the
+    user adds (**+ New** in the Save dialog): a name of 6 characters at most (a built-in one's picking that one) and
+    one of five colors,
+    kept in the user's settings, so every FMVibe offers them. A preset stores its category by name, so one made on
+    another computer with a category this one doesn't know still shows it, in grey. The factory presets are FMVibe's,
+    each in one category, with a line about it.
   - The **preset bar** in the middle of the title bar shows the preset loaded or saved last, or **- Init -** (as
-    a new instance does), with a dot while the patch has changed since. Its arrows step to the previous or next
-    preset in the library, round from the last to the first. Clicking the name opens the **browser**: the presets
-    at the top of the folder, then each subfolder that holds presets under its name (the factory presets under
-    Factory's), the current one marked; a click loads one
-    and closes the browser (if the patch has changed, it asks first, over the browser, which stays open when the
-    load is called off); **OPEN FOLDER** shows the folder in Explorer, and the × or a click around it closes it.
-    While it is open, the browser takes the keyboard for its **search**, in its title row: what is typed narrows
-    the list to the presets whose subfolder and name hold every word of it, whatever the case, and the count
-    beside the title says how many match. The first one found is picked (outlined); Up and Down pick another
-    from the list (from the preset loaded, before anything is picked), and Enter loads the one picked. Escape, or
-    the × in the search, empties it; Escape with nothing typed closes the browser. The search starts empty each
-    time the browser opens. It edits like a text field: Left and Right move the caret, Home and End jump to the
-    ends, and with Shift they select; a click puts the caret there, a drag or a Shift+click selects, a
-    double-click picks a word, and Ctrl+A selects it all. Typing replaces the selection, Backspace and Delete
-    take it out, and Ctrl+C, Ctrl+X and Ctrl+V copy, cut and paste (line breaks pasted as spaces, up to 40
-    characters in all). A search longer than the field scrolls to keep the caret in sight. A value typed into a
-    knob copies and pastes too, while all of it is selected.
-  - **Init** sets every param and the routing layout back to their defaults (the zoom stays). **Load** and
-    **Save As** (a disk with a plus) read and write a `.fmv` file through the standard file dialog, which always
-    starts in the preset folder, wherever the host's last file dialog was left; Save As suggests the current
-    preset's name. The file holds the same data as the host's
-    saved state, apart from the settings.
+    a new instance does), on one line as tall as the title bar's buttons: its category at the left (a dot in its color, then its name), its name in
+    the middle (with a dot while the patch has changed since) and "by" its author at the right, before the (i); a name
+    too long for the middle moves left, and the author is cut short for it (a preset with neither, and Init, shows its
+    name alone).
+    Resting the mouse on it shows **Browse Presets** (the description is on the info card). Its arrows step to the previous or next preset in the
+    library (the factory presets, then the preset folder's, folder by folder), round from the last to the first.
+    The **(i)** at its right (not on Init) opens the preset's **info card** under it: its pill, name, author, folder (or
+    Factory) and the tempo it was saved at, its description, a star making it a favorite, **Show in Browser** and
+    **Edit Info…** (**Add Info…** while it has none), which opens the Save dialog's info form. A factory preset's card
+    says it is read-only and offers **Save Copy…** instead, the Save dialog. Escape, or a click around it, closes it.
+  - Clicking the name opens the **browser**, a popup under the preset bar: a search row, then a sidebar beside the
+    list, then a strip with the preset picked. It opens
+    where it was left, on the sidebar's entry picked last (kept in the user's settings; **Factory** to begin with, and
+    when the folder picked has gone), the folder tree opened down to it, with the preset loaded picked; **Show in
+    Browser** opens it on the preset's folder.
+    - The **sidebar**: **All**, **Favorites** and **Recent** (the presets loaded last, the last first), then
+      **FOLDERS**, a tree of **Factory** and **User** (the preset folder) with every subfolder at any depth, each
+      opened and closed by its chevron and with how many presets it holds, and its **+**, which makes a new folder in
+      the folder shown; a folder's right-click menu (none on Factory) has the Save dialog's tree's items (see Save As
+      below), its New Folder showing the folder it makes one in; then **CATEGORIES**, each with how many of the presets listed are in it (of All, Favorites,
+      Recent or the folder picked above, and what the search finds, whatever the categories filter by; the user's own
+      after a line, then
+      **None**), a click filtering the list by it or taking the filter off (several at once list the presets in any
+      of them) and **Clear** taking them all off (a new category is made in the Save dialog). One of the user's own shows an **×** in
+      its count's place under the mouse, which removes it from the list after asking (how many presets are in it):
+      the presets keep it, nothing written to their files, and it lists among the categories presets have that the
+      list doesn't know, in grey, until it is added again. The sidebar scrolls under the wheel, by its scrollbar at its right edge (the thumb dragged, or the track clicked to
+      jump there) and dragged with the middle button.
+    - The **list** shows the folder's presets, and with **Subfolders** on (the switch in the search row, on to begin
+      with, greyed out for All, Favorites, Recent and Factory) its subfolders' too, each then with its folder's name before it; the folder's path over it leads back up,
+      a click on a part showing that folder, and the category filters show beside it as chips, a click taking one off.
+      Each row has the name, its description in faint text in the room the name leaves, the category's
+      pill (right-aligned in a column as wide as the widest listed), a star (a favorite, or not) and the author; the preset loaded has a
+      dot. A click (or a tap) on a preset loads it at once, the browser staying open for the next; a double-click (or
+      Enter, for the preset Up, Down or the search picked) loads it and closes the browser. Loading asks first while the
+      patch has changed (over the browser, which stays open when the load is called off).
+    - The **strip** shows the preset picked: its pill, name, author and folder over its description, then a button
+      that shows its file in Explorer, picked (greyed out while nothing is picked, and for a factory preset, which has
+      none), and **Close**, which closes the browser as a click around it does. A preset's info
+      is edited from the info card, for the preset loaded.
+    - Favorites and the recent presets are kept in the user's settings.
+    - A click in its **search**, in its first row, gives it the keyboard, and a click anywhere else takes it away (while
+      it hasn't the keyboard, Enter still loads the preset picked and Escape closes the browser): what is typed narrows the
+      list (of what the sidebar shows) to the presets whose name, folder, author, category and description hold every
+      word of it, whatever the case, and the count at its right end says how many it lists of all of them. The first
+      one found is picked; Up and Down pick another from the list (from the preset loaded, before anything is picked),
+      and Enter loads the one picked. Escape, or the × in the search, empties it; Escape with nothing typed closes the
+      browser, as a click around it or on the preset bar does. The search starts empty each time the browser opens.
+      It edits like a text field: Left and Right move the caret, Home and End jump to the ends, and with Shift they
+      select; a click puts the caret there, a drag or a Shift+click selects, a double-click picks a word, and Ctrl+A
+      selects it all. Typing replaces the selection, Backspace and Delete take it out, and Ctrl+C, Ctrl+X and Ctrl+V
+      copy, cut and paste (line breaks pasted as spaces, up to 40 characters in all). A search longer than the field
+      scrolls to keep the caret in sight. A value typed into a knob copies and pastes too, while all of it is
+      selected. The Save dialog's fields edit the same way.
+  - **Save As** (a disk with a plus) opens the **Save dialog**, dropping from the preset bar as the info card does: **Name** (the preset's, all selected, to type over),
+    **Author** (the preset's, a factory preset's copy's FMVibe, empty for one without), **Category** (a chip
+    for each, **None**, and **+ New**, which opens the New Category form), **Description** (with how many of its 80
+    characters are used) and **Folder**, a tree of the preset folder's subfolders with Factory locked, the preset's own
+    folder picked to begin with and **New Folder** making one in the folder picked; a folder's right-click menu offers
+    **New Folder** (one in it) and **Open in Explorer**, and on a subfolder **Rename…** (a form holding its name; a
+    name another folder there has is refused, and the presets in it, the favorites and recent presets among them, go
+    with it) and **Delete…** (asking first, with how many presets go with it, then moving it to the Recycle Bin). A name the folder already has says
+    so, and the button reads **Replace**. Enter or **Save** saves it there, with its info, and it is the patch's preset
+    then; Escape, Cancel or the × close it. **Save to File…** saves it anywhere through the standard file dialog
+    instead. Editing a preset's info (Edit Info… on the info card) opens the same dialog without the name and folder to change: Save
+    writes the author, category and description into the preset's file and leaves its sound alone (and the patch, if
+    it is that preset, keeps its changes; only its info is the file's). In the browser demo, which has no files, Save As says so.
+  - **Init** sets every param and the routing layout back to their defaults (the zoom stays), the preset's info
+    too. **Load**, and Save to File in the Save dialog, read and write a `.fmv` file through the standard file dialog,
+    which always starts in the preset folder, wherever the host's last file dialog was left; Save to File suggests the
+    current preset's name. The file holds the same data as the host's saved state, apart from the settings.
   - **Save** (the disk) writes the patch over the file of the preset it is, after asking ("Overwrite …?"), and
-    tells in a message that it saved or couldn't. It is on only for a preset loaded (or saved) that has
+    tells in a message only if it couldn't (the Save dialog and Edit Info likewise). It is on only for a preset loaded (or saved) that has
     changed since; otherwise, and always for Init, it is greyed out and does nothing. On a factory preset, which is
-    built in, it asks nothing and opens Save As's dialog instead. Save As is greyed out too on
+    built in, it asks nothing and opens the Save dialog instead. Save As is greyed out too on
     Init until the patch changes. In the browser demo, which has no files, both say so.
   - Init and loading ask first only while the patch has changed since it was loaded, saved or reset, or when the
     host brought a patch that isn't a preset, since the patch they replace can't be undone back (undoing every edit

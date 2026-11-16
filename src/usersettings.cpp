@@ -48,6 +48,16 @@ UserSettings readFile(const std::filesystem::path &file) {
             settings.grid = std::clamp(std::atof(line.c_str() + 14), 0.0, 1.0);
         else if (line.starts_with("zoom="))
             settings.zoom = std::clamp(std::atof(line.c_str() + 5), 0.0, 3.0);
+        else if (line.starts_with("favorite=") && line.size() > 9)
+            settings.favorites.push_back(line.substr(9));
+        else if (line.starts_with("recent=") && line.size() > 7 && settings.recent.size() < kMaxRecentPresets)
+            settings.recent.push_back(line.substr(7));
+        else if (line.starts_with("category=")) { // its name, then | and its color
+            const size_t bar = line.rfind('|');
+            if (bar != std::string::npos && bar > 9)
+                settings.categories.push_back({line.substr(9, bar - 9), std::max(std::atoi(line.c_str() + bar + 1), 0)});
+        } else if (line.starts_with("browser="))
+            settings.browserPlace = line.substr(8);
     }
     return settings;
 }
@@ -86,6 +96,14 @@ void writeUserSettings() {
         merged.grid = userSettings.grid;
     if (userSettings.zoom != asRead.zoom)
         merged.zoom = userSettings.zoom;
+    if (userSettings.favorites != asRead.favorites)
+        merged.favorites = userSettings.favorites;
+    if (userSettings.recent != asRead.recent)
+        merged.recent = userSettings.recent;
+    if (userSettings.categories != asRead.categories)
+        merged.categories = userSettings.categories;
+    if (userSettings.browserPlace != asRead.browserPlace)
+        merged.browserPlace = userSettings.browserPlace;
     userSettings = asRead = merged;
 
     std::error_code error;
@@ -104,6 +122,14 @@ void writeUserSettings() {
             out << "hue=" << merged.hue << '\n';
         if (merged.zoom > 0.0)
             out << "zoom=" << merged.zoom << '\n';
+        if (!merged.browserPlace.empty())
+            out << "browser=" << merged.browserPlace << '\n';
+        for (const auto &[name, color] : merged.categories)
+            out << "category=" << name << '|' << color << '\n';
+        for (const std::string &file : merged.favorites)
+            out << "favorite=" << file << '\n';
+        for (const std::string &file : merged.recent)
+            out << "recent=" << file << '\n';
         out.close();
         if (!out)
             error = std::make_error_code(std::errc::io_error);

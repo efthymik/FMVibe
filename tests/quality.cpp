@@ -4141,6 +4141,117 @@ void sequencerChecks() {
     }
 }
 
+// The layout chunk, the patch's last, cut short by its last `floats` floats: as saved before they came.
+void cutLayout(std::vector<unsigned char> &bytes, uint32_t floats) {
+    for (size_t at = bytes.size() - 4; at >= 4; at -= 4) {
+        uint32_t count = 0;
+        std::memcpy(&count, bytes.data() + at - 4, 4);
+        if ((at + count * sizeof(float)) == bytes.size()) {
+            count -= floats;
+            std::memcpy(bytes.data() + at - 4, &count, 4);
+            bytes.resize(bytes.size() - floats * sizeof(float));
+            return;
+        }
+    }
+}
+
+// What a preset says about itself, which the layout keeps after the tempo: read back as written (in UTF-8, from a
+// sparse patch and a full one, by readLayout() and by readPresetInfo(), which the library's scan uses), none from a
+// layout from before it; and every factory preset's: FMVibe's, in a built-in category, with a line of at most 80
+// characters. And a factory preset's name from up to 0.11, its category's two letters before it, naming the preset
+// as it is now.
+void presetInfoChecks() {
+    std::printf("preset info:\n");
+    const gui::PresetInfo written{"J\xC3\xBCrgen", "Texture", "A line about it, \xE2\x80\x9Cquoted\xE2\x80\x9D."};
+    auto bytesOf = [&](bool sparse, const gui::PresetInfo &info) {
+        gui::UiLayout ui;
+        ui.presetInfo = info;
+        ui.savedTempo = 120.0f;
+        const auto values = std::make_unique<ParamValues>();
+        for (int i = 0; i < kParamCount; ++i)
+            (*values)[i] = paramTable()[i].def;
+        std::vector<unsigned char> bytes;
+        const clap_ostream_t out = memoryOut(bytes);
+        writePatch(&out, *values, ui, sparse);
+        return bytes;
+    };
+    bool ok = true;
+    for (bool sparse : {true, false}) {
+        std::vector<unsigned char> bytes = bytesOf(sparse, written);
+        MemoryReader reader{bytes.data(), bytes.size(), 0};
+        const clap_istream_t in = memoryIn(reader);
+        const auto loaded = std::make_unique<ParamValues>();
+        readParams(&in, *loaded);
+        const gui::UiLayout layout = readLayout(&in);
+        MemoryReader again{bytes.data(), bytes.size(), 0};
+        const clap_istream_t scan = memoryIn(again);
+        gui::PresetInfo scanned;
+        ok = ok && layout.presetInfo == written && layout.savedTempo == 120.0f && readPresetInfo(&scan, scanned) &&
+             scanned == written;
+    }
+    // From a file, as the library's scan reads the preset folder, seeking past the params: a sparse patch's info and
+    // a full one's, and none from a file that ends among its params.
+    auto fromFile = [](const std::vector<unsigned char> &bytes, gui::PresetInfo &info) {
+#ifdef _MSC_VER // which deprecates tmpfile()
+        FILE *file = nullptr;
+        if (tmpfile_s(&file) != 0)
+            file = nullptr;
+#else
+        FILE *file = std::tmpfile();
+#endif
+        if (!file)
+            return false;
+        const bool written = std::fwrite(bytes.data(), 1, bytes.size(), file) == bytes.size();
+        std::rewind(file);
+        const bool read = written && readPresetInfo(file, info);
+        std::fclose(file);
+        return read;
+    };
+    bool files = true;
+    for (bool sparse : {true, false}) {
+        gui::PresetInfo scanned;
+        files = files && fromFile(bytesOf(sparse, written), scanned) && scanned == written;
+    }
+    std::vector<unsigned char> cut = bytesOf(false, written);
+    cut.resize(cut.size() / 2);
+    gui::PresetInfo cutInfo;
+    files = files && !fromFile(cut, cutInfo) && cutInfo.empty();
+    check(files, "a preset file's info read past its params by seeking, as written, and none from one cut short");
+    std::vector<unsigned char> old = bytesOf(true, {});
+    cutLayout(old, 3);
+    MemoryReader reader{old.data(), old.size(), 0};
+    const clap_istream_t in = memoryIn(reader);
+    gui::PresetInfo none{"x", "y", "z"};
+    const bool before = readPresetInfo(&in, none) && none.empty();
+    std::vector<unsigned char> notState{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13};
+    MemoryReader junk{notState.data(), notState.size(), 0};
+    const clap_istream_t junkIn = memoryIn(junk);
+    gui::PresetInfo refused;
+    const bool notRead = !readPresetInfo(&junkIn, refused);
+    check(ok && before && notRead,
+          "a preset's author, category and line read back as written, as none from before them, and nothing from a "
+          "stream that isn't a state");
+    bool factory = true;
+    for (const FactoryPreset &preset : factoryPresets()) {
+        MemoryReader r{preset.data.data(), preset.data.size(), 0};
+        const clap_istream_t s = memoryIn(r);
+        gui::PresetInfo info;
+        const bool good = readPresetInfo(&s, info) && info.author == "FMVibe" &&
+                          gui::builtInCategory(info.category) >= 0 && !info.description.empty() &&
+                          info.description.size() <= gui::kMaxPresetDescription;
+        if (!good)
+            std::printf("      %-20s says \"%s\", \"%s\", \"%s\"\n", preset.name.c_str(), info.author.c_str(),
+                        info.category.c_str(), info.description.c_str());
+        factory = factory && good;
+    }
+    check(factory, "every factory preset says it is FMVibe's, in a built-in category, with a line of 80 characters at "
+                   "most");
+    const FactoryPreset *screamer = factoryPresetNamed("Screamer");
+    check(screamer && factoryPresetNamed("LD Screamer") == screamer && factoryPresetNamed("ld screamer") == screamer &&
+              !factoryPresetNamed("XX Screamer") && !factoryPresetNamed("BA Screamer Two"),
+          "a factory preset's name from up to 0.11 (\"LD Screamer\") names the preset as it is now");
+}
+
 // The tempo a preset was saved at, which the layout keeps for the hosts that let the editor set the tempo: read back
 // as written, a tempo the editor doesn't offer as none, and a layout from before it (cut short of it) as none too.
 void savedTempoChecks() {
@@ -4154,17 +4265,9 @@ void savedTempoChecks() {
         std::vector<unsigned char> bytes;
         const clap_ostream_t out = memoryOut(bytes);
         writePatch(&out, *values, ui, true);
-        if (cut) // the layout, the patch's last chunk, as saved before the field came: a float shorter
-            for (size_t at = bytes.size() - 4; at >= 4; at -= 4) {
-                uint32_t count = 0;
-                std::memcpy(&count, bytes.data() + at - 4, 4);
-                if ((at + count * sizeof(float)) == bytes.size()) {
-                    --count;
-                    std::memcpy(bytes.data() + at - 4, &count, 4);
-                    bytes.resize(bytes.size() - sizeof(float));
-                    break;
-                }
-            }
+        if (cut) // the layout, the patch's last chunk, as saved before the field came: without it and the preset's
+                 // info after it (three empty texts, a float each)
+            cutLayout(bytes, 4);
         MemoryReader reader{bytes.data(), bytes.size(), 0};
         const clap_istream_t in = memoryIn(reader);
         const auto loaded = std::make_unique<ParamValues>();
@@ -4238,6 +4341,7 @@ int main() {
     dcChecks();
     sequencerChecks();
     savedTempoChecks();
+    presetInfoChecks();
     // --- The decimator: flat up to 20 kHz, and what would fold into the audible band gone.
     std::printf("decimator (dB):\n");
     for (int factor : {2, 4, 8}) {
