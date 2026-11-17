@@ -59,7 +59,7 @@ public:
     void pressing(const Widget *hit) override;
     bool press(const Widget &w, Point p, Modifiers mods) override;
     bool doubleClick(const Widget &w, Point p, Modifiers mods) override;
-    void drag(Point p, Modifiers mods) override;
+    void drag(const DragState &d) override;
     bool wheel(Point p, float steps) override;
     std::optional<std::pair<int, float>> panAt(Point p) const override;
     std::optional<float> pan(int part, float first, float across, float down) override;
@@ -181,7 +181,6 @@ private:
     bool browserSubfolders_ = true;             // a folder lists its subfolders' presets too
     float browserSideScroll_ = 0.0f;            // how far the sidebar is scrolled, in px
     float sideDragFrom_ = 0.0f;                 // its thumb dragged: where it was scrolled to as it was grabbed
-    float sideDragY_ = 0.0f;                    // and where the mouse grabbed it
     mutable std::vector<std::pair<int, Rect>> browserCrumbRects_; // where the folder's parts were painted
     mutable std::vector<std::pair<int, Rect>> browserChipRects_;  // and the category filters
     bool infoCardOpen_ = false;

@@ -10251,7 +10251,7 @@ void View::applyDrag(Point p) {
     }
     case DragKind::Panel: // a panel's own (the preset browser's sidebar's thumb, the SEQ view's roll, say)
         if (drag_.panel)
-            drag_.panel->drag(p, drag_.mods);
+            drag_.panel->drag(drag_);
         break;
     case DragKind::InputsScroll: { // the INPUTS tab's rows follow its thumb
         const int op = controller_.layout().selectedNode;
@@ -11262,7 +11262,7 @@ void View::mouseUp(Point p, Modifiers) {
     case DragKind::Panel: // its panel hears of it, then of the drag's end below
         drag_.now = p;
         if (drag_.panel)
-            drag_.panel->drop(p);
+            drag_.panel->drop(drag_);
         break;
     case DragKind::SplitPoint:
     case DragKind::Value:

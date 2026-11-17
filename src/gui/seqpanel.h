@@ -48,8 +48,8 @@ public:
     void pressing(const Widget *hit) override;
     bool press(const Widget &w, Point p, Modifiers mods) override;
     bool doubleClick(const Widget &w, Point p, Modifiers mods) override;
-    void drag(Point p, Modifiers mods) override;
-    void drop(Point p) override;
+    void drag(const DragState &d) override;
+    void drop(const DragState &d) override;
     void release() override;
     bool wheelOn(const Widget &w, Point p, float steps, Modifiers mods) override;
     bool wheelAcross(Point p, float steps) override;

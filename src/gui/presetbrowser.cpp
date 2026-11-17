@@ -1892,7 +1892,6 @@ bool PresetBrowser::press(const Widget &w, Point p, Modifiers) {
                                             0.0f, browserSideEnd());
         host_.startDrag(*this, w, p, false);
         sideDragFrom_ = browserSideScroll_;
-        sideDragY_ = p.y;
         return true;
     }
     case Kind::BrowserClose: // as a click around it
@@ -2058,10 +2057,10 @@ void PresetBrowser::pressing(const Widget *hit) {
         browserSearching_ = false;
 }
 
-void PresetBrowser::drag(Point p, Modifiers) { // the sidebar follows its thumb
+void PresetBrowser::drag(const DragState &d) { // the sidebar follows its thumb
     const float room = browserSideTrack().h - browserSideThumb().h;
     if (room > 0.0f)
-        browserSideScroll_ = std::clamp(sideDragFrom_ + (p.y - sideDragY_) / room * browserSideEnd(), 0.0f,
+        browserSideScroll_ = std::clamp(sideDragFrom_ + (d.now.y - d.start.y) / room * browserSideEnd(), 0.0f,
                                         browserSideEnd());
 }
 

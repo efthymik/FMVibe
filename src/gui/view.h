@@ -224,17 +224,15 @@ private:
         UtilityHandle, // a handle on the utility's display: Gain and Mono Bass up and down, Pan and Width across
     };
 
-    struct Drag {
+    // What every drag has (where it started and is now, whether it moved, the modifiers, its undo step: see DragState,
+    // which a panel's drag is handed), and what the View's own keep.
+    struct Drag : DragState {
         DragKind kind = DragKind::None;
         Widget widget;
-        Point start;
-        Point now;
         double startValue = 0.0;
-        bool moved = false;
         bool leftNode = false; // a route being dragged has been well clear of the node it comes from
         bool fine = false;
         bool snap = false; // shape points snap to a grid
-        bool step = false; // an undo step is open until the drag ends (moving nodes or cards)
         float scrollStart = 0.0f; // moving a card: where its row was scrolled to when it was grabbed
         int lastPartial = -1; // drawing partials: the one the last move was over, and its value in startValue
         std::vector<double> shapeBefore; // drawing a step: the shape's params before it
@@ -251,10 +249,8 @@ private:
         // copy was made, which a drag called off goes back to.
         std::vector<double> copyBefore;
         std::optional<UiLayout> copyLayout;
-        // The panel whose drag (DragKind::Panel) or pan (PanArea::Panel) it is, and the modifiers its drag's last move
-        // came with.
+        // The panel whose drag (DragKind::Panel) or pan (PanArea::Panel) it is.
         Panel *panel = nullptr;
-        Modifiers mods;
     };
 
     struct Typing {
@@ -1188,7 +1184,6 @@ private:
     void resetHover() override { hover_.reset(); }
     void askConfirm(Panel &from, int kind) override;
     void startDrag(Panel &from, const Widget &w, Point p, bool step) override;
-    bool dragMoved() const override { return drag_.moved; }
     void dragValue(const Widget &w, Point p, Modifiers mods) override;
     bool sendKey(Key key, bool shift) override { return seqKey(key, shift); }
     const Telemetry &telemetry() const override { return telemetry_; }

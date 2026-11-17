@@ -1619,7 +1619,9 @@ bool SeqPanel::pressAs(const Widget &w, Point p, Modifiers mods, const Widget &h
     }
 }
 
-void SeqPanel::drag(Point p, Modifiers mods) {
+void SeqPanel::drag(const DragState &d) {
+    const Point p = d.now;
+    const Modifiers mods = d.mods;
     seqDrag_.now = p;
     // A note moved, or its end, follows the mouse off the grid while Shift or Alt is held.
     if (seqDrag_.mode == SeqDrag::Mode::Move || seqDrag_.mode == SeqDrag::Mode::Resize ||
@@ -1873,10 +1875,10 @@ void SeqPanel::seqDrag(Point p) {
     }
 }
 
-void SeqPanel::drop(Point) {
+void SeqPanel::drop(const DragState &d) {
     seqHear(-1);
     const SeqDrag::Mode mode = seqDrag_.mode;
-    const bool moved = host_.dragMoved();
+    const bool moved = d.moved;
     if (seqDrag_.unpick && !moved) // a Shift+click on a note picked: no longer picked
         std::erase(seqSelection_, seqDrag_.anchor);
     if (mode == SeqDrag::Mode::LaneGroup && seqDrag_.narrow && !moved) // a click on one of several dots picked

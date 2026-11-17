@@ -23,6 +23,16 @@ namespace fmvibe::gui {
 class Controller;
 class Panel;
 
+// A drag going on, as the View keeps it for every drag (its own and a panel's): where the mouse went down and where it
+// is now, whether it has moved past a click's jitter yet, the modifiers its last move came with, and whether an undo
+// step is open until it ends (see PanelHost::startDrag()).
+struct DragState {
+    Point start, now;
+    bool moved = false;
+    Modifiers mods;
+    bool step = false;
+};
+
 // What the View does for its panels.
 class PanelHost {
 public:
@@ -49,10 +59,9 @@ public:
     // comes from `from`'s confirmWords(), and the button pressed goes to its confirmed().
     virtual void askConfirm(Panel &from, int kind) = 0;
     // A drag of a widget of `from`'s, pressed at `p`: until the button goes up, the moves go to its drag(), the button
-    // let go of to its drop(), and its end, let go of or called off, to its release(). With `step`, the undo step the
-    // panel opened (Controller::beginStep()) closes as it ends. And whether it has moved past a click's jitter yet.
+    // let go of to its drop(), and its end, let go of or called off, to its release(), each with the drag as it stands
+    // (see DragState). With `step`, the undo step the panel opened (Controller::beginStep()) closes as it ends.
     virtual void startDrag(Panel &from, const Widget &w, Point p, bool step) = 0;
-    virtual bool dragMoved() const = 0;
     // A drag of the param a widget of the panel's shows (`w`'s), pressed at `p`: up and down, as the View drags a
     // knob's value (finely with Shift), as one gesture.
     virtual void dragValue(const Widget &w, Point p, Modifiers mods) = 0;
@@ -124,12 +133,12 @@ public:
     // taking the keyboard, say) lets go here.
     virtual void pressing(const Widget * /*hit*/) {}
     // The press and double-click on what it owns. A press that starts a drag asks for it (see PanelHost::startDrag()),
-    // whose moves come to drag() (with the modifiers held), the button let go of to drop(), and whose end, let go of
-    // or called off, to release().
+    // whose moves come to drag() (the mouse at `now`, with the modifiers held), the button let go of to drop(), and
+    // whose end, let go of or called off, to release().
     virtual bool press(const Widget &, Point, Modifiers) { return false; }
     virtual bool doubleClick(const Widget &, Point, Modifiers) { return false; }
-    virtual void drag(Point, Modifiers) {}
-    virtual void drop(Point) {}
+    virtual void drag(const DragState &) {}
+    virtual void drop(const DragState &) {}
     virtual void release() {}
     // The wheel: first over what it takes whole, before anything is hit (its popups, a list); then over a widget of
     // its own that isn't a popup's, with the modifiers held; and turned sideways (see View::wheelAcross()).
