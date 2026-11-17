@@ -606,7 +606,8 @@ float View::heightFor(const UiLayout &layout) {
 }
 
 View::View(Controller &controller)
-    : controller_(controller), table_(paramTable()), mods_(controller, [this](std::string m) { flash(std::move(m)); }),
+    : controller_(controller), presets_(*this), panels_{&presets_}, table_(paramTable()),
+      mods_(controller, [this](std::string m) { flash(std::move(m)); }),
       routing_(controller, [this](std::string m) { flash(std::move(m)); }),
       fx_(controller, [this](std::string m) { flash(std::move(m)); }) {
     seqLoadsSeen_ = controller_.patchLoads(); // the roll as the layout saved it: fitted only to a patch loaded from now
@@ -623,6 +624,33 @@ const char *View::themeName(int index) {
 
 View::~View() {
     finishDrag();
+}
+
+Panel *View::modalPanel() const {
+    for (Panel *panel : panels_)
+        if (panel->modal())
+            return panel;
+    return nullptr;
+}
+
+std::string View::panelTip(const Widget &w) const {
+    for (const Panel *panel : panels_)
+        if (std::string tip = panel->tooltip(w); !tip.empty())
+            return tip;
+    return {};
+}
+
+void View::askConfirm(Panel &from, int kind) {
+    confirm_ = kind;
+    confirmFrom_ = &from;
+    hover_.reset();
+}
+
+void View::startDrag(Panel &from, const Widget &w, Point p) {
+    drag_.kind = DragKind::Panel;
+    drag_.widget = w;
+    drag_.start = drag_.now = p;
+    drag_.panel = &from;
 }
 
 View::DerivedScope::DerivedScope(const View &view) : view_(view) {
@@ -3276,15 +3304,13 @@ std::vector<View::Widget> View::widgets() const {
 
 std::optional<View::Widget> View::hitTest(Point p) const {
     const DerivedScope scope(*this); // asked while painting, the widgets painted
-    const bool overlay =
-        settingsOpen_ || confirm_ >= 0 || nameMenu_ != 0 || saveMode_ != SaveMode::None || browserOpen_ || infoCardOpen_;
-    const std::vector<Widget> dialog = settingsOpen_                  ? settingsWidgets()
-                                       : confirm_ >= 0                ? confirmWidgets()
-                                       : nameMenu_ != 0               ? nameMenuWidgets()
-                                       : saveMode_ != SaveMode::None  ? saveWidgets()
-                                       : browserOpen_                 ? browserWidgets()
-                                       : infoCardOpen_                ? infoCardWidgets()
-                                                                      : std::vector<Widget>();
+    Panel *const panel = modalPanel(); // a panel's popup or dialog, under the settings and the confirm dialog
+    const bool overlay = settingsOpen_ || confirm_ >= 0 || panel != nullptr;
+    std::vector<Widget> dialog = settingsOpen_   ? settingsWidgets()
+                                 : confirm_ >= 0 ? confirmWidgets()
+                                                 : std::vector<Widget>();
+    if (!settingsOpen_ && confirm_ < 0 && panel)
+        panel->widgets(dialog);
     const std::vector<Widget> &list = overlay ? dialog : scopedWidgets();
     for (auto it = list.rbegin(); it != list.rend(); ++it) {
         if ((it->clip.w > 0.0f && !it->clip.contains(p)) || it->disabled)
@@ -3635,14 +3661,8 @@ void View::paint(Canvas &c, Rect area) {
         paintCascade(c);
     if (typing_)
         paintTyping(c);
-    if (infoCardOpen_)
-        paintInfoCard(c);
-    if (browserOpen_)
-        paintBrowser(c);
-    if (saveMode_ != SaveMode::None)
-        paintSave(c);
-    if (nameMenu_ != 0)
-        paintNameMenu(c);
+    for (Panel *panel : panels_) // what they show over the editor: the preset browser's info card, browser and dialogs
+        panel->paint(c);
     if (settingsOpen_) {
         paintSettings(c);
         paintTooltip(c); // its sliders'
@@ -7119,8 +7139,9 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     const bool active = isActive(w);
     if (paintSeqWidget(c, w, hovered)) // the SEQ view's own (see seq.cpp)
         return;
-    if (paintPresetWidget(c, w, hovered)) // the presets' (see presetui.cpp)
-        return;
+    for (Panel *panel : panels_) // the panels' own (the presets', see presetbrowser.cpp)
+        if (panel->paintWidget(c, w, hovered))
+            return;
     switch (w.kind) {
     case Kind::Knob:
         if (isRatioDisplay(w))
@@ -9191,8 +9212,8 @@ void View::paintStepper(Canvas &c, const Widget &w) {
 
 // What the play switches do, below the one under the mouse.
 void View::paintTooltip(Canvas &c) {
-    if (hover_ && drag_.kind == DragKind::None) // the SEQ view's own (see seqTip()), and the presets'
-        if (const std::string seq = seqTip(*hover_).empty() ? presetTip(*hover_) : seqTip(*hover_); !seq.empty()) {
+    if (hover_ && drag_.kind == DragKind::None) // the SEQ view's own (see seqTip()), and the panels'
+        if (const std::string seq = seqTip(*hover_).empty() ? panelTip(*hover_) : seqTip(*hover_); !seq.empty()) {
             const float width = std::min(std::ceil(c.textWidth(seq, kTextBody)) + 24.0f, View::kWidth - 16.0f);
             const float x = std::clamp(hover_->rect.center().x - width * 0.5f, 8.0f, View::kWidth - 8.0f - width);
             const float below = hover_->kind == Kind::SeqKeys || hover_->kind == Kind::SeqRuler
@@ -10242,14 +10263,10 @@ void View::applyDrag(Point p) {
             scrollMods(static_cast<float>(drag_.startValue) + (p.y - drag_.start.y) / room * modsEnd(), false);
         break;
     }
-    case DragKind::BrowserSideScroll: { // the preset browser's sidebar follows its thumb
-        const float room = browserSideTrack().h - browserSideThumb().h;
-        if (room > 0.0f)
-            browserSideScroll_ = std::clamp(static_cast<float>(drag_.startValue) +
-                                                (p.y - drag_.start.y) / room * browserSideEnd(),
-                                            0.0f, browserSideEnd());
+    case DragKind::Panel: // a panel's own (the preset browser's sidebar's thumb, say)
+        if (drag_.panel)
+            drag_.panel->drag(p);
         break;
-    }
     case DragKind::InputsScroll: { // the INPUTS tab's rows follow its thumb
         const int op = controller_.layout().selectedNode;
         const float room = inputsScrollTrack().h - inputsThumb(op).h;
@@ -10413,10 +10430,9 @@ void View::mouseDown(Point p, Modifiers mods) {
     if (!(hit && (hit->kind == Kind::SearchField || hit->kind == Kind::SearchClear) &&
           hit->a == static_cast<int>(Field::ModsFilter)))
         modsFiltering_ = false;
-    // So does the preset browser's search.
-    if (!(hit && (hit->kind == Kind::SearchField || hit->kind == Kind::SearchClear) &&
-          hit->a == static_cast<int>(Field::Browser)))
-        browserSearching_ = false;
+    // So does the preset browser's search (see Panel::pressing()).
+    for (Panel *panel : panels_)
+        panel->pressing(hit ? &*hit : nullptr);
     // A pill's open list closes at a click anywhere else, which does nothing more; but not at a source's handle,
     // which can then be dragged onto one of its rows.
     if (modList_ && !(hit && (hit->popup || hit->kind == Kind::ModPill || hit->kind == Kind::SourceHandle ||
@@ -10427,8 +10443,9 @@ void View::mouseDown(Point p, Modifiers mods) {
     if (!hit)
         return;
     const Widget &w = *hit;
-    if (presetPress(w, p, mods)) // the presets' (see presetui.cpp)
-        return;
+    for (Panel *panel : panels_) // the panels' own (the presets', see presetbrowser.cpp)
+        if (panel->press(w, p, mods))
+            return;
     // Ctrl+Click types a value into whatever shows one: a knob, a modulation's depth, a route.
     if (mods.ctrl && (w.kind == Kind::Knob || w.kind == Kind::ValueText || w.kind == Kind::WireLabel ||
                       w.kind == Kind::OutLabel || w.kind == Kind::GridCell || w.kind == Kind::TempoBox ||
@@ -10920,7 +10937,6 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::PresetButton: {
         // Init and Load ask first when they would throw away changes, and Save before it overwrites a preset's file.
         // Save and Save As do nothing while greyed out.
-        pendingPreset_ = -1;
         const auto action = static_cast<PresetAction>(w.a);
         if (!presetActionOn(action))
             break;
@@ -10930,6 +10946,7 @@ void View::mouseDown(Point p, Modifiers mods) {
                                                           : controller_.patchEdited();
         if (ask) {
             confirm_ = w.a;
+            confirmFrom_ = nullptr;
             hover_.reset();
         } else {
             runPreset(action);
@@ -10943,12 +10960,9 @@ void View::mouseDown(Point p, Modifiers mods) {
         drag_.kind = DragKind::Tempo;
         drag_.startValue = controller_.tempo();
         break;
-    case Kind::SearchClear: // the field keeps the keyboard, for what is typed next
+    case Kind::SearchClear: // the field keeps the keyboard, for what is typed next (the browser's: see PresetBrowser)
         clearField(static_cast<Field>(w.a));
-        if (w.a == static_cast<int>(Field::Browser))
-            revealBrowserRow(presetStore().presetIndex(), true);
         modsFiltering_ = w.a == static_cast<int>(Field::ModsFilter);
-        browserSearching_ = w.a == static_cast<int>(Field::Browser);
         hover_.reset();
         break;
     case Kind::SearchField: { // the caret where it is clicked, and a drag selects; with Shift, from where it was
@@ -10959,8 +10973,7 @@ void View::mouseDown(Point p, Modifiers mods) {
             t.caret = t.anchor = t.text.size();
             break;
         }
-        modsFiltering_ = w.a == static_cast<int>(Field::ModsFilter);
-        browserSearching_ = w.a == static_cast<int>(Field::Browser);
+        modsFiltering_ = w.a == static_cast<int>(Field::ModsFilter); // the browser's search: see PresetBrowser::press()
         t.caret = t.stopAt(p.x);
         if (!mods.shift)
             t.anchor = t.caret;
@@ -10970,7 +10983,7 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::ConfirmBackdrop:
         if (w.a == 0) { // a click around the dialog cancels it
             confirm_ = -1;
-            pendingPreset_ = -1;
+            confirmFrom_ = nullptr;
         }
         break;
     case Kind::ConfirmButton:
@@ -11295,7 +11308,7 @@ void View::mouseUp(Point p, Modifiers) {
     case DragKind::Bend: // each move set it already
     case DragKind::ModsScroll:
     case DragKind::InputsScroll:
-    case DragKind::BrowserSideScroll:
+    case DragKind::Panel:
     case DragKind::ModListScroll:
     case DragKind::Pan: // the left button let go of mid-pan ends it too
     case DragKind::None:
@@ -11439,7 +11452,6 @@ void View::finishDrag() {
     case DragKind::Bend:
     case DragKind::ModsScroll:
     case DragKind::InputsScroll:
-    case DragKind::BrowserSideScroll:
     case DragKind::ModListScroll:
     case DragKind::Connect:
     case DragKind::Reroute:
@@ -11453,6 +11465,10 @@ void View::finishDrag() {
     case DragKind::FxNodeMove:
     case DragKind::Tempo:
     case DragKind::None:
+        break;
+    case DragKind::Panel: // its panel hears of it
+        if (drag_.panel)
+            drag_.panel->release();
         break;
     case DragKind::Seq: // a note still heard stops (a release that never came)
         seqHear(-1);
@@ -11573,24 +11589,18 @@ bool View::widgetDimmed(const Widget &w, const std::vector<DimArea> &areas) cons
     return std::any_of(areas.begin(), areas.end(), [&](const DimArea &a) { return a.area.contains(m); });
 }
 
-std::optional<std::pair<View::PanArea, float>> View::panAt(Point p) const {
+std::optional<View::PanStart> View::panAt(Point p) const {
     if (drag_.kind != DragKind::None || settingsOpen_ || confirm_ >= 0) // a left-button drag, or a dialog, goes on
         return std::nullopt;
-    if (saveMode_ != SaveMode::None || nameMenu_ != 0 || infoCardOpen_)
+    if (Panel *panel = modalPanel()) { // only what it pans, over everything else (the preset browser's list)
+        if (const auto pan = panel->panAt(p))
+            return PanStart{PanArea::Panel, pan->second, panel, pan->first};
         return std::nullopt;
-    if (browserOpen_) { // only its list and its sidebar, over everything else
-        if (browserSideArea().contains(p))
-            return browserSideEnd() > 0.0f ? std::optional(std::pair{PanArea::BrowserSide, browserSideScroll_})
-                                           : std::nullopt;
-        if (!browserListArea().contains(p))
-            return std::nullopt;
-        const int most = std::max(static_cast<int>(browserRows().size()) - browserVisible(), 0);
-        return std::pair{PanArea::Browser, static_cast<float>(std::clamp(browserScroll_, 0, most))};
     }
     // A pill's open list moves its rows when they scroll. Another open list or menu takes nothing.
     const auto hit = hitTest(p);
     if (hit && hit->popup && modList_)
-        return modListEnd() > 0.0f ? std::optional(std::pair{PanArea::ModList, modListFirst()}) : std::nullopt;
+        return modListEnd() > 0.0f ? std::optional(PanStart{PanArea::ModList, modListFirst()}) : std::nullopt;
     if (hit) {
         const Kind k = hit->kind;
         if (hit->popup || k == Kind::ModList || k == Kind::ModListRow || k == Kind::FxAdd || k == Kind::FxAddNode ||
@@ -11602,19 +11612,19 @@ std::optional<std::pair<View::PanArea, float>> View::panAt(Point p) const {
             return std::nullopt;
     }
     if (!controller_.layout().sourcesCollapsed && modPanel(false).contains(p))
-        return std::pair{PanArea::Sources, sourceScroll()};
+        return PanStart{PanArea::Sources, sourceScroll()};
     if (modsWide() && kFxPanel.contains(p))
-        return std::pair{PanArea::Mods, modsFirst()};
+        return PanStart{PanArea::Mods, modsFirst()};
     if (const int op = controller_.layout().selectedNode;
         op >= 0 && op < kOps && !inspectorCovered() && opTabShown(op) == InspectorTab::Inputs &&
         kInputsList.contains(p) && inputsEnd(op) > 0.0f)
-        return std::pair{PanArea::Inputs, inputsFirst(op)};
+        return PanStart{PanArea::Inputs, inputsFirst(op)};
     if (fxWide() && fxGraph() && fxGraphArea().contains(p)) // the graph, by pixels
-        return std::pair{PanArea::Fx, fxGraphScroll(fxGridLayout(fxLine()))};
+        return PanStart{PanArea::Fx, fxGraphScroll(fxGridLayout(fxLine()))};
     if (fxWide() && !fxGraph() && kFxPanel.contains(p))
-        return std::pair{PanArea::Fx, fxScroll()};
+        return PanStart{PanArea::Fx, fxScroll()};
     if (seqWide() && Rect{kSeqBox.x, kSeqRuler.y, kSeqBox.w, kSeqLaneArea.y + kSeqLaneArea.h - kSeqRuler.y}.contains(p))
-        return std::pair{PanArea::Seq, seqScroll()}; // the roll, across and up and down
+        return PanStart{PanArea::Seq, seqScroll()}; // the roll, across and up and down
     return std::nullopt;
 }
 
@@ -11622,10 +11632,11 @@ void View::middleDown(Point p) {
     const auto pan = panAt(p);
     if (!pan)
         return;
-    const auto [area, first] = *pan;
+    const PanArea area = pan->area;
+    const float first = pan->first;
     // Open lists and menus close as a click there closes them, since what they were opened on may scroll away; but
-    // not a pill's list that is being scrolled.
-    if (area != PanArea::Browser && area != PanArea::BrowserSide && area != PanArea::ModList) {
+    // not a pill's list that is being scrolled, nor what a panel's popup pans (the preset browser's list).
+    if (area != PanArea::Panel && area != PanArea::ModList) {
         modList_.reset();
         cascade_.reset();
         fxMenuOpen_ = false;
@@ -11642,6 +11653,8 @@ void View::middleDown(Point p) {
     drag_ = Drag{};
     drag_.kind = DragKind::Pan;
     drag_.widget.a = static_cast<int>(area);
+    drag_.widget.b = pan->part;
+    drag_.panel = pan->panel;
     drag_.start = drag_.now = p;
     drag_.startValue = first;
     if (area == PanArea::Seq)
@@ -11789,7 +11802,7 @@ void View::touchPanEnd(Point p) {
 
 void View::wheelAcross(Point p, float steps) {
     if ((drag_.kind != DragKind::None && drag_.kind != DragKind::Key) || settingsOpen_ || confirm_ >= 0 ||
-        browserOpen_ || steps == 0.0f)
+        presets_.browserShown() || steps == 0.0f)
         return;
     menuLive_ = false;
     endTyping(true);
@@ -11855,14 +11868,13 @@ void View::applyPan(Point p) {
         seqScrollX_ = seqScroll();
         seqShowFromRow(seqPanStart_.y + down / seqRowH());
         break;
-    case PanArea::BrowserSide: // what was under the mouse follows it
-        browserSideScroll_ = hold(first - down, browserSideEnd());
+    case PanArea::Panel: // a panel's part, held at its ends as hold() holds the others
+        if (drag_.panel)
+            if (const std::optional<float> held = drag_.panel->pan(drag_.widget.b, first, across, down)) {
+                drag_.start = p;
+                drag_.startValue = *held;
+            }
         break;
-    case PanArea::Browser: { // in whole rows
-        const int rows = static_cast<int>(browserRows().size()) - browserVisible();
-        browserScroll_ = static_cast<int>(std::lround(hold(first - down / 28.0f, static_cast<float>(rows))));
-        break;
-    }
     }
 }
 
@@ -11879,8 +11891,8 @@ void View::doubleClick(Point p, Modifiers mods) {
         return;
     if (hit && seqDoubleClick(*hit, p, mods)) // the SEQ view's own
         return;
-    if (hit && presetDoubleClick(*hit)) // the presets'
-        return;
+    if (hit && std::any_of(panels_.begin(), panels_.end(), [&](Panel *panel) { return panel->doubleClick(*hit); }))
+        return; // the panels' own (the presets')
     if (hit && (hit->kind == Kind::Key || hit->kind == Kind::Octave || hit->kind == Kind::UndoButton ||
                 hit->kind == Kind::PresetStep || hit->kind == Kind::FxPower || hit->kind == Kind::FxNodePower ||
                 hit->kind == Kind::SlotBypass || (hit->kind == Kind::ShapeGrid && hit->b != 0) ||
@@ -12045,7 +12057,8 @@ void View::wheel(Point p, float steps, Modifiers mods) {
     endTyping(true);
     if (settingsOpen_ || confirm_ >= 0) // a dialog over everything: nothing behind it scrolls or turns
         return;
-    if (presetWheel(p, steps)) // the browser's list and sidebar, the Save dialog's folders, and nothing under them
+    // The preset browser's list and sidebar, the Save dialog's folders, and nothing under them.
+    if (std::any_of(panels_.begin(), panels_.end(), [&](Panel *panel) { return panel->wheel(p, steps); }))
         return;
     routing_.keepRoutes(); // as in mouseDown(): scrolling can take a route down to 0 % too
     const auto hit = hitTest(p);
@@ -12240,14 +12253,14 @@ constexpr int kAmpOversamplingCommand = 30;
 constexpr int kMoveBandCommand = 40;
 // And from here on, each sets the mode of the route the menu was opened on (see RouteMode).
 constexpr int kRouteModeCommand = 16;
-// The Save dialog's folder tree: a new folder in the folder the menu was opened on, and that folder in Explorer.
-constexpr int kNewFolderCommand = 44;
-constexpr int kOpenFolderCommand = 45;
-constexpr int kRenameFolderCommand = 46;
-constexpr int kDeleteFolderCommand = 47;
+// The Save dialog's folder tree's, 44 to 47 (see PresetBrowser::kNewFolderCommand).
 // Typing a modulation's aux depth, from its depth handle's or its aux chip's menu.
 constexpr int kEditAuxDepthCommand = 48;
-static_assert(kNewFolderCommand > kMoveBandCommand + 3 && kEditAuxDepthCommand > kDeleteFolderCommand &&
+static_assert(PresetBrowser::kNewFolderCommand > kMoveBandCommand + 3 &&
+              PresetBrowser::kOpenFolderCommand == PresetBrowser::kNewFolderCommand + 1 &&
+              PresetBrowser::kRenameFolderCommand == PresetBrowser::kNewFolderCommand + 2 &&
+              PresetBrowser::kDeleteFolderCommand == PresetBrowser::kNewFolderCommand + 3 &&
+              kEditAuxDepthCommand > PresetBrowser::kDeleteFolderCommand &&
               kEditAuxDepthCommand < 50); // under the SEQ view's
 static_assert(kRouteModeCommand + static_cast<int>(RouteMode::Count) <= kAmpOversamplingCommand &&
               kAmpOversamplingCommand + kAmpOversamplings <= kMoveBandCommand && kMoveBandCommand + 3 < 100);
@@ -12261,34 +12274,15 @@ std::vector<MenuItem> View::contextMenu(Point p) {
     menuSource_ = -1;
     menuPoint_ = {-1, -1};
     menuValue_.reset();
-    menuFolder_.reset();
     menuAuxDepth_.reset();
     const auto hit = hitTest(p);
-    if (!hit)
+    // The panels' own (a folder of the preset browser's or the Save dialog's tree): each forgets its last menu, and
+    // the first that owns what is hit fills this one.
+    bool taken = false;
+    for (Panel *panel : panels_)
+        taken = panel->contextMenu(taken ? std::optional<Widget>() : hit, items) || taken;
+    if (taken || !hit)
         return items;
-    // A folder of the Save dialog's tree, or of the browser's (not Factory, which is built in).
-    const bool browserTree = browserOpen_ && (hit->kind == Kind::BrowserTree || hit->kind == Kind::BrowserTreeToggle);
-    if (hit->kind == Kind::SaveFolderRow || browserTree) {
-        if (browserTree) {
-            const std::vector<TreeRow> tree = this->browserTree();
-            if (hit->a >= 0 && hit->a < static_cast<int>(tree.size()) && tree[hit->a].scope == BrowserScope::Folder)
-                menuFolder_ = tree[hit->a].folder;
-        } else if (const std::vector<std::string> folders = saveFolders();
-                   hit->a >= 0 && hit->a < static_cast<int>(folders.size())) {
-            menuFolder_ = folders[hit->a];
-        }
-        if (menuFolder_) {
-            menuFolderRow_ = hit->rect;
-            items.push_back({kNewFolderCommand, tr(Str::MenuNewFolder)});
-            items.push_back({kOpenFolderCommand, tr(Str::MenuOpenInExplorer)});
-            if (!menuFolder_->empty()) { // a subfolder, not the preset folder itself
-                items.push_back({0, ""});
-                items.push_back({kRenameFolderCommand, tr(Str::MenuRenameFolder)});
-                items.push_back({kDeleteFolderCommand, tr(Str::MenuDeleteFolder)});
-            }
-        }
-        return items;
-    }
     if (seqContextMenu(*hit, p, items)) // the SEQ view's roll's
         return items;
     if ((hit->kind == Kind::FxNode && hit->a >= kFxSlots) || hit->kind == Kind::FxBoxGrip) { // a split or a join
@@ -12491,32 +12485,9 @@ void View::menuCommand(int command) {
         seqMenuCommand(command - kSeqMenuCommands);
         return;
     }
-    if (menuFolder_ && (saveMode_ == SaveMode::Save || browserOpen_)) {
-        if (command == kNewFolderCommand && saveMode_ == SaveMode::Save) { // the New Folder form, in the one picked
-            saveFolder_ = *menuFolder_;
-            openNameMenu(3, {menuFolderRow_.x, menuFolderRow_.bottom() + 4.0f});
-        } else if (command == kNewFolderCommand) { // in the browser: in the folder clicked, which it shows
-            browserScope_ = BrowserScope::Folder;
-            browserFolder_ = *menuFolder_;
-            browserScroll_ = 0;
-            rememberBrowserPlace();
-            openNameMenu(2, {menuFolderRow_.x - 8.0f, menuFolderRow_.bottom() + 4.0f});
-        } else if (command == kOpenFolderCommand) {
-            presetStore().openPresetFolder(*menuFolder_);
-        } else if (command == kRenameFolderCommand && !menuFolder_->empty()) { // its name, all selected, to type over
-            renameFolder_ = *menuFolder_;
-            openNameMenu(4, {menuFolderRow_.x, menuFolderRow_.bottom() + 4.0f});
-            const size_t slash = renameFolder_.rfind('/');
-            newName_.text = slash == std::string::npos ? renameFolder_ : renameFolder_.substr(slash + 1);
-            newName_.anchor = 0;
-            newName_.caret = newName_.text.size();
-        } else if (command == kDeleteFolderCommand && !menuFolder_->empty()) {
-            confirmFolder_ = *menuFolder_;
-            confirm_ = kConfirmFolderDelete;
-            hover_.reset();
-        }
-        return;
-    }
+    for (Panel *panel : panels_) // the panels' own (see contextMenu())
+        if (panel->menuCommand(command))
+            return;
     if (command == 1 && menuParam_ >= 0) {
         edit(menuParam_, mods_.resetValue(menuParam_));
     } else if (command == 2 && menuParam_ >= 0) {
@@ -12657,22 +12628,15 @@ void View::typeKey(Key key, bool shift) {
         if (field(*f).key(key, shift))
             fieldChanged(*f);
         switch (*f) {
-        case Field::Browser:
-            browserKey(key);
-            break;
         case Field::ModsFilter:
             modsFilterKey(key);
             break;
         case Field::CascadeSearch:
             cascadeKey(key);
             break;
-        case Field::SaveName:
-        case Field::SaveAuthor:
-        case Field::SaveDescription:
-            saveKey(key);
-            break;
-        case Field::NewName:
-            nameMenuKey(key);
+        default: // a panel's own (the preset browser's search, the Save dialog's and the name form's fields)
+            for (Panel *panel : panels_)
+                panel->fieldKey(*f, key);
             break;
         }
         return;

@@ -143,54 +143,36 @@ void View::runPreset(PresetAction action) {
     case PresetAction::Init:
         presetStore().resetPreset();
         break;
-    case PresetAction::Load: // a preset from the library (closing the browser, but for a click), or a file
-        if (pendingPreset_ >= 0) {
-            if (presetStore().loadPresetAt(pendingPreset_)) {
-                if (pendingClose_)
-                    browserOpen_ = false;
-            }
-            else
-                flash(tr(Str::MsgPresetUnreadable));
-        } else {
-            presetStore().choosePreset(false);
-        }
+    case PresetAction::Load: // a file (a preset from the library loads through the browser: see PresetBrowser)
+        presetStore().choosePreset(false);
         break;
     case PresetAction::Save: // over the preset's file; with none to write (the demo, a factory preset), as Save As
         if (!presetStore().writesPresetFiles())
             presetStore().choosePreset(true);
         else if (!presetStore().presetWritable())
-            openSave();
+            presets_.openSave();
         else if (!controller_.overwritePreset()) // saved, it says nothing: Save greys out again
             flash(tr(Str::MsgPresetNotSaved));
         break;
     case PresetAction::SaveAs: // the Save dialog, where presets are files; the demo says it has none
         if (presetStore().writesPresetFiles())
-            openSave();
+            presets_.openSave();
         else
             presetStore().choosePreset(true);
         break;
     }
 }
 
-// What replaces the patch: Init, or the preset picked from the library. A file still to be picked in the dialog goes
-// unsaid. Or, for Save, what overwriting the preset's file does.
+// What a panel's question says is the panel's (the preset browser's: the preset picked from the library that replaces
+// the patch, a folder or a category that goes). Of the View's own: what replaces the patch, Init (a file still to be
+// picked in the dialog goes unsaid), or, for Save, what overwriting the preset's file does.
 std::string View::confirmWhat() const {
+    if (confirmFrom_)
+        return confirmFrom_->confirmWords(confirm_).what;
     if (confirm_ == kConfirmFxClear)
         return tr(Str::ConfirmFxClear);
     if (confirm_ == kConfirmSeqClear)
         return tr(Str::ConfirmSeqClear);
-    if (confirm_ == kConfirmFolderDelete) { // the presets that go with it
-        const int n = presetsInFolder(confirmFolder_);
-        return n == 0   ? std::string(tr(Str::ConfirmFolderDeleteEmpty))
-               : n == 1 ? std::string(tr(Str::ConfirmFolderDeleteOne))
-                        : trf(Str::ConfirmFolderDelete, {std::to_string(n)});
-    }
-    if (confirm_ == kConfirmCategoryRemove) { // the presets in it, which keep it
-        const int n = presetsInCategory(confirmCategory_);
-        return n == 0   ? std::string(tr(Str::ConfirmCategoryRemoveUnused))
-               : n == 1 ? std::string(tr(Str::ConfirmCategoryRemoveOne))
-                        : trf(Str::ConfirmCategoryRemove, {std::to_string(n)});
-    }
     if (confirm_ == kConfirmMidBand)
         return confirmEffects_ == 1 ? std::string(tr(Str::ConfirmMidBandOne))
                                     : trf(Str::ConfirmMidBand, {std::to_string(confirmEffects_)});
@@ -201,11 +183,7 @@ std::string View::confirmWhat() const {
         return tr(Str::ConfirmInit);
     if (confirm_ == static_cast<int>(PresetAction::Save))
         return tr(Str::ConfirmOverwrite);
-    const std::vector<PresetEntry> &presets = presetStore().presets();
-    return pendingPreset_ >= 0 && pendingPreset_ < static_cast<int>(presets.size())
-               ? trf(Str::ConfirmLoadPreset,
-                     {presets[pendingPreset_].name})
-               : std::string();
+    return std::string();
 }
 
 void View::answerConfirm(int button) {
@@ -214,37 +192,13 @@ void View::answerConfirm(int button) {
     const bool seqClear = confirm_ == kConfirmSeqClear;
     const bool bands = confirm_ == kConfirmMidBand;
     const bool split = confirm_ == kConfirmSplitRemove;
-    const bool category = confirm_ == kConfirmCategoryRemove;
-    const bool folder = confirm_ == kConfirmFolderDelete;
+    const int kind = confirm_;
+    Panel *const from = confirmFrom_;
     confirm_ = -1;
+    confirmFrom_ = nullptr;
     hover_.reset();
-    if (folder) { // into the Recycle Bin; the Save dialog picks the folder it was in if it was in it
-        if (button == 1) {
-            if (presetStore().deletePresetFolder(confirmFolder_)) {
-                // The browser showing it, or one in it, shows the folder it was in.
-                if (browserScope_ == BrowserScope::Folder &&
-                    (browserFolder_ == confirmFolder_ || browserFolder_.starts_with(confirmFolder_ + "/"))) {
-                    const size_t slash = confirmFolder_.rfind('/');
-                    browserFolder_ = slash == std::string::npos ? std::string() : confirmFolder_.substr(0, slash);
-                    browserScroll_ = 0;
-                    rememberBrowserPlace();
-                }
-                browserSideScroll_ = std::min(browserSideScroll_, browserSideEnd());
-                if (saveFolder_ == confirmFolder_ || saveFolder_.starts_with(confirmFolder_ + "/")) {
-                    const size_t slash = confirmFolder_.rfind('/');
-                    saveFolder_ = slash == std::string::npos ? std::string() : confirmFolder_.substr(0, slash);
-                }
-            } else {
-                flash(tr(Str::MsgFolderNotDeleted));
-            }
-        }
-        confirmFolder_.clear();
-    } else if (category) { // out of the list; the presets in it keep it, listed in grey
-        if (button == 1) {
-            presetStore().removeUserCategory(confirmCategory_);
-            browserSideScroll_ = std::min(browserSideScroll_, browserSideEnd());
-        }
-        confirmCategory_.clear();
+    if (from) { // a panel's question (the preset browser's: a preset loaded, a folder or a category removed)
+        from->confirmed(kind, button);
     } else if (split) { // the split removed, its bands' effects kept on the main line (1) or with it (4)
         if (button == 1 || button == 4)
             removeFxNode(fxSplitNode(confirmSplit_), button == 4 ? 1 : 0);
@@ -261,23 +215,15 @@ void View::answerConfirm(int button) {
     } else if (button == 1) {
         runPreset(action);
     }
-    pendingPreset_ = -1;
 }
 
 bool View::dialogKey(Key key) {
     if (typing_ || !dialogOpen() || (key != Key::Enter && key != Key::Escape))
         return false;
-    if (infoCardOpen_ && !settingsOpen_ && confirm_ < 0) { // the info card: Escape closes it, Enter goes to the host
-        if (key != Key::Escape)
-            return false;
-        infoCardOpen_ = false;
-        hover_.reset();
-        return true;
-    }
-    if (browserOpen_ && !settingsOpen_ && confirm_ < 0 && nameMenu_ == 0 && saveMode_ == SaveMode::None) {
-        browserKey(key); // its search not clicked into: Enter loads the preset picked, Escape closes it
-        return true;
-    }
+    if (!settingsOpen_ && confirm_ < 0) // the panels' (the preset browser's info card and the browser itself)
+        for (Panel *panel : panels_)
+            if (const std::optional<bool> taken = panel->dialogKey(key))
+                return *taken;
     if (!settingsOpen_ && confirm_ < 0) { // the panel of algorithms: Escape closes it, Enter goes on to the host
         if (key != Key::Escape)
             return false;
@@ -338,12 +284,12 @@ std::string lowered(std::string_view text) {
 }
 } // namespace
 
-void View::TextField::erase(size_t from, size_t to) {
+void TextField::erase(size_t from, size_t to) {
     text.erase(from, to - from);
     caret = anchor = from;
 }
 
-bool View::TextField::insert(std::string_view typed) {
+bool TextField::insert(std::string_view typed) {
     std::string clean;
     for (char ch : typed)
         if (ch == '\n' || ch == '\r' || ch == '\t')
@@ -360,13 +306,13 @@ bool View::TextField::insert(std::string_view typed) {
     return true;
 }
 
-void View::TextField::clear() {
+void TextField::clear() {
     text.clear();
     caret = anchor = 0;
     shift = 0.0f;
 }
 
-size_t View::TextField::stopAt(float x) const {
+size_t TextField::stopAt(float x) const {
     if (stops.size() != text.size() + 1)
         return text.size();
     size_t best = 0;
@@ -376,7 +322,7 @@ size_t View::TextField::stopAt(float x) const {
     return best;
 }
 
-void View::TextField::selectWord(float x) {
+void TextField::selectWord(float x) {
     const size_t at = stopAt(x);
     size_t from = at, to = at;
     while (from > 0 && text[from - 1] != ' ')
@@ -387,7 +333,7 @@ void View::TextField::selectWord(float x) {
     caret = to;
 }
 
-bool View::TextField::key(Key key, bool extend) {
+bool TextField::key(Key key, bool extend) {
     const auto [from, to] = selection();
     // The caret to `at`; extending (Shift held), the selection grows or shrinks with it, else there is none.
     auto moveTo = [&](size_t at) {
@@ -432,7 +378,7 @@ bool View::TextField::key(Key key, bool extend) {
     return false;
 }
 
-std::vector<std::string> View::TextField::words() const {
+std::vector<std::string> TextField::words() const {
     std::vector<std::string> words;
     const std::string search = lowered(text);
     for (size_t at = 0; at < search.size();) {
@@ -444,19 +390,16 @@ std::vector<std::string> View::TextField::words() const {
     return words;
 }
 
-bool View::TextField::holds(std::string_view text, const std::vector<std::string> &words) {
+bool TextField::holds(std::string_view text, const std::vector<std::string> &words) {
     const std::string in = lowered(text);
     return std::all_of(words.begin(), words.end(),
                        [&](const std::string &word) { return in.find(word) != std::string::npos; });
 }
 
 std::optional<View::Field> View::fieldTyping() const {
-    if (nameMenu_ != 0)
-        return confirm_ < 0 ? std::optional(Field::NewName) : std::nullopt;
-    if (saveMode_ != SaveMode::None)
-        return confirm_ < 0 ? std::optional(saveFocus_) : std::nullopt;
-    if (browserOpen_)
-        return confirm_ < 0 && browserSearching_ ? std::optional(Field::Browser) : std::nullopt;
+    for (const Panel *panel : panels_) // a panel's form, while it decides (the preset browser's), under a confirm dialog
+        if (std::optional<Field> focus; panel->fieldFocus(focus))
+            return confirm_ < 0 ? focus : std::nullopt;
     if (settingsOpen_ || confirm_ >= 0)
         return std::nullopt;
     if (cascadeSearches() && modsWide())
@@ -472,37 +415,20 @@ View::TextField &View::field(Field f) {
         return modsFilter_;
     case Field::CascadeSearch:
         return cascadeSearch_;
-    case Field::SaveName:
-        return saveName_;
-    case Field::SaveAuthor:
-        return saveAuthor_;
-    case Field::SaveDescription:
-        return saveDescription_;
-    case Field::NewName:
-        return newName_;
-    case Field::Browser:
+    default: // a panel's own
         break;
     }
-    return browserSearch_;
+    for (Panel *panel : panels_)
+        if (TextField *t = panel->field(f))
+            return *t;
+    return modsFilter_; // every field has its owner
 }
 
-// After what is typed changes: the browser's list from its top, the first preset found picked; the MODS view's rows
-// from their top; the target menu's matches from the first that can be picked, nothing opened beside them.
+// After what is typed changes: the MODS view's rows from their top; the target menu's matches from the first that can
+// be picked, nothing opened beside them; a panel's field as its panel has it (see PresetBrowser::fieldChanged()).
 void View::fieldChanged(Field f) {
     caretTicks_ = 0;
     switch (f) {
-    case Field::Browser: {
-        const std::vector<int> rows = browserRows();
-        if (!browserSearch_.text.empty())
-            browserPick_ = rows.empty() ? -1 : rows.front();
-        browserScroll_ = 0;
-        break;
-    }
-    case Field::SaveName:
-    case Field::SaveAuthor:
-    case Field::SaveDescription:
-    case Field::NewName:
-        break;
     case Field::ModsFilter:
         scrollMods(0.0f, false);
         break;
@@ -519,6 +445,10 @@ void View::fieldChanged(Field f) {
                     break;
                 }
         }
+        break;
+    default: // a panel's own
+        for (Panel *panel : panels_)
+            panel->fieldChanged(f);
         break;
     }
 }
@@ -580,27 +510,6 @@ void View::paintField(Canvas &c, Field f, Rect box, Rect typed, std::string_view
     }
 }
 
-// Loading asks first while the patch has changed. Loaded from the browser, it closes it, unless `close` is false (a
-// click on a preset, which leaves it open for the next); cancelled or unreadable, it stays for another pick.
-void View::openPreset(int index, bool close) {
-    if (index == presetStore().presetIndex() && !controller_.patchEdited()) { // loaded already, as it is
-        if (close)
-            browserOpen_ = false;
-        hover_.reset();
-    } else if (controller_.patchEdited()) {
-        confirm_ = static_cast<int>(PresetAction::Load);
-        pendingPreset_ = index;
-        pendingClose_ = close;
-        hover_.reset();
-    } else if (presetStore().loadPresetAt(index)) {
-        if (close)
-            browserOpen_ = false;
-        hover_.reset();
-    } else {
-        flash(tr(Str::MsgPresetUnreadable));
-    }
-}
-
 // Steps through the library, round from the last to the first; from Init, to the first or the last.
 void View::stepPreset(int direction) {
     presetStore().rescanPresets();
@@ -610,7 +519,7 @@ void View::stepPreset(int direction) {
         return;
     }
     const int now = presetStore().presetIndex();
-    openPreset(now < 0 ? (direction > 0 ? 0 : count - 1) : (now + direction + count) % count);
+    presets_.openPreset(now < 0 ? (direction > 0 ? 0 : count - 1) : (now + direction + count) % count);
 }
 
 void View::paintConfirm(Canvas &c) {
@@ -627,14 +536,13 @@ void View::paintConfirm(Canvas &c) {
     // What goes, undo brings back; or a category or folder, which nothing of the patch's needs.
     const bool clear = confirm_ == kConfirmFxClear || bands || split || seqClear || category || folder;
     c.text({panel.x + 24.0f, panel.y + 18.0f, panel.w - 48.0f, 22.0f},
-           overwrite  ? trf(Str::ConfirmOverwriteTitle, {presetStore().presetName()})
-           : seqClear ? trf(Str::ConfirmSeqClearTitle, {seqPatternName(seqPattern())})
-           : category ? trf(Str::ConfirmCategoryRemoveTitle, {confirmCategory_})
-           : folder   ? trf(Str::ConfirmFolderDeleteTitle, {confirmFolder_.substr(confirmFolder_.rfind('/') + 1)})
-                      : std::string(tr(bands   ? Str::ConfirmMidBandTitle
-                                      : split ? Str::ConfirmSplitRemoveTitle
-                                      : clear ? Str::ConfirmFxClearTitle
-                                              : Str::ConfirmTitle)),
+           confirmFrom_ ? confirmFrom_->confirmWords(confirm_).title // a panel's question (the preset browser's)
+           : overwrite  ? trf(Str::ConfirmOverwriteTitle, {presetStore().presetName()})
+           : seqClear   ? trf(Str::ConfirmSeqClearTitle, {seqPatternName(seqPattern())})
+                        : std::string(tr(bands   ? Str::ConfirmMidBandTitle
+                                        : split ? Str::ConfirmSplitRemoveTitle
+                                        : clear ? Str::ConfirmFxClearTitle
+                                                : Str::ConfirmTitle)),
            kTextHeading, kText, Align::Left, true);
     float y = panel.y + 48.0f;
     if (!what.empty()) {

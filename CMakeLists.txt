@@ -141,7 +141,6 @@ add_library(fmvibe-core STATIC
     src/gui/controller.cpp
     src/gui/controller.h
     src/gui/dialogs.cpp
-    src/gui/presetui.cpp
     src/gui/fxgraph.cpp
     src/gui/fxgraph.h
     src/gui/fxgraphmodel.cpp
@@ -151,10 +150,13 @@ add_library(fmvibe-core STATIC
     src/gui/modulationmodel.cpp
     src/gui/modulationmodel.h
     src/gui/mods.cpp
+    src/gui/panel.h
     src/gui/seq.cpp
     src/gui/layout.h
     src/gui/patchedits.cpp
     src/gui/patchedits.h
+    src/gui/presetbrowser.cpp
+    src/gui/presetbrowser.h
     src/gui/routing.cpp
     src/gui/routing.h
     src/gui/routingmodel.cpp
@@ -164,6 +166,7 @@ add_library(fmvibe-core STATIC
     src/gui/theme.h
     src/gui/view.cpp
     src/gui/view.h
+    src/gui/widget.h
     src/remotepages.cpp
     src/remotepages.h
     src/sharedtelemetry.h

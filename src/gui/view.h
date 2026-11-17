@@ -4,7 +4,10 @@
 #include "controller.h"
 #include "fxgraphmodel.h"
 #include "modulationmodel.h"
+#include "panel.h"
+#include "presetbrowser.h"
 #include "routingmodel.h"
+#include "widget.h"
 
 #include <array>
 #include <cstdint>
@@ -12,7 +15,6 @@
 #include <memory>
 #include <optional>
 #include <random>
-#include <set>
 #include <span>
 #include <utility>
 #include <string>
@@ -20,19 +22,7 @@
 
 namespace fmvibe::gui {
 
-struct Modifiers {
-    bool shift = false; // fine adjustment
-    bool ctrl = false;
-    bool alt = false;
-};
-
 enum class CursorKind { Arrow, Hand, Vertical, Horizontal, Move, Text, Pen }; // Pen: drawing notes in the SEQ view's roll
-
-struct MenuItem {
-    int command = 0; // 0 is a separator
-    std::string label;
-    bool checked = false; // shown with a check mark: the choice in force
-};
 
 // Points that depend only on what their key holds (the params a curve is drawn from, where it goes), kept from
 // frame to frame and worked out again only when any of that changes.
@@ -55,13 +45,14 @@ private:
 
 // The whole editor: layout, drawing and mouse handling in logical coordinates
 // (kWidth x kHeight). Only depends on Direct2D, so it can render into a window
-// or an offscreen bitmap alike.
-class View {
+// or an offscreen bitmap alike. Its areas that are panels of their own (see panel.h) it holds and hands what is
+// theirs, doing for them what it does for every area (PanelHost).
+class View : private PanelHost {
 public:
     static constexpr float kWidth = 1200.0f;
     // The height depends on whether the modulation panel is collapsed.
     static float heightFor(const UiLayout &layout);
-    float height() const { return heightFor(controller_.layout()); }
+    float height() const override { return heightFor(controller_.layout()); }
 
     explicit View(Controller &controller);
     ~View(); // ends a drag still going on, so no note hangs and no gesture stays open
@@ -140,7 +131,7 @@ public:
     // browser's search while it is open, the MODS view's filter once clicked, and the search atop a MODS row's target
     // menu while it is open. Meanwhile the window should send the keyboard here: typeChar() takes printable ASCII. Up
     // and Down only move through the browser's list and the target menu's matches.
-    enum class Key { Enter, Escape, Backspace, Delete, Left, Right, Home, End, SelectAll, Up, Down, Copy, Cut, Paste };
+    using Key = gui::Key;
     bool typing() const { return typing_.has_value() || fieldTyping().has_value(); }
     void typeChar(char32_t c);
     // Shift with Left, Right, Home and End extends a text field's selection.
@@ -155,18 +146,20 @@ public:
     // A dialog over the editor (a confirm dialog, the settings) takes Enter, which presses its lit button, and Escape,
     // which cancels it or closes the settings; the panel of algorithms takes Escape, which closes it. While one is open
     // the window should send it those keys: true if one was taken.
-    bool dialogOpen() const { return settingsOpen_ || confirm_ >= 0 || algorithmMenuOpen_ || infoCardOpen_ || browserOpen_; }
+    bool dialogOpen() const { return settingsOpen_ || confirm_ >= 0 || algorithmMenuOpen_ || presets_.dialog(); }
     // What the preset browser, the info card and the Save dialog show: whether each is open, the presets the browser
-    // lists (in its order) and the one picked.
-    bool browserShown() const { return browserOpen_; }
-    bool infoCardShown() const { return infoCardOpen_; }
+    // lists (in its order) and the one picked (see PresetBrowser).
+    bool browserShown() const { return presets_.browserShown(); }
+    bool infoCardShown() const { return presets_.infoCardShown(); }
     bool confirmShown() const { return confirm_ >= 0; }
-    bool saveShown() const { return saveMode_ != SaveMode::None; }
-    bool nameMenuShown() const { return nameMenu_ != 0; }
-    std::vector<int> browserListed() const { return browserRows(); }
-    int browserPicked() const { return browserPick_; }
-    float browserSideScrolled() const { return browserSideScroll_; } // how far its sidebar is scrolled, in px
-    std::vector<int> browserCategoryCounted() const { return browserCategoryCounts(); } // by browserCategoryList()'s rows
+    bool saveShown() const { return presets_.saveShown(); }
+    bool nameMenuShown() const { return presets_.nameMenuShown(); }
+    std::vector<int> browserListed() const { return presets_.browserListed(); }
+    int browserPicked() const { return presets_.browserPicked(); }
+    float browserSideScrolled() const { return presets_.browserSideScrolled(); } // how far its sidebar is scrolled, in px
+    std::vector<int> browserCategoryCounted() const { // by its category list's rows
+        return presets_.browserCategoryCounted();
+    }
     bool dialogKey(Key key);
     // Ctrl going down or up, from the keyboard while the window has it (mouse messages bring it too): while it is held
     // over a graph, its grid's points show, and a node dragged snaps to them. True if a repaint is due.
@@ -181,240 +174,7 @@ public:
     bool seqKey(Key key, bool shift);
 
 private:
-    enum class Kind {
-        Knob,         // param
-        Choice,       // param, b = the value it selects (segmented buttons)
-        Toggle,       // param: flips between 0 and 1
-        ViewTab,      // a = RoutingView: picks what the panels under the tabs show
-        AlgorithmButton, // ALGORITHM, at the tabs' row's right, with ROUTING and MATRIX: opens the panel of algorithms
-        AlgorithmMenu, // a = 1 on the open panel of algorithms, 0 around it (a click there closes it)
-        AlgorithmSet, // b = 6, 4, 3 or 2: the panel's switch between the sets, by how many operators they use
-        AlgorithmItem, // a = index in kAlgorithms: a thumbnail of the panel; a click sets the operators to it
-        OpTab,        // a = InspectorTab: picks what the lower half of an operator's page shows
-        ScopeCycles,  // b = how many cycles the scope shows
-
-        NodeTab,      // a = node: selects it; the selected one switches it on and off
-        MatrixLabel,  // a = node: a matrix row's or column's name; a click does what the node's tab does
-        MacroName,    // a = macro: the name under its knob; double-click renames it
-        NoteDisplay,  // a = kNoteSource or kVelocitySource: its display in the keyboard strip; a click opens its curve
-        FxFold,       // a = effect slot: folds its card to a strip, or unfolds it
-        SourceFold,   // a = source place: the same for its card
-        MacroHandle,  // a = kMaxSources + macro, kNoteSource, kWheelSource, kVelocitySource or kBendSource: drag onto a target, as a
-                      // source's handle
-        WaveButton,   // a = op, b = wave: one of the common waves
-        WaveMore,     // a = op: "..." opens the list of the other waves
-        WaveMenu,     // a = 1 on the open list, 0 around it (a click there closes it)
-        WaveMenuItem, // a = op, b = wave: an entry of the list
-        Node,         // a = node (operators, then filters)
-        NodeGhost,    // a = node that is off: a dashed button in the graph's top left that switches it on
-        NodeDelete,   // a = node: the x in a circle at a node's upper right, while the mouse is over it: switches it off
-        Port,         // a = node: its edge, a band along its outline; drag from it to connect
-        WireLabel,    // param = route amount, a = from node, b = to node
-        OutLabel,     // param = output level, a = node
-        WireEnd,      // param = the route, a = from node, b = to node (kNodes: the output): its arrowhead, to drag elsewhere
-        WireStart,    // param = the route, a = from node, b = to node (kNodes: the output): where it leaves its node, to
-                      // drag onto another node, which it then comes from
-        Wire,         // param = the route, a = from node, b = to node: along its curve; drag to bend it
-        LabelMode,    // param = the route's mode, a = from node, b = to operator: the left part of a wire label's pill
-                      // (see labelPill()), its mode's glyph; a click opens the list of modes, the wheel steps them
-        LabelRemove,  // param = the route, a = from node, b = to node (kNodes: the output): the x at the right of a
-                      // wire or OUT label's pill; a click removes the route with its modulation
-        GridCell,     // param, a = row node, b = column
-        SourceHandle, // a = source: drag onto a param to modulate it
-        SourceGrip,   // a = source, b = its position among the sources: drag to reorder
-        SourceMenuButton, // + SOURCE: opens the list of source types under it
-        SourceRemove, // a = source
-        SourcesToggle, // collapses the modulation panel to its title row, or opens it again
-        KeysToggle,    // collapses the keyboard panel to its top row, or opens it again
-        SlotBar,      // param = slot amount, a = source, b = slot
-        SlotRemove,   // a = source, b = slot
-        SlotBypass,   // param = the slot's bypass, a = source, b = slot: the dot at the row's start
-        SourcePolarity, // a = source: switches it between unipolar and bipolar, for every modulation it has (the
-                        // switch after a MODS row's source)
-        ModsSource,   // a = source, b = slot: a MODS row's source; a click opens the menu that moves it to another
-                      // (an empty modulation's: a = its source or -1, b = emptyModSlot() of it)
-        ModsTarget,   // a = source, b = slot: a MODS row's target; a click opens the menu of targets
-        ModsAdd,      // the row after the MODS view's last: adds an empty modulation
-        ModsScale,    // param = the slot's Amount, a = source, b = slot: a MODS row's Amount bar, dragged across
-        ModsCurve,    // param = the slot's curve, a = source, b = slot: a MODS row's curve, dragged up or down
-        ModsAux,      // a = source, b = slot: a MODS row's aux, or + Aux; a click opens the menu of auxes
-        ModsAuxClear, // a = source, b = slot: the x on a MODS row's aux
-        ModsAuxDepth, // a = source, b = slot: the aux depth on an aux's chip, dragged across
-        ModsScroll,   // the MODS view's scrollbar: drag the thumb, or click the track to jump there
-        InputsScroll, // the operator page's INPUTS tab's scrollbar, as the MODS view's
-        ModListScroll, // a pill's open list's scrollbar, as the MODS view's
-        CascadeMenu, // a = 1 on a level of the open cascading menu (b = the level), 0 around it (a click closes it)
-        CascadeItem,  // a = level, b = entry: an entry of the open cascading menu
-        SourceMods,   // a = source: the button on its card that shows its modulations in the MODS view
-        ValueText,    // param, a = source, b = slot: a slot's depth in numbers; double-click types one
-        EnvPoint,     // a = envelope (ops, then kOps + source), b = point
-        EnvCurve,     // param = curve, a = envelope, b = segment (attack, decay, release): bends it
-        FilterPoint,  // a = filter (b = 1: the filter effect in slot a): cutoff and resonance handle
-        ModDot,       // param = slot amount, a = source, b = slot: depth handle on a knob
-        ModPill,      // a = the target param, b = how many depth handles show before it: "+n" in place of the handles
-                      // that don't fit; a click opens the list of the target's modulations
-        ModList,      // a = the target param: the open list of every modulation of the target, under its pill
-        ModListRow,   // a = source, b = slot: a row of the list; a source's handle dropped on it sets the row's aux
-        FxGrip,       // a = effect slot, b = its position in the chain: drag to reorder
-        FxPower,      // param = its switch, a = effect slot, b = position: the icon; a click switches it, a drag moves it
-        FxMenuButton, // ADD EFFECT: opens the list of effect types
-        FxShadow,     // the dashed card after the effects: opens the list of effect types over itself
-        FxInsert,     // a = lane, b = item·kFxGapStride + place (see FxSlotAt): an arrow before a card in the row (the
-                      // first too, and along a container's band), which opens the list to add an effect there
-        SourceShadow, // the dashed card after the sources: opens the list of source types over itself
-        SourceMenu,   // a = 1 on the open list of source types, 0 around it (a click there closes it)
-        SourceMenuItem, // a = SourceType: an entry of the list, adds a source of that type
-        FxMenu,       // a = 1 on the open list, 0 around it (a click there closes it)
-        FxAdd,        // a = FxType: an entry of the list, puts that effect at the end of the chain
-        FxRemove,     // a = effect slot
-        Scrollbar,    // a = ScrollArea: drag the thumb, or click the track to jump there
-        DynBand,      // a = effect slot, b = band: a three-band dynamics' band's row; a click picks the band its
-                      // knobs set
-        DynZone,      // param = the ratio, a = effect slot, b = 2 x band + 0 for its downward zone (right of the Above
-                      // line), 1 for its upward one (left of the Below line): drag up and down for the ratio. Linked,
-                      // every band's zones set the low band's
-        DynGrip,      // param = the threshold's ratio (for Alt and the wheel), a = effect slot, b = 2 x band + 0 for
-                      // its Above threshold's line, 1 for its Below one's: drag across for the threshold. Linked,
-                      // every band's lines set the low band's
-        PeqPoint,     // param = the band's Q (for the wheel), a = effect slot, b = band: frequency and gain handle;
-                      // a press picks the band too, and switches it on if it is off
-        PeqBand,      // a = effect slot, b = band: a parametric EQ band's chip; a click picks the band its knobs set
-        PeqBandOn,    // param = the band's On switch, a = effect slot, b = band: its chip's power symbol and number,
-                      // which switch it on and off, and pick it
-        LfoDisplay,   // a = lfo: click opens the shape editor of a freeform LFO
-        ClipDisplay,  // a = effect slot: the edit button on a drawn curve's display, which opens the big editor
-        ListButton,   // param = a choice (an LFO's shape, the shaper's curve, the reverb's algorithm): opens its list
-        ListMenu,     // a = 1 on the open list, 0 around it (a click there closes it)
-        ListItem,     // param, b = the value it picks: an entry of the list
-        ListStep,     // param = a list's choice (a filter's type, a shaper's curve, an amp's model or cabinet), b = -1
-                      // or 1: an arrow in its button that steps to the entry before or after, round the list's ends
-        PeqTypeButton, // param = the band's type, a = effect slot, b = band: the shape on its chip, which opens the
-                       // list of band shapes
-        PeqTypeMenu,  // a = 1 on the open list, 0 around it (a click there closes it)
-        PeqTypeItem,  // param = the band's type, b = PeqType: an entry of the list
-        AmpMic,       // param = the mic's Position, a = effect slot: the mic on an amp's cabinet display, which drags
-                      // across the cone (Position) and away from it (Distance)
-        UtilityHandle, // param = the knob it sets, a = effect slot, b = which (see kUtilityHandleParams): a handle on
-                       // the utility's display
-        ShapeArea,    // a = shape (see shapeEditor_): double-click adds a point
-        ShapePoint,   // a = shape, b = point
-        ShapeCurve,   // param = curve, a = shape, b = point: bends the segment leaving the point
-        PartialArea,  // a = operator, b = 0 for the levels, 1 for the phases: drag across to draw the partials
-        PartialReset, // a = operator: back to a plain sine
-        PartialRandom, // a = operator: random levels on a pink slope, and random phases
-        PartialEdit,  // a = operator: the edit button left of a Custom wave's keyboard switch; opens its partial
-                      // editor, or closes it
-        ShapeDone,    // closes the shape editor
-        ShapeReset,   // a = shape: back to the shape it starts with
-        ShapeGrid,    // a = axis (0 across, 1 up and down), b = -1 or 1 steps the grid, 0 is its count (wheel)
-        ShapeCollapse, // a = lfo: its widened card back to a normal one
-        ShapeExpand,  // a = lfo: opens its shape in the full-size editor, over the panels
-        ShapeWiden,   // a = lfo: a Custom LFO's normal card widened to have its shape, as a click on its display does
-        ShapeTool,    // a = lfo, b = ShapeTool: a button in its widened card that changes the whole shape
-        ShapeMode,    // a = lfo, b = 0 Points, 1 Steps (what a click on its shape does), 2 Snap (to the grid)
-        UndoButton,   // a = 0 undoes, 1 redoes
-        Key,          // a = key of the keyboard (0 = the lowest): drag across keys to play them
-        Octave,       // a = -1 or 1: shifts the keyboard down or up an octave
-        PresetButton, // a = PresetAction
-        PresetStep,   // a = -1 or 1: the previous or next preset in the library
-        PresetNameBox, // the current preset's name: opens the preset browser
-        TempoBox,     // the host's tempo (see Controller::hasTempo()): drag up and down, scroll, or double-click to type
-        PresetInfoButton, // the (i) in the preset bar: opens the preset's info card
-        InfoCard,     // a = 1 on the open info card, 0 around it (a click there closes it)
-        InfoAction,   // a = 0 the star (a favorite), 1 Show in Browser, 2 Save As or Edit Info (see infoCardWidgets())
-        BrowserBackdrop, // a = 1 on the browser itself, 0 around it (a click there closes it)
-        BrowserRow,   // a = preset index: picks it, a double-click loads it
-        BrowserFav,   // a = preset index: its star, a favorite or not
-        BrowserSubfolders, // the switch: a folder lists its subfolders' presets too
-        BrowserLibrary, // a = BrowserScope: All, Favorites or Recent, atop the sidebar
-        BrowserTree,  // a = row of browserTree(): shows that folder
-        BrowserTreeToggle, // a = row of browserTree(): opens or closes it in the tree
-        BrowserCategory, // a = row of browserCategoryList(): filters by it, or not
-        BrowserCategoryRemove, // a = row of browserCategoryList(), one of the user's own: removes it, asking first
-        BrowserCatClear, // takes the category filters off
-        BrowserNew,   // the + by FOLDERS: opens the New Folder form
-        BrowserCrumb, // a = how many of the folder's parts: shows that folder
-        BrowserChip,  // a = row of browserCategoryList(): a filter by it, whose click takes it off
-        BrowserClose, // closes the browser
-        BrowserSideScroll, // the sidebar's scrollbar, at its right edge: drag the thumb, or click the track
-        BrowserShowFile, // shows the file of the preset picked in Explorer
-        SaveBackdrop, // a = 1 on the Save dialog itself, 0 around it (a click there closes it)
-        SaveCategory, // a = row of saveCategoryList(), or -1 for None: the preset's category
-        SaveNewCategory, // + New: opens the New Category form
-        SaveFolderRow, // a = row of the folders (0 the preset folder, then presetFolders() + 1): where it goes
-        SaveNewFolder, // New Folder: opens its form
-        SaveToFile,   // Save to File...: the file dialog, which puts it anywhere
-        SaveButton,   // a = 1 saves (or replaces), 0 cancels
-        SaveClose,
-        NameMenu,     // a = 1 on the New Category or New Folder form, 0 around it (a click there closes it)
-        NameColor,    // a = color: the new category's
-        NameButton,   // a = 1 adds the category or makes the folder, 0 cancels
-        SearchField,  // a = Field: a text field (the browser's search, the MODS view's filter, the target menu's
-                      // search): click to put the caret there, drag to select, double-click for a word
-        SearchClear,  // a = Field: the x in a text field: empties it
-        SettingsButton, // the cog next to the preset buttons: opens the settings dialog
-        ConfirmBackdrop, // a = 1 on the dialog asking before Init, Load or Save, 0 around it (a click there cancels)
-        ConfirmButton,  // a = 1 goes ahead, 0 cancels
-        SettingsBackdrop, // a = 1 on the dialog itself, 0 around it (a click there closes it)
-        SettingsOption, // b = the oversampling factor it picks
-        SettingsMpe,    // b = 1 switches MPE on, 0 off
-        SettingsMpeRange, // b = the MPE bend range it picks, in semitones
-        SettingsTheme,  // b = the theme it picks
-        SettingsHandles, // b = the depth handles' size it picks
-        SettingsGlow,   // the slider for how strongly the graphs' curves glow
-        SettingsHue,    // the slider for the theme's main color
-        SettingsLinks,  // the slider for how strongly the sources' dashed lines are drawn
-        SettingsGrid,   // the slider for how strongly the SEQ view's roll draws its grid
-        SettingsClose,
-        ModWheel,     // param = mod wheel: drag or scroll
-        BendWheel,    // drag; springs back to center on release
-        // The effects graph (see fxgraph.cpp).
-        FxMode,       // b = 0 the chain, 1 the graph: the switch at the FX panel's top right
-        FxNode,       // a = node: a click shows it in the inspector
-        FxSlot,       // a = lane (0 the main line, 1 the high band, 2 the low band, 3 the middle band): a +, which opens
-                      // the list of effects
-        FxGap,        // a = lane, b = item·kFxGapStride + place (see FxSlotAt): a wire's middle, which opens it too
-        FxAddNode,    // b = its bands, 2 or 3: the list's entries after the effects, a split with its join, opened from
-                      // the main line
-        FxNodeRemove, // a = node: the x on a split's controls, its container's in the row or its card in the graph
-        FxNodeDelete, // a = node: the x in a circle at a node's upper right, while the mouse is over the node
-        FxNodePower,  // a = node, param = its Enabled: the power symbol in a circle at an effect's node's upper left,
-                      // while the mouse is over the node
-        FxWire,       // a = lane, b = item·kFxGapStride + place: along a wire that takes a node at its middle, its +
-        FxClear,      // the button at the FX panel's top right that removes every effect, asking first
-        SplitPoint,   // param = the crossover, a = split, b = 0 the low one, 1 the high one: its handle on the display
-        // A split's controls (see splitControlWidgets()), in its container in the row and on its card in the graph.
-        SplitBand,    // a = split, b = band (0 low, 1 high, 2 middle; see FxGraphModel::splitLane()): its tab, which
-                      // shows that band
-        SplitBands,   // a = split, b = 2 or 3: the BANDS switch's half that splits it in that many bands
-        SplitArea,    // a = split, b = band (as SplitBand's): the display between its band's crossovers, which shows
-                      // that band
-        SplitSolo,    // param = a join's solo, a = split, b = lane: the S under its band's level, each band's on its own
-        FxBoxGrip,    // a = split's node: its container's title row in the row, which drags it along the line
-        FxBoxFold,    // a = split: folds its container to a strip, or unfolds it
-        FxBoxAdd,     // a = lane (1 the high band, 2 the low band, 3 the middle band), b = item: a container's dashed
-                      // card, for the list
-        // The SEQ view (see seq.cpp).
-        SeqTool,      // b = 0 select, 1 draw: what a click on the roll does
-        SeqSnap,      // the snap's button: opens its list
-        SeqSnapMenu,  // a = 1 on the open list, 0 around it (a click there closes it)
-        SeqSnapItem,  // b = the snap it picks (see kSeqSnaps)
-        SeqStretch,   // b = 2 twice as long, -2 half as long: the notes picked, or the whole pattern
-        SeqField,     // b = 0 pitch, 1 velocity, 2 chance, 3 length, 4 offset: a value of the notes picked, dragged
-        SeqFlag,      // b = 0 Slide, 1 Mute: switches it for the notes picked
-        SeqClear,     // removes every note of the pattern, asking first
-        SeqCopy,      // copies the pattern into the next empty one
-        SeqRoot,      // param = Root: dragged up and down, or scrolled, a semitone a step
-        SeqFold,      // shows only the scale's rows, or every row
-        SeqRuler,     // the bars over the roll: drag the loop's ends, or across it for a new loop
-        SeqKeys,      // the piano keys at the roll's left: a click plays the note
-        SeqGrid,      // the roll itself: the notes on it are picked, moved, stretched, drawn and deleted here
-        SeqLane,      // the lane under the roll: drag across the notes to set its value
-        SeqLaneTab,   // b = SeqLane: picks what the lane shows
-        SeqZoom,      // b = 0 zooms out across, 1 in across, 2 out up and down, 3 in up and down
-        SeqScroll,    // the bar under the roll while it is zoomed in across: drag the thumb, or click the track there
-        SeqScrollY,   // the bar at the roll's right, for its rows: drag the thumb, or click the track there
-    };
+    using Kind = WidgetKind;
 
     // Save writes the patch over its preset's file (asking first), and is only on while a preset with a file has
     // changed; Save As picks a file in the dialog, and is off for Init until it changes.
@@ -424,30 +184,7 @@ private:
     // front, move it a grid column earlier or later (round the cycle), and copy it to paste into another LFO.
     enum class ShapeTool { Invert, Reverse, ShiftLeft, ShiftRight, Copy, Paste };
 
-    struct Widget {
-        Kind kind = Kind::Knob;
-        Rect rect;
-        int param = -1;
-        int a = -1;
-        int b = -1;
-        const char *label = nullptr;
-        bool compact = false; // header knob with its label and number beside it
-        bool shrunk = false;  // a compact knob drawn smaller (the bend range, in the keyboard strip's top row)
-        bool disabled = false; // dimmed, and takes no input (a fixed operator's Pitch and Detune, their depth handles)
-        bool faint = false;    // dimmed, but takes input still (an amp's cabinet controls while the cabinet is off)
-        Rect clip{};          // on a card that may be scrolled partly out: drawn and hit only within this
-        bool popup = false;   // in the open list of a pill (its row's bypass, depth and remove): over everything else
-        // One of a row of buttons drawn merged into one pill, as Poly | Mono: the pill, and from where to where this
-        // one's part of it reaches (halfway across the gaps to its neighbors). group.w is 0 for a button on its own.
-        Rect group{};
-        float partLeft = 0.0f, partRight = 0.0f;
-        bool modeGlyph = false; // a wire label in the graph showing its route's mode (not Phase) inside it
-        // A stepper's field (see isStepper()): drawn in place of its knob, and hit as its rect is. It may reach past the
-        // rect's sides, as far as the widgets beside it leave room.
-        Rect well{};
-
-        bool same(const Widget &o) const { return kind == o.kind && param == o.param && a == o.a && b == o.b; }
-    };
+    using Widget = gui::Widget;
 
     enum class DragKind {
         None,
@@ -478,7 +215,7 @@ private:
         Bend,       // a wire, sideways: how far it bows
         ModsScroll, // the MODS view's thumb
         InputsScroll, // the INPUTS tab's thumb
-        BrowserSideScroll, // the preset browser's sidebar's thumb
+        Panel,      // a panel's own (drag_.panel): its moves go to it
         ModListScroll, // a pill's open list's thumb
         Pan,        // the middle button: what a panel that scrolls shows, along with the mouse (a = PanArea)
         SplitPoint, // a split's crossover handle, across
@@ -516,6 +253,8 @@ private:
         // copy was made, which a drag called off goes back to.
         std::vector<double> copyBefore;
         std::optional<UiLayout> copyLayout;
+        // The panel whose drag (DragKind::Panel) or pan (PanArea::Panel) it is.
+        Panel *panel = nullptr;
     };
 
     struct Typing {
@@ -525,53 +264,8 @@ private:
         bool selected = true; // all of it, as it starts: typing replaces it
     };
 
-    // A line of text being edited in a field: what is typed, the caret in it and where its selection starts (at the
-    // caret, nothing is selected), where each place between its characters was painted (across), and how far its text
-    // is scrolled left, so the caret shows.
-    struct TextField {
-        std::string text;
-        size_t caret = 0;
-        size_t anchor = 0;
-        std::vector<float> stops;
-        float shift = 0.0f;
-        size_t most = 40; // the most characters it holds
-
-        // Its selection, from the anchor to the caret, either way round.
-        std::pair<size_t, size_t> selection() const { return std::minmax(caret, anchor); }
-        void erase(size_t from, size_t to);
-        // Over the selection; line breaks and tabs as spaces, the rest past printable ASCII left out, as much as
-        // fits. Whether the text changed.
-        bool insert(std::string_view typed);
-        void clear();
-        // The place between characters nearest `x`, by where they were painted; before they were, its end.
-        size_t stopAt(float x) const;
-        // Selects the word at `x`, up to the spaces either side.
-        void selectWord(float x);
-        // Backspace, Delete, the arrows, Home, End and Select All, Shift growing the selection: whether the text
-        // changed. Enter, Escape, Up and Down are the field owner's.
-        bool key(Key key, bool extend);
-        // Its words, in lower case, and whether `text` holds every one of them, whatever its case.
-        std::vector<std::string> words() const;
-        static bool holds(std::string_view text, const std::vector<std::string> &words);
-    };
-    enum class Field { Browser, ModsFilter, CascadeSearch, SaveName, SaveAuthor, SaveDescription, NewName };
-    // What the preset browser shows: every preset, the favorites, the recent ones, the factory presets, or a folder's.
-    enum class BrowserScope { All, Favorites, Recent, Factory, Folder };
-    // A row of the browser's folder tree: the factory presets', the preset folder's (at its top) or a subfolder's.
-    struct TreeRow {
-        BrowserScope scope; // Factory, or Folder
-        std::string folder; // with Folder, its parts joined by '/' ("" the preset folder)
-        int depth = 0;
-        bool hasKids = false;
-        bool open = false;
-    };
-    // A row of the category lists: its name as presets store it ("" for None), as shown, and its color (-1 grey).
-    struct CategoryRow {
-        std::string name;
-        std::string label;
-        int color = -1;
-        bool divider = false; // a line before it: the user's own come after the built-in ones, None after them
-    };
+    using TextField = gui::TextField;
+    using Field = gui::Field;
 
     using Assignment = gui::Assignment; // see modulationmodel.h
 
@@ -1226,11 +920,18 @@ private:
     // effects graph, by pixels. How long each is, how much of it shows, where it is scrolled to and its thumb.
     enum class ScrollArea { Fx, Sources, FxGraph };
     // What the middle button drags along: those rows, the MODS view's rows or the preset browser's list.
-    enum class PanArea { Fx, Sources, Mods, Browser, Inputs, ModList, Seq, BrowserSide };
+    // A panel's own part (drag_.panel, drag_.widget.b its part): the preset browser's list or sidebar, say.
+    enum class PanArea { Fx, Sources, Mods, Panel, Inputs, ModList, Seq };
     void applyPan(Point p);
     // What the middle button (or a finger) would pan at `p`, and where it is scrolled to now; none over a dialog, an
     // open list or menu that doesn't scroll, or while a drag goes on.
-    std::optional<std::pair<PanArea, float>> panAt(Point p) const;
+    struct PanStart {
+        PanArea area;
+        float first;
+        Panel *panel = nullptr; // PanArea::Panel: which, and its part
+        int part = -1;
+    };
+    std::optional<PanStart> panAt(Point p) const;
     // A finger landed over a panel that scrolls, waiting to see whether it taps, drags or pans (see touchDown()).
     struct TouchPress {
         Point at;
@@ -1396,7 +1097,7 @@ private:
     // While an LFO's or envelope's handle, or a card of the row, is dragged near either end of a row of cards, the
     // row scrolls that way.
     bool edgeScroll();
-    void flash(std::string message);
+    void flash(std::string message) override;
     // The MIDI note under the keyboard's first key.
     int keyboardBase() const;
     // Modulation sources. The places that hold one, in the order they show (kept while a scope goes on); shown,
@@ -1596,7 +1297,7 @@ private:
     bool opTabModulated(int op, InspectorTab tab) const;
     void paintNoiseSlope(Canvas &c, Rect r, int op);
     void paintLfo(Canvas &c, Rect r, int lfo);
-    void paintWidget(Canvas &c, const Widget &w);
+    void paintWidget(Canvas &c, const Widget &w) override;
     // Merges the buttons added to `list` since `from` into one pill, as Poly | Mono, each its part of it.
     static void mergeButtons(std::vector<Widget> &list, size_t from);
     // A button's face: on its own a rounded box, outlined in `color` while lit; merged into a row's pill, its part of
@@ -1663,91 +1364,18 @@ private:
     void answerConfirm(int button);
     std::string confirmWhat() const;
     bool confirmShorter() const;
-    // The preset browser: while it is open it takes every click, and the confirm dialog goes over it.
-    std::vector<Widget> browserWidgets() const;
-    void paintBrowser(Canvas &c);
-    // Its rows: each preset's index and name, with a header (-1 and the subfolder) before each subfolder's. While
-    // something is typed in its search, only the presets whose subfolder and name hold every word of it.
-    std::vector<int> browserRows(bool byCategory = true) const; // false: whatever the categories filter by
-    // The browser takes the keyboard while it is open: what is typed goes into its search, Up and Down pick a
-    // preset from the list, Enter loads it, and Escape empties the search, or then closes the browser.
-    void browserKey(Key key);
-    // The text fields: the one the keyboard goes to now, if any; each by its Field; what follows a change to what is
-    // typed in one; emptying one; and painting one into `box`: a magnifier, then in `typed` the text, its selection
-    // and, while it has the keyboard, the caret, or `hint` while it is empty, and `after` faint at its right end.
+    // The text fields: the one the keyboard goes to now, if any; each by its Field (the preset browser's its own, see
+    // Panel::field()); what follows a change to what is typed in one; emptying one; and painting one into `box`: a
+    // magnifier, then in `typed` the text, its selection and, while it has the keyboard, the caret, or `hint` while it
+    // is empty, and `after` faint at its right end.
     std::optional<Field> fieldTyping() const;
     TextField &field(Field f);
     void fieldChanged(Field f);
-    void clearField(Field f);
+    void clearField(Field f) override;
     void paintField(Canvas &c, Field f, Rect box, Rect typed, std::string_view hint, std::string_view after = {},
-                    bool lens = true);
-    // Scrolls the list so the preset's row shows: about in the middle, or just inside the list.
-    void revealBrowserRow(int preset, bool middle);
-
-    // The preset bar's info, the info card, the browser and the Save dialog (see presetui.cpp).
-    void paintPresetBar(Canvas &c, const Widget &w, bool hovered);
-    std::vector<Widget> infoCardWidgets() const;
-    void paintInfoCard(Canvas &c);
-    // Opens the browser on the preset loaded, in its folder; or on `preset`.
-    void openBrowser(int preset = -1);
-    void rememberBrowserPlace(); // the sidebar's entry picked, kept in the user's settings for the next browser
-    Rect browserListArea() const;
-    int browserVisible() const;
-    std::vector<TreeRow> browserTree() const;
-    std::vector<CategoryRow> browserCategoryList() const;
-    static bool ownCategory(const CategoryRow &row);
-    int presetsInCategory(const std::string &name) const; // of all of the library's, whatever the case
-    int presetsInFolder(const std::string &folder) const;
-    std::vector<int> browserCategoryCounts() const;
-    // The category rows the Save dialog offers: the built-in ones and the user's own.
-    std::vector<CategoryRow> saveCategoryList() const;
-    // How the browser's sidebar lays out its rows, scrolled: each its kind, its row and where it is.
-    struct SideItem {
-        Kind kind;
-        int a = -1;
-        Rect rect;
-    };
-    std::vector<SideItem> browserSide() const;
-    float browserSideEnd() const;
-    Rect browserSideArea() const;  // the sidebar, and its scrollbar's track and thumb
-    Rect browserSideTrack() const;
-    Rect browserSideThumb() const; // how far it scrolls
-    // Whether a preset's category is one the browser filters by (or no filter is on).
-    bool categoryShown(const PresetEntry &entry) const;
-    // Opens the Save dialog: to save the patch as a preset (Save As), or to edit the info of the library's preset
-    // `index`.
-    void openSave(int index = -1);
-    std::vector<Widget> saveWidgets() const;
-    void paintSave(Canvas &c);
-    void saveKey(Key key);
-    void runSave();
-    struct SaveLayout {
-        Rect panel, name, author, description, folders, warning, toFile, cancel, save, close;
-        std::vector<Rect> chips; // saveCategoryList(), then None, then + New
-    };
-    SaveLayout saveLayout() const;
-    // The folders the Save dialog lists: the preset folder ("") first, then presetFolders().
-    std::vector<std::string> saveFolders() const;
-    // The New Category or New Folder form.
-    void openNameMenu(int mode, Point at);
-    std::vector<Widget> nameMenuWidgets() const;
-    void paintNameMenu(Canvas &c);
-    Rect nameMenuPanel() const;
-    void nameMenuKey(Key key);
-    void runNameMenu();
-    // The press, double-click, wheel and tooltip of what the above show; false (or empty) for anything else.
-    bool presetPress(const Widget &w, Point p, Modifiers mods);
-    bool presetDoubleClick(const Widget &w);
-    bool presetWheel(Point p, float steps);
-    std::string presetTip(const Widget &w) const;
-    bool paintPresetWidget(Canvas &c, const Widget &w, bool hovered);
-    // A category's color (see categoryColor()): a built-in one's, a user's own, or -1 for one this computer doesn't
-    // know.
-    int presetCategoryColor(const std::string &category) const;
-    // A preset's pill: its category's in capitals, on its color; nothing for none. Its width.
-    float paintCategoryPill(Canvas &c, Point at, float height, const std::string &category, float textSize);
-    // Loads a preset of the library, asking first if the patch changed since the last.
-    void openPreset(int index, bool close = true);
+                    bool lens = true) override;
+    // The preset bar's Init, Load, Save and Save As, and its arrows (its info and what opens from it are the preset
+    // browser's: see presets_).
     void stepPreset(int direction);
     bool presetActionOn(PresetAction action) const;
     void runPreset(PresetAction action);
@@ -1755,12 +1383,24 @@ private:
     void paintConfirm(Canvas &c);
     void paintHoverTags(Canvas &c, const std::vector<Widget> &list);
 
-    bool isHovered(const Widget &w) const;
-    bool isActive(const Widget &w) const;
+    bool isHovered(const Widget &w) const override;
+    bool isActive(const Widget &w) const override;
+    // What the View does for its panels, the rest of PanelHost being the View's own methods above.
+    Controller &controller() const override { return controller_; }
+    void resetHover() override { hover_.reset(); }
+    void askConfirm(Panel &from, int kind) override;
+    void startDrag(Panel &from, const Widget &w, Point p) override;
 
     Controller &controller_;
     // The preset library and the patch as a file (see Controller::presetStore()).
     PresetStore &presetStore() const { return controller_.presetStore(); }
+    // The panels: the preset browser, and all of them, in the order they are handed what goes on.
+    PresetBrowser presets_;
+    std::vector<Panel *> panels_;
+    // The one showing over the editor (see Panel::modal()), if any.
+    Panel *modalPanel() const;
+    // The tooltip of a panel's own widget, if any (see Panel::tooltip()).
+    std::string panelTip(const Widget &w) const;
     const ParamTable &table_;
     // The patch's models, each telling the editor why it refused an edit (see flash()).
     ModulationModel mods_;
@@ -1817,8 +1457,6 @@ private:
     int menuSource_ = -1;                    // the source of the open context menu
     std::optional<Widget> menuAuxDepth_;     // what the open context menu's "Edit aux depth" types into
     std::optional<Widget> menuValue_;        // what the open context menu's "Edit value" types into
-    std::optional<std::string> menuFolder_;  // the Save dialog's folder the open context menu was opened on
-    Rect menuFolderRow_;                     // and where its row is
     std::pair<int, int> menuPoint_{-1, -1}; // lfo and shape point of the open context menu
     std::optional<ModListOpen> modList_;     // a pill's open list
     int shapeEditor_ = -1;                   // the LFO whose shape the routing panel shows, or -1
@@ -1930,47 +1568,18 @@ private:
     }
     bool ctrlHeld_ = false; // see setCtrl()
     int confirm_ = -1; // the PresetAction the confirm dialog asks about, kConfirmFxClear, or -1
+    Panel *confirmFrom_ = nullptr; // the panel that asked (see askConfirm()), or none for the View's own questions
     static constexpr int kConfirmFxClear = 4; // asking before every effect goes
     static constexpr int kConfirmMidBand = 5; // asking where a split's middle band's effects go, back in two bands
     static constexpr int kConfirmSplitRemove = 6; // asking whether a split's bands' effects stay, as it is removed
     static constexpr int kConfirmSeqClear = 7;    // asking before every note of the sequencer's pattern goes
-    static constexpr int kConfirmCategoryRemove = 8; // asking before one of the user's own categories goes
-    static constexpr int kConfirmFolderDelete = 9;   // asking before a preset folder goes to the Recycle Bin
-    std::string confirmFolder_;                      // which, by its parts joined by '/'
-    std::string renameFolder_;                       // the folder the name form renames (nameMenu_ 4)
-    std::string confirmCategory_;                    // which, by its name
+    static constexpr int kConfirmCategoryRemove = PresetBrowser::kConfirmCategoryRemove; // the preset browser's
+    static constexpr int kConfirmFolderDelete = PresetBrowser::kConfirmFolderDelete;
     int confirmSplit_ = -1; // the split kConfirmMidBand or kConfirmSplitRemove asks about
     size_t confirmEffects_ = 0; // how many effects it asks about, counted as it opens
-    int pendingPreset_ = -1;                 // the library preset a confirmed Load loads, or -1 for a file
-    bool pendingClose_ = true;               // and whether loading it closes the browser
-    bool browserOpen_ = false;
-    BrowserScope browserScope_ = BrowserScope::Factory;
-    std::string browserFolder_;                 // with Folder: which ("" the preset folder)
-    std::set<std::string> browserOpenFolders_;  // opened in the tree ("" the preset folder)
-    std::set<std::string> browserCategories_;   // filtered by, as stored ("" for None), in lower case
-    bool browserSubfolders_ = true;             // a folder lists its subfolders' presets too
-    float browserSideScroll_ = 0.0f;            // how far the sidebar is scrolled, in px
-    mutable std::vector<std::pair<int, Rect>> browserCrumbRects_; // where the folder's parts were painted
-    mutable std::vector<std::pair<int, Rect>> browserChipRects_;  // and the category filters
-    bool infoCardOpen_ = false;
-    enum class SaveMode { None, Save, Info };
-    SaveMode saveMode_ = SaveMode::None;
-    int saveIndex_ = -1;          // editing info: the library's preset
-    std::string saveFolder_;      // saving: where
-    std::string saveCategory_;    // the category picked, as stored ("" for None)
-    float saveFolderScroll_ = 0.0f;
-    TextField saveName_, saveAuthor_, saveDescription_, newName_;
-    Field saveFocus_ = Field::SaveName;
-    int nameMenu_ = 0; // the form open: 1 New Category, 2 New Folder from the browser, 3 from the Save dialog, 4 Rename
-    Point nameMenuAt_;
-    int nameColor_ = kBuiltInCategories;
-    int browserScroll_ = 0;                  // rows scrolled past, before clamping
-    TextField browserSearch_;                // what is typed in its search
-    bool browserSearching_ = false;          // and whether it has the keyboard: from a click on it to one elsewhere
     TextField modsFilter_;                   // the MODS view's filter
     bool modsFiltering_ = false;             // and whether it has the keyboard
     TextField cascadeSearch_;                // the search atop the open target menu
-    int browserPick_ = -1;                   // the preset Up and Down picked, which Enter loads, or -1
     std::string flash_;
     int flashTicks_ = 0;
     std::optional<Typing> typing_;
