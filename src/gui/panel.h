@@ -25,7 +25,10 @@ struct Telemetry;
 namespace fmvibe::gui {
 
 class Controller;
+class FxGraphModel;
+class ModulationModel;
 class Panel;
+class RoutingModel;
 
 // A drag going on, as the View keeps it for every drag (its own and a panel's): where the mouse went down and where it
 // is now, whether it has moved past a click's jitter yet, the modifiers its last move came with, and whether an undo
@@ -41,6 +44,10 @@ struct DragState {
 class PanelHost {
 public:
     virtual Controller &controller() const = 0;
+    // The patch's models, the editor's one of each, which tell it why they refused an edit (see flash()).
+    virtual ModulationModel &modulationModel() = 0;
+    virtual RoutingModel &routingModel() = 0;
+    virtual FxGraphModel &fxGraphModel() = 0;
     // The editor's height now (its width is View::kWidth): it depends on whether the modulation panel is collapsed.
     virtual float height() const = 0;
     // Whether `w` is under the mouse (and no drag goes on), or is what a drag going on holds; and forgetting what is
@@ -164,9 +171,6 @@ protected:
     ~PanelHost() = default;
 };
 
-// What a panel works out for a paint or a hit test (its rows, a menu's entries), kept while the host's scope goes on
-// (see PanelHost::scoped()) and let go of as one begins and ends (Panel::forgetScoped()); outside one, worked out
-// afresh each time.
 // How hard a drag held at `p` near the left or right edge of a row of cards in `panel` pulls the row that way, -1..1 (0
 // clear of them): within kEdgeZone of an edge, or past it. A card grabbed that close to an edge (at `grabbedX`) only
 // pulls once it is taken further toward it than where it was grabbed; a source's handle (no `grabbedX`) only within
@@ -186,6 +190,9 @@ inline float edgeScrollStep(float pull) {
     return kStep * (pull < 0.0f ? -0.35f + 0.65f * pull : 0.35f + 0.65f * pull);
 }
 
+// What a panel works out for a paint or a hit test (its rows, a menu's entries), kept while the host's scope goes on
+// (see PanelHost::scoped()) and let go of as one begins and ends (Panel::forgetScoped()); outside one, worked out
+// afresh each time.
 template <class T>
 class ScopeCache {
 public:

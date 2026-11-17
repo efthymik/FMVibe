@@ -4,6 +4,7 @@
 
 #include "icons.h"
 #include "layout.h"
+#include "modulationmodel.h"
 #include "theme.h"
 
 #include <algorithm>
@@ -79,8 +80,7 @@ int stepped(double value, int lo, int hi) {
 } // namespace
 
 SeqPanel::SeqPanel(PanelHost &host)
-    : host_(host), edits_(host.controller(), [&host](std::string m) { host.flash(std::move(m)); }),
-      table_(paramTable()) {
+    : host_(host), edits_(host.modulationModel()), table_(paramTable()) {
     // The roll as the layout saved it: fitted only to a patch loaded from now (see step()).
     seqLoadsSeen_ = controller().patchLoads();
 }

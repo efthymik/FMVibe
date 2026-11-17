@@ -260,7 +260,7 @@ private:
     bool seqSnapMenu_ = false;
 
     PanelHost &host_;
-    PatchEdits edits_; // the params, edited as the editor edits them, with why an edit was refused flashed up
+    PatchEdits &edits_; // the params, edited as the editor edits them, with why an edit was refused flashed up
     const ParamTable &table_;
 };
 

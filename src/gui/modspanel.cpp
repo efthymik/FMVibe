@@ -30,9 +30,8 @@ std::string afterPrefix(const std::string &name, const std::string &prefix) {
 } // namespace
 
 ModsPanel::ModsPanel(PanelHost &host)
-    : host_(host), mods_(host.controller(), [&host](std::string m) { host.flash(std::move(m)); }),
-      routing_(host.controller(), [&host](std::string m) { host.flash(std::move(m)); }),
-      fx_(host.controller(), [&host](std::string m) { host.flash(std::move(m)); }), table_(paramTable()) {}
+    : host_(host), mods_(host.modulationModel()), routing_(host.routingModel()), fx_(host.fxGraphModel()),
+      table_(paramTable()) {}
 
 bool ModsPanel::wide() const {
     return controller().layout().view == RoutingView::Mods && !host_.shapeEditorOpen() && !host_.partialEditorOpen();

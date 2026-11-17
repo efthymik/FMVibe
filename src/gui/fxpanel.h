@@ -344,7 +344,7 @@ private:
 
     PanelHost &host_;
     // The patch's effects, its model telling the editor why it refused an edit (see PanelHost::flash()).
-    FxGraphModel fx_;
+    FxGraphModel &fx_;
     const ParamTable &table_;
     Drag drag_;
     float fxScroll_ = 0.0f;              // how many effect cards are scrolled past, before clamping

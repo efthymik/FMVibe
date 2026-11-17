@@ -127,8 +127,8 @@ private:
     ShapeEditor &shapes_;
     // The patch's modulation and routing, their models telling the editor why they refused an edit (see
     // PanelHost::flash()).
-    ModulationModel mods_;
-    RoutingModel routing_;
+    ModulationModel &mods_;
+    RoutingModel &routing_;
     const ParamTable &table_;
     Drag drag_;
     int waveMenu_ = -1;          // the operator whose list of more waves is open, or -1

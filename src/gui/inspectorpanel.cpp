@@ -42,8 +42,8 @@ std::string number(const char *format, double value) {
 } // namespace
 
 InspectorPanel::InspectorPanel(PanelHost &host, ShapeEditor &shapes)
-    : host_(host), shapes_(shapes), mods_(host.controller(), [&host](std::string m) { host.flash(std::move(m)); }),
-      routing_(host.controller(), [&host](std::string m) { host.flash(std::move(m)); }), table_(paramTable()) {}
+    : host_(host), shapes_(shapes), mods_(host.modulationModel()), routing_(host.routingModel()),
+      table_(paramTable()) {}
 
 bool InspectorPanel::covered() const {
     const RoutingView view = controller().layout().view;

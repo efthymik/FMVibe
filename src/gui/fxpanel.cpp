@@ -161,7 +161,7 @@ Point wireMiddle(const Wire &w, const std::vector<Point> &points) {
 } // namespace
 
 FxPanel::FxPanel(PanelHost &host)
-    : host_(host), fx_(host.controller(), [&host](std::string m) { host.flash(std::move(m)); }), table_(paramTable()) {}
+    : host_(host), fx_(host.fxGraphModel()), table_(paramTable()) {}
 
 bool FxPanel::wide() const {
     return controller().layout().view == RoutingView::Fx && !host_.shapeEditorOpen();

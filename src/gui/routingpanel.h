@@ -187,7 +187,7 @@ private:
 
     PanelHost &host_;
     // The patch's routing, its model telling the editor why it refused an edit (see PanelHost::flash()).
-    RoutingModel routing_;
+    RoutingModel &routing_;
     const ParamTable &table_;
     Drag drag_;
     RadarGlow radarGlow_;

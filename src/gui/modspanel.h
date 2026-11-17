@@ -146,9 +146,9 @@ private:
 
     PanelHost &host_;
     // The patch's models, each telling the editor why it refused an edit (see PanelHost::flash()).
-    ModulationModel mods_;
-    RoutingModel routing_;
-    FxGraphModel fx_;
+    ModulationModel &mods_;
+    RoutingModel &routing_;
+    FxGraphModel &fx_;
     const ParamTable &table_;
     float modsScroll_ = 0.0f;        // rows the MODS view is scrolled to, before clamping
     float modsGlide_ = 0.0f;         // and where it shows, gliding after it

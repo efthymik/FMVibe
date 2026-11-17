@@ -50,6 +50,7 @@ add_executable(fmvibe-ui
     ${PROJECT_SOURCE_DIR}/src/gui/view.cpp
 )
 fmvibe_web_options(fmvibe-ui)
+target_compile_definitions(fmvibe-ui PRIVATE FMVIBE_ID_CHECKS_ELSEWHERE) # fmvibe-dsp checks the param ids' layout
 target_link_options(fmvibe-ui PRIVATE
     -sMODULARIZE -sEXPORT_ES6 -sEXPORT_NAME=createFMVibeUI -sENVIRONMENT=web
     -sEXPORTED_RUNTIME_METHODS=HEAPU8,HEAPF64,UTF8ToString

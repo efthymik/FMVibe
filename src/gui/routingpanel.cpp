@@ -290,8 +290,7 @@ void detail::paintGridMarks(Canvas &c, Rect area, int cols, int rows, const Poin
 }
 
 RoutingPanel::RoutingPanel(PanelHost &host)
-    : host_(host), routing_(host.controller(), [&host](std::string m) { host.flash(std::move(m)); }),
-      table_(paramTable()) {}
+    : host_(host), routing_(host.routingModel()), table_(paramTable()) {}
 
 bool RoutingPanel::graphShown() const {
     return controller().layout().view == RoutingView::Graph && !host_.shapeEditorOpen() && !host_.partialEditorOpen();

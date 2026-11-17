@@ -270,8 +270,8 @@ private:
     PanelHost &host_;
     // The patch's modulation and effects, their models telling the editor why they refused an edit (see
     // PanelHost::flash()).
-    ModulationModel mods_;
-    FxGraphModel fx_;
+    ModulationModel &mods_;
+    FxGraphModel &fx_;
     const ParamTable &table_;
     Drag drag_;
     int shapeEditor_ = -1;                   // the shape the full-size editor shows, or -1

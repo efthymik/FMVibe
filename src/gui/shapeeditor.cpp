@@ -37,8 +37,7 @@ std::string noteName(int note) {
 } // namespace
 
 ShapeEditor::ShapeEditor(PanelHost &host)
-    : host_(host), mods_(host.controller(), [&host](std::string m) { host.flash(std::move(m)); }),
-      fx_(host.controller(), [&host](std::string m) { host.flash(std::move(m)); }), table_(paramTable()) {}
+    : host_(host), mods_(host.modulationModel()), fx_(host.fxGraphModel()), table_(paramTable()) {}
 
 // The freeform shape editor: an LFO's in its widened card, or in full size over the routing panel and the inspector,
 // which it hides; a shaper's curve

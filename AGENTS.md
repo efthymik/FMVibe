@@ -39,7 +39,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
 
 ## Testing
 
-`ctest` runs four programs:
+`ctest` runs four programs, four at a time (the test presets' and `build.sh`'s jobs):
 
 - **Smoke test** (`tests/smoke_host.cpp`): a small headless host. (It and the VST3 test set `FMVIBE_SETTINGS_DIR`,
   which `src/usersettings.cpp` reads in place of the roaming app data, so their editor resizes don't land in your
@@ -1179,7 +1179,9 @@ itself.
   warp (`OpWarp`), unison curve (`UniCurve`), unison pan (`UniPan`), morph mode (`MorphMode`) and the sequencer's play
   mode, rate, order and scale (`SeqPlay`, `SeqRate`, `SeqOrder`, `SeqScale`) and curve (`SeqCurve`) lists, the routing views and the operator page's tabs,
   which are stored by number. `src/params.h` pins each section's first and last ids, the counts they come from and
-  the stored lists' members with static_asserts, so a change that renumbers them doesn't compile; a field added to
+  the stored lists' members with static_asserts, so a change that renumbers them doesn't compile (and
+  `src/params.cpp` checks that every param's id leads back to it: a check that costs MSVC seconds goes in a `.cpp`,
+  run once, rather than in a header every file pays it in); a field added to
   `FxParam` also needs its effect type in `kFxFieldRuns`. A retired type keeps its number and fields: the
   three-band compressor (`FxType::MultiComp`) is no longer offered, and `readParams()` loads a slot holding one in a
   state from before version 6 as a three-band dynamics set from its fields, moving the modulation aimed at them

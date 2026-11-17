@@ -289,13 +289,12 @@ float View::heightFor(const UiLayout &layout) {
 }
 
 View::View(Controller &controller)
-    : controller_(controller), shapes_(*this), presets_(*this), seq_(*this), modsPanel_(*this), fxPanel_(*this),
-      routingPanel_(*this), inspector_(*this, shapes_),
-      panels_{&shapes_, &presets_, &seq_, &modsPanel_, &fxPanel_, &routingPanel_, &inspector_},
-      table_(paramTable()),
-      mods_(controller, [this](std::string m) { flash(std::move(m)); }),
+    : controller_(controller), mods_(controller, [this](std::string m) { flash(std::move(m)); }),
       routing_(controller, [this](std::string m) { flash(std::move(m)); }),
-      fx_(controller, [this](std::string m) { flash(std::move(m)); }) {
+      fx_(controller, [this](std::string m) { flash(std::move(m)); }), shapes_(*this), presets_(*this), seq_(*this),
+      modsPanel_(*this), fxPanel_(*this), routingPanel_(*this), inspector_(*this, shapes_),
+      panels_{&shapes_, &presets_, &seq_, &modsPanel_, &fxPanel_, &routingPanel_, &inspector_},
+      table_(paramTable()) {
     poll();
 }
 
@@ -331,7 +330,11 @@ void View::askConfirm(Panel &from, int kind) {
     hover_.reset();
 }
 
+// A drag going on still (one whose button-up never came: a double-click starting one, say) ends first, its gesture and
+// undo step with it, as a press ends it (see mouseDown()).
 void View::startDrag(Panel &from, const Widget &w, Point p, bool step) {
+    if (drag_.kind != DragKind::None)
+        finishDrag();
     drag_.kind = DragKind::Panel;
     drag_.widget = w;
     drag_.start = drag_.now = p;
@@ -341,6 +344,8 @@ void View::startDrag(Panel &from, const Widget &w, Point p, bool step) {
 }
 
 void View::dragValue(const Widget &w, Point p, Modifiers mods) {
+    if (drag_.kind != DragKind::None) // as startDrag() does
+        finishDrag();
     drag_.widget = w;
     drag_.start = drag_.now = p;
     drag_.fine = mods.shift;
@@ -2206,8 +2211,8 @@ std::optional<View::Widget> View::hitTest(Point p) const {
             continue;
         // A panel's own whose shape isn't its rect (a wire along its path, an operator's circle, a node's edge).
         std::optional<bool> own;
-        for (const Panel *panel : panels_)
-            if ((own = panel->hits(*it, p)))
+        for (const Panel *owner : panels_)
+            if ((own = owner->hits(*it, p)))
                 break;
         if (own) {
             if (*own)
@@ -5704,10 +5709,10 @@ void View::paintModOverlay(Canvas &c, const std::vector<Widget> &list) {
             continue;
         }
         // A panel's own that takes it (a MODS row's aux cell, as the aux too).
-        if (const auto panel = std::find_if(panels_.begin(), panels_.end(),
+        if (const auto owner = std::find_if(panels_.begin(), panels_.end(),
                                             [&](const Panel *candidate) { return candidate->takesSource(w, source); });
-            panel != panels_.end()) {
-            (*panel)->paintSourceRing(c, w, target && target->same(w), color);
+            owner != panels_.end()) {
+            (*owner)->paintSourceRing(c, w, target && target->same(w), color);
             continue;
         }
         if (!droppable(w, source))

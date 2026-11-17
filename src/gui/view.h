@@ -591,6 +591,9 @@ private:
     bool isActive(const Widget &w) const override;
     // What the View does for its panels, the rest of PanelHost being the View's own methods above.
     Controller &controller() const override { return controller_; }
+    ModulationModel &modulationModel() override { return mods_; }
+    RoutingModel &routingModel() override { return routing_; }
+    FxGraphModel &fxGraphModel() override { return fx_; }
     void resetHover() override { hover_.reset(); }
     void askConfirm(Panel &from, int kind) override;
     void startDrag(Panel &from, const Widget &w, Point p, bool step) override;
@@ -631,6 +634,11 @@ private:
     Controller &controller_;
     // The preset library and the patch as a file (see Controller::presetStore()).
     PresetStore &presetStore() const { return controller_.presetStore(); }
+    // The patch's models, each telling the editor why it refused an edit (see flash()); the panels edit through them
+    // too (see PanelHost::modulationModel()), so they come first.
+    ModulationModel mods_;
+    RoutingModel routing_;
+    FxGraphModel fx_;
     // The panels: the shape editors, the preset browser, the SEQ view, the MODS view, the FX view, the routing panel,
     // the inspector, and all of them, in the order they are handed what goes on (the shape editors first, for the keys
     // they take before the others).
@@ -647,10 +655,6 @@ private:
     // The tooltip of a panel's own widget, if any (see Panel::tooltip()).
     std::string panelTip(const Widget &w) const;
     const ParamTable &table_;
-    // The patch's models, each telling the editor why it refused an edit (see flash()).
-    ModulationModel mods_;
-    RoutingModel routing_;
-    FxGraphModel fx_;
     ParamValues seen_{};
     uint64_t seenStamp_ = 0; // the controller's valuesStamp() when seen_ was taken (0: not yet)
     Telemetry telemetry_{};
