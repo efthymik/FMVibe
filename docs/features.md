@@ -1947,9 +1947,10 @@ one may have changed since it last did.
   1:1 pair with feedback for the body, a 9:1 click for the thumb and a sub sine) and Grind Bass (a fed-back pair
   growled by a sub-octave linear FM through an asymmetric shaper and a driven low-pass, over a clean sub, its effects
   as a graph that keeps the lows below 140 Hz tight while the highs are clipped and widened; its Growl, Drive and
-  Width macros); Log Drum (a tuned log drum, a 3:1 knock dying in a blink as its pitch drops into the note, bouncing
-  through a swung two-bar groove in C minor while a key is held, an octave down: a 3-3-2 call up a fifth and back,
-  answered an octave up and walking down to the low G that leads round) and Hard Kick (a fixed-pitch sine swept down from about 600 Hz into an asymmetric shaper whose tail distorts, under a
+  Width macros); Log Drum (a tuned log drum, a 3:1 knock dying in a blink as its pitch drops into the note, in mono, so
+  each hit cuts off the one before, playing a tribal 12/8 groove in eighth triplets while a key is held, an octave
+  down: a low call on C minor pentatonic toms answered higher, with a roll down at its end, looped every 24 steps so
+  it keeps to two 4/4 bars, its ghost hits softer than its accents) and Hard Kick (a fixed-pitch sine swept down from about 600 Hz into an asymmetric shaper whose tail distorts, under a
   noise click; its Pitch, Distortion, Length and Click macros); Jet Takeoff (a modulator at full feedback, driven
   by an inharmonic one, roaring through its carrier, noise made by FM alone, a slow pitch envelope lifting it two
   octaves under a flanger) and Crush Downer (an FM growl folded by a sine-fold shaper and falling three octaves
