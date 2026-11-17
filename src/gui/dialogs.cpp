@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -164,15 +165,14 @@ void View::runPreset(PresetAction action) {
 }
 
 // What a panel's question says is the panel's (the preset browser's: the preset picked from the library that replaces
-// the patch, a folder or a category that goes). Of the View's own: what replaces the patch, Init (a file still to be
-// picked in the dialog goes unsaid), or, for Save, what overwriting the preset's file does.
+// the patch, a folder or a category that goes; the SEQ view's: its pattern's notes). Of the View's own: what replaces
+// the patch, Init (a file still to be picked in the dialog goes unsaid), or, for Save, what overwriting the preset's
+// file does.
 std::string View::confirmWhat() const {
     if (confirmFrom_)
         return confirmFrom_->confirmWords(confirm_).what;
     if (confirm_ == kConfirmFxClear)
         return tr(Str::ConfirmFxClear);
-    if (confirm_ == kConfirmSeqClear)
-        return tr(Str::ConfirmSeqClear);
     if (confirm_ == kConfirmMidBand)
         return confirmEffects_ == 1 ? std::string(tr(Str::ConfirmMidBandOne))
                                     : trf(Str::ConfirmMidBand, {std::to_string(confirmEffects_)});
@@ -189,7 +189,6 @@ std::string View::confirmWhat() const {
 void View::answerConfirm(int button) {
     const auto action = static_cast<PresetAction>(confirm_);
     const bool clear = confirm_ == kConfirmFxClear;
-    const bool seqClear = confirm_ == kConfirmSeqClear;
     const bool bands = confirm_ == kConfirmMidBand;
     const bool split = confirm_ == kConfirmSplitRemove;
     const int kind = confirm_;
@@ -197,7 +196,8 @@ void View::answerConfirm(int button) {
     confirm_ = -1;
     confirmFrom_ = nullptr;
     hover_.reset();
-    if (from) { // a panel's question (the preset browser's: a preset loaded, a folder or a category removed)
+    if (from) { // a panel's question (the preset browser's: a preset loaded, a folder or a category removed; the SEQ
+                // view's: its pattern cleared)
         from->confirmed(kind, button);
     } else if (split) { // the split removed, its bands' effects kept on the main line (1) or with it (4)
         if (button == 1 || button == 4)
@@ -209,9 +209,6 @@ void View::answerConfirm(int button) {
         confirmSplit_ = -1;
     } else if (button == 1 && clear) {
         clearFx();
-    } else if (seqClear) {
-        if (button == 1)
-            clearSeqPattern();
     } else if (button == 1) {
         runPreset(action);
     }
@@ -530,19 +527,18 @@ void View::paintConfirm(Canvas &c) {
     paintDialogPanel(c, panel);
     const bool overwrite = confirm_ == static_cast<int>(PresetAction::Save);
     const bool split = confirm_ == kConfirmSplitRemove;
-    const bool seqClear = confirm_ == kConfirmSeqClear;
-    const bool category = confirm_ == kConfirmCategoryRemove;
-    const bool folder = confirm_ == kConfirmFolderDelete;
+    // A panel's question (the preset browser's, the SEQ view's), which says whether to save the patch first.
+    const std::optional<Panel::ConfirmWords> words =
+        confirmFrom_ ? std::optional(confirmFrom_->confirmWords(confirm_)) : std::nullopt;
     // What goes, undo brings back; or a category or folder, which nothing of the patch's needs.
-    const bool clear = confirm_ == kConfirmFxClear || bands || split || seqClear || category || folder;
+    const bool clear = confirm_ == kConfirmFxClear || bands || split || (words && !words->saveFirst);
     c.text({panel.x + 24.0f, panel.y + 18.0f, panel.w - 48.0f, 22.0f},
-           confirmFrom_ ? confirmFrom_->confirmWords(confirm_).title // a panel's question (the preset browser's)
-           : overwrite  ? trf(Str::ConfirmOverwriteTitle, {presetStore().presetName()})
-           : seqClear   ? trf(Str::ConfirmSeqClearTitle, {seqPatternName(seqPattern())})
-                        : std::string(tr(bands   ? Str::ConfirmMidBandTitle
-                                        : split ? Str::ConfirmSplitRemoveTitle
-                                        : clear ? Str::ConfirmFxClearTitle
-                                                : Str::ConfirmTitle)),
+           words       ? words->title
+           : overwrite ? trf(Str::ConfirmOverwriteTitle, {presetStore().presetName()})
+                       : std::string(tr(bands   ? Str::ConfirmMidBandTitle
+                                       : split ? Str::ConfirmSplitRemoveTitle
+                                       : clear ? Str::ConfirmFxClearTitle
+                                               : Str::ConfirmTitle)),
            kTextHeading, kText, Align::Left, true);
     float y = panel.y + 48.0f;
     if (!what.empty()) {

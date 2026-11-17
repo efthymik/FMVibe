@@ -6023,7 +6023,7 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
     const bool boxShot = renderer.save(view, dir / "36b-seq-picked.png");
     const double before0 = field(0, SeqNoteParam::Velocity), before1 = field(1, SeqNoteParam::Velocity);
     const float velX = detail::kSeqTools.x + detail::kSeqTools.w - 26.0f - 8.0f - 104.0f - 8.0f - 84.0f - 58.0f - 92.0f -
-                       58.0f + 20.0f; // the VEL field (see seq.cpp's seqFieldRect())
+                       58.0f + 20.0f; // the VEL field (see seqpanel.cpp's seqFieldRect())
     const Point velPoint{velX, detail::kSeqTools.y + 12.0f};
     view.mouseDown(velPoint, {});
     view.mouseMove({velPoint.x, velPoint.y - 15.0f}, {});

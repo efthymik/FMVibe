@@ -1,8 +1,8 @@
 #pragma once
 
 // What the editor is made of for input: its widgets (each a kind and where it is, with a param and two ints whose
-// meaning the kind gives), the mouse's modifiers, the keys the window sends, the entries of a context menu and the
-// text fields' editing. Shared by the View and its panels (see panel.h).
+// meaning the kind gives), the mouse's modifiers and cursors, the keys the window sends, the entries of a context menu
+// and the text fields' editing. Shared by the View and its panels (see panel.h).
 
 #include "canvas.h"
 
@@ -20,6 +20,8 @@ struct Modifiers {
     bool ctrl = false;
     bool alt = false;
 };
+
+enum class CursorKind { Arrow, Hand, Vertical, Horizontal, Move, Text, Pen }; // Pen: drawing notes in the SEQ view's roll
 
 struct MenuItem {
     int command = 0; // 0 is a separator
@@ -244,7 +246,7 @@ enum class WidgetKind {
     FxBoxFold,    // a = split: folds its container to a strip, or unfolds it
     FxBoxAdd,     // a = lane (1 the high band, 2 the low band, 3 the middle band), b = item: a container's dashed
                   // card, for the list
-    // The SEQ view (see seq.cpp).
+    // The SEQ view (see seqpanel.cpp).
     SeqTool,      // b = 0 select, 1 draw: what a click on the roll does
     SeqSnap,      // the snap's button: opens its list
     SeqSnapMenu,  // a = 1 on the open list, 0 around it (a click there closes it)
@@ -290,6 +292,21 @@ struct Widget {
 
     bool same(const Widget &o) const { return kind == o.kind && param == o.param && a == o.a && b == o.b; }
 };
+
+// Merges the buttons added to `list` since `from` into one pill, as Poly | Mono, each its part of it (see
+// Widget::group).
+inline void mergeButtons(std::vector<Widget> &list, size_t from) {
+    if (list.size() < from + 2)
+        return;
+    Rect group = list[from].rect;
+    group.w = list.back().rect.right() - group.x;
+    for (size_t i = from; i < list.size(); ++i) {
+        Widget &w = list[i];
+        w.group = group;
+        w.partLeft = i == from ? group.x : (list[i - 1].rect.right() + w.rect.x) * 0.5f;
+        w.partRight = i + 1 == list.size() ? group.right() : (w.rect.right() + list[i + 1].rect.x) * 0.5f;
+    }
+}
 
 // A line of text being edited in a field: what is typed, the caret in it and where its selection starts (at the
 // caret, nothing is selected), where each place between its characters was painted (across), and how far its text

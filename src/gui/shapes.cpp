@@ -669,7 +669,7 @@ bool View::shapeKey(Key key) {
             shape = hover_->a;
         else if (shapeEditing() >= 0)
             shape = shapeEditing();
-        else if (wideLfo() >= 0 && !seqWide())
+        else if (wideLfo() >= 0 && !seq_.wide())
             shape = wideLfo();
         if (shape < 0 || !shapeEditable(shape))
             return false;

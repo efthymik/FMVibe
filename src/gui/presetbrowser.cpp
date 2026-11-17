@@ -1890,7 +1890,7 @@ bool PresetBrowser::press(const Widget &w, Point p, Modifiers) {
             browserSideScroll_ = std::clamp((p.y - thumb.h * 0.5f - track.y) / std::max(track.h - thumb.h, 1.0f) *
                                                 browserSideEnd(),
                                             0.0f, browserSideEnd());
-        host_.startDrag(*this, w, p);
+        host_.startDrag(*this, w, p, false);
         sideDragFrom_ = browserSideScroll_;
         sideDragY_ = p.y;
         return true;
@@ -1974,7 +1974,7 @@ bool PresetBrowser::press(const Widget &w, Point p, Modifiers) {
     }
 }
 
-bool PresetBrowser::doubleClick(const Widget &w) {
+bool PresetBrowser::doubleClick(const Widget &w, Point, Modifiers) {
     if (w.kind == Kind::BrowserRow) {
         openPreset(w.a);
         return true;
@@ -2058,7 +2058,7 @@ void PresetBrowser::pressing(const Widget *hit) {
         browserSearching_ = false;
 }
 
-void PresetBrowser::drag(Point p) { // the sidebar follows its thumb
+void PresetBrowser::drag(Point p, Modifiers) { // the sidebar follows its thumb
     const float room = browserSideTrack().h - browserSideThumb().h;
     if (room > 0.0f)
         browserSideScroll_ = std::clamp(sideDragFrom_ + (p.y - sideDragY_) / room * browserSideEnd(), 0.0f,
@@ -2096,7 +2096,7 @@ std::optional<float> PresetBrowser::pan(int part, float first, float, float down
 }
 
 // A folder of the Save dialog's tree, or of the browser's (not Factory, which is built in).
-bool PresetBrowser::contextMenu(const std::optional<Widget> &hit, std::vector<MenuItem> &items) {
+bool PresetBrowser::contextMenu(const std::optional<Widget> &hit, Point, std::vector<MenuItem> &items) {
     menuFolder_.reset();
     if (!hit)
         return false;
@@ -2226,27 +2226,31 @@ void PresetBrowser::fieldKey(Field f, Key key) {
     }
 }
 
-// The preset picked from the library that replaces the patch; a folder and the presets that go with it; a category
-// and the presets in it, which keep it.
+// The preset picked from the library that replaces the patch (save it first); a folder and the presets that go with it;
+// a category and the presets in it, which keep it.
 Panel::ConfirmWords PresetBrowser::confirmWords(int kind) const {
     if (kind == kConfirmFolderDelete) {
         const int n = presetsInFolder(confirmFolder_);
         return {trf(Str::ConfirmFolderDeleteTitle, {confirmFolder_.substr(confirmFolder_.rfind('/') + 1)}),
                 n == 0   ? std::string(tr(Str::ConfirmFolderDeleteEmpty))
                 : n == 1 ? std::string(tr(Str::ConfirmFolderDeleteOne))
-                         : trf(Str::ConfirmFolderDelete, {std::to_string(n)})};
+                         : trf(Str::ConfirmFolderDelete, {std::to_string(n)}),
+                tr(Str::ButtonDeleteFolder), false};
     }
     if (kind == kConfirmCategoryRemove) {
         const int n = presetsInCategory(confirmCategory_);
         return {trf(Str::ConfirmCategoryRemoveTitle, {confirmCategory_}),
                 n == 0   ? std::string(tr(Str::ConfirmCategoryRemoveUnused))
                 : n == 1 ? std::string(tr(Str::ConfirmCategoryRemoveOne))
-                         : trf(Str::ConfirmCategoryRemove, {std::to_string(n)})};
+                         : trf(Str::ConfirmCategoryRemove, {std::to_string(n)}),
+                tr(Str::ButtonRemoveCategory), false};
     }
     const std::vector<PresetEntry> &presets = presetStore().presets();
-    return {tr(Str::ConfirmTitle), pendingPreset_ >= 0 && pendingPreset_ < static_cast<int>(presets.size())
-                                       ? trf(Str::ConfirmLoadPreset, {presets[pendingPreset_].name})
-                                       : std::string()};
+    return {tr(Str::ConfirmTitle),
+            pendingPreset_ >= 0 && pendingPreset_ < static_cast<int>(presets.size())
+                ? trf(Str::ConfirmLoadPreset, {presets[pendingPreset_].name})
+                : std::string(),
+            tr(Str::ButtonLoad), true};
 }
 
 void PresetBrowser::confirmed(int kind, int button) {

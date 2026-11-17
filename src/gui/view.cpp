@@ -606,11 +606,10 @@ float View::heightFor(const UiLayout &layout) {
 }
 
 View::View(Controller &controller)
-    : controller_(controller), presets_(*this), panels_{&presets_}, table_(paramTable()),
+    : controller_(controller), presets_(*this), seq_(*this), panels_{&presets_, &seq_}, table_(paramTable()),
       mods_(controller, [this](std::string m) { flash(std::move(m)); }),
       routing_(controller, [this](std::string m) { flash(std::move(m)); }),
       fx_(controller, [this](std::string m) { flash(std::move(m)); }) {
-    seqLoadsSeen_ = controller_.patchLoads(); // the roll as the layout saved it: fitted only to a patch loaded from now
     poll();
 }
 
@@ -646,11 +645,22 @@ void View::askConfirm(Panel &from, int kind) {
     hover_.reset();
 }
 
-void View::startDrag(Panel &from, const Widget &w, Point p) {
+void View::startDrag(Panel &from, const Widget &w, Point p, bool step) {
     drag_.kind = DragKind::Panel;
     drag_.widget = w;
     drag_.start = drag_.now = p;
+    drag_.moved = false;
+    drag_.step = step;
     drag_.panel = &from;
+}
+
+void View::dragValue(const Widget &w, Point p, Modifiers mods) {
+    drag_.widget = w;
+    drag_.start = drag_.now = p;
+    drag_.fine = mods.shift;
+    drag_.kind = DragKind::Value;
+    drag_.startValue = value(w.param);
+    controller_.beginEdit(w.param);
 }
 
 View::DerivedScope::DerivedScope(const View &view) : view_(view) {
@@ -803,7 +813,7 @@ Color View::clipColor(int unit) const {
 
 bool View::inspectorCovered() const {
     const int shape = shapeEditing();
-    return fxWide() || modsWide() || seqWide() || (shape >= 0 && !isStripCurve(shape) && !isShaperCurve(shape));
+    return fxWide() || modsWide() || seq_.wide() || (shape >= 0 && !isStripCurve(shape) && !isShaperCurve(shape));
 }
 
 bool View::fxWide() const {
@@ -1399,18 +1409,14 @@ bool View::poll() {
     // the host's tempo shows in the synced effects' and LFOs' captions, and the title bar, whether notes play or not.
     if (t.fxReduction != telemetry_.fxReduction)
         in(panels);
-    // The sequencer's playhead, while the SEQ view shows, and the notes it plays glowing.
-    if (seqWide() && (t.seqPosition != telemetry_.seqPosition || t.seqPattern != telemetry_.seqPattern ||
-                      t.seqKeys != telemetry_.seqKeys))
-        in(panels);
-    if (seqWide() && seqTrackGlows(t))
-        in(panels);
-    if (seqFollowKeys(t) && seqWide()) // the keys ease whether shown or not, so they show where they are
-        in(panels);
+    // What the panels show of it: the sequencer's playhead while the SEQ view shows, the notes it plays glowing.
+    for (Panel *panel : panels_)
+        if (panel->poll(t))
+            in(panels);
     if (t.tempo != telemetry_.tempo)
         everywhere = true;
-    // The keyboard's keys ease up to lit and back down as they are held and let go (as the roll's, see
-    // seqFollowKeys()), clicked here or played by the host.
+    // The keyboard's keys ease up to lit and back down as they are held and let go (as the SEQ view's roll's),
+    // clicked here or played by the host.
     {
         bool moved = false;
         for (int key = 0; key < 128; ++key) {
@@ -1551,14 +1557,11 @@ bool View::poll() {
         if (drag_.kind == DragKind::FxMove && drag_.moved) // where it lands follows the row scrolling under it
             retargetRowDrag(drag_.now);
     }
-    if (seqEdgeScroll())
-        everywhere = true;
-    // A patch loaded (a preset, Init, the host's state): the roll fitted to its notes.
-    if (controller_.patchLoads() != seqLoadsSeen_) {
-        seqLoadsSeen_ = controller_.patchLoads();
-        seqFit();
-        everywhere = true;
-    }
+    // What moves by itself in the panels: the SEQ view's roll scrolling under a drag held at its edge, or fitted to a
+    // patch loaded.
+    for (Panel *panel : panels_)
+        if (panel->step())
+            everywhere = true;
     // An envelope's display zooming: pushed out by a handle, which changes its params (anywhere they show), or easing
     // back to filling the display, on the inspector's ENVELOPE tab or its card.
     if (const int env = envZoom_.env; envZoomStep()) {
@@ -1733,19 +1736,6 @@ bool View::envZoomStep() {
     else
         envZoom_.scale = next;
     return true;
-}
-
-void View::mergeButtons(std::vector<Widget> &list, size_t from) {
-    if (list.size() < from + 2)
-        return;
-    Rect group = list[from].rect;
-    group.w = list.back().rect.right() - group.x;
-    for (size_t i = from; i < list.size(); ++i) {
-        Widget &w = list[i];
-        w.group = group;
-        w.partLeft = i == from ? group.x : (list[i - 1].rect.right() + w.rect.x) * 0.5f;
-        w.partRight = i + 1 == list.size() ? group.right() : (w.rect.right() + list[i + 1].rect.x) * 0.5f;
-    }
 }
 
 std::vector<View::Widget> View::widgets() const {
@@ -1961,7 +1951,7 @@ std::vector<View::Widget> View::widgets() const {
         if (!modsFilter_.text.empty())
             add(Kind::SearchClear, fieldClear(filter), -1, static_cast<int>(Field::ModsFilter));
     } else if (view == RoutingView::Seq) {
-        seqWidgets(list);
+        seq_.widgets(list);
     } else if (view == RoutingView::Fx) {
         add(Kind::FxMenuButton, fxMenuButton());
         if (scrollLength(ScrollArea::Fx) > kVisibleFx + 0.01f && !fxGraph())
@@ -3162,7 +3152,8 @@ std::vector<View::Widget> View::widgets() const {
                 add(Kind::ListItem, listMenuItem(button, items, item), listMenu_, -1, listItemValue(listMenu_, item));
         }
     }
-    seqMenus(list); // the SEQ view's scale and snap lists
+    for (const Panel *panel : panels_) // theirs: the SEQ view's scale and snap lists
+        panel->popups(list);
     // An LFO's list of shapes, under its button on its card, cut off at the row's ends like the card, though
     // reaching past its bottom.
     if (lfoList.w > 0.0f) {
@@ -3422,7 +3413,7 @@ void View::paint(Canvas &c, Rect area) {
         paintMods(c);
         break;
     case RoutingView::Seq:
-        paintSeq(c);
+        seq_.paintBack(c);
         break;
     }
     if (!inspectorCovered() && panelsShown)
@@ -7137,9 +7128,7 @@ void View::paintButtonFace(Canvas &c, const Widget &w, bool lit, bool hot, Color
 void View::paintWidget(Canvas &c, const Widget &w) {
     const bool hovered = isHovered(w);
     const bool active = isActive(w);
-    if (paintSeqWidget(c, w, hovered)) // the SEQ view's own (see seq.cpp)
-        return;
-    for (Panel *panel : panels_) // the panels' own (the presets', see presetbrowser.cpp)
+    for (Panel *panel : panels_) // the panels' own (the presets', see presetbrowser.cpp, and the SEQ view's)
         if (panel->paintWidget(c, w, hovered))
             return;
     switch (w.kind) {
@@ -8536,16 +8525,15 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const bool ok = w.a == 1;
         const bool lit = ok && !bands;
         const Color ink = face(lit, kAccent);
-        const char *label = tr(!ok                                                ? Str::ButtonCancel
-                               : bands                                            ? Str::ButtonMidRemove
-                               : confirm_ == kConfirmSplitRemove                  ? Str::ButtonSplitKeep
-                               : confirm_ == kConfirmFxClear                      ? Str::ButtonClearFx
-                               : confirm_ == kConfirmSeqClear                     ? Str::ButtonClearSeq
-                               : confirm_ == kConfirmCategoryRemove               ? Str::ButtonRemoveCategory
-                               : confirm_ == kConfirmFolderDelete                 ? Str::ButtonDeleteFolder
-                               : confirm_ == static_cast<int>(PresetAction::Init) ? Str::ButtonInit
-                               : confirm_ == static_cast<int>(PresetAction::Save) ? Str::ButtonOverwrite
-                                                                                  : Str::ButtonLoad);
+        const Str ahead = bands                                            ? Str::ButtonMidRemove
+                          : confirm_ == kConfirmSplitRemove                  ? Str::ButtonSplitKeep
+                          : confirm_ == kConfirmFxClear                      ? Str::ButtonClearFx
+                          : confirm_ == static_cast<int>(PresetAction::Init) ? Str::ButtonInit
+                          : confirm_ == static_cast<int>(PresetAction::Save) ? Str::ButtonOverwrite
+                                                                             : Str::ButtonLoad;
+        const std::string label = !ok          ? std::string(tr(Str::ButtonCancel))
+                                  : confirmFrom_ ? confirmFrom_->confirmWords(confirm_).ok // a panel's question's
+                                                 : std::string(tr(ahead));
         c.text(w.rect, label, kTextBody, ink, Align::Center, lit);
         break;
     }
@@ -9212,16 +9200,17 @@ void View::paintStepper(Canvas &c, const Widget &w) {
 
 // What the play switches do, below the one under the mouse.
 void View::paintTooltip(Canvas &c) {
-    if (hover_ && drag_.kind == DragKind::None) // the SEQ view's own (see seqTip()), and the panels'
-        if (const std::string seq = seqTip(*hover_).empty() ? panelTip(*hover_) : seqTip(*hover_); !seq.empty()) {
-            const float width = std::min(std::ceil(c.textWidth(seq, kTextBody)) + 24.0f, View::kWidth - 16.0f);
+    if (hover_ && drag_.kind == DragKind::None) // the panels' own (the presets', the SEQ view's)
+        if (const std::string own = panelTip(*hover_); !own.empty()) {
+            const float width = std::min(std::ceil(c.textWidth(own, kTextBody)) + 24.0f, View::kWidth - 16.0f);
             const float x = std::clamp(hover_->rect.center().x - width * 0.5f, 8.0f, View::kWidth - 8.0f - width);
-            const float below = hover_->kind == Kind::SeqKeys || hover_->kind == Kind::SeqRuler
-                                    ? hoverPoint_.y + 18.0f // a tall widget: under the mouse
-                                    : hover_->rect.bottom() + 6.0f;
+            const bool atMouse = std::any_of(panels_.begin(), panels_.end(),
+                                             [&](const Panel *panel) { return panel->tipAtMouse(*hover_); });
+            const float below = atMouse ? hoverPoint_.y + 18.0f // a tall widget: under the mouse
+                                        : hover_->rect.bottom() + 6.0f;
             const Rect tip{x, below, width, 22.0f};
             paintMenuPanel(c, tip);
-            c.text(tip, seq, kTextBody, kText);
+            c.text(tip, own, kTextBody, kText);
             return;
         }
     if (!hover_ || drag_.kind != DragKind::None || (cascade_ && modsWide()) ||
@@ -9975,9 +9964,6 @@ void View::applyDrag(Point p) {
             controller_.setValue(index, v);
     };
     switch (drag_.kind) {
-    case DragKind::Seq:
-        seqDrag(p);
-        break;
     case DragKind::Key: {
         // Sliding across keys moves the note; off the keys, the last one keeps sounding.
         const auto hit = hitTest(p);
@@ -10263,9 +10249,9 @@ void View::applyDrag(Point p) {
             scrollMods(static_cast<float>(drag_.startValue) + (p.y - drag_.start.y) / room * modsEnd(), false);
         break;
     }
-    case DragKind::Panel: // a panel's own (the preset browser's sidebar's thumb, say)
+    case DragKind::Panel: // a panel's own (the preset browser's sidebar's thumb, the SEQ view's roll, say)
         if (drag_.panel)
-            drag_.panel->drag(p);
+            drag_.panel->drag(p, drag_.mods);
         break;
     case DragKind::InputsScroll: { // the INPUTS tab's rows follow its thumb
         const int op = controller_.layout().selectedNode;
@@ -10386,14 +10372,7 @@ bool View::mouseMove(Point p, Modifiers mods) {
         if (mods.ctrl) // a card or node carried with Ctrl held: a copy of it
             copyDragged();
     }
-    // A note moved, or its end, in the SEQ view's roll follows the mouse off the grid while Shift or Alt is held.
-    if (drag_.kind == DragKind::Seq && (seqDrag_.mode == SeqDrag::Mode::Move || seqDrag_.mode == SeqDrag::Mode::Resize ||
-                                        seqDrag_.mode == SeqDrag::Mode::ResizeStart))
-        seqDrag_.free = mods.shift || mods.alt;
-    // A point of the lane's curve, or a stroke drawing it, on the grid while Ctrl is held.
-    if (drag_.kind == DragKind::Seq &&
-        (seqDrag_.mode == SeqDrag::Mode::CurvePoint || seqDrag_.mode == SeqDrag::Mode::CurvePaint))
-        seqDrag_.free = !mods.ctrl;
+    drag_.mods = mods; // what a panel's drag goes by (the SEQ view's roll's, off the grid with Shift held, say)
     if ((drag_.kind == DragKind::Connect || drag_.kind == DragKind::Reroute) && !drag_.leftNode)
         drag_.leftNode = clearOfNode(drag_.widget.a, routing_.nodeCenter(drag_.widget.a), p);
     // A value moves only once the mouse has: the jitter of a click, or between a double-click's presses, leaves it
@@ -10424,13 +10403,12 @@ void View::mouseDown(Point p, Modifiers mods) {
                                            hit->kind == Kind::ShapeCurve) &&
                                    hit->a == shapePick_.shape))
         clearShapePick();
-    if (!(hit && hit->kind == Kind::SeqLane)) // and those on the SEQ view's lane's curve, at a click off the lane
-        seqCurvePick_ = SeqCurvePick{};
     // The MODS view's filter lets the keyboard go at a click anywhere else.
     if (!(hit && (hit->kind == Kind::SearchField || hit->kind == Kind::SearchClear) &&
           hit->a == static_cast<int>(Field::ModsFilter)))
         modsFiltering_ = false;
-    // So does the preset browser's search (see Panel::pressing()).
+    // So does the preset browser's search, and the points picked on the SEQ view's lane's curve let go at a click off
+    // the lane (see Panel::pressing()).
     for (Panel *panel : panels_)
         panel->pressing(hit ? &*hit : nullptr);
     // A pill's open list closes at a click anywhere else, which does nothing more; but not at a source's handle,
@@ -10443,9 +10421,6 @@ void View::mouseDown(Point p, Modifiers mods) {
     if (!hit)
         return;
     const Widget &w = *hit;
-    for (Panel *panel : panels_) // the panels' own (the presets', see presetbrowser.cpp)
-        if (panel->press(w, p, mods))
-            return;
     // Ctrl+Click types a value into whatever shows one: a knob, a modulation's depth, a route.
     if (mods.ctrl && (w.kind == Kind::Knob || w.kind == Kind::ValueText || w.kind == Kind::WireLabel ||
                       w.kind == Kind::OutLabel || w.kind == Kind::GridCell || w.kind == Kind::TempoBox ||
@@ -10489,8 +10464,9 @@ void View::mouseDown(Point p, Modifiers mods) {
     UiLayout &layout = controller_.layout();
     if (fxGraphPress(w, p)) // the effects graph's own
         return;
-    if (seqPress(w, p, mods)) // the SEQ view's own
-        return;
+    for (Panel *panel : panels_) // the panels' own (the presets', see presetbrowser.cpp, and the SEQ view's)
+        if (panel->press(w, p, mods))
+            return;
 
     switch (w.kind) {
     case Kind::Knob:
@@ -11283,9 +11259,10 @@ void View::mouseUp(Point p, Modifiers) {
         break;
     case DragKind::Tempo: // each move set it already
         break;
-    case DragKind::Seq:
+    case DragKind::Panel: // its panel hears of it, then of the drag's end below
         drag_.now = p;
-        seqRelease(p);
+        if (drag_.panel)
+            drag_.panel->drop(p);
         break;
     case DragKind::SplitPoint:
     case DragKind::Value:
@@ -11308,7 +11285,6 @@ void View::mouseUp(Point p, Modifiers) {
     case DragKind::Bend: // each move set it already
     case DragKind::ModsScroll:
     case DragKind::InputsScroll:
-    case DragKind::Panel:
     case DragKind::ModListScroll:
     case DragKind::Pan: // the left button let go of mid-pan ends it too
     case DragKind::None:
@@ -11466,13 +11442,9 @@ void View::finishDrag() {
     case DragKind::Tempo:
     case DragKind::None:
         break;
-    case DragKind::Panel: // its panel hears of it
+    case DragKind::Panel: // its panel hears of it (the SEQ view's note still heard stops, a release that never came)
         if (drag_.panel)
             drag_.panel->release();
-        break;
-    case DragKind::Seq: // a note still heard stops (a release that never came)
-        seqHear(-1);
-        seqDrag_ = SeqDrag{};
         break;
     }
     if (drag_.step)
@@ -11623,8 +11595,9 @@ std::optional<View::PanStart> View::panAt(Point p) const {
         return PanStart{PanArea::Fx, fxGraphScroll(fxGridLayout(fxLine()))};
     if (fxWide() && !fxGraph() && kFxPanel.contains(p))
         return PanStart{PanArea::Fx, fxScroll()};
-    if (seqWide() && Rect{kSeqBox.x, kSeqRuler.y, kSeqBox.w, kSeqLaneArea.y + kSeqLaneArea.h - kSeqRuler.y}.contains(p))
-        return PanStart{PanArea::Seq, seqScroll()}; // the roll, across and up and down
+    for (Panel *panel : panels_) // what the panels shown in their places pan (the SEQ view's roll)
+        if (const auto pan = panel->panAt(p))
+            return PanStart{PanArea::Panel, pan->second, panel, pan->first};
     return std::nullopt;
 }
 
@@ -11636,7 +11609,7 @@ void View::middleDown(Point p) {
     const float first = pan->first;
     // Open lists and menus close as a click there closes them, since what they were opened on may scroll away; but
     // not a pill's list that is being scrolled, nor what a panel's popup pans (the preset browser's list).
-    if (area != PanArea::Panel && area != PanArea::ModList) {
+    if (!(area == PanArea::Panel && pan->panel->modal()) && area != PanArea::ModList) {
         modList_.reset();
         cascade_.reset();
         fxMenuOpen_ = false;
@@ -11657,8 +11630,8 @@ void View::middleDown(Point p) {
     drag_.panel = pan->panel;
     drag_.start = drag_.now = p;
     drag_.startValue = first;
-    if (area == PanArea::Seq)
-        seqPanStart_ = {seqScroll(), static_cast<float>(seqFirstRow())};
+    if (area == PanArea::Panel)
+        pan->panel->panBegin(pan->part);
 }
 
 void View::middleUp(Point p) {
@@ -11821,9 +11794,10 @@ void View::wheelAcross(Point p, float steps) {
     } else if (fxWide() && !fxGraph() && kFxPanel.contains(p)) {
         setScroll(ScrollArea::Fx, fxScroll() + steps * 0.4f);
         closeGoneLists();
-    } else if (seqWide() && kSeqBox.contains(p)) { // the roll, an eighth of what it shows a notch
-        seqScrollX_ = seqScroll() + steps * seqShownSteps() * 0.125f;
-        seqScrollX_ = seqScroll();
+    } else { // the panels' (the SEQ view's roll)
+        for (Panel *panel : panels_)
+            if (panel->wheelAcross(p, steps))
+                break;
     }
 }
 
@@ -11863,11 +11837,6 @@ void View::applyPan(Point p) {
     case PanArea::ModList:
         modListScroll_ = hold(first - down / kModListRowStep, modListEnd());
         break;
-    case PanArea::Seq: // what was under the mouse follows it, across and up and down
-        seqScrollX_ = seqPanStart_.x - across / kSeqGrid.w * seqShownSteps();
-        seqScrollX_ = seqScroll();
-        seqShowFromRow(seqPanStart_.y + down / seqRowH());
-        break;
     case PanArea::Panel: // a panel's part, held at its ends as hold() holds the others
         if (drag_.panel)
             if (const std::optional<float> held = drag_.panel->pan(drag_.widget.b, first, across, down)) {
@@ -11889,10 +11858,9 @@ void View::doubleClick(Point p, Modifiers mods) {
     if (paired && !(hit && pressed_ && hit->same(*pressed_)) &&
         !(hit && (hit->kind == Kind::Key || drawsStep(*hit, mods))))
         return;
-    if (hit && seqDoubleClick(*hit, p, mods)) // the SEQ view's own
-        return;
-    if (hit && std::any_of(panels_.begin(), panels_.end(), [&](Panel *panel) { return panel->doubleClick(*hit); }))
-        return; // the panels' own (the presets')
+    if (hit && std::any_of(panels_.begin(), panels_.end(),
+                           [&](Panel *panel) { return panel->doubleClick(*hit, p, mods); }))
+        return; // the panels' own (the presets', the SEQ view's)
     if (hit && (hit->kind == Kind::Key || hit->kind == Kind::Octave || hit->kind == Kind::UndoButton ||
                 hit->kind == Kind::PresetStep || hit->kind == Kind::FxPower || hit->kind == Kind::FxNodePower ||
                 hit->kind == Kind::SlotBypass || (hit->kind == Kind::ShapeGrid && hit->b != 0) ||
@@ -12062,8 +12030,10 @@ void View::wheel(Point p, float steps, Modifiers mods) {
         return;
     routing_.keepRoutes(); // as in mouseDown(): scrolling can take a route down to 0 % too
     const auto hit = hitTest(p);
-    if (hit && !hit->popup && seqWheel(*hit, p, steps, mods)) // the SEQ view's own
-        return;
+    if (hit && !hit->popup && std::any_of(panels_.begin(), panels_.end(), [&](Panel *panel) {
+            return panel->wheelOn(*hit, p, steps, mods);
+        }))
+        return; // the panels' own (the SEQ view's)
     // Over a pill's list, its depth bars take the wheel and elsewhere it scrolls the rows, a row a notch, when they are
     // more than it shows: nothing under the list scrolls.
     if (hit && (hit->popup || hit->kind == Kind::ModPill) && hit->kind != Kind::SlotBar && hit->kind != Kind::ValueText) {
@@ -12261,7 +12231,7 @@ static_assert(PresetBrowser::kNewFolderCommand > kMoveBandCommand + 3 &&
               PresetBrowser::kRenameFolderCommand == PresetBrowser::kNewFolderCommand + 2 &&
               PresetBrowser::kDeleteFolderCommand == PresetBrowser::kNewFolderCommand + 3 &&
               kEditAuxDepthCommand > PresetBrowser::kDeleteFolderCommand &&
-              kEditAuxDepthCommand < 50); // under the SEQ view's
+              kEditAuxDepthCommand < SeqPanel::kMenuCommands); // under the SEQ view's
 static_assert(kRouteModeCommand + static_cast<int>(RouteMode::Count) <= kAmpOversamplingCommand &&
               kAmpOversamplingCommand + kAmpOversamplings <= kMoveBandCommand && kMoveBandCommand + 3 < 100);
 
@@ -12280,10 +12250,8 @@ std::vector<MenuItem> View::contextMenu(Point p) {
     // the first that owns what is hit fills this one.
     bool taken = false;
     for (Panel *panel : panels_)
-        taken = panel->contextMenu(taken ? std::optional<Widget>() : hit, items) || taken;
+        taken = panel->contextMenu(taken ? std::optional<Widget>() : hit, p, items) || taken;
     if (taken || !hit)
-        return items;
-    if (seqContextMenu(*hit, p, items)) // the SEQ view's roll's
         return items;
     if ((hit->kind == Kind::FxNode && hit->a >= kFxSlots) || hit->kind == Kind::FxBoxGrip) { // a split or a join
         menuFx_ = hit->a;
@@ -12479,12 +12447,9 @@ std::string View::bypassLabel(int source, int slot) const {
 void View::menuCommand(int command) {
     if (!menuLive_) // what the menu was opened on may have changed or gone since
         return;
-    // The SEQ view's roll's commands (see seqContextMenu()), after the others under 100.
-    static_assert(kMoveBandCommand + 3 < kSeqMenuCommands && kSeqMenuCommands + kSeqMenuCount <= 100);
-    if (command >= kSeqMenuCommands && command < kSeqMenuCommands + kSeqMenuCount) {
-        seqMenuCommand(command - kSeqMenuCommands);
-        return;
-    }
+    // The SEQ view's roll's commands (see SeqPanel::contextMenu()), after the others under 100.
+    static_assert(kMoveBandCommand + 3 < SeqPanel::kMenuCommands &&
+                  SeqPanel::kMenuCommands + SeqPanel::kMenuCount <= 100);
     for (Panel *panel : panels_) // the panels' own (see contextMenu())
         if (panel->menuCommand(command))
             return;
@@ -12791,6 +12756,16 @@ void View::endTyping(bool commit) {
         flash(trf(Str::MsgBadValue, {text, mods_.paramName(t.widget.param)}));
 }
 
+// A shape editor's points picked, or one under the mouse, take Delete and Ctrl+A first; then the panels' (the SEQ
+// view's), while nothing is typed, no dialog is open and no drag goes on.
+bool View::seqKey(Key key, bool shift) {
+    if (shapeKey(key))
+        return true;
+    if (typing() || dialogOpen() || drag_.kind != DragKind::None)
+        return false;
+    return std::any_of(panels_.begin(), panels_.end(), [&](Panel *panel) { return panel->key(key, shift); });
+}
+
 CursorKind View::cursor() const {
     if (drag_.kind == DragKind::Pan)
         return CursorKind::Move;
@@ -12805,8 +12780,9 @@ CursorKind View::cursor() const {
     const Widget *w = drag_.kind != DragKind::None ? &drag_.widget : (hover_ ? &*hover_ : nullptr);
     if (!w)
         return CursorKind::Arrow;
-    if (const std::optional<CursorKind> seq = seqCursor(*w))
-        return *seq;
+    for (const Panel *panel : panels_) // the panels' own (the SEQ view's roll)
+        if (const std::optional<CursorKind> own = panel->cursor(*w))
+            return *own;
     // A stepper: a hand over its - and +, which click; up and down over its number, which drags; elsewhere on it (round
     // its field, its label) the arrow. Dragged, up and down wherever the mouse goes.
     if (isStepper(*w) && drag_.kind == DragKind::None)

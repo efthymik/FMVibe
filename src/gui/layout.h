@@ -1303,6 +1303,9 @@ constexpr int kBlackAfter[12] = {-1, 0, -1, 1, -1, -1, 3, -1, 4, -1, 5, -1};
 constexpr bool isBlackKey(int key) {
     return kBlackAfter[key % 12] >= 0;
 }
+// How far a key's light moves each poll as it eases up to lit and back down, the keyboard strip's and the SEQ view's
+// roll's: about 35 ms up and 80 ms down at 60 polls a second.
+constexpr float kKeyLightRise = 0.5f, kKeyLightFall = 0.22f;
 
 // Position in the grid: rows are nodes, columns nodes and then the output.
 inline Rect gridCell(int row, int col) {

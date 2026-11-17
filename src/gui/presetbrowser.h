@@ -58,12 +58,12 @@ public:
     std::string tooltip(const Widget &w) const override;
     void pressing(const Widget *hit) override;
     bool press(const Widget &w, Point p, Modifiers mods) override;
-    bool doubleClick(const Widget &w) override;
-    void drag(Point p) override;
+    bool doubleClick(const Widget &w, Point p, Modifiers mods) override;
+    void drag(Point p, Modifiers mods) override;
     bool wheel(Point p, float steps) override;
     std::optional<std::pair<int, float>> panAt(Point p) const override;
     std::optional<float> pan(int part, float first, float across, float down) override;
-    bool contextMenu(const std::optional<Widget> &hit, std::vector<MenuItem> &items) override;
+    bool contextMenu(const std::optional<Widget> &hit, Point p, std::vector<MenuItem> &items) override;
     bool menuCommand(int command) override;
     bool dialog() const override { return infoCardOpen_ || browserOpen_; }
     std::optional<bool> dialogKey(Key key) override;

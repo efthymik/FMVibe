@@ -40,7 +40,7 @@ add_executable(fmvibe-ui
     ${PROJECT_SOURCE_DIR}/src/gui/mods.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/patchedits.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/presetbrowser.cpp
-    ${PROJECT_SOURCE_DIR}/src/gui/seq.cpp
+    ${PROJECT_SOURCE_DIR}/src/gui/seqpanel.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/routing.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/routingmodel.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/shapes.cpp
