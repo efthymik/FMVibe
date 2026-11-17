@@ -2,7 +2,7 @@
 
 // The routing graph's model: which nodes there are, which param joins two of them or sends one out, and where
 // their wires and arrowheads go. Shared by the editor's own files only (see view.cpp), in namespace detail;
-// routing.cpp holds the View's methods that connect and reroute.
+// RoutingModel (routingmodel.h) connects and reroutes.
 
 #include "layout.h"
 #include "theme.h"
