@@ -7035,12 +7035,14 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     View view(model);
     const float y = view.height() - 179.0f;
     auto macroKnob = [&](int macro) { return Point{188.0f + 96.0f * macro, y}; };
-    // Until a macro modulates something, its handle, arc and name are faint, and so is the note source's handle
-    // (read off the rendered pixels).
-    const Point macroRing{macroKnob(0).x - 26.0f, y - 10.0f}, noteRing{982.0f, y - 10.0f};
+    // Until a macro modulates something, its handle, arc and name are faint, and so are the note source's handle
+    // and the curve on its display, read down a column near the display's left end, clear of its text (read off the
+    // rendered pixels).
+    const Point macroRing{macroKnob(0).x - 26.0f, y - 10.0f}, noteRing{982.0f, y - 10.0f}, noteCurve{1000.0f, y - 9.0f};
     view.mouseMove({600.0f, 328.0f}, {});
     const bool idleShot = renderer.save(view, dir / "26a-macros-idle.png");
     const int macroIdle = ringLevel(renderer, macroRing, 20.0f), noteIdle = ringLevel(renderer, noteRing, 20.0f);
+    const int noteCurveIdle = ringLevel(renderer, noteCurve, 19.0f);
     drag(view, macroKnob(0), {macroKnob(0).x, y - 40.0f});
     const bool turned = model.value(paramIndex(0, MacroParam::Value)) > 0.1;
     drag(view, {macroKnob(0).x - 32.0f, y}, kFmAmountKnob); // its handle onto FM Amount
@@ -7136,10 +7138,13 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove(noteHandle, {});
     const bool shot = renderer.save(view, dir / "26b-note-source.png");
     const int noteLive = ringLevel(renderer, noteRing, 20.0f);
-    std::printf("      handles' brightness: macro %d idle, %d mapped; note %d idle, %d mapped\n", macroIdle, macroLive,
-                noteIdle, noteLive);
-    check(idleShot && macroIdle * 16 < macroLive * 10 && noteIdle * 16 < noteLive * 10,
-          "a macro's and the note source's handles are faint until they modulate something");
+    const int noteCurveLive = ringLevel(renderer, noteCurve, 19.0f);
+    std::printf("      handles' brightness: macro %d idle, %d mapped; note %d idle, %d mapped (its curve %d, %d)\n",
+                macroIdle, macroLive, noteIdle, noteLive, noteCurveIdle, noteCurveLive);
+    check(idleShot && macroIdle * 16 < macroLive * 10 && noteIdle * 16 < noteLive * 10 &&
+              noteCurveIdle * 13 < noteCurveLive * 10,
+          "a macro's and the note source's handles, and the note source's curve, are faint until they modulate "
+          "something");
     std::string removal;
     for (const MenuItem &item : view.contextMenu(ins(918.0f, 242.0f)))
         if (item.label.find(tr(Str::SourceNameNote)) != std::string::npos)
@@ -7836,9 +7841,11 @@ void testVelocity(const std::filesystem::path &dir, Renderer &renderer) {
     View view(model);
     const float y = view.height() - 179.0f;
     const Point handle{1092.0f, y}, ring{1098.0f, y - 10.0f}, display{1142.0f, y};
+    const Point curveColumn{1116.0f, y - 9.0f}; // down the display near its left end, clear of its text
     view.mouseMove({600.0f, 328.0f}, {});
     renderer.save(view, dir / "26k-velocity-idle.png");
     const int idle = ringLevel(renderer, ring, 20.0f);
+    const int curveIdle = ringLevel(renderer, curveColumn, 19.0f);
     drag(view, handle, kOpPhaseKnob);
     const bool mapped = slotTarget(model.value(slotTargetIndex(kVelocitySource, 0))) == paramIndex(0, OpParam::Phase) &&
                         model.value(slotAmountIndex(kVelocitySource, 0)) == 0.3;
@@ -7848,14 +7855,16 @@ void testVelocity(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove({600.0f, 328.0f}, {});
     const bool shot = renderer.save(view, dir / "26l-velocity.png");
     const int live = ringLevel(renderer, ring, 20.0f);
+    const int curveLive = ringLevel(renderer, curveColumn, 19.0f);
     std::string removal;
     for (const MenuItem &item : view.contextMenu(kOpPhaseKnob))
         if (item.label.find(tr(Str::SourceNameVelocity)) != std::string::npos)
             removal = item.label;
-    std::printf("      velocity's handle: brightness %d idle, %d mapped\n", idle, live);
-    check(mapped && shot && idle * 16 < live * 10 &&
+    std::printf("      velocity's handle: brightness %d idle, %d mapped (its curve %d, %d)\n", idle, live, curveIdle,
+                curveLive);
+    check(mapped && shot && idle * 16 < live * 10 && curveIdle * 13 < curveLive * 10 &&
               removal == trf(Str::MenuRemoveModulation, {tr(Str::SourceNameVelocity)}),
-          "velocity's handle maps it like the note source's, and is faint until it does");
+          "velocity's handle maps it like the note source's, and it and its curve are faint until it does");
     // Its display's menu makes it bipolar, and back.
     bool bipolar = false;
     for (const MenuItem &item : view.contextMenu(display))

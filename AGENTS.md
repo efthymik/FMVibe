@@ -663,8 +663,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     macro takes it (read off the rendered pixels), and the target menu's Macros listing the knobs by their names, the
     one that would loop and the row's own refused;
   - the macros' knobs (a double-click setting a bipolar one to its middle), handles and names, the note source's
-    and velocity's handles, displays and curve editors, velocity's handle faint until it modulates something (read
-    off the rendered pixels), the mod wheel's
+    and velocity's handles, displays and curve editors, the note source's and velocity's handles and the curves on
+    their displays faint until they modulate something (read off the rendered pixels), the mod wheel's
     handle (new modulation starting upward) and the pitch bend's (bipolar), each over its wheel and faint until it
     modulates something (read off the rendered pixels); with no note playing, a knob's dot showing where a macro
     takes it (read off the rendered pixels); the octave shift's small buttons under the keys; a key the host holds easing up to lit over a few polls (read off the rendered pixels); collapsing the keyboard

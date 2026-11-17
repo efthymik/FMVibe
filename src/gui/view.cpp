@@ -3611,7 +3611,8 @@ void View::paintNoteSource(Canvas &c, float top) {
     c.fillRect(box, lit ? kTrack : kDisplayColor, kRadiusControl);
     if (outlined())
         c.strokeRect(box, color.alpha(lit ? 0.9f : 0.45f), 1.0f, kRadiusControl);
-    // Behind the note, faintly, its curve across the box.
+    // Behind the note, its curve across the box: faint until the note source modulates something, as its handle is,
+    // and lit once it does.
     auto get = [this](int index) { return value(index); };
     std::vector<Point> curve;
     for (int i = 0; i <= 24; ++i) {
@@ -3620,7 +3621,8 @@ void View::paintNoteSource(Canvas &c, float top) {
         curve.push_back({box.x + 4.0f + static_cast<float>(x) * (box.w - 8.0f),
                          box.bottom() - 4.0f - static_cast<float>(0.5 * (y + 1.0)) * (box.h - 8.0f)});
     }
-    c.polyline(curve.data(), curve.size(), color.alpha(0.3f), 1.2f);
+    const bool live = sourceLive(kNoteSource);
+    c.polyline(curve.data(), curve.size(), color.alpha(live ? kLiveCurveOpacity : 0.3f), live ? 1.5f : 1.2f);
     std::string text = "\xE2\x80\x93";
     if (telemetry_.voices > 0) {
         const double pitch = telemetry_.notePitch;
@@ -3646,7 +3648,8 @@ void View::paintVelocitySource(Canvas &c, float top) {
     c.fillRect(box, lit ? kTrack : kDisplayColor, kRadiusControl);
     if (outlined())
         c.strokeRect(box, color.alpha(lit ? 0.9f : 0.45f), 1.0f, kRadiusControl);
-    // Behind the number, faintly, its curve across the box, with a mark where the newest voice's velocity is.
+    // Behind the number, its curve across the box, with a mark where the newest voice's velocity is: faint until
+    // velocity modulates something, as its handle is, and lit once it does.
     auto get = [this](int index) { return value(index); };
     auto at = [&](double x) {
         return Point{box.x + 4.0f + static_cast<float>(x) * (box.w - 8.0f),
@@ -3655,10 +3658,11 @@ void View::paintVelocitySource(Canvas &c, float top) {
     std::vector<Point> curve;
     for (int i = 0; i <= 24; ++i)
         curve.push_back(at(i / 24.0));
-    c.polyline(curve.data(), curve.size(), color.alpha(0.3f), 1.2f);
+    const bool live = sourceLive(kVelocitySource);
+    c.polyline(curve.data(), curve.size(), color.alpha(live ? kLiveCurveOpacity : 0.3f), live ? 1.5f : 1.2f);
     const bool playing = telemetry_.voices > 0;
     if (playing)
-        c.fillCircle(at(telemetry_.noteVelocity), 2.0f, color.alpha(0.6f));
+        c.fillCircle(at(telemetry_.noteVelocity), 2.0f, color.alpha(live ? 1.0f : 0.6f));
     const double velocity = std::clamp(static_cast<double>(telemetry_.noteVelocity), 0.0, 1.0);
     const std::string text = playing ? std::to_string(std::lround(127.0 * velocity)) : "\xE2\x80\x93";
     c.text(box, text, kTextBody, playing ? kText : kFaint, Align::Center, playing);

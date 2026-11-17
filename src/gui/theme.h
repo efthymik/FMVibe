@@ -31,6 +31,9 @@ constexpr float kDimOpacity = 0.4f;
 // read in every theme.
 constexpr float kIdleOpacity = 0.65f;
 constexpr float kIdleHandleOpacity = 0.45f;
+// The note source's and velocity's curves behind their readouts in the keyboard strip, once they modulate something
+// (faint until then, as their handles are): lit, but still under the text drawn over them.
+constexpr float kLiveCurveOpacity = 0.8f;
 
 constexpr float kTextSmall = 9.0f;     // axis ticks, units, readouts on displays, graph nodes' names
 constexpr float kTextLabel = 10.5f;    // knob labels, switches, buttons, hints

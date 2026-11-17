@@ -1897,13 +1897,15 @@ one may have changed since it last did.
 - **Note** (in the keyboard strip, right of the macros): the note source's handle, level with the macros', to drag
   onto a target like a macro's (and like a macro's, faint until it modulates something), and beside it the note
   the newest voice plays, as the source follows it, its name under it: the note's name, and
-  the cents it is off while bent or gliding (a dash while nothing plays), over a faint picture of its curve. A
+  the cents it is off while bent or gliding (a dash while nothing plays), over a picture of its curve, faint like
+  the handle until the source modulates something and lit once it does. A
   click on it opens the curve's editor (see the shape editor). Its right-click menu, and its handle's, make it
   unipolar or bipolar (± in the display's corner while it is bipolar).
 - **Velocity** (in the keyboard strip, at the right end, after the note source): the velocity source's handle, to
   drag onto a target like the note source's (faint until it modulates something), and beside it the velocity the
-  newest voice came with, 0 to 127 as MIDI counts it (a dash while nothing plays), over a faint picture of its
-  curve with a mark where that velocity falls on it, its name under it. A click on it opens the curve's editor (a
+  newest voice came with, 0 to 127 as MIDI counts it (a dash while nothing plays), over a picture of its curve
+  with a mark where that velocity falls on it (faint like the handle until velocity modulates something, lit once
+  it does), its name under it. A click on it opens the curve's editor (a
   second click closes it): velocity across, marked at 32, 64 and 96, and what the source puts out up, from nothing
   at the bottom to all of it at the top, with the straight line it starts as dashed behind and, while notes play, a
   dot where the newest voice is; its points and bends edit like the note source's curve, and its reset button
