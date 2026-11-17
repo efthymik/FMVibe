@@ -2,7 +2,9 @@
 
 #include "gui/controller.h"
 
+#include <cstdint>
 #include <filesystem>
+#include <map>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -44,8 +46,10 @@ public:
     // nor a name it keeps for itself.
     static bool validName(const std::string &name);
 
-    // Lists the factory presets and the folder's presets, each with its info, and the folder's subfolders, leaving
-    // out its Factory subfolder (see resolve()). The folder isn't made for it.
+    // Lists the factory presets and the folder's presets, each with its info, and the folder's subfolders. Of the
+    // Factory subfolder versions up to 0.11 wrote the factory presets into, it leaves out the files named as a factory
+    // preset (see resolve()), and the subfolder too unless it holds anything else. A file's info is read again only
+    // once the file has changed. The folder isn't made for it.
     void rescan();
     // Shows the folder, or its subfolder `folder`, made first if it isn't there yet.
     void openFolder(const std::string &folder = {});
@@ -70,6 +74,15 @@ private:
     std::vector<gui::PresetEntry> entries_;
     std::vector<std::wstring> files_;
     std::vector<std::string> folders_;
+    // Each file's info as the last scan read it, with the file's time and size then.
+    struct KnownInfo {
+        std::filesystem::file_time_type time;
+        uintmax_t size = 0;
+        gui::PresetInfo info;
+    };
+    std::map<std::wstring, KnownInfo> known_;
+    // The factory presets' infos, read once.
+    std::vector<gui::PresetInfo> factoryInfos_;
 };
 
 // A folder's path (its parts joined by '/') as it sorts: each folder right after the one it is in, by name whatever

@@ -154,13 +154,18 @@ void PresetLibrary::rescan() {
         std::wstring file;
     };
     std::vector<Found> found;
-    for (const FactoryPreset &preset : factoryPresets()) {
-        Found f{{preset.name, {}, true, {}}, factoryFile(preset.name)};
-        MemoryReader reader{preset.data.data(), preset.data.size()};
-        const clap_istream_t stream = memoryIn(reader);
-        readPresetInfo(&stream, f.entry.info);
-        found.push_back(std::move(f));
+    const std::vector<FactoryPreset> &factory = factoryPresets();
+    if (factoryInfos_.size() != factory.size()) { // built in: read once
+        factoryInfos_.assign(factory.size(), {});
+        for (size_t n = 0; n < factory.size(); ++n) {
+            MemoryReader reader{factory[n].data.data(), factory[n].data.size()};
+            const clap_istream_t stream = memoryIn(reader);
+            readPresetInfo(&stream, factoryInfos_[n]);
+        }
     }
+    for (size_t n = 0; n < factory.size(); ++n)
+        found.push_back({{factory[n].name, {}, true, factoryInfos_[n]}, factoryFile(factory[n].name)});
+    std::map<std::wstring, KnownInfo> known; // the files found this time, so those gone are forgotten
     const std::wstring folderName = folderPath();
     if (!folderName.empty()) {
         const fs::path folder(folderName);
@@ -169,12 +174,6 @@ void PresetLibrary::rescan() {
         for (fs::recursive_directory_iterator it(folder, fs::directory_options::skip_permission_denied, error), end;
              !error && it != end; it.increment(error)) {
             std::error_code fileError;
-            // The factory presets an earlier version wrote out, whatever has become of them: the list has them.
-            if (it.depth() == 0 && it->is_directory(fileError) &&
-                sameNoCase(it->path().lexically_normal().wstring(), oldFactory)) {
-                it.disable_recursion_pending();
-                continue;
-            }
             if (it->is_directory(fileError)) {
                 const std::string sub = utf8(it->path().lexically_relative(folder), true);
                 if (!sub.empty())
@@ -183,6 +182,11 @@ void PresetLibrary::rescan() {
             }
             if (!it->is_regular_file(fileError) || _wcsicmp(it->path().extension().c_str(), L".fmv") != 0)
                 continue;
+            // A factory preset an earlier version wrote out, whatever has become of it: the list has it built in. The
+            // user's own presets beside them are theirs, and listed.
+            if (sameNoCase(it->path().parent_path().lexically_normal().wstring(), oldFactory) &&
+                factoryPresetNamed(utf8(it->path().stem())))
+                continue;
             const std::wstring file = it->path().lexically_normal().wstring();
             const fs::path parent = it->path().parent_path().lexically_relative(folder);
             const std::string sub = parent.empty() || parent == L"." ? std::string() : utf8(parent, true);
@@ -190,14 +194,38 @@ void PresetLibrary::rescan() {
             if (name.empty()) // a name with no UTF-8 form can't be shown
                 continue;
             Found f{{std::move(name), sub, false, {}}, file};
-            FILE *in = nullptr;
-            if (_wfopen_s(&in, file.c_str(), L"rb") == 0 && in) {
-                readPresetInfo(in, f.entry.info);
-                std::fclose(in);
+            // Its info as read before while the file is as it was, else read again.
+            KnownInfo now{it->last_write_time(fileError), it->file_size(fileError), {}};
+            const auto before = known_.find(file);
+            if (!fileError && before != known_.end() && before->second.time == now.time &&
+                before->second.size == now.size) {
+                now.info = before->second.info;
+            } else {
+                FILE *in = nullptr;
+                if (_wfopen_s(&in, file.c_str(), L"rb") == 0 && in) {
+                    readPresetInfo(in, now.info);
+                    std::fclose(in);
+                }
             }
+            f.entry.info = now.info;
+            if (!fileError)
+                known[file] = std::move(now);
             found.push_back(std::move(f));
         }
+        // The old Factory subfolder only while it holds something of the user's: a preset listed, or a folder.
+        const std::string oldSub = utf8(fs::path(oldFactory).lexically_relative(folder), true);
+        auto under = [&](const std::string &sub) { // whatever the case it has on disk
+            return sub.size() >= oldSub.size() && (sub.size() == oldSub.size() || sub[oldSub.size()] == '/') &&
+                   _strnicmp(sub.c_str(), oldSub.c_str(), oldSub.size()) == 0;
+        };
+        const bool kept =
+            std::any_of(found.begin(), found.end(), [&](const Found &f) { return under(f.entry.folder); }) ||
+            std::any_of(folders_.begin(), folders_.end(),
+                        [&](const std::string &sub) { return sub.size() > oldSub.size() && under(sub); });
+        if (!kept)
+            std::erase_if(folders_, [&](const std::string &sub) { return under(sub); });
     }
+    known_ = std::move(known);
     // The factory presets first, then the top folder's presets, then each subfolder's, each by name.
     std::stable_sort(found.begin(), found.end(), [](const Found &a, const Found &b) {
         if (a.entry.factory != b.entry.factory)

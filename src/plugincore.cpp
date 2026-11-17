@@ -519,6 +519,8 @@ bool PluginCore::savePreset(const std::wstring &path) {
     if (_wfopen_s(&file, part.c_str(), L"wb") != 0 || !file)
         return false;
     // The tempo it plays at goes with it: the editor's where the host lets it set one, else the host's last block's.
+    // The patch keeps it only once the file is written.
+    const float tempoBefore = layout_.savedTempo;
     const double bpm = hasTempo() ? tempo() : playedTempo_.load(std::memory_order_relaxed);
     if (bpm > 0.0)
         layout_.savedTempo = static_cast<float>(gui::clampTempo(bpm));
@@ -528,10 +530,15 @@ bool PluginCore::savePreset(const std::wstring &path) {
     if (!saved || !closed) {
         std::error_code ignored;
         fs::remove(part, ignored);
+        layout_.savedTempo = tempoBefore;
         return false;
     }
-    if (!replaceFile(part.wstring(), target.wstring()))
+    if (!replaceFile(part.wstring(), target.wstring())) {
+        std::error_code ignored;
+        fs::remove(part, ignored);
+        layout_.savedTempo = tempoBefore;
         return false;
+    }
     setPreset(path);
     rescanPresets(); // so the library lists it
     return true;

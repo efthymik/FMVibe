@@ -851,7 +851,7 @@ void PresetBrowser::paintBrowser(Canvas &c) {
             const Point m{r.x + 15.0f, r.center().y};
             const Color icon = scope == BrowserScope::Favorites ? Color::hex(0xF2C14E) : (on ? kText : kDim);
             if (scope == BrowserScope::All) {
-                c.strokeRect({m.x - 5.5f, m.y - 5.0f, 11.0f, 10.0f}, icon, 1.2f, 1.5f);
+                c.strokeRect({m.x - 5.5f, m.y - 5.0f, 11.0f, 10.0f}, icon, 1.2f, kRadiusMark);
                 c.line({m.x - 3.0f, m.y - 1.5f}, {m.x + 3.0f, m.y - 1.5f}, icon, 1.2f);
                 c.line({m.x - 3.0f, m.y + 1.5f}, {m.x + 3.0f, m.y + 1.5f}, icon, 1.2f);
             } else if (scope == BrowserScope::Favorites) {
@@ -927,7 +927,7 @@ void PresetBrowser::paintBrowser(Canvas &c) {
             if (cat.name.empty())
                 c.strokeRect(swatch, kFaint, 1.0f, 2.0f, true);
             else
-                c.fillRect(swatch, categoryColor(cat.color), 2.0f);
+                c.fillRect(swatch, categoryColor(cat.color), kRadiusMark);
             c.text({r.x + 30.0f, r.y, r.w - 70.0f, r.h}, fitted(c, cat.label, kTextBody, false, r.w - 74.0f),
                    kTextBody, on || rowHovered ? kText : kDim, Align::Left);
             if (!(ownCategory(cat) && rowHovered)) // its x in the count's place
@@ -1250,12 +1250,8 @@ void PresetBrowser::openSave(int index) {
     saveName_.most = kMaxPresetName;
     saveAuthor_.most = kMaxPresetAuthor;
     saveDescription_.most = kMaxPresetDescription;
-    for (TextField *t : {&saveName_, &saveAuthor_, &saveDescription_}) {
-        t->text = t->text.substr(0, t->most);
-        t->caret = t->text.size();
-        t->anchor = t->caret;
-        t->shift = 0.0f;
-    }
+    for (TextField *t : {&saveName_, &saveAuthor_, &saveDescription_})
+        t->set(std::move(t->text)); // whole characters (UTF-8 from a file), as many as it holds
     // The name all selected, to type over.
     if (saveFocus_ == Field::SaveName)
         saveName_.anchor = 0;
@@ -1330,18 +1326,18 @@ void PresetBrowser::paintSave(Canvas &c) {
     };
     label(l.name, tr(Str::SaveName));
     if (saveMode_ == SaveMode::Save) {
-        host_.paintField(c, Field::SaveName, l.name, l.name.inset(10.0f), tr(Str::SaveNameHint), {}, false);
+        host_.paintField(c, Field::SaveName, l.name, formFieldTyped(l.name), tr(Str::SaveNameHint), {}, false);
     } else { // the name stays: shown, not edited
         c.fillRect(l.name, wellColor(), kRadiusControl);
         c.text({l.name.x + 10.0f, l.name.y, l.name.w - 20.0f, l.name.h}, saveName_.text, kTextBody, kDim, Align::Left);
     }
     label(l.author, tr(Str::SaveAuthor));
-    host_.paintField(c, Field::SaveAuthor, l.author, l.author.inset(10.0f), tr(Str::SaveAuthorHint), {}, false);
+    host_.paintField(c, Field::SaveAuthor, l.author, formFieldTyped(l.author), tr(Str::SaveAuthorHint), {}, false);
     label({l.chips.front().x, l.chips.front().y, 200.0f, 16.0f}, tr(Str::SaveCategory));
     const std::string count = trf(Str::SaveCount, {std::to_string(saveDescription_.text.size()),
                                                    std::to_string(kMaxPresetDescription)});
     label(l.description, tr(Str::SaveDescription), count);
-    host_.paintField(c, Field::SaveDescription, l.description, l.description.inset(10.0f), tr(Str::SaveDescriptionHint), {},
+    host_.paintField(c, Field::SaveDescription, l.description, formFieldTyped(l.description), tr(Str::SaveDescriptionHint), {},
                false);
 
     // The folder: a tree of every folder, the one it goes into lit; or, editing info, where it is.
@@ -1358,7 +1354,7 @@ void PresetBrowser::paintSave(Canvas &c) {
                Align::Left);
         const Point lock{factory.right() - 14.0f, factory.center().y};
         // A padlock: its body filled, its shackle two legs over it joined by a half circle.
-        c.fillRect({lock.x - 4.5f, lock.y - 0.5f, 9.0f, 6.5f}, kFaint, 1.5f);
+        c.fillRect({lock.x - 4.5f, lock.y - 0.5f, 9.0f, 6.5f}, kFaint, kRadiusMark);
         Point shackle[13];
         shackle[0] = {lock.x - 2.75f, lock.y};
         for (int k = 0; k <= 10; ++k) // the half circle over the legs, left to right
@@ -1493,7 +1489,7 @@ void PresetBrowser::paintNameMenu(Canvas &c) {
     c.text({p.x + 16.0f, p.y + 12.0f, p.w - 32.0f, 18.0f},
            tr(nameMenu_ == 1 ? Str::SaveNewCategory : nameMenu_ == 4 ? Str::RenameFolderTitle : Str::SaveNewFolder),
            kTextBody, kText, Align::Left, true);
-    host_.paintField(c, Field::NewName, nameField(p), nameField(p).inset(10.0f),
+    host_.paintField(c, Field::NewName, nameField(p), formFieldTyped(nameField(p)),
                tr(nameMenu_ == 1 ? Str::SaveCategoryHint : Str::SaveFolderHint), {}, false);
     for (const Widget &w : nameMenuWidgets())
         if (w.kind == Kind::NameColor || w.kind == Kind::NameButton)
@@ -1633,7 +1629,7 @@ bool PresetBrowser::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         const bool on = browserScope_ == BrowserScope::Folder;
         const Color ink = !on ? kFaint : hovered ? kText : kDim;
         const Rect track{w.rect.x + 10.0f, w.rect.center().y - 6.5f, 24.0f, 13.0f};
-        c.fillRect(track, browserSubfolders_ ? (on ? kAccent : kAccent.alpha(0.35f)) : kBorder, 6.5f);
+        c.fillRect(track, browserSubfolders_ ? (on ? kAccent : kAccent.alpha(0.35f)) : kBorder, track.h * 0.5f);
         c.fillCircle({browserSubfolders_ ? track.right() - 6.5f : track.x + 6.5f, track.center().y}, 4.5f,
                      !on ? kFaint : browserSubfolders_ ? litInk(kText) : kDim);
         c.text({track.right() + 8.0f, w.rect.y, w.rect.right() - track.right() - 10.0f, w.rect.h},
@@ -1674,7 +1670,7 @@ bool PresetBrowser::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         const std::string label = none ? std::string(tr(Str::PresetsNoneCategory)) : categories[w.a].label;
         float x = w.rect.x + 10.0f;
         if (!none && !on) {
-            c.fillRect({x, w.rect.center().y - 3.5f, 7.0f, 7.0f}, color, 2.0f);
+            c.fillRect({x, w.rect.center().y - 3.5f, 7.0f, 7.0f}, color, kRadiusMark);
             x += 13.0f;
         }
         c.text({x, w.rect.y, w.rect.right() - x - 6.0f, w.rect.h}, fitted(c, label, kTextLabel, on, w.rect.right() - x - 8.0f),
@@ -2141,9 +2137,8 @@ bool PresetBrowser::menuCommand(int command) {
         renameFolder_ = *menuFolder_;
         openNameMenu(4, {menuFolderRow_.x, menuFolderRow_.bottom() + 4.0f});
         const size_t slash = renameFolder_.rfind('/');
-        newName_.text = slash == std::string::npos ? renameFolder_ : renameFolder_.substr(slash + 1);
+        newName_.set(slash == std::string::npos ? renameFolder_ : renameFolder_.substr(slash + 1));
         newName_.anchor = 0;
-        newName_.caret = newName_.text.size();
     } else if (command == kDeleteFolderCommand && !menuFolder_->empty()) {
         confirmFolder_ = *menuFolder_;
         host_.askConfirm(*this, kConfirmFolderDelete);

@@ -382,6 +382,9 @@ inline Rect fieldClear(Rect field) {
     return {field.right() - 22.0f, field.y + (field.h - 18.0f) * 0.5f, 18.0f, 18.0f};
 }
 inline Rect fieldTyped(Rect field) { return {field.x + 26.0f, field.y, field.w - 26.0f - 24.0f, field.h}; }
+// Where a form's field (the Save dialog's, the name form's) shows its text: inside its sides, its whole height, so
+// what hangs below the line (an underscore, a g) isn't clipped away.
+inline Rect formFieldTyped(Rect field) { return {field.x + 10.0f, field.y, field.w - 20.0f, field.h}; }
 // The MODS view's filter, at the right end of the columns' names: a magnifier, or open, a field over the count.
 constexpr float kModsFilterW = 200.0f;
 inline Rect modsFilter(bool open) {

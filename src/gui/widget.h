@@ -310,7 +310,9 @@ inline void mergeButtons(std::vector<Widget> &list, size_t from) {
 
 // A line of text being edited in a field: what is typed, the caret in it and where its selection starts (at the
 // caret, nothing is selected), where each place between its characters was painted (across), and how far its text
-// is scrolled left, so the caret shows.
+// is scrolled left, so the caret shows. Typing adds only printable ASCII, but a field may be given UTF-8 from a file
+// (a preset's name, author or line): the caret, the selection, deleting and `most` go by whole characters, and the
+// caret and anchor are always at a character's first byte.
 struct TextField {
     std::string text;
     size_t caret = 0;
@@ -321,6 +323,15 @@ struct TextField {
 
     // Its selection, from the anchor to the caret, either way round.
     std::pair<size_t, size_t> selection() const { return std::minmax(caret, anchor); }
+    // `value` as its text, cut to `most` characters, the caret at its end and nothing selected.
+    void set(std::string value);
+    // Whether byte `at` begins a character (or is the text's end).
+    bool startsCharacter(size_t at) const;
+    // The place between characters before `at` and after it.
+    size_t before(size_t at) const;
+    size_t after(size_t at) const;
+    // How many characters it holds.
+    size_t characters() const;
     void erase(size_t from, size_t to);
     // Over the selection; line breaks and tabs as spaces, the rest past printable ASCII left out, as much as
     // fits. Whether the text changed.

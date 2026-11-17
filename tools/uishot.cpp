@@ -9673,11 +9673,11 @@ void testFxParamNames(const std::filesystem::path &dir, Renderer &renderer) {
                               fx(std::string(fxName(FxType::Chorus)) + " 1 " + tr(Str::ParamOn));
     // The first chorus moved to the line's end: it is the second now.
     {
-        FxGraphModel fx(model);
-        FxLine line = fx.line();
+        FxGraphModel graph(model);
+        FxLine line = graph.line();
         std::rotate(line.begin(), line.begin() + 1, line.end());
         UndoScope step(model);
-        fx.writeLine(line);
+        graph.writeLine(line);
     }
     const bool reordered = names.paramName(paramIndex(first, FxParam::ChorusRate)) == numbered2 &&
                            names.paramName(paramIndex(second, FxParam::ChorusRate)) == numbered1;
@@ -10081,6 +10081,65 @@ void testPresetLibrary(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove(away, {});
     const bool saveShot = renderer.save(view, dir / "23j-save.png");
     const bool asOpener = view.saveShown();
+    {
+        // Underscores typed into the name show: the field draws its text its whole height, so what hangs below the
+        // line isn't clipped away. Three of them after an "a" lay a line across rows where the caret moving alone
+        // would change a pixel or two (read off the rendered pixels).
+        // Where the Save dialog (800 wide, its folders 250) puts its name field.
+        const float saveX =
+            std::clamp(std::round(detail::kPresetName.center().x - 400.0f), 12.0f, View::kWidth - 812.0f);
+        const Rect nameField{saveX + 24.0f, detail::kTitleBarH + 6.0f + 88.0f,
+                             800.0f - 48.0f - 250.0f - 24.0f - 182.0f, 30.0f};
+        auto lowerRows = [&] { // the field's lower half, row by row, inside its outline
+            std::vector<uint32_t> px;
+            for (float y = nameField.center().y + 1.0f; y < nameField.bottom() - 3.0f; y += 1.0f)
+                for (float x = nameField.x + 8.0f; x < nameField.x + 120.0f; x += 1.0f)
+                    px.push_back(renderer.pixel({x, y}));
+            return px;
+        };
+        type(view, "a");
+        view.mouseMove(away, {});
+        renderer.save(view, dir / "23j-save-a.png");
+        const std::vector<uint32_t> plain = lowerRows();
+        type(view, "___");
+        view.mouseMove(away, {});
+        renderer.save(view, dir / "23j-save-underscores.png");
+        const std::vector<uint32_t> lined = lowerRows();
+        const int perRow = 112;
+        int widest = 0;
+        for (size_t row = 0; row * perRow < plain.size(); ++row) {
+            int changed = 0;
+            for (int i = 0; i < perRow; ++i)
+                changed += plain[row * perRow + i] != lined[row * perRow + i] ? 1 : 0;
+            widest = std::max(widest, changed);
+        }
+        std::printf("      underscores in the Save dialog's name: %d pixels across in a row\n", widest);
+        check(widest >= 10, "underscores typed into a preset's name show");
+        view.typeKey(View::Key::SelectAll); // for the name typed over next
+    }
+    {
+        // A field given UTF-8 from a file (a preset's author) holds whole characters: cut to as many as it takes, and
+        // its caret, Backspace, Delete and the mouse's places stepping over each character's bytes.
+        TextField f;
+        f.most = 4;
+        f.set("J\xC3\xBCrgen"); // Jürgen
+        const bool whole = f.text == "J\xC3\xBCrg" && f.caret == 5 && f.characters() == 4;
+        f.key(Key::Left, false); // before the g
+        f.key(Key::Left, false); // before the r
+        const bool stepped = f.caret == 3;
+        f.key(Key::Backspace, false); // the ü, both its bytes
+        const bool erased = f.text == "Jrg" && f.caret == 1;
+        f.set("\xC3\xA4\xC3\xB6"); // äö
+        f.key(Key::Home, false);
+        f.key(Key::Delete, false);
+        const bool deleted = f.text == "\xC3\xB6";
+        f.stops = {0.0f, 3.0f, 6.0f}; // as painted: a place a byte, the one inside the ö never taken
+        const bool placed = f.stopAt(2.9f) == 0 && f.stopAt(4.0f) == 2;
+        f.set("ab");
+        f.insert("cdef"); // typed: as many as fit
+        check(whole && stepped && erased && deleted && placed && f.text == "abcd",
+              "a text field given UTF-8 cuts, steps, erases and places the mouse between whole characters");
+    }
     type(view, "Opener Two"); // over the name, all of it selected
     view.mouseMove(away, {});
     renderer.save(view, dir / "23k-save-new.png");

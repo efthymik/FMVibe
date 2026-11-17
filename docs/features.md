@@ -1999,9 +1999,10 @@ one may have changed since it last did.
   played in random order, many left to chance, humanized, a Random source stepping the index, into ping-pong echoes
   and a shimmer). Each release brings
   them as it tunes them. Being built in, they can't be saved over: Save on a changed one saves it as a new preset, as
-  Save As does. Versions before 0.12 wrote them out into the folder's `Factory` subfolder: the library leaves that
-  subfolder out (it stays on disk, for the user to keep or delete), and a project that named a preset in it loads the
-  built-in one of that name. Their routing graphs are laid out with no node on another, and no wire, line to OUT or
+  Save As does. Versions before 0.12 wrote them out into the folder's `Factory` subfolder: the library leaves the
+  files there named as a factory preset out (they stay on disk, for the user to keep or delete), and the subfolder
+  too unless the user saved presets of their own into it, which it lists there; a project that named a factory preset
+  in it loads the built-in one of that name. Their routing graphs are laid out with no node on another, and no wire, line to OUT or
   label running over a node it doesn't join. They hold only the params that differ from Init, so they are small, and
   load like any other preset.
   - **Preset info**: a preset says who made it (**Author**), what kind of sound it is (**Category**) and what it

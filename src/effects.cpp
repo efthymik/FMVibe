@@ -454,6 +454,10 @@ void Effects::dropEnd(WireEnd &e) {
     e.paths = 0;
 }
 
+int Effects::freePaths() const {
+    return lags_ ? static_cast<int>(std::count(lags_->taken.begin(), lags_->taken.end(), false)) : 0;
+}
+
 void Effects::setEnd(WireEnd &e, int port, double level, double fade, const FxLag &pad) {
     dropEnd(e);
     e.port = port;
@@ -466,7 +470,7 @@ void Effects::setEnd(WireEnd &e, int port, double level, double fade, const FxLa
     int found = 0;
     for (int i = 0; i < kPoolPaths && found < e.pad.count(); ++i)
         if (!lags_->taken[i])
-            e.path[found++] = static_cast<int16_t>(i);
+            e.path[found++] = static_cast<uint8_t>(i);
     if (found < e.pad.count())
         return;
     int k = 0;
@@ -767,10 +771,13 @@ void Effects::mixInputs(int node, float (*mix)[kChunk], uint32_t n, const ParamV
         }
         // A wire moved or taken away crossfades: what it came from fades out as what it comes from now fades in. Moved
         // again while the one before still fades out, it fades out where it is first and only then takes the move. A
-        // new pad (the paths into the node no longer as late as they were) crossfades the same way.
+        // new pad (the paths into the node no longer as late as they were) crossfades the same way, and so does one
+        // that went without its paths once the pool has them.
         const int set = wirePort(node, input, p);
         const FxLag pad = set >= 0 ? pads_[node][input] : FxLag{};
-        if (set != w.now.port || pad != w.now.pad) {
+        const bool unpadded = !w.now.padded() && w.now.pad == pad && pad.count() <= kEndPaths &&
+                              freePaths() >= pad.count();
+        if (set != w.now.port || pad != w.now.pad || unpadded) {
             orderStale_ = true;
             if (w.now.fade <= 0.0) {
                 setEnd(w.now, set, -1.0, 0.0, pad);

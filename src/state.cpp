@@ -190,10 +190,13 @@ struct LayoutWriter {
         for (int index : indices)
             out.push_back(static_cast<float>(idOfIndex(index)));
     }
-    // Text, as its length (up to `most` bytes) and then its bytes.
+    // Text, as its length (up to `most` bytes, cut between whole UTF-8 characters) and then its bytes.
     void text(const std::string &text, size_t most) {
-        out.push_back(static_cast<float>(std::min<size_t>(text.size(), most)));
-        for (size_t i = 0; i < text.size() && i < most; ++i)
+        size_t length = std::min(text.size(), most);
+        while (length > 0 && length < text.size() && (static_cast<unsigned char>(text[length]) & 0xC0) == 0x80)
+            --length;
+        out.push_back(static_cast<float>(length));
+        for (size_t i = 0; i < length; ++i)
             out.push_back(static_cast<float>(static_cast<unsigned char>(text[i])));
     }
     // Values by param, as their count and then each param's id and its value.
@@ -663,11 +666,12 @@ bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
 
 namespace {
 
-// The bytes of a patch's params, from its header: none for a stream that isn't FMVibe's state or is of a newer
-// version.
+// The bytes of a patch's params, from its header: none for a stream that isn't FMVibe's state or that readParams()
+// refuses for its version.
 std::optional<uint64_t> paramBytes(const clap_istream_t *stream) {
     uint32_t header[3];
-    if (!readAll(stream, header, sizeof(header)) || header[0] != kStateMagic || header[1] > kStateVersion)
+    if (!readAll(stream, header, sizeof(header)) || header[0] != kStateMagic || header[1] < 1 ||
+        header[1] > kStateVersion)
         return std::nullopt;
     return static_cast<uint64_t>(header[2]) * (sizeof(uint32_t) + sizeof(double));
 }

@@ -271,6 +271,46 @@ std::string lowered(std::string_view text) {
 }
 } // namespace
 
+bool TextField::startsCharacter(size_t at) const {
+    return at >= text.size() || (static_cast<unsigned char>(text[at]) & 0xC0) != 0x80;
+}
+
+size_t TextField::before(size_t at) const {
+    at = std::min(at, text.size());
+    if (at == 0)
+        return 0;
+    do
+        --at;
+    while (at > 0 && !startsCharacter(at));
+    return at;
+}
+
+size_t TextField::after(size_t at) const {
+    if (at >= text.size())
+        return text.size();
+    do
+        ++at;
+    while (!startsCharacter(at));
+    return at;
+}
+
+size_t TextField::characters() const {
+    size_t n = 0;
+    for (size_t at = 0; at < text.size(); at = after(at))
+        ++n;
+    return n;
+}
+
+void TextField::set(std::string value) {
+    text = std::move(value);
+    size_t end = 0;
+    for (size_t n = 0; n < most && end < text.size(); ++n)
+        end = after(end);
+    text.resize(end);
+    caret = anchor = text.size();
+    shift = 0.0f;
+}
+
 void TextField::erase(size_t from, size_t to) {
     text.erase(from, to - from);
     caret = anchor = from;
@@ -287,7 +327,8 @@ bool TextField::insert(std::string_view typed) {
     if (clean.empty() && from == to)
         return false;
     erase(from, to);
-    clean.resize(std::min(clean.size(), most - std::min(text.size(), most)));
+    const size_t held = characters(); // ASCII typed: a byte a character
+    clean.resize(std::min(clean.size(), most - std::min(held, most)));
     text.insert(from, clean);
     caret = anchor = from + clean.size();
     return true;
@@ -303,9 +344,12 @@ size_t TextField::stopAt(float x) const {
     if (stops.size() != text.size() + 1)
         return text.size();
     size_t best = 0;
-    for (size_t i = 1; i < stops.size(); ++i)
+    for (size_t i = after(0); i < stops.size(); i = after(i)) { // between whole characters only
         if (std::abs(stops[i] - x) < std::abs(stops[best] - x))
             best = i;
+        if (i == text.size())
+            break;
+    }
     return best;
 }
 
@@ -334,17 +378,17 @@ bool TextField::key(Key key, bool extend) {
         if (from != to)
             erase(from, to);
         else if (key == Key::Backspace && caret > 0)
-            erase(caret - 1, caret);
+            erase(before(caret), caret);
         else if (key == Key::Delete && caret < text.size())
-            erase(caret, caret + 1);
+            erase(caret, after(caret));
         else
             return false;
         return true;
     case Key::Left: // without Shift, from a selection to its start
-        moveTo(from != to && !extend ? from : (caret > 0 ? caret - 1 : 0));
+        moveTo(from != to && !extend ? from : before(caret));
         break;
     case Key::Right:
-        moveTo(from != to && !extend ? to : std::min(caret + 1, text.size()));
+        moveTo(from != to && !extend ? to : after(caret));
         break;
     case Key::Home:
         moveTo(0);

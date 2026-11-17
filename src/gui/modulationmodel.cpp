@@ -80,14 +80,19 @@ std::string ModulationModel::fxParamName(int index) const {
     if (type == FxType::None || name.compare(0, slotName.size() + 1, slotName + " ") != 0)
         return name;
     const std::string field = name.substr(slotName.size() + 1);
-    // Numbered in the line's order among the effects of its type, where there are more than one.
+    // Numbered in the line's order among the effects of its type, where there are more than one. The line is worked
+    // out from the wires only then: most patches hold one effect of a type, whose names are asked for on every paint.
     int number = 0, count = 0;
-    for (int other : FxGraphModel(controller_).chain())
-        if (fxType(value(paramIndex(other, FxParam::Type))) == type) {
-            ++count;
-            if (other == slot)
-                number = count;
-        }
+    bool another = false;
+    for (int other = 0; other < kFxSlots && !another; ++other)
+        another = other != slot && fxType(value(paramIndex(other, FxParam::Type))) == type;
+    if (another)
+        for (int other : FxGraphModel(controller_).chain())
+            if (fxType(value(paramIndex(other, FxParam::Type))) == type) {
+                ++count;
+                if (other == slot)
+                    number = count;
+            }
     const std::string n = count > 1 && number > 0 ? std::to_string(number) : std::string();
     // FX before it all, so an effect stands apart from a voice's shaper or filter of the same name ("FX Shaper 1 Drive",
     // "Shaper 1 Drive").

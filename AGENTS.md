@@ -369,7 +369,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     bending what it plays by Bend Range and a mod wheel curve moving the mod wheel's slot;
   - the effects' latency, on an impulse through effects that run oversampled and leave the sound as it is (a filter
     and an amp at Mix 0): the input straight out beside a filter, the filter on and off, a split with an amp at 4x on
-    one band and a filter on the other, and two filters beside an amp at 8x, each flat within 0.05 dB from 20 Hz to
+    one band and a filter on the other, two filters beside an amp at 8x, and nine filters in a row beside the input
+    (a pad of nine paths), each flat within 0.05 dB from 20 Hz to
     18 kHz (the paths meeting in step) and as late as fxlag.h works out, and nothing oversampled on time;
   - the CPU cost of each factor.
 - **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`, in Midnight,
@@ -691,7 +692,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     name, category, author and description; its + by FOLDERS making a folder and the Save dialog's + New a category;
     the x on one of the user's categories removing it after asking, its presets keeping it, listed in grey;
     Edit Info writing a preset's author and line into its file; a Save dialog's folder's right-click menu opening it in
-    Explorer, making a folder in it, renaming it (a name taken refused) and deleting it after asking, and the browser's tree's the same (none on Factory); Save As saving the patch as a new preset in its preset's
+    Explorer, making a folder in it, renaming it (a name taken refused) and deleting it after asking, and the browser's tree's the same (none on Factory); underscores typed into the Save dialog's name showing (read off
+    the rendered pixels); a text field given UTF-8 (a preset's author from its file) cut, stepped through, erased and
+    placed by the mouse between whole characters; Save As saving the patch as a new preset in its preset's
     folder with its info, as the patch's preset; and every part (the bar, the info cards, the browser with its tooltips,
     filtered, the New Folder and New Category forms, the Save dialog and Edit Info) rendered in every theme
     (`fmvibe-uishot <dir> 1 --library` replays these alone); Save greyed out (read off the rendered pixels) and doing
@@ -935,8 +938,9 @@ To add or change one:
 
 A factory preset changed here reaches users with the next release. Being built in, it can't be saved over: Save
 on one opens Save As (`PresetStore::presetWritable()`). Versions up to 0.11 wrote the factory presets out into the
-preset folder's `Factory` subfolder: the scan leaves that subfolder out, and `PresetLibrary::resolve()` takes a file
-there named as a factory preset for the built-in one, so a project naming it loads the built-in one.
+preset folder's `Factory` subfolder: the scan leaves the files there named as a factory preset out (and the subfolder,
+unless it holds presets of the user's own, which it lists), and `PresetLibrary::resolve()` takes a file there named as
+a factory preset for the built-in one, so a project naming it loads the built-in one.
 
 Factory presets are not pinned by checksum, so changing or adding one needs no test edit. Don't add a checksum test
 for them: a preset is meant to change as its sound is tuned, and a pinned hash only forces an edit to the test on

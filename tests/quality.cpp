@@ -4591,6 +4591,20 @@ void latencyChecks() {
     const Response kinds = measure(*mixed);
     const double kindsLate = fxLagSamples(lagOf(*mixed), delays);
 
+    // Nine filters one after the other beside the input straight out, both out at half: the input's path put through
+    // nine paths up and down (more than a pad once took, which then went without, out of step).
+    auto long9 = fresh();
+    for (int slot = 0; slot < 9; ++slot) {
+        filterAtNoMix(*long9, slot);
+        (*long9)[from(slot, 0)] = port(slot == 0 ? kFxPortIn : fxSlotPort(slot - 1));
+    }
+    (*long9)[from(kFxOutNode, 0)] = port(fxSlotPort(8));
+    (*long9)[from(kFxOutNode, 1)] = port(kFxPortIn);
+    (*long9)[level(kFxOutNode, 0)] = 0.5;
+    (*long9)[level(kFxOutNode, 1)] = 0.5;
+    const Response nine = measure(*long9);
+    const double nineLate = fxLagSamples(lagOf(*long9), delays);
+
     // Nothing oversampled: on time.
     auto plain = fresh();
     (*plain)[from(kFxOutNode, 0)] = port(kFxPortIn);
@@ -4608,10 +4622,14 @@ void latencyChecks() {
     std::printf("      two filters beside an amp at 8x: within %.3f dB, %.2f late (said %.2f); nothing oversampled: "
                 "within %.3f dB, %.2f late\n",
                 kinds.flatDb, kinds.centroid, kindsLate, none.flatDb, none.centroid);
+    std::printf("      nine filters beside the input: within %.3f dB, %.2f late (said %.2f)\n", nine.flatDb, nine.centroid,
+                nineLate);
     auto near = [](double a, double b) { return std::abs(a - b) < 0.05; };
     check(beside.flatDb < 0.05 && besideOff.flatDb < 0.05 && near(beside.centroid, besideLate) &&
               near(besideOff.centroid, besideLate) && besideLate > 3.0,
           "a path beside an oversampled effect meets it in step, switched on or off");
+    check(nine.flatDb < 0.05 && near(nine.centroid, nineLate),
+          "a path beside nine oversampled effects in a row meets them in step");
     check(bands.flatDb < 0.05 && kinds.flatDb < 0.05,
           "a split's bands through effects oversampled differently sum back flat, and so do paths that meet");
     check(near(bands.centroid - crossover.centroid, bandsLate) && near(kinds.centroid, kindsLate) && none.flatDb < 1e-6 &&

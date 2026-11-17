@@ -132,16 +132,19 @@ private:
     // process(). A wire from a node that hasn't run yet in a chunk, which only a loop makes, reads what it put out the
     // chunk before.
     // A wire end's pad, its paths up and down (see fxlag.h): as many as it lacks against the latest path into its node,
-    // each a stereo UpDown taken from the pool (see Lags), the 2x ones first. Those it couldn't take (the pool used up,
-    // which a graph of every slot's effect oversampled might do) it goes without, out of step.
-    static constexpr int kEndPaths = 8;
+    // each a stereo UpDown taken from the pool (see Lags), the 2x ones first: as many as a path can hold, one for each
+    // slot. While the pool hasn't enough (a graph of nearly every slot's effect oversampled), it goes without, out of
+    // step, and takes them as soon as the pool has them again (see mixInputs()).
+    static constexpr int kEndPaths = kFxSlots;
     struct WireEnd {
         int port = -1;      // what it comes from
         double level = 0.0; // its gain at the end of the last chunk; below 0, it takes the next chunk's at once
         double fade = 0.0;  // 0 out .. 1 in, along a raised cosine as heard (see mixInputs())
         FxLag pad;          // what it is put through to meet the node's other inputs in step
         int paths = 0;      // how many of the pool's it holds, in `path`
-        std::array<int16_t, kEndPaths> path{};
+        std::array<uint8_t, kEndPaths> path{};
+        // Whether it holds every path its pad asks for.
+        bool padded() const { return paths == pad.count(); }
     };
     // A wire moved crossfades: what it comes from now fades in as what it came from before fades out. A wire whose pad
     // changes crossfades the same way, from the end with the pad it had to one with the new one.
@@ -255,6 +258,7 @@ private:
     };
     // On the heap, from prepare(): about 600 KB, too much for the stack the tests keep an Effects on.
     static constexpr int kPoolPaths = 96;
+    static_assert(kPoolPaths <= 256, "a wire end keeps its paths' numbers in bytes");
     struct Lags {
         std::array<std::array<UpDown, 2>, FxLag::kKinds> fresh; // a path at each factor, cleared, designed for the rate
         std::array<std::array<UpDown, 2>, kPoolPaths> pool;     // the wire ends' pads take theirs from here
@@ -267,6 +271,8 @@ private:
     // gives them back.
     void setEnd(WireEnd &e, int port, double level, double fade, const FxLag &pad);
     void dropEnd(WireEnd &e);
+    // How many of the pool's paths no wire end holds.
+    int freePaths() const;
     // What comes out of `from` through `e`'s pad, into `out`.
     void padEnd(const WireEnd &e, const float *const *from, float (*out)[kChunk], uint32_t n);
     // The slot's dry sound into `dry`, as late as its effect makes its wet sound (see SlotDry), and whether it ran.
