@@ -29,25 +29,6 @@ std::string afterPrefix(const std::string &name, const std::string &prefix) {
 
 } // namespace
 
-bool View::closesLoop(int source, int target) const {
-    return isMacro(source) && isMacroKnob(target) && target != stripKnobIndex(source) &&
-           macroReaches([this](int i) { return value(i); }, macroOf(target), knobOf(source));
-}
-
-bool View::canModulate(int source, int target) const {
-    return isModTarget(target) && !(hasKnob(source) && target == stripKnobIndex(source)) &&
-           !closesLoop(source, target);
-}
-
-std::string View::refusedNote(int source, int target) const {
-    return closesLoop(source, target) ? tr(Str::CascadeLoop) : tr(Str::CascadeOwnKnob);
-}
-
-std::string View::refusedMessage(int source, int target) const {
-    return closesLoop(source, target) ? trf(Str::MsgMacroLoop, {sourceName(source), paramName(target)})
-                                      : trf(Str::MsgOwnKnob, {sourceName(source)});
-}
-
 bool View::modsWide() const {
     return controller_.layout().view == RoutingView::Mods && shapeEditing() < 0 && partialEditing() < 0;
 }
@@ -68,35 +49,20 @@ std::vector<View::Assignment> View::modsRowsNow() const {
     if (const std::vector<std::string> words = modsFilter_.words(); !words.empty())
         rows.erase(std::remove_if(rows.begin(), rows.end(),
                                   [&](const Assignment &m) {
-                                      return !TextField::holds(sourceName(m.source) + " " + paramName(m.target), words);
+                                      return !TextField::holds(
+                                          mods_.sourceName(m.source) + " " + mods_.paramName(m.target), words);
                                   }),
                    rows.end());
     for (int row = 0; row < static_cast<int>(controller_.layout().emptyMods.size()); ++row) {
-        const auto [source, target] = emptyMod(row);
-        const Assignment empty{source, emptyModSlot(row), target, 0.0, false, source >= 0 && sourceBipolar(source),
-                               1.0, -1};
+        const auto [source, target] = mods_.emptyMod(row);
+        const Assignment empty{
+            source, emptyModSlot(row), target, 0.0, false, source >= 0 && mods_.sourceBipolar(source), 1.0, -1};
         const auto last = std::find_if(rows.rbegin(), rows.rend(), [&](const Assignment &m) {
             return source >= 0 && m.source == source;
         });
         rows.insert(last == rows.rend() ? rows.end() : last.base(), empty);
     }
     return rows;
-}
-
-std::pair<int, int> View::emptyMod(int row) const {
-    const std::vector<std::pair<int, int>> &empty = controller_.layout().emptyMods;
-    if (row < 0 || row >= static_cast<int>(empty.size()))
-        return {-1, -1};
-    const auto [source, target] = empty[row];
-    const bool sourceThere = source >= 0 && source < kAllSources &&
-                             (isStripSource(source) || sourceTypeOf(source) != SourceType::None);
-    return {sourceThere ? source : -1, isModTarget(target) ? target : -1};
-}
-
-int View::modsRowTarget(int source, int slot) const {
-    if (const int row = emptyModOf(slot); row >= 0)
-        return emptyMod(row).second;
-    return source >= 0 && slot >= 0 ? slotTarget(value(slotTargetIndex(source, slot))) : -1;
 }
 
 // The rows and, after them, the one that adds an empty modulation.
@@ -151,116 +117,10 @@ Rect View::modsThumb() const {
     return {track.x, track.y + (track.h - h) * modsFirst() / std::max(modsEnd(), 0.001f), track.w, h};
 }
 
-void View::moveModulation(int source, int slot, int to) {
-    const int target = slotTarget(value(slotTargetIndex(source, slot)));
-    if (target < 0 || to < 0 || to == source)
-        return;
-    if (!canModulate(to, target)) {
-        flash(refusedMessage(to, target));
-        return;
-    }
-    int free = -1;
-    for (int s = kSlots - 1; s >= 0; --s) {
-        const int current = slotTarget(value(slotTargetIndex(to, s)));
-        if (current == target) {
-            flash(trf(Str::MsgAlreadyModulates, {sourceName(to), paramName(target)}));
-            return;
-        }
-        if (current < 0)
-            free = s;
-    }
-    if (free < 0) {
-        flash(trf(Str::MsgSlotsFull, {sourceName(to), std::to_string(kSlots)}));
-        return;
-    }
-    // It swings as its new source does; an aux that would be the new source itself goes.
-    const int aux = slotAux([this](int index) { return value(index); }, source, slot);
-    const UndoScope step(controller_);
-    std::vector<std::pair<int, double>> changes{
-        {slotTargetIndex(to, free), slotTargetValue(target)},
-        {slotAmountIndex(to, free), value(slotAmountIndex(source, slot))},
-        {slotScaleIndex(to, free), value(slotScaleIndex(source, slot))},
-        {slotCurveIndex(to, free), value(slotCurveIndex(source, slot))},
-        {slotAuxDepthIndex(to, free), value(slotAuxDepthIndex(source, slot))},
-        {slotAuxIndex(to, free), slotAuxValue(aux == to ? -1 : aux)},
-        {slotBypassIndex(to, free), slotBypassed(source, slot) ? 1.0 : 0.0}};
-    editMany(changes);
-    // What modulates its depth follows it to its new slot where that depth can be modulated (an LFO's or an
-    // envelope's), unless its source modulates that already; else it goes, rather than wait in the old slot for the
-    // next modulation there. So does an empty modulation onto it.
-    const int depth = slotAmountIndex(source, slot), newDepth = slotAmountIndex(to, free);
-    for (const Assignment &m : assignments()) {
-        if (m.target != depth)
-            continue;
-        const std::vector<int> used = usedSlots(m.source);
-        const bool follows = isModTarget(newDepth) && std::none_of(used.begin(), used.end(), [&](int s) {
-                                 return slotTarget(value(slotTargetIndex(m.source, s))) == newDepth;
-                             });
-        if (follows)
-            edit(slotTargetIndex(m.source, m.slot), slotTargetValue(newDepth));
-        else
-            removeSlot(m.source, m.slot);
-    }
-    bool emptied = false;
-    for (auto &[from, onto] : controller_.layout().emptyMods)
-        if (onto == depth) {
-            onto = isModTarget(newDepth) ? newDepth : -1;
-            emptied = true;
-        }
-    if (emptied)
-        controller_.layoutChanged();
-    removeSlot(source, slot);
-}
-
-void View::retarget(int source, int slot, int target) {
-    const int current = slotTarget(value(slotTargetIndex(source, slot)));
-    if (current < 0 || target == current || target < 0)
-        return;
-    if (!canModulate(source, target)) {
-        flash(refusedMessage(source, target));
-        return;
-    }
-    for (int s = 0; s < kSlots; ++s)
-        if (s != slot && slotTarget(value(slotTargetIndex(source, s))) == target) {
-            flash(trf(Str::MsgAlreadyModulates, {sourceName(source), paramName(target)}));
-            return;
-        }
-    const UndoScope step(controller_); // with the route it may keep
-    edit(slotTargetIndex(source, slot), slotTargetValue(target));
-    // A modulated route opens and closes with the modulation, so its wire shows, even at 0 %, as in assign().
-    std::vector<int> &kept = controller_.layout().keptRoutes;
-    if (isRouteParam(target) && std::find(kept.begin(), kept.end(), target) == kept.end()) {
-        kept.push_back(target);
-        controller_.layoutChanged();
-    }
-}
-
-// Taking the aux away puts its depth back to all of it, for the next aux; another aux keeps it.
-void View::setAux(int source, int slot, int aux) {
-    if (aux == source)
-        aux = -1;
-    if (aux >= 0) {
-        edit(slotAuxIndex(source, slot), slotAuxValue(aux));
-        return;
-    }
-    std::vector<std::pair<int, double>> changes{{slotAuxIndex(source, slot), 0.0},
-                                                {slotAuxDepthIndex(source, slot), 1.0}};
-    const UndoScope step(controller_);
-    editMany(changes);
-}
-
 void View::addEmptyMod(int source) {
-    std::vector<std::pair<int, int>> &empty = controller_.layout().emptyMods;
-    if (static_cast<int>(empty.size()) >= kMaxEmptyMods) {
-        flash(trf(Str::MsgEmptyModsFull, {std::to_string(kMaxEmptyMods)}));
+    const int row = mods_.addEmptyMod(source);
+    if (row < 0)
         return;
-    }
-    {
-        const UndoScope step(controller_);
-        empty.push_back({source, -1});
-        controller_.layoutChanged();
-    }
-    const int row = static_cast<int>(empty.size()) - 1;
     const Rect r = revealModsRow(source, emptyModSlot(row));
     if (source < 0)
         openCascade(CascadeKind::Source, -1, emptyModSlot(row), modsCell(r, kModsSource));
@@ -310,55 +170,8 @@ void View::showSourceMods(int source) {
 }
 
 void View::fillEmptyMod(int row, int source, int target) {
-    std::vector<std::pair<int, int>> &empty = controller_.layout().emptyMods;
-    if (row < 0 || row >= static_cast<int>(empty.size()))
-        return;
-    auto [s, t] = emptyMod(row);
-    s = source >= 0 ? source : s;
-    t = target >= 0 ? target : t;
-    if (s < 0 || t < 0) {
-        {
-            const UndoScope step(controller_);
-            empty[row] = {s, t};
-            controller_.layoutChanged();
-        }
-        revealModsRow(s, emptyModSlot(row));
-        return;
-    }
-    if (!canModulate(s, t)) {
-        flash(refusedMessage(s, t));
-        return;
-    }
-    auto modulates = [&] {
-        for (int slot = 0; slot < kSlots; ++slot)
-            if (slotTarget(value(slotTargetIndex(s, slot))) == t)
-                return true;
-        return false;
-    };
-    if (modulates()) {
-        flash(trf(Str::MsgAlreadyModulates, {sourceName(s), paramName(t)}));
-        return;
-    }
-    {
-        const UndoScope step(controller_);
-        assign(s, t); // refuses a source with no slot free, saying so
-        if (modulates()) {
-            empty.erase(empty.begin() + row);
-            controller_.layoutChanged();
-        }
-    }
-    for (int slot = 0; slot < kSlots; ++slot)
-        if (slotTarget(value(slotTargetIndex(s, slot))) == t)
-            revealModsRow(s, slot);
-}
-
-void View::removeEmptyMod(int row) {
-    std::vector<std::pair<int, int>> &empty = controller_.layout().emptyMods;
-    if (row < 0 || row >= static_cast<int>(empty.size()))
-        return;
-    const UndoScope step(controller_);
-    empty.erase(empty.begin() + row);
-    controller_.layoutChanged();
+    if (const std::optional<std::pair<int, int>> shown = mods_.fillEmptyMod(row, source, target))
+        revealModsRow(shown->first, shown->second);
 }
 
 // While the target menu's search holds something, its first level lists what it finds in the categories, flat, each
@@ -416,7 +229,7 @@ View::MenuNode View::cascadeCategories() const {
         return root;
     const Cascade &menu = *cascade_;
     auto get = [this](int index) { return value(index); };
-    const int target = modsRowTarget(menu.source, menu.slot);
+    const int target = mods_.modsRowTarget(menu.source, menu.slot);
     const int current = menu.kind == CascadeKind::Target ? target
                         : menu.kind == CascadeKind::Aux  ? slotAux(get, menu.source, menu.slot)
                                                          : menu.source;
@@ -460,7 +273,7 @@ View::MenuNode View::cascadeCategories() const {
         // A source can't take a modulation it has already, nor one past its slots; an aux can't be the row's own source.
         // An empty modulation without a target yet takes any source with a slot free.
         auto sourcePick = [&](int source) {
-            MenuNode node = pick(sourceName(source), source, kSourceColors[source]);
+            MenuNode node = pick(mods_.sourceName(source), source, kSourceColors[source]);
             if (menu.kind == CascadeKind::Aux) {
                 if (source == menu.source) {
                     node.enabled = false;
@@ -471,9 +284,9 @@ View::MenuNode View::cascadeCategories() const {
             if (source == menu.source)
                 return node;
             const std::vector<int> used = usedSlots(source);
-            if (target >= 0 && !canModulate(source, target)) {
+            if (target >= 0 && !mods_.canModulate(source, target)) {
                 node.enabled = false;
-                node.note = refusedNote(source, target);
+                node.note = mods_.refusedNote(source, target);
             } else if (target >= 0 && std::any_of(used.begin(), used.end(), [&](int s) {
                            return slotTarget(value(slotTargetIndex(source, s))) == target;
                        })) {
@@ -490,9 +303,9 @@ View::MenuNode View::cascadeCategories() const {
         MenuNode lfos = category(tr(Str::CascadeLfos)), envs = category(tr(Str::CascadeEnvelopes)),
                  others = category(tr(Str::CascadeNoteMidi));
         for (int source : sources())
-            (runsLfo(sourceTypeOf(source))             ? lfos // Random among them, a random LFO
-             : sourceTypeOf(source) == SourceType::Env ? envs
-                                                       : others)
+            (runsLfo(mods_.sourceTypeOf(source))             ? lfos // Random among them, a random LFO
+             : mods_.sourceTypeOf(source) == SourceType::Env ? envs
+                                                             : others)
                 .children.push_back(sourcePick(source));
         keep(std::move(lfos));
         keep(std::move(envs));
@@ -520,9 +333,9 @@ View::MenuNode View::cascadeCategories() const {
         if (std::find(taken.begin(), taken.end(), index) != taken.end()) {
             node.enabled = false;
             node.note = tr(Str::CascadeAlready);
-        } else if (!canModulate(menu.source, index)) {
+        } else if (!mods_.canModulate(menu.source, index)) {
             node.enabled = false;
-            node.note = refusedNote(menu.source, index);
+            node.note = mods_.refusedNote(menu.source, index);
         }
         return node;
     };
@@ -541,8 +354,9 @@ View::MenuNode View::cascadeCategories() const {
     MenuNode operators = category(tr(Str::CascadeOperators));
     for (int op = 0; op < kOps; ++op) {
         MenuNode node = category(kNodeNames[op]);
-        node.note = nodeOn(op) ? waveName(static_cast<OpWave>(std::lround(value(paramIndex(op, OpParam::Wave)))))
-                               : tr(Str::CascadeOff);
+        node.note = routing_.nodeOn(op)
+                        ? waveName(static_cast<OpWave>(std::lround(value(paramIndex(op, OpParam::Wave)))))
+                        : tr(Str::CascadeOff);
         const std::string prefix = trf(Str::ParamOp, {kNodeNames[op]});
         // In two columns, about as tall: the pitch, level, phase (and the warp's amount) and unison, then the envelope
         // and the noise.
@@ -614,7 +428,7 @@ View::MenuNode View::cascadeCategories() const {
     const std::vector<int> chain = fxChain();
     for (size_t pos = 0; pos < chain.size(); ++pos) {
         const int slot = chain[pos];
-        MenuNode node = category(std::to_string(pos + 1) + " \xC2\xB7 " + fxName(fxSlotType(slot)));
+        MenuNode node = category(std::to_string(pos + 1) + " \xC2\xB7 " + fxName(fx_.slotType(slot)));
         node.color = fxColor(slot);
         const std::string prefix = trf(Str::ParamFx, {std::to_string(slot + 1)});
         for (int f = static_cast<int>(FxParam::Enabled) + 1; f < kFxParamCount; ++f) {
@@ -650,7 +464,7 @@ View::MenuNode View::cascadeCategories() const {
     // The sources' own knobs, then the depths of their modulations (another source's modulation scaled by this one).
     MenuNode modulation = category(tr(Str::CascadeModulation));
     for (int source : sources()) {
-        MenuNode node = category(sourceName(source));
+        MenuNode node = category(mods_.sourceName(source));
         node.color = kSourceColors[source];
         node.children.push_back(heading(Str::CascadeFields));
         for (int f = static_cast<int>(SourceParam::Enabled) + 1; f < kSourceParamCount; ++f) {
@@ -658,7 +472,8 @@ View::MenuNode View::cascadeCategories() const {
             if (index >= slotTargetIndex(source, 0) && index <= slotAmountIndex(source, kSlots - 1))
                 continue; // the depths come below, by what they modulate
             if (fieldInUse(get, index) && isModTarget(index))
-                node.children.push_back(targetPick(afterPrefix(paramName(index), sourceName(source)), index));
+                node.children.push_back(
+                    targetPick(afterPrefix(mods_.paramName(index), mods_.sourceName(source)), index));
         }
         const std::vector<int> used = usedSlots(source);
         bool depths = false;
@@ -668,8 +483,9 @@ View::MenuNode View::cascadeCategories() const {
             if (!depths)
                 node.children.push_back(heading(Str::CascadeDepths));
             depths = true;
-            node.children.push_back(targetPick("\xE2\x86\x92 " + paramName(slotTarget(value(slotTargetIndex(source, s)))),
-                                               slotAmountIndex(source, s)));
+            node.children.push_back(
+                targetPick("\xE2\x86\x92 " + mods_.paramName(slotTarget(value(slotTargetIndex(source, s)))),
+                           slotAmountIndex(source, s)));
         }
         modulation.children.push_back(std::move(node));
     }
@@ -678,7 +494,8 @@ View::MenuNode View::cascadeCategories() const {
     // Then the macros' knobs, by their names and in their colors.
     MenuNode macroKnobs = category(tr(Str::CascadeMacros));
     for (int macro = 0; macro < kMacros; ++macro)
-        macroKnobs.children.push_back(targetPick(sourceName(kMaxSources + macro), paramIndex(macro, MacroParam::Value),
+        macroKnobs.children.push_back(targetPick(mods_.sourceName(kMaxSources + macro),
+                                                 paramIndex(macro, MacroParam::Value),
                                                  kSourceColors[kMaxSources + macro]));
     keep(std::move(macroKnobs));
     markHolds(root);
@@ -826,16 +643,16 @@ void View::pickCascade(int level, int index) {
         if (empty >= 0)
             fillEmptyMod(empty, item.pick, -1);
         else
-            moveModulation(menu.source, menu.slot, item.pick);
+            mods_.moveModulation(menu.source, menu.slot, item.pick);
         break;
     case CascadeKind::Target:
         if (empty >= 0)
             fillEmptyMod(empty, -1, item.pick);
         else
-            retarget(menu.source, menu.slot, item.pick);
+            mods_.retarget(menu.source, menu.slot, item.pick);
         break;
     case CascadeKind::Aux:
-        setAux(menu.source, menu.slot, item.pick);
+        mods_.setAux(menu.source, menu.slot, item.pick);
         break;
     }
 }

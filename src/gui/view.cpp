@@ -605,7 +605,10 @@ float View::heightFor(const UiLayout &layout) {
     return keyboardPanel(keyboardTop(layout.sourcesCollapsed), layout.keysCollapsed).bottom() + 16.0f;
 }
 
-View::View(Controller &controller) : controller_(controller), table_(paramTable()) {
+View::View(Controller &controller)
+    : controller_(controller), table_(paramTable()), mods_(controller, [this](std::string m) { flash(std::move(m)); }),
+      routing_(controller, [this](std::string m) { flash(std::move(m)); }),
+      fx_(controller, [this](std::string m) { flash(std::move(m)); }) {
     seqLoadsSeen_ = controller_.patchLoads(); // the roll as the layout saved it: fitted only to a patch loaded from now
     poll();
 }
@@ -674,72 +677,19 @@ const std::vector<View::Widget> &View::scopedWidgets() const {
 
 // --- Model access.
 
-double View::value(int index) const {
-    return controller_.value(index);
-}
-
 bool View::isNoise(int op) const {
     return std::lround(value(paramIndex(op, OpParam::Wave))) == static_cast<long>(OpWave::Noise);
 }
 
-double View::norm(int index) const {
-    const ParamDef &def = table_[index];
-    if (def.kind == ParamKind::VoiceCount) // 1..max on a log scale
-        return std::log(value(index)) / std::log(def.max);
-    return (value(index) - def.min) / (def.max - def.min);
-}
-
-void View::edit(int index, double v) {
-    if (!std::isfinite(v)) // std::clamp would pass a NaN on
-        return;
-    const ParamDef &def = table_[index];
-    controller_.beginEdit(index);
-    // A node switched on comes back into the graph clear of the others, in the same undo step.
-    int switchedOn = -1;
-    if (v >= 0.5 && value(index) < 0.5)
-        for (int node = 0; node < kNodes; ++node)
-            if (enabledParam(node) == index)
-                switchedOn = node;
-    controller_.setValue(index, std::clamp(v, def.min, def.max));
-    if (switchedOn >= 0)
-        placeSwitchedOn(switchedOn);
-    // A route switched on is kept in the same undo step, which takes it out again with its value; kept only by the
-    // next poll, after the step, undo would leave its wire at 0 %.
-    if (value(index) > 0.0 && isRouteParam(index))
-        keepRoutes();
-    controller_.endEdit(index);
-}
-
 std::vector<View::Assignment> View::assignments() const {
-    std::vector<Assignment> list;
-    std::vector<int> all = sources();
-    for (int macro = 0; macro < kMacros; ++macro) // the macros count as sources after the places, then the note's
-        all.push_back(kMaxSources + macro);         // and the mod wheel's
-    all.push_back(kNoteSource);
-    all.push_back(kWheelSource);
-    all.push_back(kVelocitySource);
-    all.push_back(kBendSource);
-    for (int s : all) {
-        const bool bipolar = sourceBipolar(s);
-        for (int slot = 0; slot < kSlots; ++slot) {
-            const int target = slotTarget(value(slotTargetIndex(s, slot)));
-            if (target >= 0)
-                list.push_back({s, slot, target, value(slotAmountIndex(s, slot)), slotBypassed(s, slot), bipolar,
-                                value(slotScaleIndex(s, slot)),
-                                slotAux([this](int index) { return value(index); }, s, slot)});
-        }
-    }
-    return list;
+    return mods_.assignments(sources());
 }
 
 std::vector<int> View::usedSlots(int source) const {
     const bool keeps = source >= 0 && source < kAllSources;
     if (keeps && derived_.slots[source]) // only kept while a scope goes on
         return *derived_.slots[source];
-    std::vector<int> slots;
-    for (int slot = 0; slot < kSlots; ++slot)
-        if (slotTarget(value(slotTargetIndex(source, slot))) >= 0)
-            slots.push_back(slot);
+    std::vector<int> slots = mods_.usedSlots(source);
     if (keeps && derivedDepth_ > 0)
         derived_.slots[source] = slots;
     return slots;
@@ -752,125 +702,19 @@ bool View::sourceUsed(int source) const {
     return std::any_of(all.begin(), all.end(), [&](const Assignment &m) { return m.aux == source; });
 }
 
-void View::assign(int source, int target) {
-    if (!canModulate(source, target)) {
-        flash(refusedMessage(source, target));
-        return;
-    }
-    const UndoScope step(controller_); // with the route it may keep
-    int free = -1;
-    for (int slot = kSlots - 1; slot >= 0; --slot) {
-        const int current = slotTarget(value(slotTargetIndex(source, slot)));
-        if (current == target) {
-            flash(trf(Str::MsgAlreadyModulates, {sourceName(source), paramName(target)}));
-            return;
-        }
-        if (current < 0)
-            free = slot;
-    }
-    if (free < 0) {
-        flash(trf(Str::MsgSlotsFull, {sourceName(source), std::to_string(kSlots)}));
-        return;
-    }
-    const double amount = 0.3; // a moderate depth, always upward to begin with, swinging as its source does
-    std::vector<std::pair<int, double>> changes{{slotTargetIndex(source, free), slotTargetValue(target)},
-                                                {slotAmountIndex(source, free), amount},
-                                                {slotScaleIndex(source, free), 1.0},
-                                                {slotCurveIndex(source, free), 0.0},
-                                                {slotAuxDepthIndex(source, free), 1.0},
-                                                {slotAuxIndex(source, free), 0.0},
-                                                {slotBypassIndex(source, free), 0.0}};
-    editMany(changes);
-    // A modulated route opens and closes with the modulation, so its wire shows, even at 0 %.
-    std::vector<int> &kept = controller_.layout().keptRoutes;
-    if (isRouteParam(target) && std::find(kept.begin(), kept.end(), target) == kept.end()) {
-        kept.push_back(target);
-        controller_.layoutChanged();
-    }
-}
-
-void View::removeSlot(int source, int slot) {
-    if (const int row = emptyModOf(slot); row >= 0) {
-        removeEmptyMod(row);
-        return;
-    }
-    const UndoScope step(controller_); // with what goes along
-    std::vector<std::pair<int, double>> changes{{slotTargetIndex(source, slot), 0.0},
-                                                {slotAmountIndex(source, slot), 0.0},
-                                                {slotScaleIndex(source, slot), 1.0},
-                                                {slotCurveIndex(source, slot), 0.0},
-                                                {slotAuxDepthIndex(source, slot), 1.0},
-                                                {slotAuxIndex(source, slot), 0.0},
-                                                {slotBypassIndex(source, slot), 0.0}};
-    editMany(changes);
-    // What modulated its depth goes too, rather than wait on the emptied slot to scale the next modulation there;
-    // and an empty modulation onto it loses its target. The slot is empty by now, so two modulations of each other's
-    // depths end.
-    const int depth = slotAmountIndex(source, slot);
-    for (const Assignment &m : assignments())
-        if (m.target == depth)
-            removeSlot(m.source, m.slot);
-    bool emptied = false;
-    for (auto &[from, onto] : controller_.layout().emptyMods)
-        if (onto == depth) {
-            onto = -1;
-            emptied = true;
-        }
-    if (emptied)
-        controller_.layoutChanged();
-}
-
-bool View::slotBypassed(int source, int slot) const {
-    return slot >= 0 && value(slotBypassIndex(source, slot)) >= 0.5;
-}
-
-void View::toggleBypass(int source, int slot) {
-    if (slot >= 0) // an empty modulation has nothing to bypass
-        edit(slotBypassIndex(source, slot), slotBypassed(source, slot) ? 0.0 : 1.0);
-}
-
-void View::setSourcePolarity(int source, bool bipolar) {
-    const Polarity polarity = polarityOf(source, sourceTypeOf(source));
-    edit(polarity.index, bipolar ? polarity.bipolar : 1.0 - polarity.bipolar);
-}
-
-float View::wireBend(int param) const {
-    for (const auto &[route, bend] : controller_.layout().wireBends)
-        if (route == param)
-            return bend;
-    return defaultWireBend(param);
-}
-
-// A wire between nodes bows to begin with; a node's line to OUT runs straight.
-float View::defaultWireBend(int param) {
-    for (int node = 0; node < kNodes; ++node)
-        if (outParam(node) == param)
-            return 0.0f;
-    return kDefaultWireBend;
-}
-
 Point View::routePoint(int node) const {
-    return node == kNodes ? kOutCore : nodeCenter(node);
-}
-
-void View::setWireBend(int param, float bend) {
-    std::vector<std::pair<int, float>> &bends = controller_.layout().wireBends;
-    std::erase_if(bends, [&](const auto &b) { return b.first == param; });
-    bend = std::clamp(bend, -kMaxWireBend, kMaxWireBend);
-    if (bend != defaultWireBend(param))
-        bends.push_back({param, bend});
-    controller_.layoutChanged();
+    return node == kNodes ? kOutCore : routing_.nodeCenter(node);
 }
 
 bool View::droppable(const Widget &w, int source) const {
     // A list's row takes it as an aux instead; a disabled widget, which the mouse passes by, takes nothing.
-    return w.param >= 0 && canModulate(source, w.param) && !w.popup && !w.disabled &&
+    return w.param >= 0 && mods_.canModulate(source, w.param) && !w.popup && !w.disabled &&
            (w.kind == Kind::Knob || w.kind == Kind::WireLabel || w.kind == Kind::OutLabel || w.kind == Kind::GridCell ||
             w.kind == Kind::SlotBar);
 }
 
 Color View::fxColor(int slot) const {
-    return fxTypeColor(fxSlotType(slot));
+    return fxTypeColor(fx_.slotType(slot));
 }
 
 Color View::listColor(int param) const {
@@ -888,7 +732,7 @@ Color View::listColor(int param) const {
 int View::listShown(int param) const {
     if (isSplitSlope(param)) { // 18 plays as 24; three bands part at 12 or 24, 6 playing as 12
         const int slope = filterSlope(value(param));
-        return slope == 2 ? kFilterSlopes - 1 : slope == 0 && splitThree(splitOf(param)) ? 1 : slope;
+        return slope == 2 ? kFilterSlopes - 1 : slope == 0 && fx_.splitThree(splitOf(param)) ? 1 : slope;
     }
     if (isFilterSlope(param))
         return playedSlope(static_cast<FilterType>(std::lround(value(slopeTypeParam(param)))), filterSlope(value(param)));
@@ -897,7 +741,7 @@ int View::listShown(int param) const {
 
 bool View::listItemFits(int param, int item) const {
     if (isSplitSlope(param)) // 6, 12 or 24 dB; three bands 12 or 24
-        return item != 2 && !(item == 0 && splitThree(splitOf(param)));
+        return item != 2 && !(item == 0 && fx_.splitThree(splitOf(param)));
     return !isFilterSlope(param) || slopeFits(static_cast<FilterType>(std::lround(value(slopeTypeParam(param)))), item);
 }
 
@@ -938,36 +782,25 @@ bool View::fxWide() const {
     return controller_.layout().view == RoutingView::Fx && shapeEditing() < 0;
 }
 
-FxType View::fxSlotType(int slot) const {
-    return fxType(value(paramIndex(slot, FxParam::Type)));
-}
-
 std::vector<int> View::fxChain() const {
     if (derived_.chain) // only kept while a scope goes on
         return *derived_.chain;
-    std::vector<int> chain;
-    for (const FxLineItem &item : fxLine()) {
-        if (item.node < kFxSlots)
-            chain.push_back(item.node);
-        for (int lane : item.lanes())
-            chain.insert(chain.end(), item.band(lane).begin(), item.band(lane).end());
-    }
+    std::vector<int> chain = FxGraphModel::chain(fxLine());
     if (derivedDepth_ > 0)
         derived_.chain = chain;
     return chain;
 }
 
 bool View::fxFolded(int slot) const {
-    const UiLayout &layout = controller_.layout();
-    return slot < kFirstFxSlots ? (layout.fxFolded >> slot) & 1u : (layout.fxFoldedLater >> (slot - kFirstFxSlots)) & 1u;
+    return mods_.folded(true, slot);
 }
 
 bool View::sourceFolded(int source) const {
-    return !isStripSource(source) && ((controller_.layout().sourcesFolded >> source) & 1u);
+    return !isStripSource(source) && mods_.folded(false, source);
 }
 
 float View::fxCardSpan(int slot) const {
-    return fxFolded(slot) ? kFoldedFx : fxSpan(fxSlotType(slot));
+    return fxFolded(slot) ? kFoldedFx : fxSpan(fx_.slotType(slot));
 }
 
 float View::sourceSpan(int source) const {
@@ -981,18 +814,11 @@ float View::sourceOffset(const std::vector<int> &shown, size_t index) const {
     return offset;
 }
 
-// Folding a card or unfolding it; a new effect or source starts unfolded.
+// Folding a card or unfolding it; a widened LFO card folded unfolds at its normal size.
 void View::setFolded(bool fx, int index, bool folded) {
-    UiLayout &layout = controller_.layout();
-    const bool later = fx && index >= kFirstFxSlots; // the slots past the first 16 have bits of their own
-    uint32_t &bits = later ? layout.fxFoldedLater : fx ? layout.fxFolded : layout.sourcesFolded;
-    const int bit = later ? index - kFirstFxSlots : index;
-    if (!fx && folded && index == wideLfo_) // a widened card unfolds at its normal size
+    if (!fx && folded && index == wideLfo_)
         wideLfo_ = -1;
-    const uint32_t before = bits;
-    bits = folded ? bits | (1u << bit) : bits & ~(1u << bit);
-    if (bits != before)
-        controller_.layoutChanged();
+    mods_.setFolded(fx, index, folded);
 }
 
 float View::fxScroll() const {
@@ -1091,93 +917,37 @@ Rect View::scrollThumb(ScrollArea area) const {
             track.h};
 }
 
-int View::freeFxSlot() const {
-    for (int s = 0; s < kFxSlots; ++s)
-        if (fxSlotType(s) == FxType::None)
-            return s;
-    return -1;
-}
-
 void View::addEffect(FxType type, int copyOf) {
-    const UndoScope step(controller_); // with its wires
-    const int slot = freeFxSlot();
-    if (slot < 0) {
-        flash(trf(Str::MsgChainFull, {std::to_string(kFxSlots)}));
-        return;
-    }
-    fillEffect(slot, type, copyOf);
     // Where the list was opened, after the node the graph shows, or a copy after its original; either view scrolls to
     // show it.
-    fxPlaceNew(slot, copyOf);
+    const int slot = fx_.addEffect(type, copyOf, fxSlot_);
+    if (slot < 0)
+        return;
+    effectFilled(slot, copyOf);
+    revealFxNode(slot);
+    revealFxRow(slot);
 }
 
-void View::fillEffect(int slot, FxType type, int copyOf) {
-    // The slot gets its settings, the original's for a copy, then its type last: that makes the host rescan
-    // the slot's fields, which by then hold what they should.
-    std::vector<std::pair<int, double>> changes;
-    for (int f = 0; f < kFxParamCount; ++f) {
-        const int index = paramIndex(slot, static_cast<FxParam>(f));
-        if (static_cast<FxParam>(f) != FxParam::Type)
-            changes.push_back(
-                {index, copyOf >= 0 ? value(paramIndex(copyOf, static_cast<FxParam>(f))) : table_[index].def});
-    }
-    for (int f = 0; f < kShapeParamCount; ++f) { // the shaper's drawn curve
-        const int index = clipCurveCountIndex(slot) + f;
-        changes.push_back({index, copyOf >= 0 ? value(clipCurveCountIndex(copyOf) + f) : table_[index].def});
-    }
-    changes.push_back({paramIndex(slot, FxParam::Type), static_cast<double>(type)});
-    setFolded(true, slot, false);
-    if (shapeEditor_ == kMaxSources + slot) // left open for an effect the slot held before
-        shapeEditor_ = -1;
-    editMany(changes);
+// What the editor keeps of an effect slot that another effect now fills, or that empties: a shape editor left open on
+// its curve closes, and its card shows the band its original's does, or the first.
+void View::effectFilled(int slot, int copyOf) {
+    effectGone(slot);
     fxBand_[slot] = copyOf >= 0 ? fxBand_[copyOf] : 0;
 }
 
-void View::removeEffect(int slot) {
-    const UndoScope step(controller_);
-    setFolded(true, slot, false);
-    // Modulation of its knobs goes with it.
-    for (const Assignment &m : assignments())
-        if (fxSlotOf(m.target) == slot)
-            removeSlot(m.source, m.slot);
+void View::effectGone(int slot) {
     if (shapeEditor_ == kMaxSources + slot)
         shapeEditor_ = -1;
-    // Out of the line, which closes up behind it.
-    FxLine line = fxLine();
-    for (FxLineItem &item : line)
-        for (int lane : {1, 2, 3}) {
-            std::vector<int> &band = item.band(lane);
-            band.erase(std::remove(band.begin(), band.end(), slot), band.end());
-        }
-    line.erase(std::remove_if(line.begin(), line.end(), [slot](const FxLineItem &i) { return i.node == slot; }),
-               line.end());
-    writeFxLine(line);
-    edit(paramIndex(slot, FxParam::Type), static_cast<double>(FxType::None));
 }
 
-bool View::fxAnyToClear() const {
-    const FxLine line = fxLine();
-    return !line.empty();
+void View::removeEffect(int slot) {
+    fx_.removeEffect(slot);
+    effectGone(slot);
 }
 
 void View::clearFx() {
-    const UndoScope step(controller_);
-    for (const Assignment &m : assignments()) // the modulation of their knobs goes with them
-        if (fxSlotOf(m.target) >= 0)
-            removeSlot(m.source, m.slot);
-    const std::vector<int> chain = fxChain();
-    for (int slot : chain) {
-        setFolded(true, slot, false);
-        if (shapeEditor_ == kMaxSources + slot)
-            shapeEditor_ = -1;
-    }
-    writeFxLine({}); // IN straight out, every split and join out of use
-    std::vector<std::pair<int, double>> changes;
-    for (int slot : chain)
-        changes.push_back({paramIndex(slot, FxParam::Type), static_cast<double>(FxType::None)});
-    editMany(changes);
-    controller_.layout().fxSelected = -1;
-    controller_.layoutChanged();
+    for (int slot : fx_.clear())
+        effectGone(slot);
     fxScroll_ = 0.0f;
     fxGraphScroll_ = 0.0f;
 }
@@ -1196,15 +966,6 @@ Rect View::mdDisplay(int slot) const {
 
 int View::mdThreshold(int slot, int line) const {
     return line % 2 == 1 ? mdBelowIndex(slot, line / 2) : mdAboveIndex(slot, line / 2);
-}
-
-void View::editMany(const std::vector<std::pair<int, double>> &changes) {
-    for (const auto &[index, v] : changes)
-        controller_.beginEdit(index);
-    for (const auto &[index, v] : changes)
-        controller_.setValue(index, std::clamp(v, table_[index].min, table_[index].max));
-    for (auto it = changes.rbegin(); it != changes.rend(); ++it)
-        controller_.endEdit(it->first);
 }
 
 bool View::edgeScroll() {
@@ -1254,7 +1015,7 @@ int View::keyboardBase() const {
 std::vector<int> View::sources() const {
     if (derived_.sources) // only kept while a scope goes on
         return *derived_.sources;
-    std::vector<int> shown = shownSources(controller_.layout(), [this](int index) { return value(index); });
+    std::vector<int> shown = mods_.sources();
     if (derivedDepth_ > 0)
         derived_.sources = shown;
     return shown;
@@ -1301,40 +1062,6 @@ std::vector<int> View::sourcesMoved() const {
     return shown;
 }
 
-SourceType View::sourceTypeOf(int source) const {
-    return isStripSource(source) ? SourceType::None : sourceType(value(paramIndex(source, SourceParam::Type)));
-}
-
-LfoShape View::lfoShapeOf(int source) const {
-    return lfoShape([this](int i) { return value(i); }, source);
-}
-
-std::string View::sourceName(int source) const {
-    return fmvibe::gui::sourceName(controller_.layout(), [this](int index) { return value(index); }, source);
-}
-
-std::string View::paramName(int index) const {
-    if (index < 0 || index >= kParamCount)
-        return std::string();
-    if (const int owner = bypassSourceOf(index); owner >= 0) {
-        const int target = slotTarget(value(slotTargetIndex(owner, bypassSlotOf(index))));
-        return target >= 0 ? trf(Str::ParamNameBypassOn, {sourceName(owner), paramName(target)})
-                           : trf(Str::ParamNameBypass, {sourceName(owner)});
-    }
-    if (isMacroKnob(index)) // by the name it is given
-        return sourceName(kMaxSources + macroOf(index));
-    const int source = sourceOf(index);
-    const std::string &name = table_[index].name;
-    if (source < 0)
-        return name;
-    const size_t place = trf(Str::ParamMod, {std::to_string(source + 1)}).size() + 1; // see buildTable()
-    return sourceName(source) + " " + name.substr(place);
-}
-
-bool View::sourceOn(int source) const {
-    return isStripSource(source) || value(sourceEnabledIndex(source)) >= 0.5;
-}
-
 bool View::modFocused(const Assignment &m) const {
     const Widget *w = drag_.kind != DragKind::None ? &drag_.widget : (hover_ ? &*hover_ : nullptr);
     if (!w)
@@ -1356,7 +1083,7 @@ bool View::modFocused(const Assignment &m) const {
 }
 
 bool View::sourceLive(int source) const {
-    return sourceOn(source) && sourceUsed(source);
+    return mods_.sourceOn(source) && sourceUsed(source);
 }
 
 float View::sourceScroll() const {
@@ -1386,111 +1113,29 @@ void View::revealSource(int source) {
     sourceScroll_ = place < first ? place : (place + span > first + kVisibleCards ? place + span - kVisibleCards : first);
 }
 
-void View::setSourceOrder(const std::vector<int> &shown) {
-    UiLayout &layout = controller_.layout();
-    std::array<int, kMaxSources> order{};
-    size_t n = 0;
-    for (int source : shown)
-        order[n++] = source;
-    for (int source : layout.sourceOrder)
-        if (std::find(shown.begin(), shown.end(), source) == shown.end())
-            order[n++] = source;
-    if (order == layout.sourceOrder)
-        return;
-    layout.sourceOrder = order;
-    controller_.layoutChanged();
-}
-
 int View::addSource(SourceType type, int copyOf) {
-    const UndoScope step(controller_); // with where it shows
-    std::vector<int> shown = sources();
-    int source = -1;
-    for (int s = 0; s < kMaxSources && source < 0; ++s)
-        if (sourceTypeOf(s) == SourceType::None)
-            source = s;
-    if (source < 0) {
-        flash(trf(Str::MsgSourcesFull, {std::to_string(kMaxSources)}));
+    const int source = mods_.addSource(type, copyOf);
+    if (source < 0)
         return -1;
-    }
-    // Every field and its freeform shape: fresh, or as in the original. Its slots start empty either way: a copy
-    // modulates nothing until it is given targets of its own. The type comes last, as in addEffect().
-    std::vector<std::pair<int, double>> changes;
-    auto fresh = [&](int index) { changes.push_back({index, table_[index].def}); };
-    auto take = [&](int index, int from) {
-        changes.push_back({index, copyOf >= 0 ? value(from) : table_[index].def});
-    };
-    for (int f = 0; f < kSourceParamCount; ++f) {
-        const auto field = static_cast<SourceParam>(f);
-        if (field == SourceParam::Type)
-            continue;
-        if (f >= static_cast<int>(SourceParam::Slots) && f < static_cast<int>(SourceParam::Slots) + 2 * kSlots)
-            fresh(paramIndex(source, field)); // a slot's target and depth
-        else
-            take(paramIndex(source, field), paramIndex(std::max(copyOf, 0), field));
-    }
-    for (int f = 0; f < kShapeParamCount; ++f)
-        take(shapeCountIndex(source) + f, shapeCountIndex(std::max(copyOf, 0)) + f);
-    for (int slot = 0; slot < kSlots; ++slot) {
-        fresh(slotBypassIndex(source, slot));
-        fresh(slotScaleIndex(source, slot));
-        fresh(slotCurveIndex(source, slot));
-        fresh(slotAuxDepthIndex(source, slot));
-        fresh(slotAuxIndex(source, slot));
-    }
-    // A new Random source swings both ways, as an LFO does; Bipolar, which MIDI shares, starts off. A new Curve source
-    // swings one way, Unipolar on, where an LFO's starts off.
-    if (type == SourceType::Random && copyOf < 0)
-        changes.push_back({paramIndex(source, SourceParam::Bipolar), 1.0});
-    if (type == SourceType::Curve && copyOf < 0)
-        changes.push_back({paramIndex(source, SourceParam::Unipolar), 1.0});
-    changes.push_back({paramIndex(source, SourceParam::Type), static_cast<double>(type)});
-    const auto at = copyOf >= 0 ? std::find(shown.begin(), shown.end(), copyOf) + 1 : shown.end();
-    shown.insert(at, source);
-    setSourceOrder(shown);
-    setFolded(false, source, false);
     if (shapeEditor_ == source) // left open for a source the place held before
         shapeEditor_ = -1;
     if (wideLfo_ == source)
         wideLfo_ = -1;
-    editMany(changes);
     if (type == SourceType::Curve && copyOf < 0) { // widened, to draw its shape right there, as picking Custom did
         wideLfo_ = source;
         if (shapeEditing() >= 0 && !isCurve(shapeEditing()))
             shapeEditor_ = -1;
-    }
-    if (controller_.layout().sourcesCollapsed) {
-        controller_.layout().sourcesCollapsed = false;
-        controller_.layoutChanged();
     }
     revealSource(source);
     return source;
 }
 
 void View::removeSource(int source) {
-    const UndoScope step(controller_);
-    setFolded(false, source, false);
-    // Its own slots, and every slot that modulates one of its knobs; slots it scales as their aux lose it.
-    for (const Assignment &m : assignments()) {
-        if (m.source == source || sourceOf(m.target) == source)
-            removeSlot(m.source, m.slot);
-        else if (m.aux == source)
-            setAux(m.source, m.slot, -1);
-    }
-    // Empty modulations from it lose their source, and those onto one of its knobs their target.
-    bool emptied = false;
-    for (auto &[from, target] : controller_.layout().emptyMods) {
-        const bool fromIt = from == source, ontoIt = target >= 0 && sourceOf(target) == source;
-        from = fromIt ? -1 : from;
-        target = ontoIt ? -1 : target;
-        emptied = emptied || fromIt || ontoIt;
-    }
-    if (emptied)
-        controller_.layoutChanged();
+    mods_.removeSource(source);
     if (shapeEditor_ == source)
         shapeEditor_ = -1;
     if (wideLfo_ == source)
         wideLfo_ = -1;
-    edit(paramIndex(source, SourceParam::Type), static_cast<double>(SourceType::None));
 }
 
 // Snapshots come once per audio block, which can be tens of milliseconds apart;
@@ -1509,7 +1154,7 @@ LfoClock View::lfoClockOf(int lfo) const {
 }
 
 int View::lfoClockCount(int lfo) const {
-    return lfoShapeOf(lfo) == LfoShape::Random ? kRandomClocks : kLfoModes;
+    return mods_.lfoShapeOf(lfo) == LfoShape::Random ? kRandomClocks : kLfoModes;
 }
 
 // Free, Anchor and One-Shot set for `clock` alone (none for Retrigger), in one undo step.
@@ -1528,11 +1173,12 @@ void View::setLfoClock(int lfo, LfoClock clock) {
 }
 
 bool View::lfoRunsIdle(int lfo) const {
-    return runsLfo(sourceTypeOf(lfo)) && sourceOn(lfo) && lfoShared([this](int i) { return value(i); }, lfo);
+    return runsLfo(mods_.sourceTypeOf(lfo)) && mods_.sourceOn(lfo) &&
+           lfoShared([this](int i) { return value(i); }, lfo);
 }
 
 bool View::lfoRunning(int lfo) const {
-    return telemetry_.voices > 0 ? sourceOn(lfo) : lfoRunsIdle(lfo) || lfoInTail(telemetry_, lfo);
+    return telemetry_.voices > 0 ? mods_.sourceOn(lfo) : lfoRunsIdle(lfo) || lfoInTail(telemetry_, lfo);
 }
 
 bool View::lfoInTail(const Telemetry &t, int lfo) {
@@ -1542,11 +1188,11 @@ bool View::lfoInTail(const Telemetry &t, int lfo) {
 bool View::lfoPhaseUsed(int lfo) const {
     // An anchored LFO stood at its Phase at the song's start.
     auto get = [this](int i) { return value(i); };
-    return (!lfoShared(get, lfo) || lfoAnchored(get, lfo)) && lfoShapeOf(lfo) != LfoShape::Random;
+    return (!lfoShared(get, lfo) || lfoAnchored(get, lfo)) && mods_.lfoShapeOf(lfo) != LfoShape::Random;
 }
 
 double View::lfoValueNow(int lfo) const {
-    const LfoShape shape = lfoShapeOf(lfo);
+    const LfoShape shape = mods_.lfoShapeOf(lfo);
     if (shape == LfoShape::Random) { // can't be told ahead
         if (telemetry_.voices == 0) // the shared clock's glide (or the value it holds), which no voice puts out
             return lfoHeld([this](int i) { return value(i); }, lfo)
@@ -1554,7 +1200,7 @@ double View::lfoValueNow(int lfo) const {
                        : randomGlide(telemetry_.lfoFrom[lfo], telemetry_.lfoTo[lfo], randomPhaseNow(lfo),
                                      value(paramIndex(lfo, SourceParam::RandomSmooth)));
         const double out = telemetry_.sources[lfo];
-        return sourceBipolar(lfo) ? out : out * 2.0 - 1.0;
+        return mods_.sourceBipolar(lfo) ? out : out * 2.0 - 1.0;
     }
     if (shape == LfoShape::Custom)
         return shapeValue([this](int index) { return value(index); }, lfo, lfoPhaseNow(lfo));
@@ -1566,7 +1212,7 @@ void View::traceRandomLfos() {
     for (int s = 0; s < kMaxSources; ++s) {
         RandomTrace &trace = randomTraces_[s];
         // Standing still, it has no cycles to trace: its display shows the value it holds.
-        const bool random = runsLfo(sourceTypeOf(s)) && lfoShapeOf(s) == LfoShape::Random &&
+        const bool random = runsLfo(mods_.sourceTypeOf(s)) && mods_.lfoShapeOf(s) == LfoShape::Random &&
                             !lfoHeld([this](int i) { return value(i); }, s);
         if (!random || !lfoRunning(s)) {
             trace.count = 0;
@@ -1626,7 +1272,7 @@ bool View::poll() {
         }
     }
     if (changed)
-        keepRoutes(); // whatever turned a route on, the editor or the host
+        routing_.keepRoutes(); // whatever turned a route on, the editor or the host
     if (bendMoved)
         in(keyboardPanel(keyboardTop(controller_.layout().sourcesCollapsed), controller_.layout().keysCollapsed));
     closeGoneLists(); // the host may have changed what a list belongs to
@@ -1780,7 +1426,7 @@ bool View::poll() {
     // A three-band dynamics' bars move with its bands' levels and gains, until they settle: in the FX view, as the
     // effects' sweeps and spectra below.
     for (int slot : fxChain())
-        if (fxSlotType(slot) == FxType::MultiDyn)
+        if (fx_.slotType(slot) == FxType::MultiDyn)
             for (int band = 0; band < kMcBands; ++band)
                 if (std::abs(t.fxBandLevel[slot][band] - telemetry_.fxBandLevel[slot][band]) >
                         0.01f * std::max(t.fxBandLevel[slot][band], 1e-5f) ||
@@ -1798,8 +1444,8 @@ bool View::poll() {
     // Phasers, flangers, choruses and wideners sweep while the audio runs.
     if (t.age < 0.5f)
         for (int slot : fxChain())
-            if (fxSlotType(slot) == FxType::Phaser || fxSlotType(slot) == FxType::Flanger ||
-                fxSlotType(slot) == FxType::Chorus || fxSlotType(slot) == FxType::Widener)
+            if (fx_.slotType(slot) == FxType::Phaser || fx_.slotType(slot) == FxType::Flanger ||
+                fx_.slotType(slot) == FxType::Chorus || fx_.slotType(slot) == FxType::Widener)
                 in(panels);
     // An analyzer's spectrum goes on falling away after the audio stops, until it is gone; while notes play, the
     // filters' move along with them: the effects' in the FX view, the voice filters' on the inspector's filter page.
@@ -1841,11 +1487,11 @@ bool View::poll() {
         for (int port = 0; port < kFxPorts; ++port)
             track(fxGlow_[port], fxGlowTarget(port));
         std::vector<int> wired;
-        for (int from : enabledNodes()) {
+        for (int from : routing_.enabledNodes()) {
             for (int to = 0; to < kNodes; ++to)
-                if (nodeOn(to) && this->wired(routeParam(from, to)))
+                if (routing_.nodeOn(to) && routing_.wired(routeParam(from, to)))
                     wired.push_back(routeParam(from, to));
-            if (goesOut(from))
+            if (routing_.goesOut(from))
                 wired.push_back(outParam(from));
         }
         std::erase_if(wireAmounts_, [&](const auto &w) { return std::find(wired.begin(), wired.end(), w.first) == wired.end(); });
@@ -2175,7 +1821,7 @@ std::vector<View::Widget> View::widgets() const {
     const RoutingView view = controller_.layout().view;
     // Switched-off nodes are left out of the graph, and greyed out in the matrix; their tabs switch them back on.
     const int partials = partialEditing();
-    const std::vector<int> on = enabledNodes();
+    const std::vector<int> on = routing_.enabledNodes();
     if (editing >= 0) {
         add(Kind::ShapeDone, shapeDone());
         add(Kind::ShapeReset, shapeReset(), -1, editing);
@@ -2297,7 +1943,7 @@ std::vector<View::Widget> View::widgets() const {
         // A card's widgets, where it shows: in the row, or in the effects graph's inspector (`graph`), where it
         // neither folds nor moves.
         auto cardWidgets = [&](int slot, size_t pos, Rect card, bool graph) {
-            const FxType type = fxSlotType(slot);
+            const FxType type = fx_.slotType(slot);
             auto at = [slot](FxParam f) { return paramIndex(slot, f); };
             // The title row, as every card's: the icon at the title's left (which also switches the effect on and
             // off, and drags the card like the title does), then the fold button, the power switch and the cross. In
@@ -2706,9 +2352,10 @@ std::vector<View::Widget> View::widgets() const {
         for (int from : on) {
             for (int to : on) {
                 const int param = routeParam(from, to);
-                if (from == to || !wired(param) || param == rerouted)
+                if (from == to || !routing_.wired(param) || param == rerouted)
                     continue;
-                const Wire w = wireBetween(from, nodeCenter(from), to, nodeCenter(to), wireBend(param));
+                const Wire w =
+                    wireBetween(from, routing_.nodeCenter(from), to, routing_.nodeCenter(to), routing_.wireBend(param));
                 const float left = std::min({w.start.x, w.control.x, w.end.x});
                 const float top = std::min({w.start.y, w.control.y, w.end.y});
                 const float right = std::max({w.start.x, w.control.x, w.end.x});
@@ -2716,8 +2363,8 @@ std::vector<View::Widget> View::widgets() const {
                 add(Kind::Wire, Rect{left, top, right - left, bottom - top}.inset(-kWireGrab), param, from, to);
             }
             // Its line to OUT bends as they do.
-            if (goesOut(from) && outParam(from) != rerouted) {
-                const OutWire w = outWireOf(from, nodeCenter(from), wireBend(outParam(from)));
+            if (routing_.goesOut(from) && outParam(from) != rerouted) {
+                const OutWire w = outWireOf(from, routing_.nodeCenter(from), routing_.wireBend(outParam(from)));
                 const float left = std::min({w.start.x, w.control.x, w.end.x});
                 const float top = std::min({w.start.y, w.control.y, w.end.y});
                 const float right = std::max({w.start.x, w.control.x, w.end.x});
@@ -2727,7 +2374,7 @@ std::vector<View::Widget> View::widgets() const {
             }
         }
         for (int node : on) {
-            const Point c = nodeCenter(node);
+            const Point c = routing_.nodeCenter(node);
             const Rect r = isBoxNode(node)
                                ? Rect{c.x - kFilterHalfW, c.y - kFilterHalfH, 2.0f * kFilterHalfW, 2.0f * kFilterHalfH}
                                : Rect{c.x - kNodeRadius, c.y - kNodeRadius, 2.0f * kNodeRadius, 2.0f * kNodeRadius};
@@ -2744,25 +2391,26 @@ std::vector<View::Widget> View::widgets() const {
         for (int from : on) {
             for (int to : on) {
                 const int param = routeParam(from, to);
-                if (!wired(param) || param == moving)
+                if (!routing_.wired(param) || param == moving)
                     continue;
                 labelWidgets(Kind::WireLabel, param, routeModeParam(from, to), labelOf(param), from, to);
             }
         }
         for (int node : on)
-            if (goesOut(node) && outParam(node) != moving)
+            if (routing_.goesOut(node) && outParam(node) != moving)
                 labelWidgets(Kind::OutLabel, outParam(node), -1, labelOf(outParam(node)), node, kNodes);
         // The arrowheads, over the labels: dragged onto another node or the bus, they move their routes there.
         for (int from : on) {
             for (int to : on) {
                 const int param = routeParam(from, to);
-                if (from == to || !wired(param) || param == moving)
+                if (from == to || !routing_.wired(param) || param == moving)
                     continue;
-                const Wire w = wireBetween(from, nodeCenter(from), to, nodeCenter(to), wireBend(param));
+                const Wire w =
+                    wireBetween(from, routing_.nodeCenter(from), to, routing_.nodeCenter(to), routing_.wireBend(param));
                 add(Kind::WireEnd, wireEndGrip(w.end, w.tangent), param, from, to);
             }
-            if (goesOut(from) && outParam(from) != moving) {
-                const OutWire w = outWireOf(from, nodeCenter(from), wireBend(outParam(from)));
+            if (routing_.goesOut(from) && outParam(from) != moving) {
+                const OutWire w = outWireOf(from, routing_.nodeCenter(from), routing_.wireBend(outParam(from)));
                 add(Kind::WireEnd, wireEndGrip(w.end, w.dir), outParam(from), from, kNodes);
             }
         }
@@ -2773,30 +2421,31 @@ std::vector<View::Widget> View::widgets() const {
         for (int from : on) {
             for (int to : on) {
                 const int param = routeParam(from, to);
-                if (from == to || !wired(param) || param == moving)
+                if (from == to || !routing_.wired(param) || param == moving)
                     continue;
-                const Wire w = wireBetween(from, nodeCenter(from), to, nodeCenter(to), wireBend(param));
+                const Wire w =
+                    wireBetween(from, routing_.nodeCenter(from), to, routing_.nodeCenter(to), routing_.wireBend(param));
                 add(Kind::WireStart, startGrip(w.start, w.control), param, from, to);
             }
-            if (goesOut(from) && outParam(from) != moving) {
-                const OutWire w = outWireOf(from, nodeCenter(from), wireBend(outParam(from)));
+            if (routing_.goesOut(from) && outParam(from) != moving) {
+                const OutWire w = outWireOf(from, routing_.nodeCenter(from), routing_.wireBend(outParam(from)));
                 add(Kind::WireStart, startGrip(w.start, w.control), outParam(from), from, kNodes);
             }
         }
         // The node under the mouse: an x in a circle at its upper right, over its edge, which switches it off.
         for (int node : on)
             if (node == routingHoveredNode()) {
-                const Point x = nodeDeleteAt(node, nodeCenter(node));
+                const Point x = nodeDeleteAt(node, routing_.nodeCenter(node));
                 add(Kind::NodeDelete, {x.x - 8.0f, x.y - 8.0f, 16.0f, 16.0f}, -1, node);
             }
         // The nodes that are off, as dashed ghosts docked under OUT, in the graph's bottom right, over any node moved
         // there.
         float x = kRouting.right() - 16.0f + 6.0f;
         for (int node = 0; node < kNodes; ++node)
-            if (!nodeOn(node))
+            if (!routing_.nodeOn(node))
                 x -= (isBoxNode(node) ? 34.0f : 24.0f) + 6.0f;
         for (int node = 0; node < kNodes; ++node) {
-            if (nodeOn(node))
+            if (routing_.nodeOn(node))
                 continue;
             const float w = isBoxNode(node) ? 34.0f : 24.0f;
             add(Kind::NodeGhost, {x, kRouting.bottom() - 34.0f, w, 24.0f}, -1, node);
@@ -2826,7 +2475,7 @@ std::vector<View::Widget> View::widgets() const {
     auto inputKnobs = [&](int into) {
         std::vector<int> sources;
         for (int from = 0; from < kNodes; ++from)
-            if (from != into && nodeOn(from))
+            if (from != into && routing_.nodeOn(from))
                 sources.push_back(from);
         const float spacing = (kInspector.w - 32.0f) / std::max<size_t>(sources.size(), 6);
         for (size_t i = 0; i < sources.size(); ++i)
@@ -2943,7 +2592,7 @@ std::vector<View::Widget> View::widgets() const {
             // depth as a wire's does. Its feedback comes last, always Phase.
             // Past what the tab holds they scroll, cut off at the list's ends.
             const std::vector<int> inputs = inputsOf(op);
-            const bool feedback = wired(routeParam(op, op));
+            const bool feedback = routing_.wired(routeParam(op, op));
             auto shown = [](float y) { return y + kInputsRowSpan > kInputsList.y && y < kInputsList.bottom(); };
             for (size_t row = 0; row < inputs.size(); ++row) {
                 const int from = inputs[row];
@@ -3035,7 +2684,7 @@ std::vector<View::Widget> View::widgets() const {
             onScreen(place, kVisibleCards, sourceSpan(cardSources[position])))
             cards.push_back({position, place});
     for (const auto &[position, card] : cards) // a folded card shows no envelope
-        if (sourceTypeOf(cardSources[position]) == SourceType::Env && !sourceFolded(cardSources[position]))
+        if (mods_.sourceTypeOf(cardSources[position]) == SourceType::Env && !sourceFolded(cardSources[position]))
             envs.push_back(kOps + cardSources[position]);
     if (node < kOps && !wide && opTabShown(node) == InspectorTab::Envelope)
         envs.push_back(node);
@@ -3075,9 +2724,9 @@ std::vector<View::Widget> View::widgets() const {
         }
         const float span = sourceSpan(s);
         const Rect p = sourceCard(card, span);
-        const bool lfo = runsLfo(sourceTypeOf(s)); // an LFO, or Random, a random one
+        const bool lfo = runsLfo(mods_.sourceTypeOf(s)); // an LFO, or Random, a random one
         const bool widened = s == wideLfo();
-        const bool widens = lfo && !widened && lfoShapeOf(s) == LfoShape::Custom;
+        const bool widens = lfo && !widened && mods_.lfoShapeOf(s) == LfoShape::Custom;
         const float gripEnd = widened ? lfoCardButton(card, 1).x - 4.0f // short of the reset, leftmost
                               : widens ? lfoWidenButton(card).x - 4.0f
                                        : cardTitleRight(p);
@@ -3131,8 +2780,8 @@ std::vector<View::Widget> View::widgets() const {
         if (lfo) {
             // An LFO's shape list, or a Random or Curve card's Unipolar | Bipolar in its place, one of them lit, as the
             // clock modes are: a Random card's sets its Bipolar, a Curve card's its Unipolar (on in the first).
-            const bool random = sourceTypeOf(s) == SourceType::Random;
-            const bool curve = sourceTypeOf(s) == SourceType::Curve;
+            const bool random = mods_.sourceTypeOf(s) == SourceType::Random;
+            const bool curve = mods_.sourceTypeOf(s) == SourceType::Curve;
             if (random || curve) {
                 const size_t polarity = list.size();
                 for (int bipolar = 0; bipolar < 2; ++bipolar)
@@ -3169,13 +2818,13 @@ std::vector<View::Widget> View::widgets() const {
                  lfoKnob(card, 0), 30.0f, synced ? nullptr : tr(Str::LabelRate));
             if (!random)
                 knob(paramIndex(s, SourceParam::Phase), lfoKnob(card, 1), 30.0f, tr(Str::LabelPhase));
-        } else if (sourceTypeOf(s) == SourceType::Env) {
+        } else if (mods_.sourceTypeOf(s) == SourceType::Env) {
             const EnvIndices e = envIndices(kOps + s);
             const int params[] = {e.attack, e.hold, e.decay, e.sustain, e.release};
             const float step = (p.w - 24.0f) / 5.0f;
             for (int i = 0; i < 5; ++i)
                 knob(params[i], {p.x + 12.0f + step * (i + 0.5f), p.y + 54.0f}, 32.0f, tr(envLabels[i]));
-        } else if (sourceTypeOf(s) == SourceType::Midi) {
+        } else if (mods_.sourceTypeOf(s) == SourceType::Midi) {
             // Its input's list button, where an LFO's shape is, and right of it the controller (while that is its
             // input) and Slew. Its list opens as an LFO's shapes do.
             const int input = paramIndex(s, SourceParam::MidiInput);
@@ -3452,7 +3101,7 @@ std::vector<View::Widget> View::widgets() const {
     // while that card is on screen and still holds that effect.
     const FxParam listField = fxFieldOf(listMenu_);
     const int listSlot = fxSlotOf(listMenu_);
-    if (listSlot >= 0 && fxWide() && fxTypeOfField(listField) == fxSlotType(listSlot) &&
+    if (listSlot >= 0 && fxWide() && fxTypeOfField(listField) == fx_.slotType(listSlot) &&
         (fxGraph() || !fxFolded(listSlot))) {
         if (const std::optional<Rect> shown = fxCardOf(listSlot)) {
             const Rect card = *shown;
@@ -3476,7 +3125,7 @@ std::vector<View::Widget> View::widgets() const {
     // A split's list of slopes, under its button on its card (in the row's container or the graph's inspector).
     if (const int split = splitOf(listMenu_); split >= 0 && isSplitSlope(listMenu_) && fxWide()) {
         if (const std::optional<Rect> shown = splitCardOf(split)) {
-            const Rect button = splitSlopeButton(splitDisplay(*shown, splitThree(split)));
+            const Rect button = splitSlopeButton(splitDisplay(*shown, fx_.splitThree(split)));
             const int items = listCount(listMenu_);
             add(Kind::ListMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
             add(Kind::ListMenu, listMenu(button, items), -1, 1);
@@ -3520,7 +3169,8 @@ std::vector<View::Widget> View::widgets() const {
     // A route's list of modes, under the mode's part of its label's pill, while the graph shows that route.
     if (const int from = routeModeFrom(listMenu_), to = routeModeTo(listMenu_);
         from >= 0 && controller_.layout().view == RoutingView::Graph && shapeEditing() < 0 && partialEditing() < 0 &&
-        nodeOn(from) && nodeOn(to) && wired(routeParam(from, to)) && rerouting() != routeParam(from, to)) {
+        routing_.nodeOn(from) && routing_.nodeOn(to) && routing_.wired(routeParam(from, to)) &&
+        rerouting() != routeParam(from, to)) {
         Rect idle;
         for (const auto &[param, rect] : routeLabels())
             if (param == routeParam(from, to))
@@ -3534,7 +3184,7 @@ std::vector<View::Widget> View::widgets() const {
             add(Kind::ListItem, listMenuItem(button, items, item), listMenu_, -1, listItemValue(listMenu_, item));
     }
     // The open list of a parametric EQ band's shapes, above its button, while that card is on screen.
-    if (peqMenu_ >= 0 && fxWide() && fxSlotType(fxSlotOf(peqMenu_)) == FxType::ParamEq) {
+    if (peqMenu_ >= 0 && fxWide() && fx_.slotType(fxSlotOf(peqMenu_)) == FxType::ParamEq) {
         const int slot = fxSlotOf(peqMenu_);
         const int band = peqBandOfType(peqMenu_);
         const std::optional<Rect> shown = fxCardOf(slot);
@@ -3646,7 +3296,8 @@ std::optional<View::Widget> View::hitTest(Point p) const {
             if (onNodeEdge(it->a, it->rect.center(), p))
                 return *it;
         } else if (it->kind == Kind::Wire) {
-            const Wire w = wireBetween(it->a, nodeCenter(it->a), it->b, routePoint(it->b), wireBend(it->param));
+            const Wire w =
+                wireBetween(it->a, routing_.nodeCenter(it->a), it->b, routePoint(it->b), routing_.wireBend(it->param));
             if (it->rect.contains(p) && distanceToWire(w, p) <= kWireGrab)
                 return *it;
         } else if (it->kind == Kind::FxWire) {
@@ -3812,7 +3463,7 @@ void View::paint(Canvas &c, Rect area) {
             if (card.faint)
                 c.fillRect(fxCard(pos, card.span).inset(-1.0f), kPanel.alpha(0.65f), kRadiusCard + 1.0f);
             else if (card.at.lane != 0 && card.at.item < static_cast<int>(line.size()) &&
-                     fxBandSoloedOut(line[card.at.item], card.at.lane))
+                     fx_.bandSoloedOut(line[card.at.item], card.at.lane))
                 c.fillRect(fxCard(pos, card.span).inset(-1.0f), kPanel.alpha(1.0f - kSoloedOutAlpha), kRadiusCard + 1.0f);
         }
         for (const FxRowBox &box : row.boxes) {
@@ -3902,7 +3553,7 @@ void View::paint(Canvas &c, Rect area) {
         // From the mouse to where it goes; away from the nodes it is faint: let go of there, it goes.
         const int source = nodeAt(drag_.now);
         const Color color = source < 0 ? kFaint : nodeColor(source);
-        Point end = to == kNodes ? kOutCore : outlineToward(to, nodeCenter(to), drag_.now);
+        Point end = to == kNodes ? kOutCore : outlineToward(to, routing_.nodeCenter(to), drag_.now);
         if (to == kNodes) { // onto the core's edge, toward the mouse
             const Point out = normalize({drag_.now.x - kOutCore.x, drag_.now.y - kOutCore.y});
             end = {kOutCore.x + out.x * (kOutCoreRadius + 2.0f), kOutCore.y + out.y * (kOutCoreRadius + 2.0f)};
@@ -3914,8 +3565,8 @@ void View::paint(Canvas &c, Rect area) {
         c.fillCircle(drag_.now, 3.5f, color);
         if (source >= 0) { // a route that is there already from that node rings faintly
             const int param = routeTo(source, to);
-            const Color ring = param == drag_.widget.param || !wired(param) ? color : kFaint;
-            const Point center = nodeCenter(source);
+            const Color ring = param == drag_.widget.param || !routing_.wired(param) ? color : kFaint;
+            const Point center = routing_.nodeCenter(source);
             if (isBoxNode(source))
                 c.strokeRect({center.x - kFilterHalfW - 5.0f, center.y - kFilterHalfH - 5.0f,
                               2.0f * kFilterHalfW + 10.0f, 2.0f * kFilterHalfH + 10.0f},
@@ -3929,7 +3580,7 @@ void View::paint(Canvas &c, Rect area) {
         const bool removing = rerouting() >= 0 && nodeAt(drag_.now) < 0 && !onOutCore(drag_.now);
         const Color color = removing ? kFaint : nodeColor(from);
         // The route leaves its node toward the mouse; a moving one has its arrowhead under it.
-        const Point origin = nodeCenter(from);
+        const Point origin = routing_.nodeCenter(from);
         const Point start = outlineToward(from, origin, drag_.now);
         if (nodeAt(drag_.now) == from && drag_.leftNode) {
             // Held back over its own node, once it has been away from it, it loops back into it: let go of there,
@@ -3954,10 +3605,10 @@ void View::paint(Canvas &c, Rect area) {
         }
         const int target = nodeAt(drag_.now);
         if (target >= 0) {
-            const Point center = nodeCenter(target);
+            const Point center = routing_.nodeCenter(target);
             // A route a moving one would find there already rings faintly.
             const int param = routeParam(from, target);
-            const bool fits = drag_.kind == DragKind::Connect || param == drag_.widget.param || !wired(param);
+            const bool fits = drag_.kind == DragKind::Connect || param == drag_.widget.param || !routing_.wired(param);
             const Color ring = fits ? color : kFaint;
             if (isBoxNode(target))
                 c.strokeRect({center.x - kFilterHalfW - 5.0f, center.y - kFilterHalfH - 5.0f,
@@ -4167,7 +3818,7 @@ void View::paintWheel(Canvas &c, const Widget &w, bool hovered, bool active) {
         // Fills up from the bottom with the wheel's value, in the color of its handle; bipolar, from the middle, where
         // it moves nothing.
         const float y = bottom - (bottom - top) * static_cast<float>(value(w.param));
-        const float from = sourceBipolar(kWheelSource) ? 0.5f * (top + bottom) : bottom;
+        const float from = mods_.sourceBipolar(kWheelSource) ? 0.5f * (top + bottom) : bottom;
         c.fillRect({r.x + inset, std::min(y, from), r.w - 2.0f * inset, std::abs(from - y)},
                    kSourceColors[kWheelSource].alpha(0.6f), kRadiusMark);
         if (from < bottom)
@@ -4326,7 +3977,7 @@ void View::paintFxBackdrop(Canvas &c, Rect area, Point out) {
 // envelope and the routes that take it to the output let it through, where modulation takes them now, so a route an LFO
 // opens from 0 % lights it up; a filter's or shaper's alike, as loud as what goes through it (see boxLevel()).
 float View::nodeGlowTarget(int node) const {
-    if (!nodeOn(node))
+    if (!routing_.nodeOn(node))
         return 0.0f;
     const float level = node < kOps ? std::min(telemetry_.opLevels[node], 1.0f) : boxLevel(node);
     return level * static_cast<float>(std::sqrt(outLevel(node)));
@@ -4339,12 +3990,12 @@ float View::nodeGlowTarget(int node) const {
 float View::boxLevel(int node) const {
     std::array<bool, kNodes> seen{};
     auto level = [&](auto &self, int box) -> float {
-        if (seen[box] || !nodeOn(box))
+        if (seen[box] || !routing_.nodeOn(box))
             return 0.0f;
         seen[box] = true;
         float most = 0.0f;
         for (int from = 0; from < kNodes; ++from) {
-            if (from == box || !nodeOn(from))
+            if (from == box || !routing_.nodeOn(from))
                 continue;
             const float through = static_cast<float>(liveAmount(routeParam(from, box)));
             if (through <= 0.0f)
@@ -4394,9 +4045,9 @@ bool View::routingGraphShown() const {
 std::optional<Point> View::lensLeaderStart() const {
     const int node = controller_.layout().selectedNode;
     if (controller_.layout().view != RoutingView::Graph || shapeEditing() >= 0 || partialEditing() >= 0 ||
-        !nodeOn(node))
+        !routing_.nodeOn(node))
         return std::nullopt;
-    const Point center = nodeCenter(node);
+    const Point center = routing_.nodeCenter(node);
     const float extent = (isBoxNode(node) ? kFilterHalfW : kNodeRadius) + kSelectedRing + 2.0f;
     return Point{center.x - extent, center.y};
 }
@@ -4418,7 +4069,7 @@ void View::paintRouting(Canvas &c) {
     c.text({kHintX, kRouting.y + 10.0f, kRouting.right() - 16.0f - kHintX, 22.0f},
            tr(Str::HintRouting), kTextLabel, kFaint, Align::Right);
     if (routingGridShown()) { // Ctrl held: the grid's points, under everything, the one a node dragged lands on lit
-        const Point target = drag_.kind == DragKind::Node ? nodeCenter(drag_.widget.a) : Point{};
+        const Point target = drag_.kind == DragKind::Node ? routing_.nodeCenter(drag_.widget.a) : Point{};
         paintGridMarks(c, kGraph, kRoutingGridCols, kRoutingGridRows, drag_.kind == DragKind::Node ? &target : nullptr);
     }
     if (const std::optional<Point> leader = lensLeaderStart()) {
@@ -4431,15 +4082,15 @@ void View::paintRouting(Canvas &c) {
     const int moving = rerouting(); // drawn following the mouse instead
     const int busParam = drag_.kind == DragKind::Connect || moving >= 0 ? outParam(drag_.widget.a) : -1;
     const bool busTarget = busParam >= 0 && onOutCore(drag_.now) &&
-                           (drag_.kind == DragKind::Connect || busParam == moving || !wired(busParam));
+                           (drag_.kind == DragKind::Connect || busParam == moving || !routing_.wired(busParam));
     paintOutCore(c, busTarget);
 
     // The operators' halos and unison copies, under the wires, so an arrowhead coming in at a node's side shows over
     // the copies peeking out there.
-    const std::vector<int> on = enabledNodes();
+    const std::vector<int> on = routing_.enabledNodes();
     for (int node : on)
         if (node < kOps)
-            paintOpBacking(c, node, nodeCenter(node));
+            paintOpBacking(c, node, routing_.nodeCenter(node));
 
     // Modulated routes swell and thin with their modulation while notes play.
     auto focused = [&](int param) {
@@ -4448,10 +4099,10 @@ void View::paintRouting(Canvas &c) {
     };
     for (int node : on) {
         const int param = outParam(node);
-        if (!goesOut(node) || param == moving)
+        if (!routing_.goesOut(node) || param == moving)
             continue;
         const float out = shownAmount(param);
-        const OutWire w = outWireOf(node, nodeCenter(node), wireBend(param));
+        const OutWire w = outWireOf(node, routing_.nodeCenter(node), routing_.wireBend(param));
         const Color color = focused(param) ? kText : nodeColor(node).alpha(0.35f + 0.65f * out);
         c.curve(w.start, w.control, w.end, color, 1.2f + 2.4f * out);
         arrowHead(c, w.end, w.dir, color);
@@ -4460,17 +4111,18 @@ void View::paintRouting(Canvas &c) {
     for (int from : on) {
         for (int to : on) {
             const int param = routeParam(from, to);
-            if (!wired(param) || param == moving)
+            if (!routing_.wired(param) || param == moving)
                 continue;
             const float amount = shownAmount(param);
             const Color base = routeColor(from, to);
             const Color color = focused(param) ? kText : base.alpha(0.35f + 0.65f * amount);
             const float width = 1.2f + 2.4f * amount;
             if (from == to) {
-                c.strokeCircle(loopCenter(from, nodeCenter(from)), 9.0f, color, width);
+                c.strokeCircle(loopCenter(from, routing_.nodeCenter(from)), 9.0f, color, width);
                 continue;
             }
-            const Wire w = wireBetween(from, nodeCenter(from), to, nodeCenter(to), wireBend(param));
+            const Wire w =
+                wireBetween(from, routing_.nodeCenter(from), to, routing_.nodeCenter(to), routing_.wireBend(param));
             c.curve(w.start, w.control, w.end, color, width);
             arrowHead(c, w.end, w.tangent, color);
         }
@@ -4481,7 +4133,7 @@ void View::paintRouting(Canvas &c) {
 // from its knob, notes playing or not; another source's in the newest voice, while one plays, and on an effect's param
 // as the effects ring out after the last one. None while it modulates nothing: bypassed, or its source switched off.
 std::optional<double> View::liveSlotOffset(int source, int slot) const {
-    if (source < 0 || slot < 0 || slotBypassed(source, slot) || !sourceOn(source))
+    if (source < 0 || slot < 0 || mods_.slotBypassed(source, slot) || !mods_.sourceOn(source))
         return std::nullopt;
     const int aux = slotAux([this](int i) { return value(i); }, source, slot);
     if (!runsPerVoice(source) && (aux < 0 || !runsPerVoice(aux))) {
@@ -4522,18 +4174,6 @@ std::pair<double, double> View::modReach(const Assignment &m) const {
     return {std::min(depth, 0.0), std::max(depth, 0.0)};
 }
 
-bool View::sourceBipolar(int source) const {
-    return fmvibe::sourceBipolar([this](int index) { return value(index); }, source);
-}
-
-double View::resetValue(int param) const {
-    // A bipolar macro moves nothing at its knob's middle, so that is where it goes back to.
-    if (const int macro = macroOf(param);
-        macro >= 0 && param == paramIndex(macro, MacroParam::Value) && sourceBipolar(kMaxSources + macro))
-        return 0.5;
-    return table_[param].def;
-}
-
 void View::paintModRange(Canvas &c, Rect bar, int param) {
     const double n = norm(param);
     // The modulation whose depth handle is under the mouse goes last, twice as thick, over the others.
@@ -4541,7 +4181,7 @@ void View::paintModRange(Canvas &c, Rect bar, int param) {
         const auto [down, up] = modReach(m);
         const double from = std::clamp(n + down, 0.0, 1.0);
         const double to = std::clamp(n + up, 0.0, 1.0);
-        const float alpha = sourceOn(m.source) && !m.bypassed ? 1.0f : (focused ? 0.4f : 0.3f);
+        const float alpha = mods_.sourceOn(m.source) && !m.bypassed ? 1.0f : (focused ? 0.4f : 0.3f);
         const float h = focused ? 2.0f * bar.h : bar.h;
         const Color color = kSourceColors[m.source].alpha(alpha);
         c.fillRect({bar.x + static_cast<float>(from) * bar.w, bar.center().y - 0.5f * h,
@@ -4583,9 +4223,9 @@ void View::paintMatrixLabels(Canvas &c) {
             return kText;
         // In a flat theme an operator's name takes its own color too, as its cells, its tab and its plate do.
         const Color color = isBoxNode(node) || look.flat ? nodeColor(node) : (node == selected ? kText : kDim);
-        return nodeOn(node) ? color : (isBoxNode(node) ? color.alpha(0.35f) : kFaint);
+        return routing_.nodeOn(node) ? color : (isBoxNode(node) ? color.alpha(0.35f) : kFaint);
     };
-    const Color plate = nodeColor(selected).alpha(nodeOn(selected) ? 0.22f : 0.1f);
+    const Color plate = nodeColor(selected).alpha(routing_.nodeOn(selected) ? 0.22f : 0.1f);
     const Rect first = gridCell(selected, 0), top = gridCell(0, selected); // the first cells of its row and column
     c.fillRect({first.x - 31.0f, first.y + 3.0f, 26.0f, first.h - 6.0f}, plate, kRadiusControl);
     c.fillRect({top.x - 1.0f, top.y - kMatrixNamesH, top.w + 2.0f, 18.0f}, plate, kRadiusControl);
@@ -4718,7 +4358,7 @@ void View::paintFx(Canvas &c, std::optional<Rect> only) {
             c.fillRect(whole, splitFill(), kRadiusCard);
             if (!look.flat || hot || (drag_.kind == DragKind::None && whole.contains(hoverPoint_)))
                 c.strokeRect(whole, outline, held ? 1.6f : 1.3f, kRadiusCard);
-            splitIcon(c, fxIconRect(whole), hot ? kText : kDim, splitThree(box.split) ? 3 : 2);
+            splitIcon(c, fxIconRect(whole), hot ? kText : kDim, fx_.splitThree(box.split) ? 3 : 2);
             gripDots(whole, hot);
             paintDownward(c, {whole.x, whole.y + 82.0f, whole.w, whole.h - 90.0f},
                           trf(Str::NodeSplit, {std::to_string(box.split + 1)}), kText);
@@ -4745,7 +4385,7 @@ void View::paintFx(Canvas &c, std::optional<Rect> only) {
         // The arrows along its band, into each of its cards, in the band's color; none into its dashed card.
         // Faint along a band its join doesn't let through, the other band soloed.
         const float heard = box.item < static_cast<int>(shownLine.size()) &&
-                                    fxBandSoloedOut(shownLine[box.item], box.lane)
+                                    fx_.bandSoloedOut(shownLine[box.item], box.lane)
                                 ? kSoloedOutAlpha
                                 : 1.0f;
         const Color band = laneColor(box.lane).alpha(heard);
@@ -4758,7 +4398,7 @@ void View::paintFx(Canvas &c, std::optional<Rect> only) {
     }
     for (const FxRowCard &card : row.cards) {
         const int slot = card.slot;
-        const FxType type = fxSlotType(slot);
+        const FxType type = fx_.slotType(slot);
         const float pos = card.place - scroll;
         if (!onScreen(pos, kVisibleFx, card.span))
             continue;
@@ -4787,7 +4427,7 @@ void View::paintFx(Canvas &c, std::optional<Rect> only) {
 // A card's frame, title, display and what goes with them, wherever it shows: in the row, or in the effects graph's
 // inspector. Its knobs and buttons are widgets, painted with the others.
 void View::paintFxCard(Canvas &c, int slot, Rect card, bool dragged) {
-    const FxType type = fxSlotType(slot);
+    const FxType type = fx_.slotType(slot);
     const bool on = value(paramIndex(slot, FxParam::Enabled)) >= 0.5;
     const Color fx = fxTypeColor(type); // each type of effect in a color of its own
     paintCardFace(c, card, fx, on, kMaxSources + slot, dragged, 0.45f, kFxPanel);
@@ -4895,7 +4535,7 @@ void View::paintShapeEditor(Canvas &c, int shape) {
     const Color color = kSourceColors[lfo];
     const Rect title{kRouting.x + 16.0f, kRouting.y + 9.0f, 104.0f, 22.0f};
     c.fillRect(title, color.alpha(0.18f), kRadiusControl);
-    c.text(title, trf(Str::TitleShape, {sourceName(lfo)}), kTextBody, color, Align::Center, true);
+    c.text(title, trf(Str::TitleShape, {mods_.sourceName(lfo)}), kTextBody, color, Align::Center, true);
     c.text({title.right() + 12.0f, kRouting.y + 10.0f, shapeReset().x - title.right() - 24.0f, 22.0f},
            shapeHint(), kTextLabel, kFaint, Align::Right);
 
@@ -6246,7 +5886,7 @@ void View::paintNoteSource(Canvas &c, float top) {
     }
     c.text(box, text, kTextBody, telemetry_.voices > 0 ? kText : kFaint, Align::Center, telemetry_.voices > 0);
     c.text({box.x - 14.0f, top + kStripRow + 19.0f, box.w + 28.0f, 16.0f}, tr(Str::LabelNote), kTextLabel, kDim);
-    if (sourceBipolar(kNoteSource)) // swings both ways: a sign in its corner
+    if (mods_.sourceBipolar(kNoteSource)) // swings both ways: a sign in its corner
         c.text({box.right() - 13.0f, box.y + 1.0f, 11.0f, 11.0f}, "\xC2\xB1", kTextLabel, color, Align::Center, true);
 }
 
@@ -6277,7 +5917,7 @@ void View::paintVelocitySource(Canvas &c, float top) {
     const std::string text = playing ? std::to_string(std::lround(127.0 * velocity)) : "\xE2\x80\x93";
     c.text(box, text, kTextBody, playing ? kText : kFaint, Align::Center, playing);
     c.text({box.x - 14.0f, top + kStripRow + 19.0f, box.w + 28.0f, 16.0f}, tr(Str::LabelVelocitySource), kTextLabel, kDim);
-    if (sourceBipolar(kVelocitySource)) // swings both ways: a sign in its corner
+    if (mods_.sourceBipolar(kVelocitySource)) // swings both ways: a sign in its corner
         c.text({box.right() - 13.0f, box.y + 1.0f, 11.0f, 11.0f}, "\xC2\xB1", kTextLabel, color, Align::Center, true);
 }
 
@@ -6372,7 +6012,7 @@ void View::paintInspector(Canvas &c) {
         const int shaper = shaperOfNode(node);
         paintPageTitle(c, node, summaryRect, clipModeName(clipMode(value(paramIndex(shaper, ShaperParam::Mode)))),
                        boxRoutes(node));
-        const PageDim page(c, !nodeOn(node));
+        const PageDim page(c, !routing_.nodeOn(node));
         const LensDisplay display;
         paintShaperPage(c, shaper);
         return;
@@ -6405,12 +6045,12 @@ void View::paintInspector(Canvas &c) {
         if (value(paramIndex(op, OpParam::Out)) > 0.0)
             feeds = tr(Str::SummaryOut);
         for (int to = 0; to < kNodes; ++to)
-            if (to != op && nodeOn(to) && value(routeParam(op, to)) > 0.0)
+            if (to != op && routing_.nodeOn(to) && value(routeParam(op, to)) > 0.0)
                 feeds += (feeds.empty() ? "" : ", ") + std::string(kNodeNames[to]);
         if (!feeds.empty())
             summary += dot + trf(Str::SummaryTo, {feeds});
         paintPageTitle(c, node, summaryRect, head, summary);
-        const PageDim page(c, !nodeOn(node));
+        const PageDim page(c, !routing_.nodeOn(node));
         // The line between the operator's sound and its tabs, then the well: the tabs along its top edge, on a line
         // the shown one's accent sits on, and the display under them.
         c.line({kInspector.x + 16.0f, kOpRuleY}, {kInspector.right() - 16.0f, kOpRuleY}, kBorder, 1.0f);
@@ -6447,7 +6087,7 @@ void View::paintInspector(Canvas &c) {
         head += " " + std::to_string(slopeDb(playedSlope(type, filterSlope(value(paramIndex(filter, FilterParam::Slope)))))) +
                 " dB";
     paintPageTitle(c, node, summaryRect, head, boxRoutes(node));
-    const PageDim page(c, !nodeOn(node));
+    const PageDim page(c, !routing_.nodeOn(node));
     const LensDisplay display;
     // A voice filter tracks the newest voice's note; with none, the curve is back at the knob's C4.
     paintFilterResponse(c, kFilterDisplay, paramIndex(filter, FilterParam::Type),
@@ -6467,7 +6107,7 @@ std::string View::boxRoutes(int node) const {
     std::string from, to, mods;
     auto name = [](std::string &list, const char *node) { list += (list.empty() ? "" : ", ") + std::string(node); };
     for (int other = 0; other < kNodes; ++other) {
-        if (other == node || !nodeOn(other))
+        if (other == node || !routing_.nodeOn(other))
             continue;
         if (value(routeParam(other, node)) > 0.0)
             name(from, kNodeNames[other]);
@@ -6616,13 +6256,13 @@ View::LabelPill View::labelPill(int param, int mode, Rect idle) const {
 std::vector<int> View::inputsOf(int op) const {
     std::vector<int> inputs;
     for (int from = 0; from < kNodes; ++from)
-        if (from != op && nodeOn(from) && wired(routeParam(from, op)))
+        if (from != op && routing_.nodeOn(from) && routing_.wired(routeParam(from, op)))
             inputs.push_back(from);
     return inputs;
 }
 
 int View::inputsRows(int op) const {
-    return static_cast<int>(inputsOf(op).size()) + (wired(routeParam(op, op)) ? 1 : 0);
+    return static_cast<int>(inputsOf(op).size()) + (routing_.wired(routeParam(op, op)) ? 1 : 0);
 }
 
 float View::inputsEnd(int op) const {
@@ -6653,7 +6293,7 @@ Rect View::inputsThumb(int op) const {
 // is routed into it yet; the buttons and labels draw themselves, cut off at the list's ends as they scroll.
 void View::paintInputs(Canvas &c, int op) {
     const std::vector<int> inputs = inputsOf(op);
-    const bool feedback = wired(routeParam(op, op));
+    const bool feedback = routing_.wired(routeParam(op, op));
     if (inputs.empty() && !feedback) {
         c.text({kInspector.x + 16.0f, kInputsTop, kInspector.w - 32.0f, 40.0f},
                trf(Str::InputsNone, {nodeTitle(op)}), kTextBody, kDim, Align::Center);
@@ -6937,7 +6577,7 @@ void View::paintFilterResponse(Canvas &c, Rect r, int typeParam, int slopeParam,
     auto reach = [&](int param, double set) {
         double low = set, high = set;
         forEachMod(param, [&](const Assignment &m) {
-            if (m.bypassed || !sourceOn(m.source))
+            if (m.bypassed || !mods_.sourceOn(m.source))
                 return;
             const auto [down, up] = modReach(m);
             low += down;
@@ -6992,7 +6632,7 @@ void View::paintEnvelope(Canvas &c, Rect r, int env, Color color, bool live) {
     plotLine(c, points.data(), points.size(), color, 2.0f);
 
     // While notes play, a line across at the newest voice's level: an operator's envelope's, or a mod envelope's.
-    if (live && telemetry_.voices > 0 && (env < kOps ? nodeOn(env) : sourceOn(env - kOps))) {
+    if (live && telemetry_.voices > 0 && (env < kOps ? routing_.nodeOn(env) : mods_.sourceOn(env - kOps))) {
         const float level = std::clamp(env < kOps ? telemetry_.opEnvLevels[env] : telemetry_.sources[env - kOps], 0.0f, 1.0f);
         const float y = s.bottom - level * height;
         c.line({r.x + 8.0f, y}, {r.right() - 8.0f, y}, color.alpha(0.35f), 1.0f, true);
@@ -7015,7 +6655,7 @@ void View::paintEnvelope(Canvas &c, Rect r, int env, Color color, bool live) {
         }
     }
     // A bipolar envelope swings its targets about its middle level: a line there, and a sign in the corner.
-    if (env >= kOps && sourceBipolar(env - kOps)) {
+    if (env >= kOps && mods_.sourceBipolar(env - kOps)) {
         const float middle = s.bottom - 0.5f * height;
         c.line({r.x + 8.0f, middle}, {r.right() - 8.0f, middle}, color.alpha(0.45f), 1.0f, true);
         c.text({r.right() - 20.0f, r.y + 3.0f, 14.0f, 14.0f}, "\xC2\xB1", kTextBody, color, Align::Center, true);
@@ -7046,7 +6686,7 @@ void View::paintEnvReadout(Canvas &c, const Widget &w) {
     // On a backdrop of the display's color, which the curve under it shows through faintly; left of a bipolar
     // envelope's sign.
     const Rect r = envRect(w.a);
-    const float right = r.right() - (w.a >= kOps && sourceBipolar(w.a - kOps) ? 24.0f : 8.0f);
+    const float right = r.right() - (w.a >= kOps && mods_.sourceBipolar(w.a - kOps) ? 24.0f : 8.0f);
     const float width = c.textWidth(text, kTextLabel);
     c.fillRect({right - width - 5.0f, r.y + 2.0f, width + 10.0f, 14.0f}, kDisplayColor.alpha(0.85f), kRadiusMark);
     c.text({r.x, r.y + 2.0f, right - r.x, 14.0f}, text, kTextLabel, kText, Align::Right);
@@ -7054,14 +6694,13 @@ void View::paintEnvReadout(Canvas &c, const Widget &w) {
 
 // How many cycles a random LFO's display shows.
 
-
 void View::paintLfo(Canvas &c, Rect r, int lfo) {
     c.fillRect(r, kDisplayColor, kRadiusCard);
     const Rect inner{r.x + 10.0f, r.y + 8.0f, r.w - 20.0f, r.h - 16.0f};
     // The zero line: in the middle, or at the bottom for a unipolar LFO, which only swings up from it.
-    const float zero = sourceBipolar(lfo) ? inner.center().y : inner.bottom();
+    const float zero = mods_.sourceBipolar(lfo) ? inner.center().y : inner.bottom();
     c.line({inner.x, zero}, {inner.right(), zero}, kBorder, 1.0f);
-    const LfoShape shape = lfoShapeOf(lfo);
+    const LfoShape shape = mods_.lfoShapeOf(lfo);
     // A random one standing still takes a value for each note, at once: four made-up notes' steps, until one plays,
     // then a line across at the value the newest voice holds, the live dot at its right end.
     const bool held = shape == LfoShape::Random && lfoHeld([this](int i) { return value(i); }, lfo);
@@ -7196,7 +6835,7 @@ void View::paintLfoCard(Canvas &c, float card, int lfo) {
     // widgets are dimmed as disabled ones are).
     if (shapeEditing() == lfo)
         c.fillRect({readout.x, readout.y, r.w + 16.0f, readout.h},
-                   cardFace(kSourceColors[lfo], sourceOn(lfo)).alpha(1.0f - kDimOpacity), kRadiusMark);
+                   cardFace(kSourceColors[lfo], mods_.sourceOn(lfo)).alpha(1.0f - kDimOpacity), kRadiusMark);
 }
 
 void View::paintSources(Canvas &c) {
@@ -7234,44 +6873,44 @@ float slotNameSize(Canvas &c, const std::string &name) {
 void View::paintSource(Canvas &c, float card, int s) {
     const Rect p = sourceCard(card, sourceSpan(s));
     const Color color = kSourceColors[s];
-    const bool lfo = runsLfo(sourceTypeOf(s)); // an LFO, or Random, a random one
+    const bool lfo = runsLfo(mods_.sourceTypeOf(s)); // an LFO, or Random, a random one
     const bool dragged = drag_.kind == DragKind::SourceMove && drag_.widget.a == s;
-    paintCardFace(c, p, color, sourceOn(s), s, dragged, 0.35f, sourceCardClip());
+    paintCardFace(c, p, color, mods_.sourceOn(s), s, dragged, 0.35f, sourceCardClip());
     if (sourceFolded(s)) { // the grip's dots under the handle (widgets), then its name down the strip
         const bool grip =
             (hover_ && hover_->kind == Kind::SourceGrip && hover_->a == s && drag_.kind == DragKind::None) || dragged;
         for (int d = 0; d < 6; ++d)
             c.fillCircle({p.center().x - 5.0f + (d / 2) * 5.0f, p.y + 35.0f + (d % 2) * 5.0f}, 1.4f, grip ? kText : kFaint);
-        std::string name = sourceName(s);
+        std::string name = mods_.sourceName(s);
         // "Random" and "Curve" too long for the strip: their short names, by their number.
-        if (sourceTypeOf(s) == SourceType::Random || sourceTypeOf(s) == SourceType::Curve)
-            name = trf(sourceTypeOf(s) == SourceType::Random ? Str::SourceFoldedRandom : Str::SourceFoldedCurve,
+        if (mods_.sourceTypeOf(s) == SourceType::Random || mods_.sourceTypeOf(s) == SourceType::Curve)
+            name = trf(mods_.sourceTypeOf(s) == SourceType::Random ? Str::SourceFoldedRandom : Str::SourceFoldedCurve,
                        {name.substr(name.find_last_of(' ') + 1)});
-        paintDownward(c, {p.x, p.y + 104.0f, p.w, p.h - 110.0f}, upperCase(name), sourceOn(s) ? color : kDim);
+        paintDownward(c, {p.x, p.y + 104.0f, p.w, p.h - 110.0f}, upperCase(name), mods_.sourceOn(s) ? color : kDim);
         return;
     }
 
     // Title row: the handle (a widget) and the name, grey while the source is off; the row drags the card.
     // In capitals, as an effect card's title.
-    c.text({p.x + 40.0f, p.y + 7.0f, 80.0f, 21.0f}, upperCase(sourceName(s)), kTextBody, sourceOn(s) ? kText : kDim,
-           Align::Left, true);
+    c.text({p.x + 40.0f, p.y + 7.0f, 80.0f, 21.0f}, upperCase(mods_.sourceName(s)), kTextBody,
+           mods_.sourceOn(s) ? kText : kDim, Align::Left, true);
 
     if (s == wideLfo()) {
         paintLfoCard(c, card, s);
     } else if (lfo) {
-        paintLfo(c, sourceDisplay(card, lfoShapeOf(s) == LfoShape::Random), s);
-    } else if (sourceTypeOf(s) == SourceType::Env) {
+        paintLfo(c, sourceDisplay(card, mods_.lfoShapeOf(s) == LfoShape::Random), s);
+    } else if (mods_.sourceTypeOf(s) == SourceType::Env) {
         paintEnvelope(c, sourceDisplay(card), kOps + s, color, true);
     } else {
         // MIDI: what the newest voice gets from it, as a bar from the left (from the middle while it is bipolar, where
         // its depths swing both ways), and in numbers.
         const Rect d = sourceDisplay(card);
         c.fillRect(d, kBackground, kRadiusCard);
-        const bool live = sourceOn(s) && telemetry_.voices > 0;
+        const bool live = mods_.sourceOn(s) && telemetry_.voices > 0;
         const double out = live ? std::clamp(static_cast<double>(telemetry_.sources[s]), 0.0, 1.0) : 0.0;
         const Rect track{d.x + 12.0f, d.center().y - 3.0f, d.w - 24.0f, 6.0f};
         c.fillRect(track, kTrack, kRadiusMark);
-        const bool bipolar = sourceBipolar(s);
+        const bool bipolar = mods_.sourceBipolar(s);
         const float from = bipolar ? track.center().x : track.x;
         const float to = track.x + track.w * static_cast<float>(out);
         if (live)
@@ -7313,9 +6952,9 @@ Color nodeFace(Color color, bool selected, bool hovered) {
 bool View::opHeard(int op) const {
     bool heard = value(paramIndex(op, OpParam::Out)) > 0.0;
     for (int filter = 0; filter < kFilters; ++filter)
-        heard = heard || (nodeOn(kOps + filter) && value(sendIndex(op, filter)) > 0.0);
+        heard = heard || (routing_.nodeOn(kOps + filter) && value(sendIndex(op, filter)) > 0.0);
     for (int shaper = 0; shaper < kShapers; ++shaper)
-        heard = heard || (nodeOn(kOps + kFilters + shaper) && value(shaperSendIndex(op, shaper)) > 0.0);
+        heard = heard || (routing_.nodeOn(kOps + kFilters + shaper) && value(shaperSendIndex(op, shaper)) > 0.0);
     return heard;
 }
 
@@ -7350,7 +6989,7 @@ void View::paintNode(Canvas &c, const Widget &w) {
         const bool shaper = isShaperNode(w.a);
         const float corner = shaper ? kRadiusMark : kRadiusControl;
         const Color color = nodeColor(w.a);
-        const bool live = boxHasInput(w.a);
+        const bool live = routing_.boxHasInput(w.a);
         // Its halo, as an operator's: as bright as what goes through it and on to the output (see nodeGlowTarget()),
         // feathered as the glow setting says, a plain ring of light with it off.
         if (const float level = nodeGlow_[w.a]; level > 0.01f) {
@@ -7663,7 +7302,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::NodeTab: {
         const bool selected = controller_.layout().selectedNode == w.a;
-        const bool enabled = nodeOn(w.a);
+        const bool enabled = routing_.nodeOn(w.a);
         const Color color = nodeColor(w.a);
         // On the lens, the panel's color, as the nodes in the graph are; a switched-off one's not filled.
         c.fillRect(w.rect, selected ? color.alpha(enabled ? 1.0f : 0.35f) : (hovered ? kTrack : kPanel.alpha(enabled ? 1.0f : 0.0f)),
@@ -7673,7 +7312,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const Color ink = look.flat ? litInk(kText) : kBackground;
         c.text(w.rect, kNodeNames[w.a], kTextBody, selected ? ink : (enabled ? mix(kDim, color, 0.3f) : kFaint),
                Align::Center, true);
-        if (soundsOut(w.a))
+        if (routing_.soundsOut(w.a))
             c.fillCircle({w.rect.right() - 5.0f, w.rect.y + 5.0f}, 2.0f, selected ? ink : color);
         break;
     }
@@ -7703,10 +7342,11 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::WireEnd: // drawn with its wire, which lights up under the mouse, a circle around its arrowhead
         if (hovered) {
             if (w.b == kNodes) {
-                const OutWire out = outWireOf(w.a, nodeCenter(w.a), wireBend(w.param));
+                const OutWire out = outWireOf(w.a, routing_.nodeCenter(w.a), routing_.wireBend(w.param));
                 wireEndHighlight(c, out.end, out.dir, nodeColor(w.a));
             } else {
-                const Wire wire = wireBetween(w.a, nodeCenter(w.a), w.b, nodeCenter(w.b), wireBend(w.param));
+                const Wire wire = wireBetween(w.a, routing_.nodeCenter(w.a), w.b, routing_.nodeCenter(w.b),
+                                              routing_.wireBend(w.param));
                 wireEndHighlight(c, wire.end, wire.tangent, nodeColor(w.a));
             }
         }
@@ -7786,7 +7426,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const Color fill = out ? kText.alpha(0.1f + 0.3f * a)
                                : routeColor(w.a, out ? w.a : w.b).alpha(0.12f + (boxes ? 0.5f : 0.55f) * a);
         // The row and column of a node that is off are greyed out; their routes keep their amounts.
-        const bool off = !nodeOn(w.a) || (!out && !nodeOn(w.b));
+        const bool off = !routing_.nodeOn(w.a) || (!out && !routing_.nodeOn(w.b));
         const float dim = off ? 0.35f : 1.0f;
         c.fillRect(w.rect, (amount > 0.0 ? fill : kRaised).alpha(dim), kRadiusControl);
         if (w.a == w.b)
@@ -7795,7 +7435,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             c.strokeRect(w.rect, kText, 1.5f, kRadiusControl);
         char text[8];
         std::snprintf(text, sizeof(text), "%.0f", amount * 100.0);
-        const bool shown = amount > 0.0 || wired(w.param); // a route kept at 0 % shows its 0, dimmed
+        const bool shown = amount > 0.0 || routing_.wired(w.param); // a route kept at 0 % shows its 0, dimmed
         c.text(w.rect, shown ? text : "\xC2\xB7", kTextValue,
                off ? kFaint : (amount > 0.0 ? kText : (shown ? kDim : kFaint)), Align::Center, amount > 0.0 && !off);
         // A route that isn't Phase shows its mode's glyph in its top left corner.
@@ -7871,7 +7511,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break;
     }
     case Kind::SlotBar: {
-        const Color color = kSourceColors[w.a].alpha(slotBypassed(w.a, w.b) ? 0.4f : 1.0f);
+        const Color color = kSourceColors[w.a].alpha(mods_.slotBypassed(w.a, w.b) ? 0.4f : 1.0f);
         const double amount = value(w.param);
         const float cy = w.rect.center().y;
         const float mid = w.rect.center().x;
@@ -8058,7 +7698,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // The effect's icon: in its color while the effect is on, grey while it is off, as its card is, whatever
         // the mouse does. An effect that is on lights it up while the card is grabbed, by its title or the icon,
         // and under the mouse it sits on a button, as a click switches it.
-        const FxType type = fxSlotType(w.a);
+        const FxType type = fx_.slotType(w.a);
         const bool grabbed = (drag_.kind == DragKind::FxMove && drag_.widget.a == w.a) ||
                              (hover_ && hover_->kind == Kind::FxGrip && hover_->a == w.a && drag_.kind == DragKind::None);
         if (hovered)
@@ -8084,7 +7724,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break;
     }
     case Kind::FxBoxFold: { // as an effect card's
-        if (splitFolded(w.a)) {
+        if (fx_.splitFolded(w.a)) {
             if (hovered)
                 c.fillRect(w.rect.inset(3.0f), kText.alpha(0.06f), kRadiusControl);
             break;
@@ -8102,7 +7742,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // page's tabs are in the accent. A band soloed has an S in its color in its dot's place; a hidden one, how many
         // effects it holds after its name.
         const int lane = laneOfTab(w.b);
-        const bool shown = splitLane(w.a) == lane;
+        const bool shown = fx_.splitLane(w.a) == lane;
         const Color band = laneColor(lane);
         const char *name = tr(lane == 1 ? Str::TabBandHigh : lane == 3 ? Str::TabBandMid : Str::TabBandLow);
         const float width = c.textWidth(name, kTextLabel, true);
@@ -8199,13 +7839,15 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::WireStart: // a circle with a dot where it leaves its node
         if (hovered) {
             const Point start = w.b == kNodes
-                                    ? outWireOf(w.a, nodeCenter(w.a), wireBend(w.param)).start
-                                    : wireBetween(w.a, nodeCenter(w.a), w.b, nodeCenter(w.b), wireBend(w.param)).start;
+                                    ? outWireOf(w.a, routing_.nodeCenter(w.a), routing_.wireBend(w.param)).start
+                                    : wireBetween(w.a, routing_.nodeCenter(w.a), w.b, routing_.nodeCenter(w.b),
+                                                  routing_.wireBend(w.param))
+                                          .start;
             wireStartHighlight(c, start, nodeColor(w.a));
         }
         break;
     case Kind::FxClear: { // a bin, faint while there is nothing to remove
-        const bool any = fxAnyToClear();
+        const bool any = fx_.anyToClear();
         // As the other icon buttons (the title bar's, the shape editor's): raised, outlined where controls are.
         c.fillRect(w.rect, hovered && any ? kTrack : kRaised, kRadiusControl);
         if (outlined())
@@ -8412,7 +8054,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::LfoDisplay:
         // A freeform LFO's display opens its editor.
-        if (lfoShapeOf(w.a) == LfoShape::Custom)
+        if (mods_.lfoShapeOf(w.a) == LfoShape::Custom)
             editButton(c, lfoEditButton(w.rect), kSourceColors[w.a], hovered, false);
         break;
     case Kind::PartialEdit: // a Custom wave's, lit while its partial editor is open
@@ -8886,7 +8528,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break;
     }
     case Kind::SplitBands: { // the BANDS switch: 2 | 3, the one it is lit in the accent
-        const bool on = (w.b == 3) == splitThree(w.a);
+        const bool on = (w.b == 3) == fx_.splitThree(w.a);
         if (look.flat) { // as the S beside it and the other switches: a well, filled solid with the accent while lit
             c.fillRect(w.rect, on ? kAccent : hovered ? wellHover() : wellColor(), kRadiusControl);
             c.text(w.rect, std::to_string(w.b), kTextLabel, on ? litInk(kText) : hovered ? kText : kDim, Align::Center,
@@ -8913,8 +8555,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const ModHandleSize &sizes = modHandleSize(controller_.handleSize());
         const float radius = hovered || active ? (w.compact ? sizes.dotCompactHover : sizes.dotHover)
                                                : (w.compact ? sizes.dotCompact : sizes.dot);
-        const Color color = kSourceColors[w.a].alpha(sourceOn(w.a) ? 1.0f : 0.35f);
-        if (slotBypassed(w.a, w.b))
+        const Color color = kSourceColors[w.a].alpha(mods_.sourceOn(w.a) ? 1.0f : 0.35f);
+        if (mods_.slotBypassed(w.a, w.b))
             c.strokeCircle(center, radius - 0.6f, color, 1.2f);
         else
             c.fillCircle(center, radius, color);
@@ -8952,12 +8594,12 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             break;
         }
         const Color color = kSourceColors[w.a];
-        const bool bypassed = w.b >= 0 && slotBypassed(w.a, w.b);
+        const bool bypassed = w.b >= 0 && mods_.slotBypassed(w.a, w.b);
         if (w.compact) {
             const Point handle{w.rect.x + 7.0f, w.rect.center().y};
             c.fillCircle(handle, 7.0f, color);
             c.fillCircle(handle, 2.5f, kPanel);
-            const std::string name = sourceName(w.a);
+            const std::string name = mods_.sourceName(w.a);
             c.text({w.rect.x + 20.0f, w.rect.y, w.rect.w - 34.0f, w.rect.h}, name, kTextBody, bypassed ? kDim : kText,
                    Align::Left, true);
             if (hovered || open) {
@@ -8970,21 +8612,21 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             c.line({w.rect.x + 7.0f, w.rect.y - 2.0f}, {w.rect.x + 7.0f, w.rect.bottom() + 2.0f}, color.alpha(0.35f),
                    2.0f);
             if (hovered || open)
-                c.text({w.rect.x + 20.0f, w.rect.y, w.rect.w - 20.0f, w.rect.h}, sourceName(w.a), kTextBody, kDim,
+                c.text({w.rect.x + 20.0f, w.rect.y, w.rect.w - 20.0f, w.rect.h}, mods_.sourceName(w.a), kTextBody, kDim,
                        Align::Left);
         }
         break;
     }
     case Kind::ModsTarget: {
         // An empty modulation without a target asks for one.
-        const int target = modsRowTarget(w.a, w.b);
+        const int target = mods_.modsRowTarget(w.a, w.b);
         const bool open = cascade_ && cascade_->kind == CascadeKind::Target && cascade_->source == w.a &&
                           cascade_->slot == w.b;
         if (hovered || open)
             c.fillRect(w.rect.inset(1.0f), kTrack, kRadiusMark);
-        const std::string name = target >= 0 ? paramName(target) : std::string(tr(Str::ModsPickTarget));
+        const std::string name = target >= 0 ? mods_.paramName(target) : std::string(tr(Str::ModsPickTarget));
         c.text({w.rect.x + 6.0f, w.rect.y, w.rect.w - 24.0f, w.rect.h}, name, kTextBody,
-               target < 0 || (w.b >= 0 && slotBypassed(w.a, w.b)) ? kDim : kText, Align::Left);
+               target < 0 || (w.b >= 0 && mods_.slotBypassed(w.a, w.b)) ? kDim : kText, Align::Left);
         if (hovered || open || target < 0) {
             const Point m{w.rect.right() - 10.0f, w.rect.center().y};
             const Point chevron[] = {{m.x - 3.5f, m.y - 1.5f}, {m.x, m.y + 2.0f}, {m.x + 3.5f, m.y - 1.5f}};
@@ -8996,7 +8638,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // All of the depth at the right end, none at the left; its share in numbers after it.
         const double amount = value(w.param);
         const float cy = w.rect.center().y;
-        const Color color = slotBypassed(w.a, w.b) ? kFaint : kDim;
+        const Color color = mods_.slotBypassed(w.a, w.b) ? kFaint : kDim;
         c.fillRect({w.rect.x, cy - 1.5f, w.rect.w, 3.0f}, kTrack, kRadiusMark);
         c.fillRect({w.rect.x, cy - 1.5f, static_cast<float>(amount) * w.rect.w, 3.0f}, hovered || active ? kText : color,
                    kRadiusMark);
@@ -9011,7 +8653,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // What the modulation takes from its source, along the source's swing (from the middle out for a bipolar
         // one): a straight line, faint, until the curve bends it.
         const double curve = value(w.param);
-        const bool bipolar = sourceBipolar(w.a);
+        const bool bipolar = mods_.sourceBipolar(w.a);
         const bool lit = hovered || active;
         c.fillRect(w.rect, lit ? kTrack : kRaised, kRadiusMark);
         const Rect box = w.rect.inset(5.0f);
@@ -9022,7 +8664,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             const double y = bipolar ? slotCurveValue(t - 0.5, curve, true) + 0.5 : slotCurveValue(t, curve, false);
             points[k] = {box.x + static_cast<float>(t) * box.w, box.bottom() - static_cast<float>(y) * box.h};
         }
-        const Color color = slotBypassed(w.a, w.b) ? kFaint
+        const Color color = mods_.slotBypassed(w.a, w.b) ? kFaint
                             : curve == 0.0       ? (lit ? kDim : kFaint)
                                                  : kSourceColors[w.a];
         c.polyline(points, kPoints, color, 1.4f);
@@ -9053,8 +8695,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         }
         paintAuxDepthBar(c, chip, aux, value(slotAuxDepthIndex(w.a, w.b)));
         c.fillCircle({w.rect.x + 11.0f, w.rect.center().y}, 4.0f, kSourceColors[aux]);
-        c.text({w.rect.x + 20.0f, w.rect.y, w.rect.w - 22.0f, w.rect.h}, sourceName(aux), kTextLabel, kText, Align::Left,
-               true);
+        c.text({w.rect.x + 20.0f, w.rect.y, w.rect.w - 22.0f, w.rect.h}, mods_.sourceName(aux), kTextLabel, kText,
+               Align::Left, true);
         break;
     }
     case Kind::ModsAuxDepth: {
@@ -9112,7 +8754,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const Color color = kSourceColors[w.a];
         if (hovered)
             c.fillCircle(center, 6.5f, color.alpha(0.2f));
-        if (slotBypassed(w.a, w.b))
+        if (mods_.slotBypassed(w.a, w.b))
             c.strokeCircle(center, 3.2f, color, 1.3f);
         else
             c.fillCircle(center, 3.5f, color);
@@ -9123,7 +8765,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // baseline for one way.
         if (hovered)
             c.fillRect(w.rect.inset(1.0f), kTrack, kRadiusMark);
-        polarityIcon(c, w.rect.center(), sourceBipolar(w.a), hovered ? kText : kDim);
+        polarityIcon(c, w.rect.center(), mods_.sourceBipolar(w.a), hovered ? kText : kDim);
         break;
     }
     }
@@ -9156,14 +8798,14 @@ void View::paintHoverTags(Canvas &c, const std::vector<Widget> &list) {
 // A modulation in words: its source, and what it takes its target through in the target's own units, from
 // half the depth below the set value to half above for a bipolar modulation, or from it one way for a unipolar one.
 std::string View::modRangeText(int source, int slot) const {
-    std::string text = sourceName(source);
+    std::string text = mods_.sourceName(source);
     const int target = slotTarget(value(slotTargetIndex(source, slot)));
     if (target >= 0) {
         const ParamDef &def = table_[target];
         const double set = value(target);
         const double reach =
             value(slotAmountIndex(source, slot)) * value(slotScaleIndex(source, slot)) * (def.max - def.min);
-        const bool both = sourceBipolar(source);
+        const bool both = mods_.sourceBipolar(source);
         const double start = both ? set - 0.5 * reach : set; // a negative depth runs the other way
         const double end = both ? set + 0.5 * reach : set + reach;
         char from[32], to[32];
@@ -9171,7 +8813,7 @@ std::string View::modRangeText(int source, int slot) const {
         formatParam(target, std::clamp(end, def.min, def.max), to, sizeof(to));
         text += std::string("  ") + from + " \xE2\x86\x92 " + to;
     }
-    if (slotBypassed(source, slot))
+    if (mods_.slotBypassed(source, slot))
         text += std::string("  ") + tr(Str::CaptionBypassed);
     return text;
 }
@@ -9185,7 +8827,7 @@ Color View::knobColor(int param) const {
     if (const int s = sourceOf(param); s >= 0)
         return kSourceColors[s];
     if (const int slot = fxSlotOf(param); slot >= 0)
-        return fxTypeColor(fxSlotType(slot));
+        return fxTypeColor(fx_.slotType(slot));
     // A filter's, and the depths of the routes into or out of one (an operator's send, another filter's link, its
     // modulation of an operator), which its INPUTS tab shows, as the routes take its color.
     if (param >= kFilterModBase && param < kShaperBase)
@@ -9222,7 +8864,7 @@ void View::paintKnob(Canvas &c, const Widget &w) {
     const Color plain = sum >= 0 ? laneColor(levelOf) : knobColor(w.param);
     const Color own = macro >= 0 ? kSourceColors[kMaxSources + macro] : plain;
     // A bipolar macro moves nothing at the knob's middle, so its arc starts there.
-    const bool fromMiddle = isBipolar(def.kind) || (macro >= 0 && sourceBipolar(kMaxSources + macro));
+    const bool fromMiddle = isBipolar(def.kind) || (macro >= 0 && mods_.sourceBipolar(kMaxSources + macro));
     // The track under it: in a theme that colors knobs by what they belong to, a faint tint of that color, which stands
     // out on a card tinted with it as the plain track doesn't.
     // Modulated, it keeps them: a modulation ring in a color like its own is told apart from it instead (ringColor()).
@@ -9252,10 +8894,11 @@ void View::paintKnob(Canvas &c, const Widget &w) {
             focus.push_back(m);
             return;
         }
-        ring(m, radius + 2.5f, 2.5f, (m.bipolar ? 0.6f : 0.9f) * (sourceOn(m.source) && !m.bypassed ? 1.0f : 0.3f));
+        ring(m, radius + 2.5f, 2.5f,
+             (m.bipolar ? 0.6f : 0.9f) * (mods_.sourceOn(m.source) && !m.bypassed ? 1.0f : 0.3f));
     });
     for (const Assignment &f : focus)
-        ring(f, radius + 3.0f, 4.0f, sourceOn(f.source) && !f.bypassed ? 1.0f : 0.4f);
+        ring(f, radius + 3.0f, 4.0f, mods_.sourceOn(f.source) && !f.bypassed ? 1.0f : 0.4f);
 
     // The cap, over a shadow where the theme has one; its pointer a line from the middle, or in a flat theme a dot by
     // its rim.
@@ -9374,7 +9017,7 @@ void View::paintRatio(Canvas &c, const Widget &w) {
     auto reach = [&](const Assignment &m, bool wide) {
         const auto [down, up] = modReach(m);
         const float a = along(n + down), b = along(n + up);
-        const float alpha = (sourceOn(m.source) && !m.bypassed ? 1.0f : 0.35f) * (wide ? 1.0f : 0.8f);
+        const float alpha = (mods_.sourceOn(m.source) && !m.bypassed ? 1.0f : 0.35f) * (wide ? 1.0f : 0.8f);
         const float thick = wide ? 4.0f : 2.0f;
         const Color color = kSourceColors[m.source].alpha(alpha);
         c.fillRect({std::min(a, b), kRatioTrack.center().y - thick * 0.5f, std::max(std::abs(b - a), 1.0f), thick},
@@ -9502,7 +9145,7 @@ void View::paintStepper(Canvas &c, const Widget &w) {
     forEachMod(w.param, [&](const Assignment &m) {
         const auto [down, up] = modReach(m);
         const bool wide = modFocused(m);
-        const float alpha = (sourceOn(m.source) && !m.bypassed ? 1.0f : 0.35f) * (wide ? 1.0f : 0.8f);
+        const float alpha = (mods_.sourceOn(m.source) && !m.bypassed ? 1.0f : 0.35f) * (wide ? 1.0f : 0.8f);
         (wide ? focus : reaches)
             .push_back({{n + std::min(down, up), n + std::max(down, up)}, kSourceColors[m.source].alpha(alpha)});
     });
@@ -9635,7 +9278,8 @@ void View::paintTooltip(Canvas &c) {
                   : fxNodeSum(hover_->a) >= 0   ? Str::TipRemoveJoin
                                                 : Str::TipRemoveSplit);
     } else if (hover_->kind == Kind::FxNodePower) { // only switches, unlike the card's icon, which also drags
-        text = trf(value(param) >= 0.5 ? Str::TipSwitchNodeOff : Str::TipSwitchNodeOn, {fxName(fxSlotType(hover_->a))});
+        text =
+            trf(value(param) >= 0.5 ? Str::TipSwitchNodeOff : Str::TipSwitchNodeOn, {fxName(fx_.slotType(hover_->a))});
     } else if (hover_->kind == Kind::NodeDelete) {
         text = trf(Str::MenuSwitchOff, {nodeTitle(hover_->a)});
     } else if (hover_->kind == Kind::WireEnd) {
@@ -9675,9 +9319,9 @@ void View::paintTooltip(Canvas &c) {
     } else if (hover_->kind == Kind::MacroHandle) {
         text = trf(Str::TipMacroHandle, {macroName(controller_.layout(), hover_->a - kMaxSources)});
     } else if (hover_->kind == Kind::SourceHandle) {
-        text = trf(Str::TipSourceHandle, {sourceName(hover_->a)});
+        text = trf(Str::TipSourceHandle, {mods_.sourceName(hover_->a)});
     } else if (hover_->kind == Kind::NodeTab || hover_->kind == Kind::MatrixLabel) {
-        const bool on = nodeOn(hover_->a);
+        const bool on = routing_.nodeOn(hover_->a);
         const std::string title = nodeTitle(hover_->a);
         text = controller_.layout().selectedNode != hover_->a
                    ? trf(on ? Str::TipShowNode : Str::TipSwitchOnAndShow, {title})
@@ -9730,9 +9374,10 @@ void View::paintTooltip(Canvas &c) {
     else if (hover_->kind == Kind::SettingsGrid)
         text = tr(Str::TipSettingsGrid);
     else if (hover_->kind == Kind::SlotBypass)
-        text = tr(slotBypassed(hover_->a, hover_->b) ? Str::TipBypassed : Str::TipBypass);
+        text = tr(mods_.slotBypassed(hover_->a, hover_->b) ? Str::TipBypassed : Str::TipBypass);
     else if (hover_->kind == Kind::SourcePolarity)
-        text = trf(sourceBipolar(hover_->a) ? Str::TipSourceBipolar : Str::TipSourceUnipolar, {sourceName(hover_->a)});
+        text = trf(mods_.sourceBipolar(hover_->a) ? Str::TipSourceBipolar : Str::TipSourceUnipolar,
+                   {mods_.sourceName(hover_->a)});
     else if (hover_->kind == Kind::Wire)
         text = tr(Str::TipWire);
     else if (hover_->kind == Kind::ModsSource) // an empty modulation's picks one
@@ -9896,7 +9541,7 @@ void View::paintModPill(Canvas &c, const Widget &w, bool hovered) {
     bool live = false;
     int index = 0;
     forEachMod(w.a, [&](const Assignment &m) {
-        if (index++ >= w.b && sourceOn(m.source) && !m.bypassed)
+        if (index++ >= w.b && mods_.sourceOn(m.source) && !m.bypassed)
             live = true;
     });
     const float round = w.rect.h * 0.5f;
@@ -10000,7 +9645,8 @@ void View::paintModList(Canvas &c, const Widget &w) {
     const std::string count = rows == 1 ? std::string(tr(Str::ModListCountOne))
                                         : trf(Str::ModListCount, {std::to_string(rows)});
     const float countW = std::ceil(c.textWidth(count, kTextLabel));
-    c.text({title.x, title.y, title.w - countW - 8.0f, title.h}, paramName(w.a), kTextBody, kText, Align::Left, true);
+    c.text({title.x, title.y, title.w - countW - 8.0f, title.h}, mods_.paramName(w.a), kTextBody, kText, Align::Left,
+           true);
     c.text({title.right() - countW, title.y, countW, title.h}, count, kTextLabel, kDim, Align::Right);
 }
 
@@ -10030,8 +9676,8 @@ void View::paintAuxDepthBar(Canvas &c, Rect chip, int aux, double depth) const {
 void View::paintModListRow(Canvas &c, const Widget &w) {
     const bool lit = hover_ && hover_->popup && hover_->a == w.a && hover_->b == w.b && drag_.kind == DragKind::None;
     c.fillRect(w.rect, lit ? kTrack : kRaised, kRadiusControl);
-    const bool off = slotBypassed(w.a, w.b) || !sourceOn(w.a);
-    const std::string name = sourceName(w.a);
+    const bool off = mods_.slotBypassed(w.a, w.b) || !mods_.sourceOn(w.a);
+    const std::string name = mods_.sourceName(w.a);
     c.text({w.rect.x + 18.0f, w.rect.y, kSlotNameW, w.rect.h}, name, slotNameSize(c, name), off ? kFaint : kText,
            Align::Left);
     if (const int aux = slotAux([this](int index) { return value(index); }, w.a, w.b); aux >= 0) {
@@ -10045,7 +9691,7 @@ void View::paintModListRow(Canvas &c, const Widget &w) {
         }
         paintAuxDepthBar(c, chip, aux, value(slotAuxDepthIndex(w.a, w.b)));
         c.fillCircle({chip.x + 10.0f, chip.center().y}, 3.5f, kSourceColors[aux]);
-        c.text({chip.x + 18.0f, chip.y, chip.w - 40.0f - kAuxDepthW, chip.h}, sourceName(aux), kTextLabel, kText,
+        c.text({chip.x + 18.0f, chip.y, chip.w - 40.0f - kAuxDepthW, chip.h}, mods_.sourceName(aux), kTextLabel, kText,
                Align::Left, true);
     }
 }
@@ -10163,7 +9809,8 @@ void View::paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int sour
                          : (w.kind == Kind::Knob ? knobCenter(w) : w.rect.center());
         if (w.clip.w > 0.0f && !w.clip.contains(to))
             continue;
-        const Color color = kSourceColors[source].alpha(sourceOn(source) && modulated ? 1.0f : 0.4f); // bypassed: faint
+        const Color color =
+            kSourceColors[source].alpha(mods_.sourceOn(source) && modulated ? 1.0f : 0.4f); // bypassed: faint
         // Bowed to one side, so lines to targets in a row fan out rather than run over each other.
         const Point d{to.x - from.x, to.y - from.y};
         const Point control{(from.x + to.x) * 0.5f + d.y * 0.15f, (from.y + to.y) * 0.5f - d.x * 0.15f};
@@ -10193,7 +9840,7 @@ void View::paintAuxLinks(Canvas &c, const std::vector<Widget> &list, int aux, in
     const Point from = handle->rect.center();
     if (handle->clip.w > 0.0f && !handle->clip.contains(from)) // its card scrolled out of view
         return;
-    const Color color = kSourceColors[aux].alpha(sourceOn(aux) ? 1.0f : 0.4f);
+    const Color color = kSourceColors[aux].alpha(mods_.sourceOn(aux) ? 1.0f : 0.4f);
     for (const Widget &d : list) {
         if (d.kind != Kind::ModDot || (ofSource >= 0 && (d.a != ofSource || d.b != ofSlot)))
             continue;
@@ -10255,7 +9902,7 @@ std::string View::undoText(bool redo) const {
     if (!step)
         return tr(redo ? Str::RedoNothing : Str::UndoNothing);
     if (step->changes.size() == 1)
-        return trf(redo ? Str::RedoParam : Str::UndoParam, {paramName(step->changes.front().index)});
+        return trf(redo ? Str::RedoParam : Str::UndoParam, {mods_.paramName(step->changes.front().index)});
     if (step->changes.empty())
         return tr(redo ? Str::RedoLayout : Str::UndoLayout);
     return trf(redo ? Str::RedoChanges : Str::UndoChanges, {std::to_string(step->changes.size())});
@@ -10341,7 +9988,7 @@ void View::applyDrag(Point p) {
     case DragKind::Value: {
         const ParamDef &def = table_[w.param];
         if (w.kind == Kind::GridCell) // dragging a matrix cell switches on what it joins, in the same step
-            switchOnRoute(w.a, w.b);
+            routing_.switchOnRoute(w.a, w.b);
         if (isRatioDisplay(w)) { // the digit pressed, a step of its place every 6 px (24 with Shift), carrying
             const long steps = std::lround((drag_.start.y - p.y) / (drag_.fine ? 24.0f : 6.0f));
             set(w.param, steps != 0 ? ratioNorm(ratioHundredths(drag_.startValue) + steps * kRatioPlaces[w.b])
@@ -10376,7 +10023,7 @@ void View::applyDrag(Point p) {
     case DragKind::Node: {
         UiLayout &layout = controller_.layout();
         // Kept off the other nodes; Ctrl held, onto the grid's nearest point it fits at.
-        const Point at = ctrlHeld_ ? routingGridPoint(w.a, p) : nodePlace(w.a, p);
+        const Point at = ctrlHeld_ ? routingGridPoint(w.a, p) : routing_.nodePlace(w.a, p);
         const float x = std::clamp((at.x - kGraph.x) / kGraph.w, 0.0f, 1.0f);
         const float y = std::clamp((at.y - kGraph.y) / kGraph.h, 0.0f, 1.0f);
         if (isBoxNode(w.a)) {
@@ -10619,7 +10266,7 @@ void View::applyDrag(Point p) {
     case DragKind::Bend: {
         // The wire's middle follows the mouse sideways, from where it was grabbed: it lies half as far out as the
         // curve's control point.
-        const Point a = nodeCenter(w.a), b = routePoint(w.b);
+        const Point a = routing_.nodeCenter(w.a), b = routePoint(w.b);
         const float span = std::max(std::hypot(b.x - a.x, b.y - a.y), 1.0f);
         const Point left = leftOf(a, b);
         const float moved = (p.x - drag_.start.x) * left.x + (p.y - drag_.start.y) * left.y;
@@ -10627,8 +10274,8 @@ void View::applyDrag(Point p) {
         const float bend = fitBend(w.a, a, w.b, b,
                                    std::clamp(static_cast<float>(drag_.startValue) + 2.0f * moved / span,
                                               -kMaxWireBend, kMaxWireBend));
-        if (bend != wireBend(w.param))
-            setWireBend(w.param, bend);
+        if (bend != routing_.wireBend(w.param))
+            routing_.setWireBend(w.param, bend);
         break;
     }
     case DragKind::SplitPoint:
@@ -10728,7 +10375,7 @@ bool View::mouseMove(Point p, Modifiers mods) {
         (seqDrag_.mode == SeqDrag::Mode::CurvePoint || seqDrag_.mode == SeqDrag::Mode::CurvePaint))
         seqDrag_.free = !mods.ctrl;
     if ((drag_.kind == DragKind::Connect || drag_.kind == DragKind::Reroute) && !drag_.leftNode)
-        drag_.leftNode = clearOfNode(drag_.widget.a, nodeCenter(drag_.widget.a), p);
+        drag_.leftNode = clearOfNode(drag_.widget.a, routing_.nodeCenter(drag_.widget.a), p);
     // A value moves only once the mouse has: the jitter of a click, or between a double-click's presses, leaves it
     // (and what a matrix cell joins) as it was.
     if ((drag_.kind == DragKind::Value || drag_.kind == DragKind::Tempo) && !drag_.moved)
@@ -10750,7 +10397,7 @@ void View::mouseDown(Point p, Modifiers mods) {
     fxRowGlide_.on = false; // the row's cards still settling snap into place, where a click means them
     // Before a drag can take a route down to 0 %: the poll timer waits while the mouse moves, and a
     // state load may have replaced the layout since it last ran.
-    keepRoutes();
+    routing_.keepRoutes();
     const auto hit = hitTest(p);
     // The points picked in a shape editor are let go of at a click anywhere but on that shape.
     if (shapePick_.shape >= 0 && !(hit && (hit->kind == Kind::ShapeArea || hit->kind == Kind::ShapePoint ||
@@ -10869,7 +10516,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         addEmptyMod();
         break;
     case Kind::ModsAuxClear:
-        setAux(w.a, w.b, -1);
+        mods_.setAux(w.a, w.b, -1);
         break;
     case Kind::CascadeMenu:
         if (w.a == 0) // a click anywhere else closes the menu
@@ -10929,7 +10576,8 @@ void View::mouseDown(Point p, Modifiers mods) {
         break;
     case Kind::Wire:
         drag_.kind = DragKind::Bend;
-        drag_.startValue = fitBend(w.a, nodeCenter(w.a), w.b, routePoint(w.b), wireBend(w.param)); // as drawn
+        drag_.startValue =
+            fitBend(w.a, routing_.nodeCenter(w.a), w.b, routePoint(w.b), routing_.wireBend(w.param)); // as drawn
         drag_.step = true; // bending it is an undo step
         controller_.beginStep();
         break;
@@ -11069,7 +10717,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         removeEffect(w.a);
         break;
     case Kind::FxClear: // asking first, while there is anything to remove
-        if (fxAnyToClear()) {
+        if (fx_.anyToClear()) {
             confirm_ = kConfirmFxClear;
             hover_.reset();
         }
@@ -11110,8 +10758,8 @@ void View::mouseDown(Point p, Modifiers mods) {
         // The selected tab switches its operator or filter on and off; another tab selects that one,
         // switching it on if it was off. A name in the matrix does the same.
         if (layout.selectedNode == w.a)
-            edit(enabledParam(w.a), nodeOn(w.a) ? 0.0 : 1.0);
-        else if (!nodeOn(w.a))
+            edit(enabledParam(w.a), routing_.nodeOn(w.a) ? 0.0 : 1.0);
+        else if (!routing_.nodeOn(w.a))
             edit(enabledParam(w.a), 1.0);
         layout.selectedNode = w.a;
         if (partialEditor_ != w.a) // another node shown closes the partial editor
@@ -11172,7 +10820,7 @@ void View::mouseDown(Point p, Modifiers mods) {
 
     case Kind::ShapeWiden:
     case Kind::LfoDisplay: // a Custom LFO's widens its card, which then has the shape (and the full-size editor not)
-        if (lfoShapeOf(w.a) == LfoShape::Custom) {
+        if (mods_.lfoShapeOf(w.a) == LfoShape::Custom) {
             wideLfo_ = w.a;
             if (shapeEditing() >= 0 && !isCurve(shapeEditing()))
                 shapeEditor_ = -1;
@@ -11231,7 +10879,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         break;
     case Kind::LabelRemove:
         listMenu_ = -1;
-        disconnect(w.param);
+        routing_.disconnect(w.param);
         hover_.reset();
         break;
     case Kind::ListMenu:
@@ -11422,13 +11070,13 @@ void View::mouseDown(Point p, Modifiers mods) {
         edit(paramIndex(w.a, OpParam::Wave), w.b);
         break;
     case Kind::SlotRemove:
-        removeSlot(w.a, w.b);
+        mods_.removeSlot(w.a, w.b);
         break;
     case Kind::SlotBypass:
-        toggleBypass(w.a, w.b);
+        mods_.toggleBypass(w.a, w.b);
         break;
     case Kind::SourcePolarity:
-        setSourcePolarity(w.a, !sourceBipolar(w.a));
+        mods_.setSourcePolarity(w.a, !mods_.sourceBipolar(w.a));
         break;
     case Kind::SourceMods:
         showSourceMods(w.a);
@@ -11534,7 +11182,7 @@ void View::mouseUp(Point p, Modifiers) {
         }
         const int to = nodeAt(p);
         if (to >= 0) {
-            connect(w.a, to);
+            routing_.connect(w.a, to);
         } else if (onOutCore(p) && value(outParam(w.a)) <= 0.0) {
             edit(outParam(w.a), 1.0);
         }
@@ -11544,9 +11192,9 @@ void View::mouseUp(Point p, Modifiers) {
         if (!drag_.moved) // a click leaves it be
             break;
         if (const int source = nodeAt(p); source >= 0)
-            rerouteFrom(w.a, w.b, source);
+            routing_.rerouteFrom(w.a, w.b, source);
         else // let go of off the nodes, the route goes, with its modulation
-            disconnect(w.param);
+            routing_.disconnect(w.param);
         break;
     }
     case DragKind::Reroute: {
@@ -11554,9 +11202,9 @@ void View::mouseUp(Point p, Modifiers) {
             break;
         const int into = nodeAt(p) >= 0 ? nodeAt(p) : (onOutCore(p) ? kNodes : -1);
         if (into >= 0)
-            reroute(w.a, w.b, into);
+            routing_.reroute(w.a, w.b, into);
         else // let go of off the nodes and the bus, the route goes, with its modulation
-            disconnect(w.param);
+            routing_.disconnect(w.param);
         break;
     }
     case DragKind::ModSource: {
@@ -11564,9 +11212,9 @@ void View::mouseUp(Point p, Modifiers) {
         // On a depth handle, a row of a pill's list or a MODS row's aux cell: it becomes that modulation's aux.
         const bool row = target && target->popup && target->kind != Kind::ModList;
         if (target && (target->kind == Kind::ModDot || target->kind == Kind::ModsAux || row) && target->a != w.a)
-            setAux(target->a, target->b, w.a);
+            mods_.setAux(target->a, target->b, w.a);
         else if (target && droppable(*target, w.a)) // only where the overlay rings a target
-            assign(w.a, target->param);
+            mods_.assign(w.a, target->param);
         // A list that opened under the handle stays open only when the handle went onto one of its rows.
         if (modList_ && modList_->sprung) {
             if (row)
@@ -11601,7 +11249,7 @@ void View::mouseUp(Point p, Modifiers) {
     case DragKind::SourceMove:
         drag_.now = p;
         if (drag_.moved) // a click leaves the card where it is
-            setSourceOrder(sourcesShown());
+            mods_.setSourceOrder(sourcesShown());
         break;
     case DragKind::FxNodeMove: // where it is let go of, if it moved
         drag_.now = p;
@@ -11687,7 +11335,7 @@ void View::copyDragged() {
         // Made right after its original, which the mouse stays over until it carries it elsewhere.
         const int source = drag_.widget.a;
         const float scroll = sourceScroll();
-        const int copy = addSource(sourceTypeOf(source), source);
+        const int copy = addSource(mods_.sourceTypeOf(source), source);
         if (copy < 0)
             return;
         setFolded(false, copy, sourceFolded(source));
@@ -11700,7 +11348,7 @@ void View::copyDragged() {
             return;
         // The original back where it was, and the copy carried from right after it.
         FxDrag &d = *fxDrag_;
-        d.rest = fxLineWith(d.rest, d.item, d.was);
+        d.rest = FxGraphModel::lineWith(d.rest, d.item, d.was);
         d.was = d.was.lane == 0 ? FxSlotAt{0, d.was.item + 1, 0} : FxSlotAt{d.was.lane, d.was.item, d.was.place + 1};
         d.at = d.was;
         d.item = *item;
@@ -11724,7 +11372,7 @@ void View::finishDrag() {
     const Widget &w = drag_.widget;
     switch (drag_.kind) {
     case DragKind::Value:
-        keepRoutes(); // a route it switched on, in its undo step (see edit())
+        routing_.keepRoutes(); // a route it switched on, in its undo step (see edit())
         controller_.endEdit(w.param);
         break;
     case DragKind::EnvCurve:
@@ -11854,9 +11502,9 @@ Color View::cardFaceUnder(const Widget &w) const {
     if (w.param < 0)
         return kCardColor;
     if (const int slot = fxSlotOf(w.param); slot >= 0)
-        return cardFace(fxTypeColor(fxSlotType(slot)), value(paramIndex(slot, FxParam::Enabled)) >= 0.5);
+        return cardFace(fxTypeColor(fx_.slotType(slot)), value(paramIndex(slot, FxParam::Enabled)) >= 0.5);
     if (const int source = sourceOf(w.param); source >= 0 && source < kMaxSources)
-        return cardFace(kSourceColors[source], sourceOn(source));
+        return cardFace(kSourceColors[source], mods_.sourceOn(source));
     return kCardColor;
 }
 
@@ -11867,13 +11515,13 @@ std::vector<View::DimArea> View::dimmedAreas() const {
     if (!controller_.layout().sourcesCollapsed)
         for (int s : sources()) {
             const float card = cardOf(s);
-            if (card == kOffScreen || sourceOn(s) || sourceFolded(s))
+            if (card == kOffScreen || mods_.sourceOn(s) || sourceFolded(s))
                 continue;
             areas.push_back({body(sourceCard(card, sourceSpan(s))), cardFace(kSourceColors[s], false), sourceCardClip()});
         }
     // So is a switched-off effect's, in the effects graph's inspector or along the row.
     auto effect = [&](int slot, Rect p, Rect clip) {
-        areas.push_back({body(p), cardFace(fxTypeColor(fxSlotType(slot)), false), clip});
+        areas.push_back({body(p), cardFace(fxTypeColor(fx_.slotType(slot)), false), clip});
     };
     if (shapeEditing() < 0 && controller_.layout().view == RoutingView::Fx && fxGraph()) {
         if (const int node = fxSelectedNode();
@@ -11888,7 +11536,7 @@ std::vector<View::DimArea> View::dimmedAreas() const {
         }
     }
     // And the inspector's page while its operator, filter or shaper is off, below the tabs, title and switch.
-    if (!inspectorCovered() && !nodeOn(controller_.layout().selectedNode))
+    if (!inspectorCovered() && !routing_.nodeOn(controller_.layout().selectedNode))
         areas.push_back({kInspectorPage, Color{0.0f, 0.0f, 0.0f, 0.0f}, kInspectorPage});
     return areas;
 }
@@ -12282,7 +11930,7 @@ void View::doubleClick(Point p, Modifiers mods) {
     }
     if (hit && hit->kind == Kind::Wire) { // back to how it bows to begin with (a line to OUT straight)
         const UndoScope step(controller_);
-        setWireBend(hit->param, defaultWireBend(hit->param));
+        routing_.setWireBend(hit->param, routing_.defaultWireBend(hit->param));
         return;
     }
     if (hit && hit->kind == Kind::SearchField) { // the word there, up to the spaces either side
@@ -12309,12 +11957,12 @@ void View::doubleClick(Point p, Modifiers mods) {
         return;
     }
     if (hit && hit->kind == Kind::DynZone) { // its ratio back to where it starts
-        edit(hit->param, resetValue(hit->param));
+        edit(hit->param, mods_.resetValue(hit->param));
         return;
     }
     if (hit && hit->kind == Kind::DynGrip) { // its threshold back to where it starts
         const int threshold = mdThreshold(hit->a, hit->b);
-        edit(threshold, resetValue(threshold));
+        edit(threshold, mods_.resetValue(threshold));
         return;
     }
     if (hit && hit->kind == Kind::PeqPoint) {
@@ -12322,7 +11970,7 @@ void View::doubleClick(Point p, Modifiers mods) {
         if (isCut(type))
             edit(peqQIndex(hit->a, hit->b), normFromQ(std::numbers::sqrt2 * 0.5)); // no resonance
         else if (type == PeqType::Notch)
-            edit(peqQIndex(hit->a, hit->b), resetValue(peqQIndex(hit->a, hit->b))); // its width as it starts
+            edit(peqQIndex(hit->a, hit->b), mods_.resetValue(peqQIndex(hit->a, hit->b))); // its width as it starts
         else
             edit(peqGainIndex(hit->a, hit->b), 0.0); // flat again
         return;
@@ -12331,14 +11979,14 @@ void View::doubleClick(Point p, Modifiers mods) {
         return;
     switch (hit->kind) {
     case Kind::ModDot:
-        removeSlot(hit->a, hit->b);
+        mods_.removeSlot(hit->a, hit->b);
         break;
     case Kind::Knob:
     case Kind::SlotBar:
-        edit(hit->param, resetValue(hit->param));
+        edit(hit->param, mods_.resetValue(hit->param));
         break;
     case Kind::OutLabel: // like a wire label: shown, so wired, so off
-        disconnect(hit->param);
+        routing_.disconnect(hit->param);
         break;
     case Kind::GridCell:
     case Kind::WireLabel: {
@@ -12346,12 +11994,12 @@ void View::doubleClick(Point p, Modifiers mods) {
         const int to = hit->b;
         const bool full = to >= kOps && hit->a != to; // into a filter, a shaper or the output; modulation starts lower
         const double on = full ? 1.0 : (hit->a == to ? 0.25 : 0.3);
-        if (wired(hit->param)) {
-            disconnect(hit->param);
+        if (routing_.wired(hit->param)) {
+            routing_.disconnect(hit->param);
         } else {
             const UndoScope step(controller_);
             if (hit->kind == Kind::GridCell) // a route in the matrix switches on what it joins
-                switchOnRoute(hit->a, to);
+                routing_.switchOnRoute(hit->a, to);
             edit(hit->param, on);
         }
         break;
@@ -12388,7 +12036,7 @@ void View::wheel(Point p, float steps, Modifiers mods) {
         return;
     if (presetWheel(p, steps)) // the browser's list and sidebar, the Save dialog's folders, and nothing under them
         return;
-    keepRoutes(); // as in mouseDown(): scrolling can take a route down to 0 % too
+    routing_.keepRoutes(); // as in mouseDown(): scrolling can take a route down to 0 % too
     const auto hit = hitTest(p);
     if (hit && !hit->popup && seqWheel(*hit, p, steps, mods)) // the SEQ view's own
         return;
@@ -12422,7 +12070,7 @@ void View::wheel(Point p, float steps, Modifiers mods) {
     }
     if (hit && hit->kind == Kind::SplitBand) { // a split's tabs: down a tab to the right, up one to the left
         if (steps != 0.0f) {
-            const bool three = splitThree(hit->a);
+            const bool three = fx_.splitThree(hit->a);
             const int count = three ? 3 : 2;
             const int at = tabPosition(controller_.layout().splitBand[hit->a] == 2 && !three
                                            ? 0
@@ -12431,7 +12079,7 @@ void View::wheel(Point p, float steps, Modifiers mods) {
             const int to = std::clamp(at + (steps < 0.0f ? 1 : -1), 0, count - 1);
             for (int tab = 0; tab < count; ++tab)
                 if (tabPosition(tab, three) == to)
-                    showSplitBand(hit->a, tab);
+                    fx_.showSplitBand(hit->a, tab);
         }
         return;
     }
@@ -12499,7 +12147,7 @@ void View::wheel(Point p, float steps, Modifiers mods) {
     }
     if (const int split = splitOf(hit->param); split >= 0 && hit->param == paramIndex(split, SplitParam::Slope)) {
         const int slopes[] = {0, 1, kFilterSlopes - 1}; // 6, 12 and 24 dB, a notch a step (three bands from 12)
-        const int first = splitThree(split) ? 1 : 0;
+        const int first = fx_.splitThree(split) ? 1 : 0;
         int at = first;
         for (int k = first; k < 3; ++k)
             at = filterSlope(value(hit->param)) >= slopes[k] ? k : at;
@@ -12643,9 +12291,10 @@ std::vector<MenuItem> View::contextMenu(Point p) {
         if (fxChain().size() < static_cast<size_t>(kFxSlots))
             items.push_back({6, tr(Str::MenuDuplicate)});
         items.push_back({8, tr(Str::MenuResetSettings)});
-        if (fxSlotType(menuFx_) == FxType::MultiDyn)
+        if (fx_.slotType(menuFx_) == FxType::MultiDyn)
             items.push_back({kOttCommand, tr(Str::MenuOtt)});
-        if (fxSlotType(menuFx_) == FxType::Amp) { // how many times the host rate its stages run at, the one in force checked
+        // An amp's: how many times the host rate its stages run at, the one in force checked.
+        if (fx_.slotType(menuFx_) == FxType::Amp) {
             items.push_back({0, ""});
             const long now = std::lround(value(paramIndex(menuFx_, FxParam::AmpOversampling)));
             for (int i = 0; i < kAmpOversamplings; ++i)
@@ -12654,7 +12303,7 @@ std::vector<MenuItem> View::contextMenu(Point p) {
         }
         // On a split's band, in the row: the split's other bands it can move to.
         if (!fxGraph()) {
-            const std::vector<int> bands = fxOtherBands(menuFx_);
+            const std::vector<int> bands = fx_.otherBands(menuFx_);
             if (!bands.empty())
                 items.push_back({0, ""});
             for (int lane : bands)
@@ -12678,13 +12327,13 @@ std::vector<MenuItem> View::contextMenu(Point p) {
                                                                                      : -1;
     auto addPolarity = [&] {
         menuSource_ = polaritySource;
-        const bool bipolar = sourceBipolar(polaritySource);
+        const bool bipolar = mods_.sourceBipolar(polaritySource);
         items.push_back({kUnipolarCommand, tr(Str::MenuUnipolar), !bipolar});
         items.push_back({kBipolarCommand, tr(Str::MenuBipolar), bipolar});
     };
     if (hit->kind == Kind::SourceGrip || hit->kind == Kind::SourceHandle) {
         if (!usedSlots(hit->a).empty())
-            items.push_back({kClearCommand + hit->a, trf(Str::MenuClearTargets, {sourceName(hit->a)})});
+            items.push_back({kClearCommand + hit->a, trf(Str::MenuClearTargets, {mods_.sourceName(hit->a)})});
         if (sources().size() < static_cast<size_t>(kMaxSources))
             items.push_back({9, tr(Str::MenuDuplicate)});
         if (!items.empty())
@@ -12696,7 +12345,8 @@ std::vector<MenuItem> View::contextMenu(Point p) {
     }
     if (hit->kind == Kind::MacroHandle || hit->kind == Kind::MacroName || hit->kind == Kind::NoteDisplay) {
         if (!usedSlots(polaritySource).empty()) {
-            items.push_back({kClearCommand + polaritySource, trf(Str::MenuClearTargets, {sourceName(polaritySource)})});
+            items.push_back(
+                {kClearCommand + polaritySource, trf(Str::MenuClearTargets, {mods_.sourceName(polaritySource)})});
             items.push_back({0, ""});
         }
         addPolarity();
@@ -12726,10 +12376,11 @@ std::vector<MenuItem> View::contextMenu(Point p) {
                 menuAuxDepth_->param = slotAuxDepthIndex(hit->a, hit->b);
                 items.push_back({kEditAuxDepthCommand, tr(Str::MenuEditAuxDepth)});
             }
-            items.push_back({kAuxClearCommand + hit->a * kSlots + hit->b, trf(Str::MenuRemoveAux, {sourceName(aux)})});
+            items.push_back(
+                {kAuxClearCommand + hit->a * kSlots + hit->b, trf(Str::MenuRemoveAux, {mods_.sourceName(aux)})});
         }
         items.push_back({0, ""});
-        items.push_back({100 + hit->a * kSlots + hit->b, trf(Str::MenuRemoveModulation, {sourceName(hit->a)})});
+        items.push_back({100 + hit->a * kSlots + hit->b, trf(Str::MenuRemoveModulation, {mods_.sourceName(hit->a)})});
         return items;
     }
     if (hit->kind == Kind::ShapePoint) {
@@ -12769,7 +12420,7 @@ std::vector<MenuItem> View::contextMenu(Point p) {
     if (hit->kind == Kind::WireEnd || hit->kind == Kind::Wire) {
         menuParam_ = hit->param;
         addRouteModes(hit->param);
-        if (hit->kind == Kind::Wire && wireBend(hit->param) != defaultWireBend(hit->param))
+        if (hit->kind == Kind::Wire && routing_.wireBend(hit->param) != routing_.defaultWireBend(hit->param))
             items.push_back({kResetBendCommand, tr(Str::MenuResetBend)});
         items.push_back({3, tr(Str::MenuDisconnect)});
         return items;
@@ -12784,21 +12435,22 @@ std::vector<MenuItem> View::contextMenu(Point p) {
         items.push_back({11, tr(Str::MenuEditValue)});
     }
     items.push_back({1, tr(Str::MenuResetDefault)});
-    if ((hit->kind == Kind::WireLabel || hit->kind == Kind::GridCell) && wired(hit->param) &&
+    if ((hit->kind == Kind::WireLabel || hit->kind == Kind::GridCell) && routing_.wired(hit->param) &&
         routeModeOfRoute(hit->param) >= 0) {
         items.push_back({0, ""});
         addRouteModes(hit->param);
         items.pop_back(); // Disconnect follows the modes without a line between
     }
     if ((hit->kind == Kind::WireLabel || hit->kind == Kind::OutLabel || hit->kind == Kind::GridCell) &&
-        wired(hit->param))
+        routing_.wired(hit->param))
         items.push_back({3, tr(Str::MenuDisconnect)});
     std::vector<MenuItem> removals, bypasses;
     for (const Assignment &m : assignments()) {
         if (m.target != hit->param)
             continue;
         bypasses.push_back({kBypassCommand + m.source * kSlots + m.slot, bypassLabel(m.source, m.slot)});
-        removals.push_back({100 + m.source * kSlots + m.slot, trf(Str::MenuRemoveModulation, {sourceName(m.source)})});
+        removals.push_back(
+            {100 + m.source * kSlots + m.slot, trf(Str::MenuRemoveModulation, {mods_.sourceName(m.source)})});
     }
     if (!removals.empty()) {
         items.push_back({0, ""});
@@ -12816,7 +12468,7 @@ std::vector<MenuItem> View::contextMenu(Point p) {
 }
 
 std::string View::bypassLabel(int source, int slot) const {
-    return trf(slotBypassed(source, slot) ? Str::MenuResume : Str::MenuBypass, {sourceName(source)});
+    return trf(mods_.slotBypassed(source, slot) ? Str::MenuResume : Str::MenuBypass, {mods_.sourceName(source)});
 }
 
 void View::menuCommand(int command) {
@@ -12855,12 +12507,12 @@ void View::menuCommand(int command) {
         return;
     }
     if (command == 1 && menuParam_ >= 0) {
-        edit(menuParam_, resetValue(menuParam_));
+        edit(menuParam_, mods_.resetValue(menuParam_));
     } else if (command == 2 && menuParam_ >= 0) {
         const UndoScope step(controller_);
         for (const Assignment &m : assignments())
             if (m.target == menuParam_)
-                removeSlot(m.source, m.slot);
+                mods_.removeSlot(m.source, m.slot);
     } else if (command == 5 && menuPoint_.first >= 0) {
         removeShapePoint(menuPoint_.first, menuPoint_.second);
     } else if (command == 7 && menuFx_ >= kFxSlots) {
@@ -12868,7 +12520,7 @@ void View::menuCommand(int command) {
     } else if (menuFx_ >= kFxSlots) {
         // a split or a join offers nothing else
     } else if (command == 6 && menuFx_ >= 0) {
-        addEffect(fxSlotType(menuFx_), menuFx_);
+        addEffect(fx_.slotType(menuFx_), menuFx_);
     } else if (command == 7 && menuFx_ >= 0) {
         removeEffect(menuFx_);
     } else if (command == 8 && menuFx_ >= 0) {
@@ -12882,18 +12534,18 @@ void View::menuCommand(int command) {
             changes.push_back({clipCurveCountIndex(menuFx_) + f, table_[clipCurveCountIndex(menuFx_) + f].def});
         editMany(changes);
     } else if (command > kMoveBandCommand && command <= kMoveBandCommand + 3 && menuFx_ >= 0) {
-        moveFxToBand(menuFx_, command - kMoveBandCommand);
-    } else if (command == kOttCommand && menuFx_ >= 0 && fxSlotType(menuFx_) == FxType::MultiDyn) {
+        fx_.moveToBand(menuFx_, command - kMoveBandCommand);
+    } else if (command == kOttCommand && menuFx_ >= 0 && fx_.slotType(menuFx_) == FxType::MultiDyn) {
         editMany(mdOttSettings(menuFx_));
     } else if (command >= kAmpOversamplingCommand && command < kAmpOversamplingCommand + kAmpOversamplings &&
-               menuFx_ >= 0 && fxSlotType(menuFx_) == FxType::Amp) {
+               menuFx_ >= 0 && fx_.slotType(menuFx_) == FxType::Amp) {
         edit(paramIndex(menuFx_, FxParam::AmpOversampling), command - kAmpOversamplingCommand);
     } else if (command == 3 && menuParam_ >= 0) {
-        disconnect(menuParam_);
+        routing_.disconnect(menuParam_);
     } else if (command == 4 && menuParam_ >= 0) {
         edit(menuParam_, 0.0); // switch a node off
     } else if (command == 9 && menuSource_ >= 0) {
-        addSource(sourceTypeOf(menuSource_), menuSource_);
+        addSource(mods_.sourceTypeOf(menuSource_), menuSource_);
     } else if (command == 10 && menuSource_ >= 0) {
         removeSource(menuSource_);
     } else if (command == 11 && menuValue_) {
@@ -12901,23 +12553,23 @@ void View::menuCommand(int command) {
     } else if (command == kEditAuxDepthCommand && menuAuxDepth_) {
         startTyping(*menuAuxDepth_);
     } else if ((command == kUnipolarCommand || command == kBipolarCommand) && menuSource_ >= 0) {
-        setSourcePolarity(menuSource_, command == kBipolarCommand);
+        mods_.setSourcePolarity(menuSource_, command == kBipolarCommand);
     } else if (command >= kRouteModeCommand && command < kRouteModeCommand + static_cast<int>(RouteMode::Count) &&
                menuParam_ >= 0 && routeModeOfRoute(menuParam_) >= 0) {
         edit(routeModeOfRoute(menuParam_), command - kRouteModeCommand);
     } else if (command == kResetBendCommand && menuParam_ >= 0) {
         const UndoScope step(controller_);
-        setWireBend(menuParam_, kDefaultWireBend);
+        routing_.setWireBend(menuParam_, kDefaultWireBend);
     } else if (command >= 100 && command < kClearCommand) {
-        removeSlot((command - 100) / kSlots, (command - 100) % kSlots);
+        mods_.removeSlot((command - 100) / kSlots, (command - 100) % kSlots);
     } else if (command >= kClearCommand && command < kClearCommand + kAllSources) {
         const UndoScope step(controller_);
         for (int slot : usedSlots(command - kClearCommand))
-            removeSlot(command - kClearCommand, slot);
+            mods_.removeSlot(command - kClearCommand, slot);
     } else if (command >= kBypassCommand && command < kBypassCommand + kAllSources * kSlots) {
-        toggleBypass((command - kBypassCommand) / kSlots, (command - kBypassCommand) % kSlots);
+        mods_.toggleBypass((command - kBypassCommand) / kSlots, (command - kBypassCommand) % kSlots);
     } else if (command >= kAuxClearCommand && command < kAuxClearCommand + kAllSources * kSlots) {
-        setAux((command - kAuxClearCommand) / kSlots, (command - kAuxClearCommand) % kSlots, -1);
+        mods_.setAux((command - kAuxClearCommand) / kSlots, (command - kAuxClearCommand) % kSlots, -1);
     }
 }
 
@@ -13161,7 +12813,7 @@ void View::endTyping(bool commit) {
     if (parseParam(t.widget.param, text.c_str(), &v))
         edit(t.widget.param, v);
     else
-        flash(trf(Str::MsgBadValue, {text, paramName(t.widget.param)}));
+        flash(trf(Str::MsgBadValue, {text, mods_.paramName(t.widget.param)}));
 }
 
 CursorKind View::cursor() const {

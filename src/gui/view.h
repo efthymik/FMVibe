@@ -2,6 +2,9 @@
 
 #include "canvas.h"
 #include "controller.h"
+#include "fxgraphmodel.h"
+#include "modulationmodel.h"
+#include "routingmodel.h"
 
 #include <array>
 #include <cstdint>
@@ -126,18 +129,12 @@ public:
     // Undo and redo the patch's last edits; not while a drag or typing goes on.
     void undo();
     void redo();
-    // The classic algorithms (kAlgorithms in algorithms.h). applyAlgorithm() sets the operators to the one at `index`,
-    // as one undo step: those it uses on and the others off, its routes among them in (a route it has keeps its depth,
-    // a new one starts at kAlgorithmDepth, its feedback at kAlgorithmFeedback) and theirs not in it disconnected with
-    // their modulation, its carriers going out (one going out already, or through a filter or shaper that does, as it
-    // was; a new one at 1 / sqrt(carriers)) and the others not (their sends into a filter or shaper that goes out
-    // disconnected too), and the operators in its places (see algorithmPlaces()), their wires bowing as new ones do.
-    // Filters, shapers, the carriers' sends into them and every operator's own sound stay as they are.
-    // currentAlgorithm() is the one the operators that are on form now (their routes above 0 % or kept at 0 %,
-    // whatever their depths; one going out through a filter or shaper counting as a carrier), -1 for none.
-    static constexpr double kAlgorithmDepth = 0.5, kAlgorithmFeedback = 0.25;
-    void applyAlgorithm(int index);
-    int currentAlgorithm() const;
+    // The classic algorithms (kAlgorithms in algorithms.h), as the panel of algorithms sets them and lights the one in
+    // force: see RoutingModel::applyAlgorithm() and currentAlgorithm().
+    static constexpr double kAlgorithmDepth = RoutingModel::kAlgorithmDepth;
+    static constexpr double kAlgorithmFeedback = RoutingModel::kAlgorithmFeedback;
+    void applyAlgorithm(int index) { routing_.applyAlgorithm(index); }
+    int currentAlgorithm() const { return routing_.currentAlgorithm(); }
 
     // Typing a value, after a double-click on the number a knob or slot shows, or into a text field: the preset
     // browser's search while it is open, the MODS view's filter once clicked, and the search atop a MODS row's target
@@ -387,8 +384,8 @@ private:
         FxClear,      // the button at the FX panel's top right that removes every effect, asking first
         SplitPoint,   // param = the crossover, a = split, b = 0 the low one, 1 the high one: its handle on the display
         // A split's controls (see splitControlWidgets()), in its container in the row and on its card in the graph.
-        SplitBand,    // a = split, b = band (0 low, 1 high, 2 middle; see View::splitLane()): its tab, which shows that
-                      // band
+        SplitBand,    // a = split, b = band (0 low, 1 high, 2 middle; see FxGraphModel::splitLane()): its tab, which
+                      // shows that band
         SplitBands,   // a = split, b = 2 or 3: the BANDS switch's half that splits it in that many bands
         SplitArea,    // a = split, b = band (as SplitBand's): the display between its band's crossovers, which shows
                       // that band
@@ -576,16 +573,7 @@ private:
         bool divider = false; // a line before it: the user's own come after the built-in ones, None after them
     };
 
-    struct Assignment {
-        int source;
-        int slot;
-        int target;
-        double amount;
-        bool bypassed; // kept, but modulating nothing for now
-        bool bipolar;  // swings its target both ways, as its source does (see sourceBipolar())
-        double scale;  // its Amount, which scales the depth (see SlotAuxParam)
-        int aux;       // the source that scales it too, or -1
-    };
+    using Assignment = gui::Assignment; // see modulationmodel.h
 
     // While a paint or a hit test goes on, nothing they read changes (but for what the host may change meanwhile, which
     // the next poll() brings), so what is derived from the params, the layout and the editor's state is worked out
@@ -626,47 +614,35 @@ private:
     // The widgets, built once while a scope goes on: paint() and hitTest() ask, each in a scope of its own.
     const std::vector<Widget> &scopedWidgets() const;
 
-    // Model access.
-    double value(int index) const;
+    // Model access: the patch's params and layout go through the models (see patchedits.h): the modulation's
+    // (mods_), the routing graph's (routing_) and the effects graph's (fx_). What is here reads them for the screen,
+    // keeps what a paint or hit test derives from them (see DerivedScope), and does what the editor's own state needs
+    // around their edits.
+    double value(int index) const { return mods_.value(index); }
+    double norm(int index) const { return mods_.norm(index); }
+    void edit(int index, double value) { mods_.edit(index, value); }
+    // Several params changed as one gesture.
+    void editMany(const std::vector<std::pair<int, double>> &changes) { mods_.editMany(changes); }
     // Noise has no pitch or unison copies: just a slope and a stereo spread.
     bool isNoise(int op) const;
     // Plays at its Freq x Mult rather than following the note (see OpParam::Fixed).
     bool isFixed(int op) const;
     bool isCustomWave(int op) const; // its wave is drawn from partials
     std::string fixedHzText(int op, bool compact) const;
-    double norm(int index) const;
-    void edit(int index, double value);
+    // ModulationModel's, from the sources as sources() keeps them; and a source's slots, kept while a scope goes on.
     std::vector<Assignment> assignments() const;
     std::vector<int> usedSlots(int source) const;
     // Whether a source does something: it modulates a target, or scales another source's modulation as its aux.
     bool sourceUsed(int source) const;
-    void assign(int source, int target);
-    void removeSlot(int source, int slot);
-    bool slotBypassed(int source, int slot) const;
-    void toggleBypass(int source, int slot);
-    // Makes a source swing every one of its targets both ways, or one way.
-    void setSourcePolarity(int source, bool bipolar);
-    // How far a route's wire bows to its left, as a share of the distance it spans: as dragged, or kDefaultWireBend.
-    float wireBend(int param) const;
-    void setWireBend(int param, float bend); // its default forgets it
-    static float defaultWireBend(int param); // kDefaultWireBend, or 0 for a node's line to OUT
-    Point routePoint(int node) const;        // a node's center, or OUT's (kNodes)
+    Point routePoint(int node) const; // a node's center, or OUT's (kNodes)
     // The MODS view: every modulation as a row, the sources in the order of assignments(), then the empty ones
     // (UiLayout::emptyMods; one from a source that has rows goes after them instead) and a row that adds one, over the routing panel and the inspector. Its rows scroll: how
     // many are scrolled past as shown (gliding), the most that can be, and scrolling them, gliding or at once; the
     // thumb of its bar.
     bool modsWide() const;
+    // An empty modulation's row stands in for a slot as emptyModSlot(its place in the list) (see modulationmodel.h).
     std::vector<Assignment> modsRows() const;
     std::vector<Assignment> modsRowsNow() const; // modsRows() worked out
-    // An empty modulation's row stands in for a slot as emptyModSlot(its place in the list), always below -1;
-    // emptyModOf() takes it back, -1 for a slot of a source.
-    static constexpr int emptyModSlot(int row) { return -2 - row; }
-    static constexpr int emptyModOf(int slot) { return slot <= -2 ? -2 - slot : -1; }
-    // An empty modulation's source and target, -1 for none: a source since removed, or a target no longer there,
-    // reads as none.
-    std::pair<int, int> emptyMod(int row) const;
-    // What a row modulates: its slot's target, or an empty modulation's.
-    int modsRowTarget(int source, int slot) const;
     float modsFirst() const;
     float modsEnd() const;
     void scrollMods(float first, bool glide);
@@ -676,20 +652,6 @@ private:
     bool glideMods();
     Rect modsThumb() const;
     void paintMods(Canvas &c);
-    // Changing a modulation from its row. Moving it to another source takes a free slot there, keeping its target,
-    // depth, polarity (as it is now), Amount, aux and bypass, as one undo step; refused when that source modulates the
-    // target already or has no slot free. Changing its target keeps the rest; refused when the source modulates that
-    // target already. An aux of -1 takes it away.
-    void moveModulation(int source, int slot, int to);
-    void retarget(int source, int slot, int target);
-    // Whether `source` may modulate `target` at all: a macro or the mod wheel can't move its own knob, and a macro not
-    // the knob of a macro its own knob moves (through the macros' modulations of one another), which would loop. And
-    // what the menus note, and the message that flashes up, where it can't.
-    bool canModulate(int source, int target) const;
-    bool closesLoop(int source, int target) const;
-    std::string refusedNote(int source, int target) const;
-    std::string refusedMessage(int source, int target) const;
-    void setAux(int source, int slot, int aux);
     // Adds an empty modulation from `source` (-1 for none yet), at the end of the list or after its source's rows,
     // scrolls to it and opens the menu of what it lacks; refused past kMaxEmptyMods.
     void addEmptyMod(int source = -1);
@@ -698,11 +660,9 @@ private:
     // The MODS view, its rows scrolled to the source's first; with none there yet, a new empty modulation from it
     // (see a card's SourceMods button).
     void showSourceMods(int source);
-    // Picks an empty modulation's source, or its target (-1 leaves it as it is). With both, it becomes a modulation of
-    // that source as a handle dropped on the target makes one, and leaves the list; refused, as assign() refuses,
-    // the row stays as it was. One undo step. Either way the rows scroll to where it is now, among its source's.
+    // Picks an empty modulation's source, or its target, as ModulationModel::fillEmptyMod() does; either way the rows
+    // scroll to where it is now, among its source's.
     void fillEmptyMod(int row, int source, int target);
-    void removeEmptyMod(int row);
     // The cascading menus of a MODS row: its sources by category (LFOs, envelopes, macros, the keyboard's), the same
     // with None for its aux, and every target by category, only the effects in the chain among them. Each entry is a
     // category (with entries of its own), a heading, or a pick: a source (-1 for None) or a target param.
@@ -759,18 +719,12 @@ private:
     void paintCascade(Canvas &c);
     // "Bypass LFO 1 modulation", or "Resume ..." for one that is bypassed.
     std::string bypassLabel(int source, int slot) const;
-    void connect(int from, int to);
-    // Moves the route from `from` into `to` over to `into` (kNodes: the output), with its amount and modulation.
-    void reroute(int from, int to, int into);
-    // Moves the route from `from` into `to` (kNodes: the output) over to come from `source`, with its amount, mode and
-    // modulation.
-    void rerouteFrom(int from, int to, int source);
     // The route whose arrowhead or start is being dragged elsewhere, which the graph then draws following the mouse;
     // else -1.
     int rerouting() const;
     // Whether a source's handle let go of on `w` modulates what it shows: a knob, a route's label or matrix cell, or
     // a depth bar, as the drag's overlay rings them; never the source's own output (a macro's or the mod wheel's
-    // knob), nor a macro's knob that would loop (see canModulate()).
+    // knob), nor a macro's knob that would loop (see ModulationModel::canModulate()).
     bool droppable(const Widget &w, int source) const;
     // The color of the effect in `slot`: each type of effect has its own.
     Color fxColor(int slot) const;
@@ -783,62 +737,29 @@ private:
     // Steps a list's choice to the entry before (dir -1) or after (1) the one shown, round its ends (its button's
     // arrows).
     void stepList(int param, int dir);
-    bool nodeOn(int node) const;
-    void switchOnRoute(int from, int to);
-    std::vector<int> enabledNodes() const;
-    // Whether sound gets into a filter or shaper: from an operator that is on, or a filter or shaper that has some.
-    bool boxHasInput(int node) const;
     // Whether `node` is heard in the end: it goes out, or feeds or modulates a node that is, by routes open where
     // modulation takes them now (see liveAmount()).
     bool reachesOut(int node) const;
     // How far `node` is let through to the output now: the largest live amount of its routes that lead there (0..1).
     double outLevel(int node) const;
-    // Whether a filter's or shaper's own sound gets to the output: it goes out, or into a filter or shaper whose sound
-    // does.
-    bool boxGoesOut(int node) const;
-    // Whether an operator's sound gets to the output through a filter or shaper that is on, which it is sent into.
-    bool outThroughBox(int op) const;
     // Effects. The FX view takes the place of the routing panel and the inspector.
     bool fxWide() const;
-    FxType fxSlotType(int slot) const;
-    // The slots that hold an effect, in the line's order (see fxLine()): the main line's, and each split's high band's
-    // then its low band's.
+    // The slots that hold an effect, in the line's order (see FxGraphModel::chain()), kept while a scope goes on.
     std::vector<int> fxChain() const;
-    // Fills an empty slot with a fresh effect of `type`, or a copy of slot `copyOf`, and puts it in the line: a copy
-    // right after its original, a new one where the list was opened (see fxSlot_).
+    // FxGraphModel's edits, with what the editor's own state needs around them: an effect added where the list was
+    // opened (see fxSlot_), shown in either view; a slot filled or emptied (see effectFilled()).
     void addEffect(FxType type, int copyOf = -1);
-    // The first slot without an effect, or -1; and that slot filled (fresh, or as `copyOf`), unfolded, not in the line.
-    int freeFxSlot() const;
-    void fillEffect(int slot, FxType type, int copyOf);
     void removeEffect(int slot);
-    // The effects (see fxgraph.cpp): a main line of effects and splits from IN to OUT, each split with a high and a low
-    // band of effects (and, split in three, a middle one between), closed by a join (the sum of its number) or, the line's last item, left open into OUT. The FX
-    // view shows it as a row of cards, each split a container holding its bands (fxRow()), or as a graph on a fixed
-    // grid: two views of one line, which the editor reads from the wires (fxLine()) and writes the wires from
-    // (writeFxLine()), so the engine runs what either shows. Nodes are numbered as the graph's params number them
-    // (a slot, kFxSlots + split, the output, then the sums); wires come from ports (fxSlotPort(), fxBandPort(), ...).
-    struct FxWireRef {
-        int node;  // the node it goes into
-        int input; // which of that node's inputs
-        int port;  // where it comes from
-    };
-    // A split's bands go by lane: 1 the high one, 2 the low one, 3 the middle one, which only a split in three has.
-    struct FxLineItem {
-        int node;            // an effect's slot, or a split's node
-        std::vector<int> hi; // a split's bands: the effects' slots along each, in order
-        std::vector<int> lo;
-        bool joined = false; // closed by its join
-        std::vector<int> mid;
-        bool three = false; // split in three bands, `mid` between `hi` and `lo`
-        std::vector<int> &band(int lane) { return lane == 1 ? hi : lane == 3 ? mid : lo; }
-        const std::vector<int> &band(int lane) const { return lane == 1 ? hi : lane == 3 ? mid : lo; }
-        // Its bands' lanes, top to bottom as the graph has them: the high band, the middle one, the low one.
-        std::span<const int> lanes() const {
-            static constexpr int kThreeLanes[] = {1, 3, 2}, kTwoLanes[] = {1, 2};
-            return three ? std::span<const int>(kThreeLanes) : std::span<const int>(kTwoLanes);
-        }
-    };
-    using FxLine = std::vector<FxLineItem>;
+    // What the editor keeps of an effect slot that another effect now fills (as `copyOf`'s copy, or fresh), or that
+    // empties.
+    void effectFilled(int slot, int copyOf);
+    void effectGone(int slot);
+    // The effects (see fxgraphmodel.h): a line the FX view shows as a row of cards, each split a container holding its
+    // bands (fxRow()), or as a graph on a fixed grid: two views of one line, which the editor reads from the wires
+    // (fxLine()) and FxGraphModel writes the wires from, so the engine runs what either shows.
+    using FxWireRef = gui::FxWireRef;
+    using FxLineItem = gui::FxLineItem;
+    using FxLine = gui::FxLine;
     // Where the grid puts things: each node (row -1 the high band, 0 the main line and a middle band, 1 the low band),
     // each + (lane 0 the main line, 1 the high band, 2 the low band, 3 the middle band) and OUT's column.
     struct FxGridLayout {
@@ -852,14 +773,7 @@ private:
         std::vector<Slot> slots;
         int outCol = 1;
     };
-    // Where the list of effects puts what it adds when it was opened in the graph: at the end of a lane (a +, `item`
-    // -1), or where a wire's middle was clicked: on the main line before item `item`, or on that item's band (lane 1
-    // the high one, 2 the low one, 3 the middle one) at `place`. Lane -1: neither, the list opened elsewhere.
-    struct FxSlotAt {
-        int lane = -1;
-        int item = -1;
-        int place = 0;
-    };
+    using FxSlotAt = gui::FxSlotAt;
     static constexpr int kFxGapStride = 64; // a band's places, more than it can hold
     // The wires the grid draws: level from `from` to `to` (an arrowhead's base where `arrow`), bending S-shaped from one
     // row to another within a gap between nodes, in `color`, and
@@ -877,9 +791,6 @@ private:
         std::vector<Point> path;   // its points, from `from` to `to` (see wirePath()), worked out once
         Point middle;              // where its + shows: `plus`, or on its path halfway across
     };
-    // Whether the join of a split on the line lets a band of it through (`lane` 1 the high one, 2 the low one, 3 the
-    // middle one): not while another band is soloed and it isn't.
-    bool fxBandSoloedOut(const FxLineItem &item, int lane) const;
     // How brightly a port of the effects graph lights what it goes out of and along, 0..1: by its level in the
     // telemetry, in dB from kFxGlowFloorDb up to full scale; 0 while the audio has stopped.
     static constexpr float kFxGlowFloorDb = -48.0f;
@@ -936,22 +847,13 @@ private:
     void retargetFxDrag(Point mouse); // where it would land, for the mouse at `mouse`
     void dropFxNode(bool take);       // let go of: moved there if `take`, in its placeholder's place at once
     bool glideFxGraph();              // a step of the glide, in poll(): whether anything moved
-    static FxLine fxLineWith(FxLine rest, const FxLineItem &item, FxSlotAt at);
-    // Every effect (and every split and join) gone, one undo step, the modulation of their knobs with them; whether
-    // there is any.
+    // Every effect (and every split and join) gone, as FxGraphModel::clear() has it, the row and the graph scrolled
+    // back to their start.
     void clearFx();
-    bool fxAnyToClear() const;
     bool fxGraph() const;
-    bool fxNodeShown(int node) const;
-    std::vector<FxWireRef> fxWires() const;
-    // The line the wires make, with any effect they leave out put at its end (on the high band while a split is open).
+    // The line the wires make (see FxGraphModel::line()), kept while a scope goes on.
     FxLine fxLine() const;
-    FxLine fxLineOfWires() const; // fxLine() worked out
-    // Wires the graph as `line` says, the splits and joins it holds in use and the others not, the join's band
-    // levels kept, in the undo step the caller holds.
-    void writeFxLine(const FxLine &line);
     static FxGridLayout fxGridLayout(const FxLine &line);
-    static int fxJoinNode(int split) { return fxSumNode(split); } // a split's join: the sum of the same number
     float fxGraphScroll(const FxGridLayout &grid) const;     // how far the graph is scrolled, held to its width
     float fxGraphScrollMost(const FxGridLayout &grid) const; // how far it scrolls at most
     void revealFxNode(int node);                         // scrolls the graph to show that node
@@ -966,25 +868,17 @@ private:
     // doesn't show.
     std::optional<Rect> fxCardOf(int slot) const;
     int fxSelectedNode() const; // the node the inspector shows, -1 for none
-    // An effect just put in `slot`: where the list was opened (see fxSlot_), or, a copy, after the effect it copies.
-    void fxPlaceNew(int slot, int copyOf);
     // A split with its join right after it, its bands empty: where the list was opened on the main line (an arrow in
-    // the row, a wire's middle in the graph; see fxSlot_), else at the line's end.
+    // the row, a wire's middle in the graph; see fxSlot_), else at the line's end; shown.
     void addSplit(int bands = 2);
-    // A split in two bands or three (see SplitParam::Bands), one undo step. Three: an empty middle band opens between
-    // the two, shown, its crossover two octaves above the low one, and its join takes it in at 0 dB. Two: the middle
-    // band goes, its effects onto the low band's end (`midTo` 2), the high band's start (1) or removed (0); with
-    // effects on it and `midTo` -1, the confirm dialog asks which first.
+    // A split in two bands or three, as FxGraphModel::setSplitBands() has it: with effects on its middle band and
+    // `midTo` -1, the confirm dialog asks first where they go (0 removed, 1 the high band's start, 2 the low band's
+    // end).
     void setSplitBands(int split, int bands, int midTo = -1);
-    bool splitThree(int split) const; // split in three bands
-    // An effect, or a split with its join (a join's x removes its split). A split's bands' effects stay on the main
-    // line in its place, high band first (`effects` 0), or go with it, with their modulation (1); with any on its
-    // bands, -1 asks which first (kConfirmSplitRemove). One undo step.
+    // An effect, or a split with its join (a join's x removes its split), as FxGraphModel::removeNode() has it: a
+    // split's bands' effects stay on the main line (`effects` 0) or go with it (1); with any on its bands, -1 asks
+    // which first (kConfirmSplitRemove).
     void removeFxNode(int node, int effects = -1);
-    // The other bands of the split whose band holds effect `slot`, low to high by lane (none off a band); and the
-    // effect moved to the end of one of them (`lane` as FxLineItem's), one undo step.
-    std::vector<int> fxOtherBands(int slot) const;
-    void moveFxToBand(int slot, int lane);
     // The FX view showing the effects as a graph, or as the row: only the view changes.
     void setFxGraph(bool on);
     // The node of the graph under the mouse, or whose x or power switch is (see Kind::FxNodeDelete and FxNodePower),
@@ -1246,12 +1140,6 @@ private:
     void splitControlWidgets(std::vector<Widget> &list, int split, Rect card, bool row) const;
     void paintSplitControls(Canvas &c, int split, Rect card, bool row);
     std::optional<Rect> splitCardOf(int split) const; // where a split's controls show now, if they do
-    // The band it shows: 1 its high band, 2 its low one, 3 its middle one (FxSlotAt), as its tab says (UiLayout's
-    // splitBand: 0 the low band, 1 the high one, 2 the middle one, the low one while it is split in two).
-    int splitLane(int split) const;
-    void showSplitBand(int split, int band); // 0 its low band, 1 its high one, 2 its middle one
-    bool splitFolded(int split) const;
-    void setSplitFolded(int split, bool folded);
     // The row (the chain view): the line's items left to right, each an effect's card or a split's container (its
     // controls a card place wide, the cards of the band it shows, then a narrow dashed card adding to that band), in
     // card places from the row's start, as fxCard() takes them less the scroll.
@@ -1263,7 +1151,7 @@ private:
     };
     struct FxRowBox {
         int split, item;
-        int lane;          // the band it shows (see splitLane())
+        int lane;          // the band it shows (see FxGraphModel::splitLane())
         float place, span; // the whole container, or its strip folded
         bool folded;
         float add;         // its dashed card's place
@@ -1332,7 +1220,7 @@ private:
     float fxCardSpan(int slot) const;
     float sourceSpan(int source) const;
     float sourceOffset(const std::vector<int> &shown, size_t index) const;
-    void setFolded(bool fx, int index, bool folded);
+    void setFolded(bool fx, int index, bool folded); // see PatchEdits::setFolded(), and wideLfo()
     void paintDownward(Canvas &c, Rect r, std::string_view name, Color color);
     // What scrolls sideways with a scrollbar: the effects chain and the modulation sources, by card places, and the
     // effects graph, by pixels. How long each is, how much of it shows, where it is scrolled to and its thumb.
@@ -1377,8 +1265,6 @@ private:
     // The threshold a three-band dynamics' line `line` (2 x band + 0 for Above, 1 for Below) sets: its band's, or,
     // linked, the low band's.
     int mdThreshold(int slot, int line) const;
-    // Several params changed as one gesture.
-    void editMany(const std::vector<std::pair<int, double>> &changes);
     // Drawn shapes: a freeform LFO's (shape = the source), a shaper's curve (shape = kMaxSources + the shaper's
     // unit: an effect slot, or kFxSlots + a shaper), the note source's curve (shape = kNoteCurve) or velocity's
     // (kVelocityCurve). The big editor shows over the routing panel and the inspector while the LFO's shape is
@@ -1513,23 +1399,12 @@ private:
     void flash(std::string message);
     // The MIDI note under the keyboard's first key.
     int keyboardBase() const;
-    // Modulation sources. The places that hold one, in the order they show; shown,
+    // Modulation sources. The places that hold one, in the order they show (kept while a scope goes on); shown,
     // with the card being dragged already moved to where it would land.
     std::vector<int> sources() const;
     std::vector<int> sourcesShown() const;
     std::vector<int> sourcesMoved() const; // sourcesShown() worked out
-    SourceType sourceTypeOf(int source) const;
-    // The shape the source in place `source` runs as an LFO (see fmvibe::lfoShape()): Random for a Random source.
-    LfoShape lfoShapeOf(int source) const;
     std::pair<double, double> modReach(const Assignment &m) const;
-    // Whether a source swings its targets both ways (see fmvibe::sourceBipolar()).
-    bool sourceBipolar(int source) const;
-    // What a double-click or Reset sets a param to: its default, or a bipolar macro's middle.
-    double resetValue(int param) const;
-    std::string sourceName(int source) const;
-    // A param's name as the editor shows it: a source's fields go by the source's name, not their place's.
-    std::string paramName(int index) const;
-    bool sourceOn(int source) const;
     // Whether `m`'s depth handle is under the mouse or being dragged: its range is drawn wider, over the others.
     bool modFocused(const Assignment &m) const;
     // Whether it does anything, as its handle shows: a source once it is used (see sourceUsed()), and an LFO or
@@ -1541,12 +1416,10 @@ private:
     float sourceScroll() const;
     float cardOf(int source) const;
     void revealSource(int source);
-    // Fills a free place with a fresh source of `type`, or a copy of `copyOf`, shown after the others or the original.
+    // ModulationModel's, scrolled to show the source added, its card widened for a new Curve source; and the shape
+    // editor and widened card the place had let go.
     int addSource(SourceType type, int copyOf = -1); // the place it fills, or -1 with none free
-    // Takes it out with its modulation, and whatever modulates its knobs.
     void removeSource(int source);
-    // Shows the sources in the order `shown`, the free places after them.
-    void setSourceOrder(const std::vector<int> &shown);
     // Where an LFO of the newest voice is now, and its output there; with no voice, a free or anchored one's shared
     // clock.
     double lfoPhaseNow(int lfo) const;
@@ -1572,9 +1445,6 @@ private:
     // Geometry.
     std::vector<Widget> widgets() const;
     std::optional<Widget> hitTest(Point p) const;
-    Point nodeCenter(int node) const;
-    Point nodePlace(int node, Point want, bool *found = nullptr) const;
-    void placeSwitchedOn(int node); // moves a node just switched on off the others shown, as part of the edit
     int nodeAt(Point p) const;
     // Where a label `width` wide goes on a wire, a quadratic curve from `start` by `control` to `end` whose middle is
     // `middle`: there, unless that puts it over a node or one of the labels `taken`; then slid along the wire, either
@@ -1879,15 +1749,6 @@ private:
     // Loads a preset of the library, asking first if the patch changed since the last.
     void openPreset(int index, bool close = true);
     void stepPreset(int direction);
-    // Whether a route shows its wire: it is on, or it was and has only been turned down to 0 %.
-    bool wired(int param) const;
-    // Whether the graph shows `node`'s line to OUT: it is wired, and a filter has something to put out.
-    bool goesOut(int node) const;
-    // Whether `node`'s own sound reaches the output, as the dot on its tab shows: its Out is up, an operator is on, and
-    // a filter or shaper has something going into it.
-    bool soundsOut(int node) const;
-    void keepRoutes();
-    void disconnect(int param); // to 0 %, and its wire goes
     bool presetActionOn(PresetAction action) const;
     void runPreset(PresetAction action);
     void paintSettings(Canvas &c);
@@ -1899,6 +1760,10 @@ private:
 
     Controller &controller_;
     const ParamTable &table_;
+    // The patch's models, each telling the editor why it refused an edit (see flash()).
+    ModulationModel mods_;
+    RoutingModel routing_;
+    FxGraphModel fx_;
     ParamValues seen_{};
     uint64_t seenStamp_ = 0; // the controller's valuesStamp() when seen_ was taken (0: not yet)
     Telemetry telemetry_{};

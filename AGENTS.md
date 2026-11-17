@@ -756,7 +756,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     another, a wire, a line to OUT or a label over a node it doesn't join or through a loop, or two labels on each
     other (`src/gui/arrange.h` counts them; `fmvibe-uishot <dir> 1 --presets` renders and checks these alone);
   - every algorithm (`src/gui/algorithms.h`: six operators' 32, four's 8, three's 5 and two's 2, set by
-    `View::applyAlgorithm()`) on a new patch: laid out with
+    `RoutingModel::applyAlgorithm()`) on a new patch: laid out with
     no clash as arrange.h counts them, found again as the one the operators form, and taken back, params and
     layout, by one undo; and onto a patch of its own, a route it has kept at its depth, the others disconnected with
     their mode and modulation (undone back), a carrier going out through a filter left so and counted as one, the
@@ -1063,12 +1063,16 @@ breakpoints in `src/` then hit.
 | `src/fxlag.h` | How late each path through the effects graph is from the effects that run oversampled, the pads that keep paths meeting in step, and the output's latency |
 | `src/unison.h` | Where an operator's unison copies go: their detune, place and level by its Unison Curve, Pan and Blend, for the voices and the UNISON tab alike |
 | `src/warp.h` | An operator's warps: where along its cycle it reads its wave, how much they squeeze it and where they bend it |
-| `src/gui/view.cpp` | The editor: its widgets, drawing and mouse and keyboard handling, and the model access behind them. Window-free, so it also renders offscreen |
+| `src/gui/view.cpp` | The editor: its widgets, drawing and mouse and keyboard handling, reading the patch through the models below. Window-free, so it also renders offscreen |
+| `src/gui/patchedits.h`, `src/gui/patchedits.cpp` | What the editor's models of the patch stand on: the params read and edited through the `Controller` as the editor edits them, the layout saved with them, and the messages an edit refused leaves. Window-free and without a `View`, so a tool can edit a patch through them |
+| `src/gui/modulationmodel.h`, `src/gui/modulationmodel.cpp` | `ModulationModel`: the sources in their places, their slots' targets, depths, auxes, bypass and polarity, what a source may modulate, the MODS view's empty modulations; assigning, moving, retargeting and removing modulations, adding and removing sources |
+| `src/gui/routingmodel.h`, `src/gui/routingmodel.cpp` | `RoutingModel`: the routing graph's nodes on and where they sit, its routes and outputs (shown, kept at 0 %, how far their wires bow), connecting, rerouting and disconnecting them, and setting the classic algorithms |
+| `src/gui/fxgraphmodel.h`, `src/gui/fxgraphmodel.cpp` | `FxGraphModel`: the effects' line of effects, splits and joins, read from the wires and written back to them; filling, adding, copying and removing effects, and adding, splitting in three and removing splits |
 | `src/gui/theme.h`, `src/gui/theme.cpp` | The editor's color themes, the colors of the one being painted, and the graphs' glow |
 | `src/gui/layout.h` | Where the editor's panels, cards, buttons, lists and dialogs go, in logical pixels |
 | `src/gui/icons.h`, `src/gui/icons.cpp` | The editor's icons (effects, filter types, band shapes, LFO modes, waves) and the point cache behind them and the graphs' curves |
-| `src/gui/routing.h`, `src/gui/routing.cpp` | The routing graph: which param joins two nodes, wires and arrowheads; connecting and rerouting |
-| `src/gui/fxgraph.h`, `src/gui/fxgraph.cpp` | The effects' line of effects, splits and joins, read from the wires and written back to them; its two views, the row (each split a container holding its bands) and the graph's slot grid with its +s and inspector; and a split's controls, which both show |
+| `src/gui/routing.h`, `src/gui/routing.cpp` | The routing graph: which param joins two nodes, wires and arrowheads, and their labels |
+| `src/gui/fxgraph.h`, `src/gui/fxgraph.cpp` | The effects' line of effects, splits and joins as the FX view shows it: its two views, the row (each split a container holding its bands) and the graph's slot grid with its +s and inspector; and a split's controls, which both show |
 | `src/gui/shapes.cpp` | Editing drawn shapes: Curve sources' shapes, shaper curves and the note source's curve |
 | `src/gui/mods.cpp` | The MODS view: every modulation as a row, its filter, and the cascading menus (the target's with a search) that move it, retarget it and pick its aux |
 | `src/gui/seq.cpp` | The SEQ view: the sequencer's settings card, and the piano roll with its tools, ruler, keys and lane |

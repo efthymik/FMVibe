@@ -122,19 +122,20 @@ int View::shapeEditing() const {
     }
     if (isClipCurve(shapeEditor_)) {
         const int slot = shapeEditor_ - kMaxSources;
-        return fxSlotType(slot) == FxType::Shaper &&
+        return fx_.slotType(slot) == FxType::Shaper &&
                        std::lround(value(paramIndex(slot, FxParam::ShaperMode))) == static_cast<long>(ClipMode::Custom)
                    ? shapeEditor_
                    : -1;
     }
-    if (!runsLfo(sourceTypeOf(shapeEditor_)) || lfoShapeOf(shapeEditor_) != LfoShape::Custom) // a Curve source's
+    // A Curve source's.
+    if (!runsLfo(mods_.sourceTypeOf(shapeEditor_)) || mods_.lfoShapeOf(shapeEditor_) != LfoShape::Custom)
         return -1;
     return shapeEditor_;
 }
 
 int View::wideLfo() const {
-    if (wideLfo_ < 0 || !runsLfo(sourceTypeOf(wideLfo_)) || sourceFolded(wideLfo_) ||
-        lfoShapeOf(wideLfo_) != LfoShape::Custom)
+    if (wideLfo_ < 0 || !runsLfo(mods_.sourceTypeOf(wideLfo_)) || sourceFolded(wideLfo_) ||
+        mods_.lfoShapeOf(wideLfo_) != LfoShape::Custom)
         return -1;
     return wideLfo_;
 }
@@ -469,7 +470,7 @@ void View::applyShapeTool(int lfo, ShapeTool tool) {
         copiedShape.clear();
         for (int f = 0; f < kShapeParamCount; ++f)
             copiedShape.push_back(value(shapeBase(lfo) + f));
-        flash(trf(Str::MsgShapeCopied, {sourceName(lfo)}));
+        flash(trf(Str::MsgShapeCopied, {mods_.sourceName(lfo)}));
         return;
     }
     if (tool == ShapeTool::Paste) {

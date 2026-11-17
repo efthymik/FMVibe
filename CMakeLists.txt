@@ -110,13 +110,21 @@ add_library(fmvibe-core STATIC
     src/gui/presetui.cpp
     src/gui/fxgraph.cpp
     src/gui/fxgraph.h
+    src/gui/fxgraphmodel.cpp
+    src/gui/fxgraphmodel.h
     src/gui/icons.cpp
     src/gui/icons.h
+    src/gui/modulationmodel.cpp
+    src/gui/modulationmodel.h
     src/gui/mods.cpp
     src/gui/seq.cpp
     src/gui/layout.h
+    src/gui/patchedits.cpp
+    src/gui/patchedits.h
     src/gui/routing.cpp
     src/gui/routing.h
+    src/gui/routingmodel.cpp
+    src/gui/routingmodel.h
     src/gui/shapes.cpp
     src/gui/theme.cpp
     src/gui/theme.h

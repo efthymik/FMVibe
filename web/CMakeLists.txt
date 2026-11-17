@@ -35,10 +35,14 @@ add_executable(fmvibe-ui
     ${PROJECT_SOURCE_DIR}/src/gui/dialogs.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/presetui.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/fxgraph.cpp
+    ${PROJECT_SOURCE_DIR}/src/gui/fxgraphmodel.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/icons.cpp
+    ${PROJECT_SOURCE_DIR}/src/gui/modulationmodel.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/mods.cpp
+    ${PROJECT_SOURCE_DIR}/src/gui/patchedits.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/seq.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/routing.cpp
+    ${PROJECT_SOURCE_DIR}/src/gui/routingmodel.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/shapes.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/theme.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/view.cpp
