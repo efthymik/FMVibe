@@ -45,7 +45,7 @@ void check(bool ok, const char *what) {
         ++failures;
 }
 
-class FakeController : public Controller {
+class FakeController : public Controller, public PresetStore {
 public:
     FakeController() {
         for (int i = 0; i < kParamCount; ++i)
@@ -74,6 +74,7 @@ public:
     }
     void setIdleLfosShown(bool shown) override { idleLfosShown = shown; }
     bool idleLfosShown = false; // what the view said last (see Controller::setIdleLfosShown())
+    PresetStore &presetStore() override { return *this; }
     void resetPreset() override { ++resets; }
     bool loadPreset(const std::wstring &) override { return false; }
     // As the plugin does: a preset saved is the patch's preset, unchanged. Unless writing is to fail.
@@ -217,19 +218,11 @@ public:
     void setMpe(bool on) override { mpeOn = on; }
     int mpeBendRange() const override { return mpeRange; }
     void setMpeBendRange(int semitones) override { mpeRange = semitones; }
-    std::string theme() const override { return themeName; }
-    void setTheme(const std::string &name) override { themeName = name; }
-    double accentHue() const override { return hue; }
-    void setAccentHue(double h) override { hue = h; }
-    double glow() const override { return glowLevel; }
-    void setGlow(double amount) override { glowLevel = amount; }
-    int handleSize() const override { return handles; }
-    void setHandleSize(int size) override { handles = size; }
-    double linkIntensity() const override { return links; }
-    void setLinkIntensity(double amount) override { links = amount; }
-    double gridIntensity() const override { return grid; }
-    void setGridIntensity(double amount) override { grid = amount; }
-    double grid = Controller::kDefaultGridIntensity;
+    EditorSettings editorSettings() const override {
+        return {.theme = themeName, .accentHue = hue, .glow = glowLevel, .handleSize = handles, .linkIntensity = links,
+                .gridIntensity = grid};
+    }
+    double grid = EditorSettings::kDefaultGridIntensity;
     bool hasTempo() const override { return offersTempo; }
     double tempo() const override { return bpm; }
     void setTempo(double v) override {
@@ -247,6 +240,14 @@ protected:
         sets.push_back(index);
     }
     void performEndEdit(int) override { --openEdits; }
+    void storeEditorSettings(const EditorSettings &settings) override {
+        themeName = settings.theme;
+        hue = settings.accentHue;
+        glowLevel = settings.glow;
+        handles = settings.handleSize;
+        links = settings.linkIntensity;
+        grid = settings.gridIntensity;
+    }
 
 public:
 
@@ -6768,7 +6769,7 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         const uint32_t at32 = lineAt(4), at16 = lineAt(3);
         model.grid = 0.0;
         const uint32_t none32 = lineAt(4), none16 = lineAt(3);
-        model.grid = Controller::kDefaultGridIntensity;
+        model.grid = EditorSettings::kDefaultGridIntensity;
         model.ui.seqSnap = 2;
         check(at32 != at16 && none32 == none16, "the roll's lines fall at the snap's length, as strong as GRID says");
     }
@@ -12756,14 +12757,14 @@ void run(const std::filesystem::path &dir, float scale) {
           "the settings dialog's LINES slider sets how strongly the sources' lines are drawn, and only that");
     // GRID, under LINES: at 50 % to begin with, dragged to its end, double-clicked back to 50 %.
     auto gridAt = [&](float amount) { return Point{dialog.x + 76.0f + 200.0f * amount, dialog.y + 312.0f + 181.0f}; };
-    const bool gridStart = model.grid == Controller::kDefaultGridIntensity;
+    const bool gridStart = model.grid == EditorSettings::kDefaultGridIntensity;
     view.mouseDown(gridAt(0.5f), {});
     view.mouseMove({gridAt(1.0f).x + 40.0f, gridAt(1.0f).y}, {});
     const bool gridShot = renderer.save(view, dir / "14j-settings-grid.png");
     view.mouseUp({gridAt(1.0f).x + 40.0f, gridAt(1.0f).y}, {});
     const bool gridSet = model.grid == 1.0 && model.links == 1.0;
     doubleClick(view, gridAt(0.9f)); // inside its track, short of its right end
-    check(gridStart && gridShot && gridSet && model.grid == Controller::kDefaultGridIntensity,
+    check(gridStart && gridShot && gridSet && model.grid == EditorSettings::kDefaultGridIntensity,
           "the settings dialog's GRID slider sets how strongly the roll's grid is drawn, a double-click putting it back");
     // HUE, under the themes, turns the theme's main color round the color wheel once it is let go, the theme's own to
     // begin with; the accent then takes it (read off the rendered pixels: the slider's knob, in the accent).
@@ -12809,7 +12810,7 @@ void run(const std::filesystem::path &dir, float scale) {
             doubleClick(view, on);
         }
         check(tips && model.hue < 0.0 && model.glowLevel == 0.5 && model.links == 0.75 &&
-                  model.grid == Controller::kDefaultGridIntensity,
+                  model.grid == EditorSettings::kDefaultGridIntensity,
               "the settings dialog's sliders show a tooltip under them while the mouse rests on them, not while dragged");
     }
     model.glowLevel = 0.0;

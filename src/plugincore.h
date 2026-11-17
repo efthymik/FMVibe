@@ -64,7 +64,10 @@ inline constexpr char kPluginDescription[] = "Six-operator FM synthesizer";
 // Milliseconds on the steady clock.
 int64_t steadyMs();
 
-class PluginCore : public gui::Controller {
+// The user's settings file holds the editor's look as the editor sets it.
+static_assert(kMaxHandleSize == gui::EditorSettings::kMaxHandleSize);
+
+class PluginCore : public gui::Controller, public gui::PresetStore {
 public:
     PluginCore();
     ~PluginCore() override;
@@ -84,6 +87,9 @@ public:
         scopeCycles_.store(cycles, std::memory_order_relaxed);
     }
     void setIdleLfosShown(bool shown) override;
+    gui::PresetStore &presetStore() override { return *this; }
+
+    // gui::PresetStore, main thread: the preset library (presets_) and the patch as a file.
     void resetPreset() override;
     bool loadPreset(const std::wstring &path) override;
     bool savePreset(const std::wstring &path) override;
@@ -113,41 +119,24 @@ public:
     void removeUserCategory(const std::string &name) override;
     std::string presetBrowserPlace() const override;
     void setPresetBrowserPlace(const std::string &place) override;
+
+    // gui::Controller's settings, main thread.
     int oversampling() const override { return oversampling_.load(); }
     void setOversampling(int factor) override;
     bool mpe() const override { return mpe_.load(); }
     void setMpe(bool on) override;
     int mpeBendRange() const override { return mpeBendRange_.load(); }
     void setMpeBendRange(int semitones) override;
-    std::string theme() const override { return userSettings.theme; }
-    void setTheme(const std::string &name) override {
-        userSettings.theme = name;
-        writeUserSettings();
-    }
-    double accentHue() const override { return userSettings.hue; }
-    void setAccentHue(double hue) override {
-        userSettings.hue = hue < 0.0 ? -1.0 : std::clamp(hue, 0.0, 1.0);
-        writeUserSettings();
-    }
-    double glow() const override { return userSettings.glow; }
-    void setGlow(double amount) override {
-        userSettings.glow = std::clamp(amount, 0.0, 1.0);
-        writeUserSettings();
-    }
-    int handleSize() const override { return userSettings.handleSize; }
-    void setHandleSize(int size) override {
-        userSettings.handleSize = std::clamp(size, 0, kMaxHandleSize);
-        writeUserSettings();
-    }
-    double linkIntensity() const override { return userSettings.links; }
-    void setLinkIntensity(double amount) override {
-        userSettings.links = std::clamp(amount, 0.0, 1.0);
-        writeUserSettings();
-    }
-    double gridIntensity() const override { return userSettings.grid; }
-    void setGridIntensity(double amount) override {
-        userSettings.grid = std::clamp(amount, 0.0, 1.0);
-        writeUserSettings();
+    // The editor's look is the user's settings file's (see usersettings.h).
+    gui::EditorSettings editorSettings() const override {
+        gui::EditorSettings settings;
+        settings.theme = userSettings.theme;
+        settings.accentHue = userSettings.hue;
+        settings.glow = userSettings.glow;
+        settings.handleSize = userSettings.handleSize;
+        settings.linkIntensity = userSettings.links;
+        settings.gridIntensity = userSettings.grid;
+        return settings;
     }
 
     // Every param's value now. Any thread. ParamValues is large (about 150 KB): valuesInto() fills one in place, kept
@@ -226,6 +215,16 @@ protected:
     }
     void performStepBegin() override;
     void performStepEnd() override;
+    // Each setting written into the file as it is set, as the settings dialog's buttons and sliders set it.
+    void storeEditorSettings(const gui::EditorSettings &settings) override {
+        userSettings.theme = settings.theme;
+        userSettings.hue = settings.accentHue;
+        userSettings.glow = settings.glow;
+        userSettings.handleSize = settings.handleSize;
+        userSettings.links = settings.linkIntensity;
+        userSettings.grid = settings.gridIntensity;
+        writeUserSettings();
+    }
     void requestEditorSize(uint32_t width, uint32_t height) override { hostResizeEditor(width, height); }
 
     // How each format tells its host. Main thread, unless they say otherwise.

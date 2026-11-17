@@ -287,79 +287,14 @@ struct PresetEntry {
     PresetInfo info;    // as its file has it
 };
 
-// One step of the editor's undo history: the params it changed, with their values before and
-// after, and the patch's part of the layout (node places, source order, kept routes) if that changed.
-struct UndoStep {
-    struct Change {
-        int index;
-        double before;
-        double after;
-    };
-    std::vector<Change> changes; // in the order they were first edited
-    bool layoutChanged = false;
-    UiLayout before; // only kept when the layout changed
-    UiLayout after;
-    bool merges = false; // a wheel turn: the next one on the same param joins it
-    // The preset the patch came from, and whether it had changed since, before and after the step.
-    std::wstring presetBefore, presetAfter;
-    bool editedBefore = false, editedAfter = false;
-};
-
-// What the editor needs from the plugin. Main thread only.
-class Controller {
+// The preset library and the patch as a file: what the preset bar, the preset browser and the Save dialog need from
+// the plugin, reached through Controller::presetStore(). Main thread only. Which preset the patch is, and whether it
+// changed since, is not the store's but the undo history's (see UndoHistory::presetFile()): an edit changes it, and
+// undo and redo bring it back with the params. The Controller shows it to the editor (Controller::presetHasFile(),
+// Controller::patchEdited()), and the store sets it as it loads and saves.
+class PresetStore {
 public:
-    virtual ~Controller() = default;
-
-    virtual double value(int index) const = 0;
-    // A number that moves on whenever a param's value may have changed since, so that the editor, which looks for
-    // changes some 60 times a second, need not look over all of them while it stands still. 0, as to begin with: not
-    // known, and the editor looks every time.
-    virtual uint64_t valuesStamp() const { return 0; }
-    // Edits from the editor. A drag is wrapped in begin/end so the host records it as one gesture.
-    // Each gesture is an undo step, unless a beginStep() around it groups it with others. While a three-band
-    // dynamics is linked, an edit of one band's threshold, ratio or gain is made to every band's (see linkedBands()).
-    // An edit of a three-band split's crossover that takes it past the other pushes that one along, a third of an
-    // octave away, in the same gesture (see crossoverPartner()).
-    void beginEdit(int index);
-    void setValue(int index, double value);
-    void endEdit(int index);
-
-    // Undo and redo. Whatever is edited between the outermost beginStep() and its endStep() is
-    // one step, however many gestures it takes. A step that `merges` joins the last one if that
-    // merges too and both change just the same param, so a run of wheel turns undoes at once.
-    void beginStep(bool merges = false);
-    void endStep();
-    // Takes every param into the open step: for changes made without setValue(), such as a preset load.
-    void recordAll();
-    const UndoStep *nextUndo() const { return undo_.empty() ? nullptr : &undo_.back(); }
-    const UndoStep *nextRedo() const { return redo_.empty() ? nullptr : &redo_.back(); }
-    // Not while a step is open.
-    void undo();
-    void redo();
-    // When the host replaces the whole state, what the history would bring back is gone.
-    void clearHistory();
-    // How many times the whole patch was replaced (a preset loaded, Init, the host's state), as clearHistory() counts
-    // them: the editor fits the SEQ view's roll to the notes of each.
-    uint64_t patchLoads() const { return patchLoads_; }
-
-    virtual void telemetry(Telemetry &out) const = 0;
-    virtual UiLayout &layout() = 0;
-    virtual void layoutChanged() = 0;
-    // The editor's window would be this size (physical pixels): the plugin asks its host to resize it (see
-    // Editor::followDpi()). A host that won't leaves it as it is.
-    virtual void requestEditorSize(uint32_t, uint32_t) {}
-
-    // The virtual keyboard: a MIDI note number (60 is middle C). (Its bend wheel is the Pitch Bend param, edited.)
-    virtual void playNote(int note, bool on) = 0;
-    // A note the SEQ view plays to be heard (a key or a note clicked in its roll): that note alone, never the
-    // sequencer's pattern, as the keyboard's would in Key or Latch.
-    virtual void auditionNote(int note, bool on) { playNote(note, on); }
-    // The operator whose output the scope shows (-1 while no scope is shown, so the audio thread captures nothing),
-    // over how many of its cycles.
-    virtual void setScope(int op, int cycles) = 0;
-    // Whether the editor shows a free or anchored LFO running with no note playing, so the plugin keeps its clock
-    // going (and the telemetry coming) while a host would otherwise let it sleep.
-    virtual void setIdleLfosShown(bool) {}
+    virtual ~PresetStore() = default;
 
     // Presets: the whole patch, as a file. Init sets every param and the layout back to their defaults.
     virtual void resetPreset() = 0;
@@ -369,15 +304,9 @@ public:
     virtual void choosePreset(bool save) = 0;
     // Whether presets are files that can be written (not in the browser demo, whose dialog only says so).
     virtual bool writesPresetFiles() const { return true; }
-    // Whether the patch is a preset file (not Init), and writing the patch over that file, as Save does.
-    bool presetHasFile() const { return !preset_.empty(); }
-    // Whether Save can write over that file: not a factory preset's, which is built into the plugin, so Save saves
-    // it as a new preset, as Save As does.
-    virtual bool presetWritable() const { return presetHasFile(); }
-    bool overwritePreset() {
-        const std::wstring file = preset_; // savePreset() sets preset_ again
-        return presetWritable() && savePreset(file);
-    }
+    // Whether Save can write over the patch's preset file: there is one (not Init), and it isn't a factory preset's,
+    // which is built into the plugin, so Save saves it as a new preset, as Save As does.
+    virtual bool presetWritable() const = 0;
 
     // The preset library: the factory presets, built in, and the presets in the preset folder
     // (Documents\FMVibe\presets), by subfolder (the factory presets as Factory's) and then by name, as the last
@@ -403,8 +332,6 @@ public:
     // holds; each scans again. False if it can't. A preset's file in a folder renamed is kept track of.
     virtual bool renamePresetFolder(const std::string &, const std::string &) { return false; }
     virtual bool deletePresetFolder(const std::string &) { return false; }
-    // Whether the current preset is a factory preset, built in (its info can't be changed, nor its file shown).
-    bool presetFactory() const { return presetHasFile() && !presetWritable(); }
     // Saves the patch as the preset `name` in the subfolder `folder`, with `info`: it is then the patch's preset, and
     // the library lists it. Whether a preset of that name is there already, which saving replaces.
     virtual bool savePresetIn(const std::string &, const std::string &, const PresetInfo &) { return false; }
@@ -426,10 +353,222 @@ public:
     // "folder:" and the folder, "" the preset folder itself), kept in the user's settings; "" for none yet.
     virtual std::string presetBrowserPlace() const { return {}; }
     virtual void setPresetBrowserPlace(const std::string &) {}
+};
+
+// The preset store of a host without files: an empty library, nothing to load or save, and Init leaving the patch as
+// it is. A Controller that keeps no presets offers this one (see Controller::presetStore()); the browser demo starts
+// from it and adds its built-in examples.
+class NoPresetFiles : public PresetStore {
+public:
+    void resetPreset() override {}
+    bool loadPreset(const std::wstring &) override { return false; }
+    bool savePreset(const std::wstring &) override { return false; }
+    void choosePreset(bool) override {}
+    bool writesPresetFiles() const override { return false; }
+    bool presetWritable() const override { return false; }
+    void rescanPresets() override {}
+    const std::vector<PresetEntry> &presets() const override { return none_; }
+    int presetIndex() const override { return -1; }
+    std::string presetName() const override { return tr(Str::PresetInit); }
+    bool loadPresetAt(int) override { return false; }
+    std::wstring presetFolder() const override { return {}; }
+
+private:
+    std::vector<PresetEntry> none_;
+};
+
+// The editor's look: the user's rather than the patch's or the project's, so every FMVibe editor uses it, whichever
+// project it is in, and presets leave it alone. Read and written as a whole (see Controller::editorSettings()).
+struct EditorSettings {
+    // Where the glow, the lines' strength and the grid's start, as a new user's settings have them (a double-click on
+    // their sliders puts them back).
+    static constexpr double kDefaultGlow = 0.5;
+    static constexpr double kDefaultLinkIntensity = 0.75;
+    static constexpr double kDefaultGridIntensity = 0.5;
+    static constexpr int kMaxHandleSize = 2;
+
+    // The color theme, by name (see View::themeName(); any other means the default).
+    std::string theme;
+    // The theme's main color, its accent, as a hue 0 to 1 round the color wheel from red, or below 0 for the theme's
+    // own (as to begin with); kept as the theme changes.
+    double accentHue = -1.0;
+    // How strongly the curves in the editor's graphs glow, 0 (not at all) to 1.
+    double glow = kDefaultGlow;
+    // How big the depth handles and their "+n" pills are drawn: 0 (the smallest, to begin with) to kMaxHandleSize.
+    int handleSize = 0;
+    // How strongly the dashed lines from a source's handle to what it modulates are drawn: 0 (not at all) to 1
+    // (opaque).
+    double linkIntensity = kDefaultLinkIntensity;
+    // How strongly the SEQ view's roll draws its grid lines, 0 (none) to 1; kDefaultGridIntensity to begin with, the
+    // lines as they were before it could be set.
+    double gridIntensity = kDefaultGridIntensity;
+
+    // Each held to its range, as Controller::setEditorSettings() stores them. A hue below 0 stays as it is: any such
+    // is the theme's own (the settings dialog sets -1), and one the user's settings file holds is written back as read.
+    EditorSettings clamped() const {
+        EditorSettings held = *this;
+        held.accentHue = accentHue < 0.0 ? accentHue : std::min(accentHue, 1.0);
+        held.glow = std::clamp(glow, 0.0, 1.0);
+        held.handleSize = std::clamp(handleSize, 0, kMaxHandleSize);
+        held.linkIntensity = std::clamp(linkIntensity, 0.0, 1.0);
+        held.gridIntensity = std::clamp(gridIntensity, 0.0, 1.0);
+        return held;
+    }
+};
+
+// One step of the editor's undo history: the params it changed, with their values before and
+// after, and the patch's part of the layout (node places, source order, kept routes) if that changed.
+struct UndoStep {
+    struct Change {
+        int index;
+        double before;
+        double after;
+    };
+    std::vector<Change> changes; // in the order they were first edited
+    bool layoutChanged = false;
+    UiLayout before; // only kept when the layout changed
+    UiLayout after;
+    bool merges = false; // a wheel turn: the next one on the same param joins it
+    // The preset the patch came from, and whether it had changed since, before and after the step.
+    std::wstring presetBefore, presetAfter;
+    bool editedBefore = false, editedAfter = false;
+};
+
+class Controller;
+
+// The editor's undo history: the steps it undoes and redoes, the one being recorded, and the preset the patch is,
+// which every step records and brings back. Each Controller has one, which its edits go through
+// (Controller::beginEdit() and the rest hand them on); the history reads the Controller's values and layout, and sets
+// them through its perform...() hooks. Main thread only.
+class UndoHistory {
+public:
+    explicit UndoHistory(Controller &controller) : controller_(controller) {}
+    UndoHistory(const UndoHistory &) = delete;
+    UndoHistory &operator=(const UndoHistory &) = delete;
+
+    // Edits from the editor. A drag is wrapped in begin/end so the host records it as one gesture.
+    // Each gesture is an undo step, unless a beginStep() around it groups it with others. While a three-band
+    // dynamics is linked, an edit of one band's threshold, ratio or gain is made to every band's (see linkedBands()).
+    // An edit of a three-band split's crossover that takes it past the other pushes that one along, a third of an
+    // octave away, in the same gesture (see crossoverPartner()).
+    void beginEdit(int index);
+    void setValue(int index, double value);
+    void endEdit(int index);
+
+    // Undo and redo. Whatever is edited between the outermost beginStep() and its endStep() is
+    // one step, however many gestures it takes. A step that `merges` joins the last one if that
+    // merges too and both change just the same param, so a run of wheel turns undoes at once.
+    void beginStep(bool merges = false);
+    void endStep();
+    // Takes every param into the open step: for changes made without setValue(), such as a preset load.
+    void recordAll();
+    const UndoStep *nextUndo() const { return undo_.empty() ? nullptr : &undo_.back(); }
+    const UndoStep *nextRedo() const { return redo_.empty() ? nullptr : &redo_.back(); }
+    // Not while a step is open.
+    void undo();
+    void redo();
+    // When the host replaces the whole state, what the history would bring back is gone.
+    void clear();
+    // How many times the whole patch was replaced (a preset loaded, Init, the host's state), as clear() counts
+    // them: the editor fits the SEQ view's roll to the notes of each.
+    uint64_t patchLoads() const { return patchLoads_; }
+
+    // The preset the patch is: its file ("" for Init, or for a patch from elsewhere), and whether it changed
+    // since. Set while an undo step is open (as loading a preset does), it is what that step lands on, so
+    // undoing it brings back the preset before; set outside one (saving, the host's state), no step records it.
+    const std::wstring &presetFile() const { return preset_; }
+    void setPreset(const std::wstring &file, bool edited = false);
     // Whether the patch changed since a preset was loaded or saved, or since Init: replacing it asks first
     // then, and the preset's name shows it. A patch the host brought counts as changed unless it says otherwise.
     // Undo and redo bring this back, and which preset it was, with the params.
     bool patchEdited() const { return edited_; }
+
+private:
+    static constexpr size_t kMaxUndoSteps = 100;
+    void record(int index);
+    // `index`, and while it is a linked three-band dynamics band's threshold, ratio or gain, the other bands' same
+    // field: the params an edit of it sets. -1 for none.
+    std::array<int, kMcBands> linkedBands(int index) const;
+    // The other crossover of the three-band split whose crossover `index` is, -1 for any other param.
+    int crossoverPartner(int index) const;
+    // Where the other crossover goes for `index` set to `value`: pushed a third of an octave past it, or as it is.
+    double pushedCrossover(int index, double value) const;
+    void apply(const UndoStep &step, bool forward);
+
+    Controller &controller_;
+    std::vector<UndoStep> undo_; // oldest first
+    std::vector<UndoStep> redo_; // the step undone last at the back
+    UndoStep open_;
+    std::vector<bool> recorded_; // the params open_ holds already
+    int depth_ = 0;              // nested beginStep() calls
+    bool applying_ = false;      // undo or redo setting values, which records nothing
+    bool edited_ = false;        // see patchEdited()
+    uint64_t patchLoads_ = 0;    // see patchLoads()
+    std::wstring preset_;        // see presetFile()
+    bool presetSet_ = false;     // setPreset() was called in the open step
+};
+
+// What the editor needs from the plugin: the params and their edits, the telemetry, the layout, the keyboard and the
+// scope, the instance's settings and the user's look. The undo history is its own (see UndoHistory), and the presets
+// are a PresetStore's (see presetStore()). Main thread only.
+class Controller {
+public:
+    Controller() = default;
+    virtual ~Controller() = default;
+    Controller(const Controller &) = delete; // its history edits this one
+    Controller &operator=(const Controller &) = delete;
+
+    virtual double value(int index) const = 0;
+    // A number that moves on whenever a param's value may have changed since, so that the editor, which looks for
+    // changes some 60 times a second, need not look over all of them while it stands still. 0, as to begin with: not
+    // known, and the editor looks every time.
+    virtual uint64_t valuesStamp() const { return 0; }
+    // Edits from the editor, and undo and redo, as the undo history keeps them (see UndoHistory::beginEdit() and
+    // UndoHistory::beginStep()).
+    void beginEdit(int index) { history_.beginEdit(index); }
+    void setValue(int index, double value) { history_.setValue(index, value); }
+    void endEdit(int index) { history_.endEdit(index); }
+    void beginStep(bool merges = false) { history_.beginStep(merges); }
+    void endStep() { history_.endStep(); }
+    void recordAll() { history_.recordAll(); }
+    const UndoStep *nextUndo() const { return history_.nextUndo(); }
+    const UndoStep *nextRedo() const { return history_.nextRedo(); }
+    void undo() { history_.undo(); }
+    void redo() { history_.redo(); }
+    void clearHistory() { history_.clear(); }
+    uint64_t patchLoads() const { return history_.patchLoads(); }
+
+    virtual void telemetry(Telemetry &out) const = 0;
+    virtual UiLayout &layout() = 0;
+    virtual void layoutChanged() = 0;
+    // The editor's window would be this size (physical pixels): the plugin asks its host to resize it (see
+    // Editor::followDpi()). A host that won't leaves it as it is.
+    virtual void requestEditorSize(uint32_t, uint32_t) {}
+
+    // The virtual keyboard: a MIDI note number (60 is middle C). (Its bend wheel is the Pitch Bend param, edited.)
+    virtual void playNote(int note, bool on) = 0;
+    // A note the SEQ view plays to be heard (a key or a note clicked in its roll): that note alone, never the
+    // sequencer's pattern, as the keyboard's would in Key or Latch.
+    virtual void auditionNote(int note, bool on) { playNote(note, on); }
+    // The operator whose output the scope shows (-1 while no scope is shown, so the audio thread captures nothing),
+    // over how many of its cycles.
+    virtual void setScope(int op, int cycles) = 0;
+    // Whether the editor shows a free or anchored LFO running with no note playing, so the plugin keeps its clock
+    // going (and the telemetry coming) while a host would otherwise let it sleep.
+    virtual void setIdleLfosShown(bool) {}
+
+    // The preset library and the patch as a file. A Controller without files offers one that has none.
+    virtual PresetStore &presetStore();
+    // Whether the patch is a preset file (not Init), and whether it changed since (see UndoHistory::patchEdited()).
+    bool presetHasFile() const { return !history_.presetFile().empty(); }
+    bool patchEdited() const { return history_.patchEdited(); }
+    // Whether the current preset is a factory preset, built in (its info can't be changed, nor its file shown).
+    bool presetFactory() { return presetHasFile() && !presetStore().presetWritable(); }
+    // Writes the patch over its preset's file, as Save does.
+    bool overwritePreset() {
+        const std::wstring file = history_.presetFile(); // savePreset() sets the preset again
+        return presetStore().presetWritable() && presetStore().savePreset(file);
+    }
 
     // Settings of this instance, not of the patch: saved with the project, left
     // alone by presets. Oversampling is 1, 2, 4 or 8.
@@ -440,34 +579,10 @@ public:
     virtual void setMpe(bool on) = 0;
     virtual int mpeBendRange() const = 0;
     virtual void setMpeBendRange(int semitones) = 0;
-    // The editor's color theme, by name (see View::themeName(); any other means the default). Unlike the
-    // settings above it is the user's: every FMVibe editor uses it, whichever project it is in.
-    virtual std::string theme() const = 0;
-    virtual void setTheme(const std::string &name) = 0;
-    // Where the glow and the lines' strength start, as a new user's settings have them (a double-click on their sliders
-    // puts them back).
-    static constexpr double kDefaultGlow = 0.5;
-    static constexpr double kDefaultLinkIntensity = 0.75;
-    // The theme's main color, its accent, as a hue 0 to 1 round the color wheel from red, or below 0 for the theme's
-    // own (as to begin with); the user's too, kept as the theme changes.
-    virtual double accentHue() const = 0;
-    virtual void setAccentHue(double hue) = 0;
-    // How strongly the curves in the editor's graphs glow, 0 (not at all) to 1; the user's too.
-    virtual double glow() const = 0;
-    virtual void setGlow(double amount) = 0;
-    // How big the depth handles and their "+n" pills are drawn: 0 (the smallest, to begin with), 1 or 2; the user's
-    // too.
-    virtual int handleSize() const = 0;
-    virtual void setHandleSize(int size) = 0;
-    // How strongly the dashed lines from a source's handle to what it modulates are drawn: 0 (not at all) to 1
-    // (opaque), 0.75 to begin with; the user's too.
-    virtual double linkIntensity() const = 0;
-    virtual void setLinkIntensity(double amount) = 0;
-    // How strongly the SEQ view's roll draws its grid lines, 0 (none) to 1; kDefaultGridIntensity to begin with, the
-    // lines as they were before it could be set. The user's, like the glow.
-    static constexpr double kDefaultGridIntensity = 0.5;
-    virtual double gridIntensity() const { return kDefaultGridIntensity; }
-    virtual void setGridIntensity(double) {}
+    // The editor's look (see EditorSettings). Unlike the settings above it is the user's: every FMVibe editor uses it,
+    // whichever project it is in. Set, it is held to its ranges first, then stored.
+    virtual EditorSettings editorSettings() const = 0;
+    void setEditorSettings(const EditorSettings &settings) { storeEditorSettings(settings.clamped()); }
     // The tempo, for a host that stands in for a transport and lets the editor set it (the browser demo, and
     // fmvibe-uihost through FMVibe's own host extension, see src/hosttempo.h): the editor then shows it in the title
     // bar, to drag, scroll or type. A plugin host's tempo is its own, and the editor shows none. In BPM, kMinTempo to
@@ -486,34 +601,15 @@ protected:
     // them (that the project changed) it can tell at the end.
     virtual void performStepBegin() {}
     virtual void performStepEnd() {}
-    // The preset the patch is: its file ("" for Init, or for a patch from elsewhere), and whether it changed
-    // since. Set while an undo step is open (as loading a preset does), it is what that step lands on, so
-    // undoing it brings back the preset before; set outside one (saving, the host's state), no step records it.
-    const std::wstring &presetFile() const { return preset_; }
-    void setPreset(const std::wstring &file, bool edited = false);
+    // What setEditorSettings() keeps, held to its ranges already: the plugin writes it into the user's settings.
+    virtual void storeEditorSettings(const EditorSettings &settings) = 0;
+    // The preset the patch is, as the undo history keeps it (see UndoHistory::presetFile()).
+    const std::wstring &presetFile() const { return history_.presetFile(); }
+    void setPreset(const std::wstring &file, bool edited = false) { history_.setPreset(file, edited); }
 
 private:
-    static constexpr size_t kMaxUndoSteps = 100;
-    void record(int index);
-    // `index`, and while it is a linked three-band dynamics band's threshold, ratio or gain, the other bands' same
-    // field: the params an edit of it sets. -1 for none.
-    std::array<int, kMcBands> linkedBands(int index) const;
-    // The other crossover of the three-band split whose crossover `index` is, -1 for any other param.
-    int crossoverPartner(int index) const;
-    // Where the other crossover goes for `index` set to `value`: pushed a third of an octave past it, or as it is.
-    double pushedCrossover(int index, double value) const;
-    void apply(const UndoStep &step, bool forward);
-
-    std::vector<UndoStep> undo_; // oldest first
-    std::vector<UndoStep> redo_; // the step undone last at the back
-    UndoStep open_;
-    std::vector<bool> recorded_; // the params open_ holds already
-    int depth_ = 0;              // nested beginStep() calls
-    bool applying_ = false;      // undo or redo setting values, which records nothing
-    bool edited_ = false;        // see patchEdited()
-    uint64_t patchLoads_ = 0;    // see patchLoads()
-    std::wstring preset_;        // see presetFile()
-    bool presetSet_ = false;     // setPreset() was called in the open step
+    friend class UndoHistory; // which edits through the perform...() hooks
+    UndoHistory history_{*this};
 };
 
 // Edits made while one of these lives are one undo step.

@@ -141,33 +141,33 @@ bool View::presetActionOn(PresetAction action) const {
 void View::runPreset(PresetAction action) {
     switch (action) {
     case PresetAction::Init:
-        controller_.resetPreset();
+        presetStore().resetPreset();
         break;
     case PresetAction::Load: // a preset from the library (closing the browser, but for a click), or a file
         if (pendingPreset_ >= 0) {
-            if (controller_.loadPresetAt(pendingPreset_)) {
+            if (presetStore().loadPresetAt(pendingPreset_)) {
                 if (pendingClose_)
                     browserOpen_ = false;
             }
             else
                 flash(tr(Str::MsgPresetUnreadable));
         } else {
-            controller_.choosePreset(false);
+            presetStore().choosePreset(false);
         }
         break;
     case PresetAction::Save: // over the preset's file; with none to write (the demo, a factory preset), as Save As
-        if (!controller_.writesPresetFiles())
-            controller_.choosePreset(true);
-        else if (!controller_.presetWritable())
+        if (!presetStore().writesPresetFiles())
+            presetStore().choosePreset(true);
+        else if (!presetStore().presetWritable())
             openSave();
         else if (!controller_.overwritePreset()) // saved, it says nothing: Save greys out again
             flash(tr(Str::MsgPresetNotSaved));
         break;
     case PresetAction::SaveAs: // the Save dialog, where presets are files; the demo says it has none
-        if (controller_.writesPresetFiles())
+        if (presetStore().writesPresetFiles())
             openSave();
         else
-            controller_.choosePreset(true);
+            presetStore().choosePreset(true);
         break;
     }
 }
@@ -201,7 +201,7 @@ std::string View::confirmWhat() const {
         return tr(Str::ConfirmInit);
     if (confirm_ == static_cast<int>(PresetAction::Save))
         return tr(Str::ConfirmOverwrite);
-    const std::vector<PresetEntry> &presets = controller_.presets();
+    const std::vector<PresetEntry> &presets = presetStore().presets();
     return pendingPreset_ >= 0 && pendingPreset_ < static_cast<int>(presets.size())
                ? trf(Str::ConfirmLoadPreset,
                      {presets[pendingPreset_].name})
@@ -220,7 +220,7 @@ void View::answerConfirm(int button) {
     hover_.reset();
     if (folder) { // into the Recycle Bin; the Save dialog picks the folder it was in if it was in it
         if (button == 1) {
-            if (controller_.deletePresetFolder(confirmFolder_)) {
+            if (presetStore().deletePresetFolder(confirmFolder_)) {
                 // The browser showing it, or one in it, shows the folder it was in.
                 if (browserScope_ == BrowserScope::Folder &&
                     (browserFolder_ == confirmFolder_ || browserFolder_.starts_with(confirmFolder_ + "/"))) {
@@ -241,7 +241,7 @@ void View::answerConfirm(int button) {
         confirmFolder_.clear();
     } else if (category) { // out of the list; the presets in it keep it, listed in grey
         if (button == 1) {
-            controller_.removeUserCategory(confirmCategory_);
+            presetStore().removeUserCategory(confirmCategory_);
             browserSideScroll_ = std::min(browserSideScroll_, browserSideEnd());
         }
         confirmCategory_.clear();
@@ -583,7 +583,7 @@ void View::paintField(Canvas &c, Field f, Rect box, Rect typed, std::string_view
 // Loading asks first while the patch has changed. Loaded from the browser, it closes it, unless `close` is false (a
 // click on a preset, which leaves it open for the next); cancelled or unreadable, it stays for another pick.
 void View::openPreset(int index, bool close) {
-    if (index == controller_.presetIndex() && !controller_.patchEdited()) { // loaded already, as it is
+    if (index == presetStore().presetIndex() && !controller_.patchEdited()) { // loaded already, as it is
         if (close)
             browserOpen_ = false;
         hover_.reset();
@@ -592,7 +592,7 @@ void View::openPreset(int index, bool close) {
         pendingPreset_ = index;
         pendingClose_ = close;
         hover_.reset();
-    } else if (controller_.loadPresetAt(index)) {
+    } else if (presetStore().loadPresetAt(index)) {
         if (close)
             browserOpen_ = false;
         hover_.reset();
@@ -603,13 +603,13 @@ void View::openPreset(int index, bool close) {
 
 // Steps through the library, round from the last to the first; from Init, to the first or the last.
 void View::stepPreset(int direction) {
-    controller_.rescanPresets();
-    const int count = static_cast<int>(controller_.presets().size());
+    presetStore().rescanPresets();
+    const int count = static_cast<int>(presetStore().presets().size());
     if (count == 0) {
         flash(tr(Str::MsgNoPresets));
         return;
     }
-    const int now = controller_.presetIndex();
+    const int now = presetStore().presetIndex();
     openPreset(now < 0 ? (direction > 0 ? 0 : count - 1) : (now + direction + count) % count);
 }
 
@@ -627,7 +627,7 @@ void View::paintConfirm(Canvas &c) {
     // What goes, undo brings back; or a category or folder, which nothing of the patch's needs.
     const bool clear = confirm_ == kConfirmFxClear || bands || split || seqClear || category || folder;
     c.text({panel.x + 24.0f, panel.y + 18.0f, panel.w - 48.0f, 22.0f},
-           overwrite  ? trf(Str::ConfirmOverwriteTitle, {controller_.presetName()})
+           overwrite  ? trf(Str::ConfirmOverwriteTitle, {presetStore().presetName()})
            : seqClear ? trf(Str::ConfirmSeqClearTitle, {seqPatternName(seqPattern())})
            : category ? trf(Str::ConfirmCategoryRemoveTitle, {confirmCategory_})
            : folder   ? trf(Str::ConfirmFolderDeleteTitle, {confirmFolder_.substr(confirmFolder_.rfind('/') + 1)})

@@ -932,7 +932,7 @@ To add or change one:
 4. Build and run `ctest`.
 
 A factory preset changed here reaches users with the next release. Being built in, it can't be saved over: Save
-on one opens Save As (`Controller::presetWritable()`). Versions up to 0.11 wrote the factory presets out into the
+on one opens Save As (`PresetStore::presetWritable()`). Versions up to 0.11 wrote the factory presets out into the
 preset folder's `Factory` subfolder: the scan leaves that subfolder out, and `PresetLibrary::resolve()` takes a file
 there named as a factory preset for the built-in one, so a project naming it loads the built-in one.
 
@@ -1078,8 +1078,8 @@ breakpoints in `src/` then hit.
 | `src/gui/canvas_web.cpp` | The same drawing layer over the browser's 2D context, for the demo |
 | `src/gui/canvas_cairo.cpp` | The same drawing layer over Cairo, for the Linux development build |
 | `src/gui/editor.cpp` | Win32 child window that hosts the view in the plugin window |
-| `src/gui/controller.h` | What the editor needs from the plugin (values, edits, telemetry, layout) |
-| `src/gui/controller.cpp` | The undo history, which the plugin keeps for the editor |
+| `src/gui/controller.h` | What the editor needs from the plugin: the `Controller` (values, edits, telemetry, layout, settings), the `PresetStore` it reaches the preset library through (`NoPresetFiles` for a host without files), the user's `EditorSettings` and the `UndoHistory` each `Controller` keeps |
+| `src/gui/controller.cpp` | The undo history, which each `Controller` keeps for the editor |
 | `src/factory.cpp` | The factory presets' loading; the presets themselves are `presets/Factory/*.fmv`, built in by `cmake/embed_presets.cmake` (see [Factory presets](#factory-presets)) |
 | `presets/` | The factory presets' files, and `factory.txt`, the order they came in |
 | `tools/presettool.cpp` | `fmvibe-presettool`: makes preset files sparse, as the factory ones are stored, lays their routing graphs out (`--arrange`) and sets their info (`--author`, `--category`, `--description`) |

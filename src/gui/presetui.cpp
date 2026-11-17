@@ -213,7 +213,7 @@ int View::presetCategoryColor(const std::string &category) const {
     const int built = builtInCategory(category);
     if (built >= 0)
         return built;
-    for (const PresetCategory &own : controller_.userCategories())
+    for (const PresetCategory &own : presetStore().userCategories())
         if (sameName(own.name, category))
             return own.color;
     return -1;
@@ -265,7 +265,7 @@ void View::paintPresetBar(Canvas &c, const Widget &w, bool hovered) {
     const float byKept = std::min(byW, 64.0f); // as much of the author as a long name leaves at least
     const float dot = controller_.patchEdited() ? 10.0f : 0.0f;
     const float nameRoom = right - left - (by.empty() ? 0.0f : byKept + 12.0f) - dot;
-    const std::string name = fitted(c, controller_.presetName(), kTextBody, true, nameRoom);
+    const std::string name = fitted(c, presetStore().presetName(), kTextBody, true, nameRoom);
     const float nameW = std::ceil(c.textWidth(name, kTextBody, true));
     // Centered, unless it would run into the author's least room: then as far left as it must be.
     const float nameEnd = right - (by.empty() ? 0.0f : byKept + 12.0f);
@@ -296,11 +296,11 @@ std::vector<View::Widget> View::infoCardWidgets() const {
     // The preset bar stays live under it: its name and its info button close the card as they would open it.
     add(Kind::PresetNameBox, kPresetName, -1);
     add(Kind::PresetInfoButton, infoButtonRect(), -1);
-    if (controller_.presetIndex() >= 0) {
+    if (presetStore().presetIndex() >= 0) {
         add(Kind::InfoAction, infoStar(card), 0);
         add(Kind::InfoAction, infoBrowse(card), 1);
     }
-    if (controller_.writesPresetFiles() && (controller_.presetFactory() || controller_.presetIndex() >= 0))
+    if (presetStore().writesPresetFiles() && (controller_.presetFactory() || presetStore().presetIndex() >= 0))
         add(Kind::InfoAction, infoPrimary(card), 2);
     return list;
 }
@@ -316,7 +316,7 @@ void View::paintInfoCard(Canvas &c) {
     const float pill = paintCategoryPill(c, {x, card.y + 18.0f}, 16.0f, info.category, kTextSmall);
     if (pill > 0.0f)
         x += pill + 8.0f;
-    const std::string name = fitted(c, controller_.presetName(), kTextHeading, true,
+    const std::string name = fitted(c, presetStore().presetName(), kTextHeading, true,
                                     infoStar(card).x - 12.0f - x);
     c.text({x, card.y + 14.0f, infoStar(card).x - x, 24.0f}, name, kTextHeading, kText, Align::Left, true);
     // by its author, where it is (Factory or its folder) and the tempo it was saved at
@@ -325,8 +325,8 @@ void View::paintInfoCard(Canvas &c) {
         if (!part.empty())
             meta += (meta.empty() ? "" : "  \xC2\xB7  ") + part;
     };
-    const int index = controller_.presetIndex();
-    const std::vector<PresetEntry> &presets = controller_.presets();
+    const int index = presetStore().presetIndex();
+    const std::vector<PresetEntry> &presets = presetStore().presets();
     if (factory)
         append(tr(Str::PresetsFactory));
     else if (index >= 0 && index < static_cast<int>(presets.size()))
@@ -364,20 +364,20 @@ int View::browserVisible() const {
 }
 
 void View::openBrowser(int preset) {
-    controller_.rescanPresets();
+    presetStore().rescanPresets();
     browserOpen_ = true;
     browserSearching_ = false; // its search takes the keyboard once clicked
     infoCardOpen_ = false;
     browserCategories_.clear();
     clearField(Field::Browser);
-    const std::vector<PresetEntry> &presets = controller_.presets();
+    const std::vector<PresetEntry> &presets = presetStore().presets();
     if (preset >= 0 && preset < static_cast<int>(presets.size())) { // a preset to show: in its folder
         const PresetEntry &entry = presets[preset];
         browserScope_ = entry.factory ? BrowserScope::Factory : BrowserScope::Folder;
         browserFolder_ = entry.folder;
         rememberBrowserPlace();
     } else { // where it was left, as the user's settings keep it (Factory to begin with)
-        const std::string place = controller_.presetBrowserPlace();
+        const std::string place = presetStore().presetBrowserPlace();
         if (place == "all")
             browserScope_ = BrowserScope::All;
         else if (place == "favorites")
@@ -391,7 +391,7 @@ void View::openBrowser(int preset) {
             browserFolder_ = place.substr(7);
         }
         if (browserScope_ == BrowserScope::Folder && !browserFolder_.empty()) { // a folder since taken away
-            const std::vector<std::string> folders = controller_.presetFolders();
+            const std::vector<std::string> folders = presetStore().presetFolders();
             if (std::find(folders.begin(), folders.end(), browserFolder_) == folders.end())
                 browserScope_ = BrowserScope::Factory;
         }
@@ -401,7 +401,7 @@ void View::openBrowser(int preset) {
         for (size_t at = browserFolder_.find('/'); at != std::string::npos; at = browserFolder_.find('/', at + 1))
             browserOpenFolders_.insert(browserFolder_.substr(0, at));
     }
-    const int index = preset >= 0 ? preset : controller_.presetIndex();
+    const int index = preset >= 0 ? preset : presetStore().presetIndex();
     browserPick_ = index;
     browserSideScroll_ = 0.0f;
     revealBrowserRow(index, true);
@@ -411,19 +411,19 @@ void View::openBrowser(int preset) {
 void View::rememberBrowserPlace() {
     switch (browserScope_) {
     case BrowserScope::All:
-        controller_.setPresetBrowserPlace("all");
+        presetStore().setPresetBrowserPlace("all");
         break;
     case BrowserScope::Favorites:
-        controller_.setPresetBrowserPlace("favorites");
+        presetStore().setPresetBrowserPlace("favorites");
         break;
     case BrowserScope::Recent:
-        controller_.setPresetBrowserPlace("recent");
+        presetStore().setPresetBrowserPlace("recent");
         break;
     case BrowserScope::Factory:
-        controller_.setPresetBrowserPlace("factory");
+        presetStore().setPresetBrowserPlace("factory");
         break;
     case BrowserScope::Folder:
-        controller_.setPresetBrowserPlace("folder:" + browserFolder_);
+        presetStore().setPresetBrowserPlace("folder:" + browserFolder_);
         break;
     }
 }
@@ -434,7 +434,7 @@ bool View::categoryShown(const PresetEntry &entry) const {
 
 std::vector<int> View::browserRows(bool byCategory) const {
     const std::vector<std::string> words = browserSearch_.words();
-    const std::vector<PresetEntry> &presets = controller_.presets();
+    const std::vector<PresetEntry> &presets = presetStore().presets();
     auto matches = [&](int i) {
         const PresetEntry &e = presets[i];
         if (byCategory && !categoryShown(e))
@@ -448,7 +448,7 @@ std::vector<int> View::browserRows(bool byCategory) const {
     };
     std::vector<int> rows;
     if (browserScope_ == BrowserScope::Recent) {
-        for (int i : controller_.recentPresets())
+        for (int i : presetStore().recentPresets())
             if (i >= 0 && i < static_cast<int>(presets.size()) && matches(i))
                 rows.push_back(i);
         return rows;
@@ -459,7 +459,7 @@ std::vector<int> View::browserRows(bool byCategory) const {
         bool in = true;
         switch (browserScope_) {
         case BrowserScope::Favorites:
-            in = controller_.presetFavorite(i);
+            in = presetStore().presetFavorite(i);
             break;
         case BrowserScope::Factory:
             in = e.factory;
@@ -509,7 +509,7 @@ void View::browserKey(Key key) {
             hover_.reset();
         } else {
             clearField(Field::Browser);
-            browserPick_ = controller_.presetIndex();
+            browserPick_ = presetStore().presetIndex();
             revealBrowserRow(browserPick_, true);
         }
         break;
@@ -518,7 +518,7 @@ void View::browserKey(Key key) {
         const std::vector<int> listed = browserRows();
         if (listed.empty())
             break;
-        const int start = browserPick_ >= 0 ? browserPick_ : controller_.presetIndex();
+        const int start = browserPick_ >= 0 ? browserPick_ : presetStore().presetIndex();
         const auto at = std::find(listed.begin(), listed.end(), start);
         const int step = key == Key::Down ? 1 : -1;
         const int place = at == listed.end() ? (step > 0 ? 0 : static_cast<int>(listed.size()) - 1)
@@ -536,7 +536,7 @@ void View::browserKey(Key key) {
 std::vector<View::TreeRow> View::browserTree() const {
     std::vector<TreeRow> rows;
     rows.push_back({BrowserScope::Factory, {}, 0, false, false});
-    const std::vector<std::string> folders = controller_.presetFolders();
+    const std::vector<std::string> folders = presetStore().presetFolders();
     auto hasKids = [&](const std::string &folder) {
         const std::string under = folder.empty() ? std::string() : folder + "/";
         return std::any_of(folders.begin(), folders.end(), [&](const std::string &f) { return f.starts_with(under); });
@@ -561,7 +561,7 @@ std::vector<View::CategoryRow> View::saveCategoryList() const {
     for (int i = 0; i < kBuiltInCategories; ++i)
         rows.push_back({kPresetCategories[i].name, tr(kPresetCategories[i].label), i, false});
     bool first = true;
-    for (const PresetCategory &own : controller_.userCategories()) {
+    for (const PresetCategory &own : presetStore().userCategories()) {
         if (own.name.empty() || builtInCategory(own.name) >= 0 ||
             std::any_of(rows.begin(), rows.end(), [&](const CategoryRow &r) {
                 return lowerAscii(r.name) == lowerAscii(own.name);
@@ -577,7 +577,7 @@ std::vector<View::CategoryRow> View::saveCategoryList() const {
 // sidebar that the search finds, whatever the categories filter by.
 std::vector<int> View::browserCategoryCounts() const {
     const std::vector<CategoryRow> categories = browserCategoryList();
-    const std::vector<PresetEntry> &presets = controller_.presets();
+    const std::vector<PresetEntry> &presets = presetStore().presets();
     std::vector<int> counts(categories.size(), 0);
     for (int i : browserRows(false)) {
         const std::string key = lowerAscii(presets[i].info.category);
@@ -591,7 +591,7 @@ std::vector<int> View::browserCategoryCounts() const {
 }
 
 int View::presetsInFolder(const std::string &folder) const { // subfolders' too
-    const std::vector<PresetEntry> &presets = controller_.presets();
+    const std::vector<PresetEntry> &presets = presetStore().presets();
     return static_cast<int>(std::count_if(presets.begin(), presets.end(), [&](const PresetEntry &e) {
         return !e.factory && (e.folder == folder || e.folder.starts_with(folder + "/"));
     }));
@@ -599,7 +599,7 @@ int View::presetsInFolder(const std::string &folder) const { // subfolders' too
 
 int View::presetsInCategory(const std::string &name) const {
     const std::string key = lowerAscii(name);
-    const std::vector<PresetEntry> &presets = controller_.presets();
+    const std::vector<PresetEntry> &presets = presetStore().presets();
     return static_cast<int>(std::count_if(presets.begin(), presets.end(),
                                           [&](const PresetEntry &e) { return lowerAscii(e.info.category) == key; }));
 }
@@ -614,7 +614,7 @@ std::vector<View::CategoryRow> View::browserCategoryList() const {
     // Then the categories presets have that are neither (from another computer, say), in grey; then None.
     bool first = rows.size() == static_cast<size_t>(kBuiltInCategories);
     std::vector<std::string> found;
-    for (const PresetEntry &e : controller_.presets())
+    for (const PresetEntry &e : presetStore().presets())
         if (!e.info.category.empty() &&
             std::none_of(rows.begin(), rows.end(),
                          [&](const CategoryRow &r) { return lowerAscii(r.name) == lowerAscii(e.info.category); }) &&
@@ -735,7 +735,7 @@ std::vector<View::Widget> View::browserWidgets() const {
     }
     // Always there, greyed out while nothing is picked (and the file's, for a factory preset, which has none).
     add(Kind::BrowserClose, closeButton(panel));
-    if (controller_.writesPresetFiles())
+    if (presetStore().writesPresetFiles())
         add(Kind::BrowserShowFile, showFileButton(panel));
     return list;
 }
@@ -744,7 +744,7 @@ void View::paintBrowser(Canvas &c) {
     const Rect panel = browserPanelAt(height());
     paintMenuPanel(c, panel, kRadiusPanel);
     paintCaret(c, panel, kPresetName.center().x);
-    const std::vector<PresetEntry> &presets = controller_.presets();
+    const std::vector<PresetEntry> &presets = presetStore().presets();
     const std::vector<int> rows = browserRows();
     // The search, how many it lists of all of them at its right end.
     const Rect search = searchBox(panel);
@@ -760,11 +760,11 @@ void View::paintBrowser(Canvas &c) {
     c.pushClip(side);
     const std::vector<TreeRow> tree = browserTree();
     const std::vector<CategoryRow> categories = browserCategoryList();
-    const std::vector<std::string> folders = controller_.presetFolders();
-    std::vector<int> recent = controller_.recentPresets();
+    const std::vector<std::string> folders = presetStore().presetFolders();
+    std::vector<int> recent = presetStore().recentPresets();
     int favorites = 0;
     for (int i = 0; i < static_cast<int>(presets.size()); ++i)
-        favorites += controller_.presetFavorite(i) ? 1 : 0;
+        favorites += presetStore().presetFavorite(i) ? 1 : 0;
     const std::vector<int> categoryCounts = browserCategoryCounts();
     // A preset counts in a folder, and with Subfolders on in the folders it is in.
     auto countIn = [&](const TreeRow &t) {
@@ -988,7 +988,7 @@ void View::paintBrowser(Canvas &c) {
         if (!filtered && browserScope_ == BrowserScope::Folder)
             c.text({area.x, area.y + 62.0f, area.w, 18.0f}, tr(Str::PresetsNoneHint), kTextLabel, kFaint);
     }
-    const int loaded = controller_.presetIndex();
+    const int loaded = presetStore().presetIndex();
     // The category pills in a column of their own before the star, each against it, as wide as the widest of those
     // listed (at most 96 px, a longer one cut off), so the descriptions end in line before them.
     float pillsW = 0.0f;
@@ -1018,7 +1018,7 @@ void View::paintBrowser(Canvas &c) {
         } else if (hovered) {
             c.fillRect(r, kText.alpha(0.06f), kRadiusControl);
         }
-        const bool favorite = controller_.presetFavorite(i);
+        const bool favorite = presetStore().presetFavorite(i);
         paintStar(c, star.rect.center(), 5.5f,
                   favorite ? Color::hex(0xF2C14E) : (isHovered(star) ? kText : kFaint.alpha(hovered ? 1.0f : 0.6f)),
                   favorite);
@@ -1078,7 +1078,8 @@ void View::paintBrowser(Canvas &c) {
     c.line({panel.x + 1.0f, strip.y + 0.5f}, {panel.right() - 1.0f, strip.y + 0.5f}, kBorder, 1.0f);
     if (browserPick_ >= 0 && browserPick_ < static_cast<int>(presets.size())) {
         const PresetEntry &e = presets[browserPick_];
-        const float right = (controller_.writesPresetFiles() ? showFileButton(panel).x : closeButton(panel).x) - 14.0f;
+        const float right =
+            (presetStore().writesPresetFiles() ? showFileButton(panel).x : closeButton(panel).x) - 14.0f;
         float sx = strip.x + 16.0f;
         const float pill = paintCategoryPill(c, {sx, strip.y + 13.0f}, 16.0f, e.info.category, kTextSmall);
         if (pill > 0.0f)
@@ -1128,7 +1129,7 @@ bool fileNameOk(const std::string &name) {
 
 std::vector<std::string> View::saveFolders() const {
     std::vector<std::string> folders{""};
-    for (const std::string &f : controller_.presetFolders())
+    for (const std::string &f : presetStore().presetFolders())
         folders.push_back(f);
     return folders;
 }
@@ -1145,7 +1146,7 @@ View::SaveLayout View::saveLayout() const {
     const float chipsEnd = chipsTop + chipRows * (kChipH + 8.0f) - 8.0f;
     const float descTop = chipsEnd + 32.0f;
     const float bodyEnd = descTop + 30.0f;
-    const bool exists = saveMode_ == SaveMode::Save && controller_.presetExists(saveFolder_, trimmed(saveName_.text));
+    const bool exists = saveMode_ == SaveMode::Save && presetStore().presetExists(saveFolder_, trimmed(saveName_.text));
     const float footer = bodyEnd + (exists ? 58.0f : 20.0f);
     const float h = footer + 30.0f + 20.0f;
     // It drops from the preset bar, as the info card does.
@@ -1168,7 +1169,7 @@ View::SaveLayout View::saveLayout() const {
 }
 
 void View::openSave(int index) {
-    const std::vector<PresetEntry> &presets = controller_.presets();
+    const std::vector<PresetEntry> &presets = presetStore().presets();
     PresetInfo info;
     if (index >= 0 && index < static_cast<int>(presets.size())) { // editing a preset's info
         const PresetEntry &e = presets[index];
@@ -1181,9 +1182,9 @@ void View::openSave(int index) {
     } else { // saving the patch, under its preset's name and in its folder to begin with
         saveMode_ = SaveMode::Save;
         saveIndex_ = -1;
-        const int now = controller_.presetIndex();
+        const int now = presetStore().presetIndex();
         saveName_.text = controller_.presetHasFile()
-                             ? controller_.presetName()
+                             ? presetStore().presetName()
                              : std::string();
         info = controller_.layout().presetInfo;
         saveFolder_ = now >= 0 && now < static_cast<int>(presets.size()) && !presets[now].factory ? presets[now].folder
@@ -1250,7 +1251,7 @@ std::vector<View::Widget> View::saveWidgets() const {
             if (r.bottom() > box.y && r.y < box.bottom())
                 add(Kind::SaveFolderRow, r, i, box.inset(1.0f));
         }
-        if (controller_.writesPresetFiles())
+        if (presetStore().writesPresetFiles())
             add(Kind::SaveToFile, l.toFile);
     }
     add(Kind::SaveButton, l.cancel, 0);
@@ -1374,8 +1375,8 @@ void View::runSave() {
     }
     const PresetInfo info{trimmed(saveAuthor_.text), saveCategory_, trimmed(saveDescription_.text)};
     // Saved, it says nothing: the dialog closing shows it. A failure says so, the dialog staying open.
-    const bool saved = saveMode_ == SaveMode::Info ? controller_.setPresetInfo(saveIndex_, info)
-                                                   : controller_.savePresetIn(saveFolder_, name, info);
+    const bool saved = saveMode_ == SaveMode::Info ? presetStore().setPresetInfo(saveIndex_, info)
+                                                   : presetStore().savePresetIn(saveFolder_, name, info);
     if (!saved) {
         flash(tr(Str::MsgPresetNotSaved));
         return;
@@ -1463,7 +1464,7 @@ void View::runNameMenu() {
     if (nameMenu_ == 1) { // a category: a built-in one's name picks that one
         const int built = builtInCategory(name);
         if (built < 0)
-            controller_.addUserCategory({name, nameColor_});
+            presetStore().addUserCategory({name, nameColor_});
         if (saveMode_ != SaveMode::None)
             saveCategory_ = built >= 0 ? kPresetCategories[built].name : name;
     } else if (nameMenu_ == 4) { // the Save dialog's folder renamed, in the folder it is in
@@ -1474,7 +1475,7 @@ void View::runNameMenu() {
         const size_t slash = renameFolder_.rfind('/');
         const std::string to = slash == std::string::npos ? name : renameFolder_.substr(0, slash + 1) + name;
         if (to != renameFolder_) {
-            const std::vector<std::string> folders = controller_.presetFolders();
+            const std::vector<std::string> folders = presetStore().presetFolders();
             const bool taken = lowerAscii(to) != lowerAscii(renameFolder_) &&
                                std::any_of(folders.begin(), folders.end(), [&](const std::string &f) {
                                    return lowerAscii(f) == lowerAscii(to);
@@ -1483,7 +1484,7 @@ void View::runNameMenu() {
                 flash(tr(Str::MsgFolderExists));
                 return;
             }
-            if (!controller_.renamePresetFolder(renameFolder_, to)) {
+            if (!presetStore().renamePresetFolder(renameFolder_, to)) {
                 flash(tr(Str::MsgFolderNotRenamed));
                 return;
             }
@@ -1515,7 +1516,7 @@ void View::runNameMenu() {
                                    : browserScope_ == BrowserScope::Folder ? browserFolder_
                                                                            : std::string();
         const std::string folder = parent.empty() ? name : parent + "/" + name;
-        if (!controller_.makePresetFolder(folder)) {
+        if (!presetStore().makePresetFolder(folder)) {
             flash(tr(Str::MsgFolderNotMade));
             return;
         }
@@ -1537,7 +1538,7 @@ void View::runNameMenu() {
 // --- Painting, pressing, scrolling and the tooltips of all the above
 
 bool View::paintPresetWidget(Canvas &c, const Widget &w, bool hovered) {
-    const std::vector<PresetEntry> &presets = controller_.presets();
+    const std::vector<PresetEntry> &presets = presetStore().presets();
     const bool picked = browserPick_ >= 0 && browserPick_ < static_cast<int>(presets.size());
     switch (w.kind) {
     case Kind::PresetNameBox:
@@ -1556,7 +1557,7 @@ bool View::paintPresetWidget(Canvas &c, const Widget &w, bool hovered) {
     }
     case Kind::InfoAction: {
         if (w.a == 0) {
-            const bool favorite = controller_.presetFavorite(controller_.presetIndex());
+            const bool favorite = presetStore().presetFavorite(presetStore().presetIndex());
             if (hovered)
                 c.fillRect(w.rect, kText.alpha(0.08f), kRadiusControl);
             if (outlined())
@@ -1662,7 +1663,7 @@ bool View::paintPresetWidget(Canvas &c, const Widget &w, bool hovered) {
     case Kind::SaveButton: {
         const bool save = w.a == 1;
         const bool replace = save && saveMode_ == SaveMode::Save &&
-                             controller_.presetExists(saveFolder_, trimmed(saveName_.text));
+                             presetStore().presetExists(saveFolder_, trimmed(saveName_.text));
         const Color ink = buttonFace(c, w.rect, save, hovered);
         c.text(w.rect, tr(!save ? Str::SaveCancel : replace ? Str::SaveReplace : Str::SaveSave), kTextBody, ink,
                Align::Center, save);
@@ -1711,7 +1712,7 @@ bool View::paintPresetWidget(Canvas &c, const Widget &w, bool hovered) {
 }
 
 bool View::presetPress(const Widget &w, Point p, Modifiers) {
-    const std::vector<PresetEntry> &presets = controller_.presets();
+    const std::vector<PresetEntry> &presets = presetStore().presets();
     const bool picked = browserPick_ >= 0 && browserPick_ < static_cast<int>(presets.size());
     switch (w.kind) {
     case Kind::PresetNameBox:
@@ -1732,9 +1733,9 @@ bool View::presetPress(const Widget &w, Point p, Modifiers) {
             infoCardOpen_ = false;
         return true;
     case Kind::InfoAction: {
-        const int now = controller_.presetIndex();
+        const int now = presetStore().presetIndex();
         if (w.a == 0)
-            controller_.setPresetFavorite(now, !controller_.presetFavorite(now));
+            presetStore().setPresetFavorite(now, !presetStore().presetFavorite(now));
         else if (w.a == 1)
             openBrowser(now);
         else if (controller_.presetFactory())
@@ -1752,7 +1753,7 @@ bool View::presetPress(const Widget &w, Point p, Modifiers) {
         openPreset(w.a, false);
         return true;
     case Kind::BrowserFav:
-        controller_.setPresetFavorite(w.a, !controller_.presetFavorite(w.a));
+        presetStore().setPresetFavorite(w.a, !presetStore().presetFavorite(w.a));
         return true;
     case Kind::BrowserSubfolders:
         if (browserScope_ != BrowserScope::Folder) // greyed out
@@ -1849,7 +1850,7 @@ bool View::presetPress(const Widget &w, Point p, Modifiers) {
         return true;
     case Kind::BrowserShowFile:
         if (picked && !presets[browserPick_].factory)
-            controller_.showPresetFile(browserPick_);
+            presetStore().showPresetFile(browserPick_);
         return true;
     case Kind::SaveBackdrop:
         return true; // a stray click around it keeps what is typed
@@ -1874,7 +1875,7 @@ bool View::presetPress(const Widget &w, Point p, Modifiers) {
         controller_.layout().presetInfo = {trimmed(saveAuthor_.text), saveCategory_, trimmed(saveDescription_.text)};
         saveMode_ = SaveMode::None;
         hover_.reset();
-        controller_.choosePreset(true);
+        presetStore().choosePreset(true);
         return true;
     case Kind::SaveButton:
         if (w.a == 1)
@@ -1951,16 +1952,18 @@ bool View::presetWheel(Point p, float steps) {
 }
 
 std::string View::presetTip(const Widget &w) const {
-    const std::vector<PresetEntry> &presets = controller_.presets();
+    const std::vector<PresetEntry> &presets = presetStore().presets();
     switch (w.kind) {
     case Kind::PresetInfoButton:
         return infoCardOpen_ ? std::string() : std::string(tr(Str::TipPresetInfo));
     case Kind::InfoAction:
-        if (w.a == 0)
-            return tr(controller_.presetFavorite(controller_.presetIndex()) ? Str::TipUnfavorite : Str::TipFavorite);
+        if (w.a == 0) {
+            PresetStore &store = presetStore();
+            return tr(store.presetFavorite(store.presetIndex()) ? Str::TipUnfavorite : Str::TipFavorite);
+        }
         return {};
     case Kind::BrowserFav:
-        return tr(controller_.presetFavorite(w.a) ? Str::TipUnfavorite : Str::TipFavorite);
+        return tr(presetStore().presetFavorite(w.a) ? Str::TipUnfavorite : Str::TipFavorite);
     case Kind::BrowserShowFile:
         return tr(browserPick_ >= 0 && browserPick_ < static_cast<int>(presets.size()) && presets[browserPick_].factory
                       ? Str::TipShowFileFactory

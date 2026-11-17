@@ -63,7 +63,7 @@ public:
     explicit View(Controller &controller);
     ~View(); // ends a drag still going on, so no note hangs and no gesture stays open
 
-    // The color themes, by the names Controller::theme() takes; the first is the default.
+    // The color themes, by the names EditorSettings::theme takes; the first is the default.
     static int themeCount();
     static const char *themeName(int index);
 
@@ -1898,6 +1898,8 @@ private:
     bool isActive(const Widget &w) const;
 
     Controller &controller_;
+    // The preset library and the patch as a file (see Controller::presetStore()).
+    PresetStore &presetStore() const { return controller_.presetStore(); }
     const ParamTable &table_;
     ParamValues seen_{};
     uint64_t seenStamp_ = 0; // the controller's valuesStamp() when seen_ was taken (0: not yet)
@@ -2038,22 +2040,22 @@ private:
     float glow_ = 0.0f;                      // how strongly the curves glowed when painted last
     float glowDragged_ = -1.0f;              // the glow slider's amount while it is dragged, else -1
     float shownGlow() const {
-        return glowDragged_ >= 0.0f ? glowDragged_ : static_cast<float>(controller_.glow());
+        return glowDragged_ >= 0.0f ? glowDragged_ : static_cast<float>(controller_.editorSettings().glow);
     }
     float links_ = 0.0f;                     // how strongly the source's dashed lines were drawn when painted last
     int handles_ = 0;                        // and the depth handles' size
     float linksDragged_ = -1.0f;             // the LINES slider's amount while it is dragged, else -1
     float shownLinks() const {
-        return linksDragged_ >= 0.0f ? linksDragged_ : static_cast<float>(controller_.linkIntensity());
+        return linksDragged_ >= 0.0f ? linksDragged_ : static_cast<float>(controller_.editorSettings().linkIntensity);
     }
     float gridDragged_ = -1.0f;              // the GRID slider's amount while it is dragged, else -1
     float shownGrid() const {
-        return gridDragged_ >= 0.0f ? gridDragged_ : static_cast<float>(controller_.gridIntensity());
+        return gridDragged_ >= 0.0f ? gridDragged_ : static_cast<float>(controller_.editorSettings().gridIntensity);
     }
     // The amount of the settings slider being dragged (DragKind::Glow): the glow's, or the lines'.
     float hueDragged_ = -1.0f;               // the hue slider's hue while it is dragged, else -1
     // The hue the theme's main color shows now, 0 to 1, or below 0 for the theme's own.
-    double shownHue() const { return hueDragged_ >= 0.0f ? hueDragged_ : controller_.accentHue(); }
+    double shownHue() const { return hueDragged_ >= 0.0f ? hueDragged_ : controller_.editorSettings().accentHue; }
     double hue_ = -1.0;                      // the hue painted last
     float &sliderDragged() {
         return drag_.widget.kind == Kind::SettingsLinks  ? linksDragged_

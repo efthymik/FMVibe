@@ -1913,8 +1913,9 @@ bool View::poll() {
         modList_.reset();
         everywhere = true;
     }
-    if (themeIndex(controller_.theme()) != theme_ || shownGlow() != glow_ || shownLinks() != links_ || shownHue() != hue_ ||
-        controller_.handleSize() != handles_) // picked in another editor
+    const EditorSettings settings = controller_.editorSettings();
+    if (themeIndex(settings.theme) != theme_ || shownGlow() != glow_ || shownLinks() != links_ || shownHue() != hue_ ||
+        settings.handleSize != handles_) // picked in another editor
         everywhere = true;
     if ((typing_ || fieldTyping()) && ++caretTicks_ % 32 == 0)
         everywhere = true; // the caret blinks
@@ -3265,7 +3266,7 @@ std::vector<View::Widget> View::widgets() const {
     // its depth). As many as
     // the knob's, label's or cell's width holds; past that, as many as fit beside a "+n" pill holding the rest. The
     // handles and pills come in the user's size; they stay as far apart at each.
-    const ModHandleSize &sizes = modHandleSize(controller_.handleSize());
+    const ModHandleSize &sizes = modHandleSize(controller_.editorSettings().handleSize);
     const size_t count = list.size();
     std::vector<Assignment> here;
     for (size_t i = 0; i < count; ++i) {
@@ -3711,12 +3712,12 @@ void View::paint(Canvas &c, Rect area) {
         });
     }
 
-    theme_ = themeIndex(controller_.theme());
+    theme_ = themeIndex(controller_.editorSettings().theme);
     hue_ = shownHue();
     look = withAccentHue(kThemes[theme_], hue_); // its main color turned to the hue the settings pick
     glow_ = glowing = shownGlow();
     links_ = shownLinks();
-    handles_ = controller_.handleSize();
+    handles_ = controller_.editorSettings().handleSize;
     if (partial) {
         c.fillRect(area, kBackground);
     } else {
@@ -8717,7 +8718,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // A row of buttons, the one picked lit. The bend ranges fade while MPE is off, though they still take clicks.
         const bool on = w.kind == Kind::SettingsOption    ? controller_.oversampling() == w.b
                         : w.kind == Kind::SettingsMpe     ? controller_.mpe() == (w.b != 0)
-                        : w.kind == Kind::SettingsHandles ? std::clamp(controller_.handleSize(), 0,
+                        : w.kind == Kind::SettingsHandles ? std::clamp(controller_.editorSettings().handleSize, 0,
                                                                        kModHandleSizeCount - 1) == w.b
                                                           : controller_.mpeBendRange() == w.b;
         const bool faint = w.kind == Kind::SettingsMpeRange && !controller_.mpe();
@@ -8776,7 +8777,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::SettingsTheme: {
         // Each theme in its own colors: its panel, its name, and its operator, filter and effect colors.
         const Palette &theme = kThemes[w.b];
-        const bool on = themeIndex(controller_.theme()) == w.b;
+        const bool on = themeIndex(controller_.editorSettings().theme) == w.b;
         c.fillRect(w.rect, hovered && !on ? theme.raised : theme.panel, kRadiusControl);
         c.strokeRect(w.rect, on ? kAccent : (hovered ? kDim : kBorder), on ? 1.5f : 1.0f, kRadiusControl);
         c.text({w.rect.x, w.rect.y, w.rect.w, w.rect.h - 4.0f}, tr(theme.label), kTextLabel, theme.text, Align::Center, on);
@@ -8910,7 +8911,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // Compact: on a wire label, matrix cell or depth bar.
         // A bypassed modulation's dot is hollow.
         const Point center = w.rect.center();
-        const ModHandleSize &sizes = modHandleSize(controller_.handleSize());
+        const ModHandleSize &sizes = modHandleSize(controller_.editorSettings().handleSize);
         const float radius = hovered || active ? (w.compact ? sizes.dotCompactHover : sizes.dotHover)
                                                : (w.compact ? sizes.dotCompact : sizes.dot);
         const Color color = kSourceColors[w.a].alpha(sourceOn(w.a) ? 1.0f : 0.35f);
@@ -9709,12 +9710,14 @@ void View::paintTooltip(Canvas &c) {
         case PresetAction::Load:
             text = tr(Str::TipLoad);
             break;
-        case PresetAction::Save:
+        case PresetAction::Save: {
+            PresetStore &store = presetStore();
             text = !controller_.presetHasFile()                         ? tr(Str::TipSaveNoFile)
                    : !controller_.patchEdited()                         ? tr(Str::TipSaveUnchanged)
-                   : controller_.writesPresetFiles() && !controller_.presetWritable() ? tr(Str::TipSaveAs)
-                                                                        : trf(Str::TipSave, {controller_.presetName()});
+                   : store.writesPresetFiles() && !store.presetWritable() ? tr(Str::TipSaveAs)
+                                                                        : trf(Str::TipSave, {store.presetName()});
             break;
+        }
         case PresetAction::SaveAs:
             text = tr(presetActionOn(PresetAction::SaveAs) ? Str::TipSaveAs : Str::TipSaveUnchanged);
             break;
@@ -9907,7 +9910,7 @@ void View::paintModPill(Canvas &c, const Widget &w, bool hovered) {
     else
         c.strokeRect(w.rect.inset(0.5f), hovered ? kDim : kFaint, 1.0f, round);
     const std::string text = "+" + std::to_string(index - w.b);
-    const ModHandleSize &sizes = modHandleSize(controller_.handleSize());
+    const ModHandleSize &sizes = modHandleSize(controller_.editorSettings().handleSize);
     c.text({w.rect.x - 2.0f, w.rect.y - 1.0f, w.rect.w + 4.0f, w.rect.h + 1.0f}, text,
            w.compact ? sizes.pillCompactText : sizes.pillText,
            open ? kBackground : (live ? kText : kDim), Align::Center, true);
@@ -11273,7 +11276,8 @@ void View::mouseDown(Point p, Modifiers mods) {
         const auto action = static_cast<PresetAction>(w.a);
         if (!presetActionOn(action))
             break;
-        const bool ask = action == PresetAction::Save     ? controller_.writesPresetFiles() && controller_.presetWritable()
+        const bool overwrites = presetStore().writesPresetFiles() && presetStore().presetWritable();
+        const bool ask = action == PresetAction::Save     ? overwrites
                          : action == PresetAction::SaveAs ? false
                                                           : controller_.patchEdited();
         if (ask) {
@@ -11294,7 +11298,7 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::SearchClear: // the field keeps the keyboard, for what is typed next
         clearField(static_cast<Field>(w.a));
         if (w.a == static_cast<int>(Field::Browser))
-            revealBrowserRow(controller_.presetIndex(), true);
+            revealBrowserRow(presetStore().presetIndex(), true);
         modsFiltering_ = w.a == static_cast<int>(Field::ModsFilter);
         browserSearching_ = w.a == static_cast<int>(Field::Browser);
         hover_.reset();
@@ -11341,12 +11345,18 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::SettingsMpeRange:
         controller_.setMpeBendRange(w.b);
         break;
-    case Kind::SettingsTheme:
-        controller_.setTheme(kThemes[w.b].name);
+    case Kind::SettingsTheme: {
+        EditorSettings settings = controller_.editorSettings();
+        settings.theme = kThemes[w.b].name;
+        controller_.setEditorSettings(settings);
         break;
-    case Kind::SettingsHandles:
-        controller_.setHandleSize(w.b);
+    }
+    case Kind::SettingsHandles: {
+        EditorSettings settings = controller_.editorSettings();
+        settings.handleSize = w.b;
+        controller_.setEditorSettings(settings);
         break;
+    }
     case Kind::SettingsGlow: // dragged; the amount is kept when it is let go
     case Kind::SettingsLinks:
     case Kind::SettingsGrid:
@@ -11576,16 +11586,19 @@ void View::mouseUp(Point p, Modifiers) {
         }
         break;
     }
-    case DragKind::Glow:
+    case DragKind::Glow: {
+        EditorSettings settings = controller_.editorSettings();
         if (w.kind == Kind::SettingsLinks)
-            controller_.setLinkIntensity(linksDragged_);
+            settings.linkIntensity = linksDragged_;
         else if (w.kind == Kind::SettingsGrid)
-            controller_.setGridIntensity(gridDragged_);
+            settings.gridIntensity = gridDragged_;
         else if (w.kind == Kind::SettingsHue)
-            controller_.setAccentHue(hueDragged_);
+            settings.accentHue = hueDragged_;
         else
-            controller_.setGlow(glowDragged_);
+            settings.glow = glowDragged_;
+        controller_.setEditorSettings(settings);
         break;
+    }
     case DragKind::FxMove: {
         drag_.now = p;
         if (!drag_.moved) { // a click: the icon switches the effect, and the card stays where it is
@@ -12254,20 +12267,18 @@ void View::doubleClick(Point p, Modifiers mods) {
         return;
     }
     // The settings' sliders back to where they start: the theme's own color, the glow at half and the lines at 75 %.
-    if (hit && hit->kind == Kind::SettingsHue) {
-        controller_.setAccentHue(-1.0);
-        return;
-    }
-    if (hit && hit->kind == Kind::SettingsGlow) {
-        controller_.setGlow(Controller::kDefaultGlow);
-        return;
-    }
-    if (hit && hit->kind == Kind::SettingsLinks) {
-        controller_.setLinkIntensity(Controller::kDefaultLinkIntensity);
-        return;
-    }
-    if (hit && hit->kind == Kind::SettingsGrid) {
-        controller_.setGridIntensity(Controller::kDefaultGridIntensity);
+    if (hit && (hit->kind == Kind::SettingsHue || hit->kind == Kind::SettingsGlow || hit->kind == Kind::SettingsLinks ||
+                hit->kind == Kind::SettingsGrid)) {
+        EditorSettings settings = controller_.editorSettings();
+        if (hit->kind == Kind::SettingsHue)
+            settings.accentHue = -1.0;
+        else if (hit->kind == Kind::SettingsGlow)
+            settings.glow = EditorSettings::kDefaultGlow;
+        else if (hit->kind == Kind::SettingsLinks)
+            settings.linkIntensity = EditorSettings::kDefaultLinkIntensity;
+        else
+            settings.gridIntensity = EditorSettings::kDefaultGridIntensity;
+        controller_.setEditorSettings(settings);
         return;
     }
     if (hit && hit->kind == Kind::UtilityHandle) { // back where it starts
@@ -12839,7 +12850,7 @@ void View::menuCommand(int command) {
             rememberBrowserPlace();
             openNameMenu(2, {menuFolderRow_.x - 8.0f, menuFolderRow_.bottom() + 4.0f});
         } else if (command == kOpenFolderCommand) {
-            controller_.openPresetFolder(*menuFolder_);
+            presetStore().openPresetFolder(*menuFolder_);
         } else if (command == kRenameFolderCommand && !menuFolder_->empty()) { // its name, all selected, to type over
             renameFolder_ = *menuFolder_;
             openNameMenu(4, {menuFolderRow_.x, menuFolderRow_.bottom() + 4.0f});

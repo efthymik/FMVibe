@@ -642,7 +642,7 @@ constexpr float kSlotNameW = 96.0f;
 // smaller in a label's or cell's corner; wider from +10 on. Its list: a title, then a row per modulation: its bypass
 // dot, the source's name, its aux (a column only while one of the rows has one), its depth bar with its value and its
 // remove.
-// Both come in three sizes, a setting of the user's (Controller::handleSize()), the smallest first; they stay as far
+// Both come in three sizes, a setting of the user's (EditorSettings::handleSize), the smallest first; they stay as far
 // apart at each.
 struct ModHandleSize {
     float dot, dotHover;                 // a depth handle's radius under a knob, and hovered or dragged
