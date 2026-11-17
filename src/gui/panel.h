@@ -5,7 +5,8 @@
 // every area (the controller, what is under the mouse, the text fields, the confirm dialog, the messages) through a
 // PanelHost. A panel knows nothing else of the View. So far the preset browser is one (presetbrowser.h), which shows
 // over the editor (modal), and the SEQ view (seqpanel.h), the MODS view (modspanel.h) and the FX view (fxpanel.h),
-// which show in their places among the editor's areas.
+// which show in their places among the editor's areas; and so are the drawn shapes' editors (shapeeditor.h), whose
+// full-size editors show over the panels' row and whose widgets show wherever a shape is edited in place.
 
 #include "widget.h"
 
@@ -77,12 +78,13 @@ public:
     // drag's undo step opens if it hasn't. Then, if no copy could be made after all, nothing is kept to go back to.
     virtual void beginCopyDrag() = 0;
     virtual void cancelCopyDrag() = 0;
-    // The widget at `p`, as a press there would find it.
+    // The widget at `p`, as a press there would find it; and every widget the editor lists now, in its order.
     virtual std::optional<Widget> widgetAt(Point p) const = 0;
+    virtual std::vector<Widget> listedWidgets() const = 0;
     // The open lists (ListButtons') whose buttons no longer show close: scrolled away with their card, say.
     virtual void closeGoneLists() = 0;
     // A drawn shape whose place is taken by something else, or emptied (an effect's slot): the full-size editor showing
-    // it, if it does, closes.
+    // it, if it does, closes (see ShapeEditor::shapeGone()).
     virtual void shapeGone(int shape) = 0;
 
     // Whether a paint or a hit test goes on, in which nothing a panel reads changes: what it works out from the patch,
@@ -100,6 +102,18 @@ public:
     virtual bool partialEditorOpen() const = 0;
     // Lets go of the points picked in a shape editor, as what the panel picks takes over from them.
     virtual void clearShapePick() = 0;
+    // Where a drawn shape (see shapeeditor.h) is edited in place, while no full-size editor has it: a Curve source's in
+    // its widened card, a shaper effect's in its card's display (worked out from an empty card while the card doesn't
+    // show), a voice shaper's on its page in the inspector. What lays those out says.
+    virtual Rect shapeHome(int shape) const = 0;
+    // The row of cards that holds `card` (a source's, numbered as noteCard() numbers them) scrolls to show all of it.
+    virtual void revealCard(int card) = 0;
+    // A param's value where modulation takes the newest voice right now, in its range (the macros' with no note), as
+    // the effects play it: what their displays draw.
+    virtual double liveValue(int param) const = 0;
+    // Where an LFO is along its cycle now (0..1) and what it puts out there (-1..1), while its dot shows (it runs: a
+    // note plays, or it runs free or anchored, or in the effects' tail); nothing while it doesn't.
+    virtual std::optional<std::pair<double, double>> lfoNow(int lfo) const = 0;
     // The param whose list (a ListButton's) is open, or -1: a list of the panel's own, which it lists (see
     // Panel::popups()) and whose entries the View picks as it picks every list's.
     virtual int openList() const = 0;

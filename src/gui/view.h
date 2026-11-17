@@ -10,6 +10,7 @@
 #include "presetbrowser.h"
 #include "routingmodel.h"
 #include "seqpanel.h"
+#include "shapeeditor.h"
 #include "widget.h"
 
 #include <array>
@@ -17,32 +18,12 @@
 #include <map>
 #include <memory>
 #include <optional>
-#include <random>
 #include <span>
 #include <utility>
 #include <string>
 #include <vector>
 
 namespace fmvibe::gui {
-
-// Points that depend only on what their key holds (the params a curve is drawn from, where it goes), kept from
-// frame to frame and worked out again only when any of that changes.
-class PointCache {
-public:
-    // The points for `key` (its first value telling the curves apart), from make() unless they are kept already.
-    template <class Make>
-    std::vector<Point> get(const std::vector<double> &key, Make &&make);
-
-private:
-    struct Entry {
-        uint64_t hash = 0;
-        std::vector<double> key;
-        std::vector<Point> points;
-        uint64_t used = 0;
-    };
-    std::vector<Entry> entries_;
-    uint64_t clock_ = 0;
-};
 
 // The whole editor: layout, drawing and mouse handling in logical coordinates
 // (kWidth x kHeight). Only depends on Direct2D, so it can render into a window
@@ -181,10 +162,6 @@ private:
     // changed; Save As picks a file in the dialog, and is off for Init until it changes.
     enum class PresetAction { Init, Load, Save, SaveAs };
 
-    // What a widened LFO card's tools do to its whole shape, each one undo step: flip it upside down, play it back to
-    // front, move it a grid column earlier or later (round the cycle), and copy it to paste into another LFO.
-    enum class ShapeTool { Invert, Reverse, ShiftLeft, ShiftRight, Copy, Paste };
-
     using Widget = gui::Widget;
 
     enum class DragKind {
@@ -202,11 +179,6 @@ private:
         DynGrip,
         SourceMove,
         Scroll,
-        ShapePoint,
-        ShapeCurve,
-        ShapeStep, // a step just drawn, following the mouse (drag_.shapeBefore: the shape before it)
-        ShapeBox,  // a box across a shape from drag_.start to drag_.now, picking the points it reaches
-        Partials,
         Key,
         ModWheel,
         BendWheel,
@@ -230,19 +202,7 @@ private:
         double startValue = 0.0;
         bool leftNode = false; // a route being dragged has been well clear of the node it comes from
         bool fine = false;
-        bool snap = false; // shape points snap to a grid
         float scrollStart = 0.0f; // moving a card: where its row was scrolled to when it was grabbed
-        int lastPartial = -1; // drawing partials: the one the last move was over, and its value in startValue
-        std::vector<double> shapeBefore; // drawing a step: the shape's params before it
-        // Points moved together (DragKind::ShapePoint with more than one picked): which, and where each was as they
-        // were grabbed (x, y). Pressed with Ctrl on one picked already, `unpick` lets it go if it is let go unmoved;
-        // pressed without on one of several picked, `narrow` picks it alone then. A box (DragKind::ShapeBox): the
-        // points picked before it, which Ctrl adds it to.
-        std::vector<int> points;
-        std::vector<std::pair<double, double>> origin;
-        bool unpick = false;
-        bool narrow = false;
-        std::vector<int> boxBase;
         // A card or node Ctrl-dragged, which carries a copy (see beginCopyDrag()): every param and the layout before the
         // copy was made, which a drag called off goes back to.
         std::vector<double> copyBefore;
@@ -288,7 +248,6 @@ private:
         std::optional<float> sourcesLength;
         std::array<std::optional<std::vector<int>>, kAllSources> slots{};
         std::array<std::optional<float>, kMaxSources> cards{};
-        std::array<std::optional<Rect>, kMaxSources + kShaperUnits + 3> shapeAreas{}; // by shape + 1, to kVelocityCurve
         std::optional<ModTable> mods;
         std::optional<std::vector<Widget>> widgets;
     };
@@ -469,134 +428,16 @@ private:
     // The threshold a three-band dynamics' line `line` (2 x band + 0 for Above, 1 for Below) sets: its band's, or,
     // linked, the low band's.
     int mdThreshold(int slot, int line) const;
-    // Drawn shapes: a freeform LFO's (shape = the source), a shaper's curve (shape = kMaxSources + the shaper's
-    // unit: an effect slot, or kFxSlots + a shaper), the note source's curve (shape = kNoteCurve) or velocity's
-    // (kVelocityCurve). The big editor shows over the routing panel and the inspector while the LFO's shape is
-    // Custom, over the routing panel while the note source's or velocity's curve or a voice shaper's is open, or over
-    // the effects for a shaper effect's Custom curve;
-    // a shaper effect's card, or a voice shaper's page in the inspector, lets you edit its curve too. A curve's
-    // points run from the left edge to the right one; an LFO's wrap around.
-    int shapeEditing() const;
-    // A Custom LFO's card widened to edit its shape in it (see kWideSource), or -1: a click on its display widens it,
-    // and it stays so while it is Custom and not folded, also while the full-size editor has its shape. Its card's
-    // span, and whether the source's card is the widened one.
-    int wideLfo() const;
-    // Whether a click on a shape draws a step rather than working with points (Shift doing the other), and whether a
-    // dragged point snaps to the grid (Ctrl doing the other; the switch only where the grid shows: the big editor and
-    // a widened LFO card).
-    bool shapeSteps(int shape) const;
-    bool shapeSnaps(int shape, bool ctrl) const;
-    // The big editor's Points | Steps and Snap: left of its grid's controls under the plot, or in a shaper effect's
-    // narrower editor in its title row.
-    Rect shapeModeButton(int mode) const;
-    // A widened card's tools: what they make of the shape, and the shape copied, which Paste puts into another LFO.
-    void applyShapeTool(int lfo, ShapeTool tool);
-    struct DrawnPoint {
-        double x, y, curve; // the curve bends the segment leaving it
-    };
-    std::vector<DrawnPoint> drawnPoints(int shape) const;
-    // The edits that make the shape these points (the first at the start), or nothing when they don't fit in it.
-    std::optional<std::vector<std::pair<int, double>>> drawnChanges(int shape,
-                                                                    const std::vector<DrawnPoint> &points) const;
-    void paintLfoCard(Canvas &c, float card, int lfo);
-    // How to edit a shape in the big editor or a widened LFO card, as Points | Steps and Snap have it.
-    std::string shapeHint() const;
-    // Whether a widened card's Copy has kept a shape for Paste.
-    static bool shapeCopied();
-    // Its geometry: the panel the big editor fills, its buttons, and where a shape is edited (the big
-    // editor's plot, or a shaper curve's in its card while the big editor is closed) and where a value
-    // sits there; without a shape, the big editor's.
-    Rect shapePanel() const;
-    Rect shapeArea(int shape = -1) const;
-    Rect shapeAreaNow(int shape) const; // shapeArea() worked out
-    Rect shapeDone() const;
-    Rect shapeReset() const;
-    Rect partialRandom() const; // the partial editor's dice, left of its reset button
-    Rect shapeGridButton(int axis, int part) const;
-    Point shapeAt(double x, double y) const { return shapeAt(-1, x, y); }
-    Point shapeAt(int shape, double x, double y) const;
-    double shapeXAt(int shape, Point p) const;
-    double shapeYAt(int shape, Point p) const;
+    // The drawn shapes' editors (see ShapeEditor, shapes_): the shape the full-size editor shows, the LFO whose card
+    // is widened and the operator whose partials show, or -1.
+    int shapeEditing() const { return shapes_.shapeEditing(); }
+    int wideLfo() const { return shapes_.wideLfo(); }
+    int partialEditing() const { return shapes_.partialEditing(); }
     // The FX view, the shaper's curve editor that opens from it, or an LFO's shape editor takes the inspector's
     // place.
     bool inspectorCovered() const;
-    // Shaper units (see shaperParams()): the shaper effects, by slot, then the voices' shapers, kFxSlots + the shaper.
-    static constexpr int kNoteCurve = kMaxSources + kShaperUnits;
-    static constexpr int kVelocityCurve = kNoteCurve + 1;
-    static bool isCurve(int shape) { return shape >= kMaxSources; } // a shaper's, the note's or velocity's: no wrap
-    static bool isClipCurve(int shape) { return shape >= kMaxSources && shape < kMaxSources + kFxSlots; } // an effect's
-    static bool isShaperCurve(int shape) { return shape >= kMaxSources + kFxSlots && shape < kNoteCurve; }
-    static bool isNoteCurve(int shape) { return shape == kNoteCurve; }
-    static bool isVelocityCurve(int shape) { return shape == kVelocityCurve; }
-    // The curves of the sources in the keyboard strip, which open from their displays there.
-    static bool isStripCurve(int shape) { return isNoteCurve(shape) || isVelocityCurve(shape); }
-    // The curve of the note source or velocity, and back.
-    static int curveOf(int source) { return isVelocity(source) ? kVelocityCurve : kNoteCurve; }
-    static int sourceOfCurve(int shape) { return isVelocityCurve(shape) ? kVelocitySource : kNoteSource; }
-    static int shaperCurve(int shaper) { return kMaxSources + kFxSlots + shaper; }
-    // The color of a shaper unit: its effect's, or the voice shapers'.
-    Color clipColor(int unit) const;
-    Color shapeColor(int shape) const;
-    static int shapeBase(int shape);
-    // How many points it can have, and how many params it takes from shapeBase() on.
-    static int shapeMaxPoints(int shape) { return isStripCurve(shape) ? kMaxNotePoints : kMaxShapePoints; }
-    static int shapeParamCount(int shape) { return isStripCurve(shape) ? kNoteCurveParamCount : kShapeParamCount; }
-    int shapeIndex(int shape, int point, PointField field) const;
-    int shapePointCount(int shape) const;
-    // Onto a PointCache key: a drawn shape's point count (its param `base`) and its points, as many as it has.
-    void keyShape(std::vector<double> &key, int base) const;
-    double shapePointX(int shape, int point) const;
-    Point shapePointPos(int shape, int point) const;
-    Point shapeCurvePos(int shape, int point) const;
-    void addShapePoint(int shape, Point p);
-    // The changes that put a new point at (x, y) among the others, the later ones moving up a place.
-    std::vector<std::pair<int, double>> insertShapePoint(int shape, double x, double y) const;
-    // A symmetric shaper's curve (see ClipCurve): only its right half is edited, the left drawn as its mirror. Its
-    // points left of the middle are hidden, and so are the bends that start there; a click on that half does nothing.
-    // Switched on in the editor, the curve gets a point in the middle, which then stays there.
-    bool curveSymmetric(int shape) const;
-    bool pointShown(int shape, int point) const;
-    bool middlePoint(int shape, int point) const;
-    bool inMirroredHalf(int shape, Point p) const;
-    // The big editor's symmetric switch, for a shaper's Custom curve: left of its Points | Steps.
-    Rect shapeSymButton() const;
-    void switchSymmetric(int param);
     void switchFixed(int op);
     void flipSwitch(int param); // as a click on its switch flips it
-    // Draws a step into the shape as `before` holds it (its params from shapeBase() on), or as it is when that is
-    // empty. False when there's no room for it.
-    bool addShapeStep(int shape, Point p, bool snap, const std::vector<double> &before = {});
-    bool drawsStep(const Widget &w, Modifiers mods) const;
-    void removeShapePoint(int shape, int point);
-    void resetShape(int shape);
-    // The points picked in a shape editor, which a drag on one of them moves together and Delete removes: picked by a
-    // box dragged across the shape from empty space, Ctrl+click adding a point or taking it away, Ctrl+A picking every
-    // one. Not saved; the editor's alone. A click anywhere else lets them go, and so does any change of how many
-    // points the shape has.
-    struct ShapePick {
-        int shape = -1;
-        int count = 0; // how many points the shape had, which the points picked are of
-        std::vector<int> points; // in order
-    };
-    ShapePick shapePick_;
-    // The points picked of `shape` that it still has and shows (a symmetric curve's mirrored half shows none).
-    std::vector<int> shapePicked(int shape) const;
-    bool shapePointPicked(int shape, int point) const;
-    void setShapePick(int shape, std::vector<int> points);
-    void clearShapePick() override { shapePick_ = ShapePick{}; }
-    // Whether `shape` is shown where it can be edited: the big editor, a widened card, a shaper's card or page.
-    bool shapeEditable(int shape) const;
-    // Whether a point stays where it is across: the first, a curve's last, a symmetric curve's middle.
-    bool shapePointPinned(int shape, int point) const;
-    // The points picked, moved together after the one grabbed, now at `x`, `y` (see applyDrag()).
-    void moveShapePoints(int shape, int grabbed, double x, double y);
-    // Removes those of `points` that can go, as many as leave the shape two, as one undo step.
-    void removeShapePoints(int shape, const std::vector<int> &points);
-    // The keys a shape editor takes while it has points picked (Delete removes them) or is under the mouse
-    // (Ctrl+A picks every point); whether it took it.
-    bool shapeKey(Key key);
-    // The next grid the shape editor offers along `axis`, `steps` away.
-    void stepShapeGrid(int axis, int steps);
     // While an LFO's or envelope's handle, or a card of the row, is dragged near either end of a row of cards, the
     // row scrolls that way.
     bool edgeScroll();
@@ -710,21 +551,6 @@ private:
     void paintWheel(Canvas &c, const Widget &w, bool hovered, bool active);
     void paintRouting(Canvas &c);
     void paintMatrixLabels(Canvas &c);
-    void paintShapeEditor(Canvas &c, int shape);
-    void paintClipCurveEditor(Canvas &c, int shape);
-    void paintNoteCurveEditor(Canvas &c);
-    void paintVelocityCurveEditor(Canvas &c);
-    // The editor's grid; `zero` is where the zero line goes, and a centered grid stresses its middle line.
-    void paintShapeGrid(Canvas &c, Rect area, double zero, bool centered);
-    // Where (x, y) of a shape plotted in `area` goes: x 0..1 across, y -1..1 up, a little short of its edges.
-    static Point areaAt(Rect area, double x, double y);
-    void paintShapeGridControls(Canvas &c);
-    // The partial editor: an operator's Custom wave, over the routing panel while the shape editor isn't.
-    int partialEditing() const;
-    int partialsShown(int op) const; // how many partials its Custom wave plays, and the editor shows
-    void paintPartialEditor(Canvas &c, int op);
-    // A shaper's transfer curve, or its drawn curve to edit: an effect slot's or (unit kFxSlots + shaper) a voice shaper's.
-    void paintShaperCurve(Canvas &c, Rect r, int unit);
     void paintDisperser(Canvas &c, Rect r, int slot);
     void paintWidener(Canvas &c, Rect r, int slot);
     void paintUtility(Canvas &c, Rect r, int slot);
@@ -737,8 +563,6 @@ private:
     // velocity, right of it: the velocity the newest voice came with.
     void paintNoteSource(Canvas &c, float top);
     void paintVelocitySource(Canvas &c, float top);
-    void paintClipCurveCard(Canvas &c, Rect r, int unit);
-    void paintMirroredPoints(Canvas &c, int shape, float radius);
     void paintDelay(Canvas &c, Rect r, int slot);
     void paintEq(Canvas &c, Rect r, int slot);
     void paintParamEq(Canvas &c, Rect r, int slot);
@@ -815,7 +639,7 @@ private:
     double liveAmount(int param) const;
     // A param's value where modulation takes the newest voice right now, in its range (the macros' with no note), as
     // the effects play it: what their displays draw.
-    double liveValue(int param) const;
+    double liveValue(int param) const override;
     // Under a route's label or matrix cell: each modulation's range, as on a knob's ring, and where it is now.
     void paintModRange(Canvas &c, Rect bar, int param);
     // A pill's list: every modulation of its target, a row each, under the pill (or over it, short of room), kept
@@ -894,10 +718,7 @@ private:
     void cancelCopyDrag() override;
     std::optional<Widget> widgetAt(Point p) const override { return hitTest(p); }
     void closeGoneLists() override;
-    void shapeGone(int shape) override {
-        if (shapeEditor_ == shape)
-            shapeEditor_ = -1;
-    }
+    void shapeGone(int shape) override { shapes_.shapeGone(shape); }
     void noteCard(int id, Rect card, Rect shown) override;
     void paintCardFace(Canvas &c, Rect card, Color color, bool on, int id, bool dragged, float edge,
                        Rect shown) override;
@@ -912,13 +733,19 @@ private:
     const std::optional<Widget> &hovered() const override { return hover_; }
     bool shapeEditorOpen() const override { return shapeEditing() >= 0; }
     bool partialEditorOpen() const override { return partialEditing() >= 0; }
+    void clearShapePick() override { shapes_.clearShapePick(); }
+    Rect shapeHome(int shape) const override;
+    void revealCard(int card) override { revealSource(card); }
+    std::optional<std::pair<double, double>> lfoNow(int lfo) const override;
+    std::vector<Widget> listedWidgets() const override { return widgets(); }
     int openList() const override { return listMenu_; }
 
     Controller &controller_;
     // The preset library and the patch as a file (see Controller::presetStore()).
     PresetStore &presetStore() const { return controller_.presetStore(); }
-    // The panels: the preset browser, the SEQ view, the MODS view, the FX view, and all of them, in the order they are
-    // handed what goes on.
+    // The panels: the shape editors, the preset browser, the SEQ view, the MODS view, the FX view, and all of them, in
+    // the order they are handed what goes on (the shape editors first, for the keys they take before the others).
+    ShapeEditor shapes_;
     PresetBrowser presets_;
     SeqPanel seq_;
     ModsPanel modsPanel_;
@@ -946,7 +773,6 @@ private:
     int cardAt(Point p) const;
     bool cardOutlined(int id, bool dragged) const;
     Color cardFaceUnder(const Widget &w) const;
-    Color cardFace(Color color, bool on) const;
     // The switched-off cards' bodies below their title rows, and the inspector's page of a switched-off node: what is in
     // them is dimmed. A card's displays under an overlay of its own face (`face`, within `clip`), which leaves its
     // face as it is; the page under a layer (paintInspector(), no face here); the widgets in both under a layer.
@@ -981,12 +807,7 @@ private:
     int menuSource_ = -1;                    // the source of the open context menu
     std::optional<Widget> menuAuxDepth_;     // what the open context menu's "Edit aux depth" types into
     std::optional<Widget> menuValue_;        // what the open context menu's "Edit value" types into
-    std::pair<int, int> menuPoint_{-1, -1}; // lfo and shape point of the open context menu
     std::optional<ModListOpen> modList_;     // a pill's open list
-    int shapeEditor_ = -1;                   // the LFO whose shape the routing panel shows, or -1
-    int wideLfo_ = -1;                       // the LFO whose card is widened (see wideLfo()), or -1
-    int partialEditor_ = -1;                 // the operator whose Custom wave's partials it shows, or -1
-    std::mt19937 random_{std::random_device{}()}; // the partial editor's dice
     float sourceScroll_ = 0.0f;              // how many source cards are scrolled past, before clamping
     int listMenu_ = -1;                      // the param whose list (ListButton) is open, or -1
     int peqMenu_ = -1;                       // the band type param whose list of shapes is open, or -1
@@ -1093,7 +914,6 @@ private:
     int caretTicks_ = 0; // polls since the last key, for the caret's blink
     mutable Derived derived_; // see DerivedScope
     mutable int derivedDepth_ = 0;
-    mutable PointCache curves_; // the graphs' curves, worked out again only when what they are drawn from changes
 };
 
 } // namespace fmvibe::gui

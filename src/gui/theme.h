@@ -250,6 +250,11 @@ inline Color ringColor(Color source, Color arc) {
         return source;
     return lightTheme() ? mix(source, Color{0.0f, 0.0f, 0.0f, 1.0f}, 0.45f) : mix(source, Color{1.0f, 1.0f, 1.0f, 1.0f}, 0.5f);
 }
+// A card's face, as the View's paintCardFace() fills it: the cards' color, in a flat theme tinted with `color` (faintly
+// while off).
+inline Color cardFace(Color color, bool on) {
+    return look.flat ? mix(kCardColor, color, look.cardTint * (on ? 1.0f : 0.4f)) : kCardColor;
+}
 // Whether controls get their 1 px outline: not in a flat theme.
 inline bool outlined() {
     return !look.flat;

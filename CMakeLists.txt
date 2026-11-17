@@ -164,7 +164,8 @@ add_library(fmvibe-core STATIC
     src/gui/routing.h
     src/gui/routingmodel.cpp
     src/gui/routingmodel.h
-    src/gui/shapes.cpp
+    src/gui/shapeeditor.cpp
+    src/gui/shapeeditor.h
     src/gui/theme.cpp
     src/gui/theme.h
     src/gui/view.cpp

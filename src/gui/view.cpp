@@ -29,8 +29,8 @@
 namespace fmvibe::gui {
 
 // The look, the layout, the icons and the routing graph's model are in theme.h, layout.h, icons.h and routing.h,
-// in namespace detail. dialogs.cpp, routing.cpp and shapes.cpp hold the View's methods for the dialogs, the
-// routing graph and the drawn shapes.
+// in namespace detail. dialogs.cpp and routing.cpp hold the View's methods for the dialogs and the routing graph; the
+// drawn shapes' editors are a panel of their own (shapeeditor.h).
 using namespace detail;
 
 namespace detail {
@@ -529,8 +529,8 @@ float View::heightFor(const UiLayout &layout) {
 }
 
 View::View(Controller &controller)
-    : controller_(controller), presets_(*this), seq_(*this), modsPanel_(*this), fxPanel_(*this),
-      panels_{&presets_, &seq_, &modsPanel_, &fxPanel_},
+    : controller_(controller), shapes_(*this), presets_(*this), seq_(*this), modsPanel_(*this), fxPanel_(*this),
+      panels_{&shapes_, &presets_, &seq_, &modsPanel_, &fxPanel_},
       table_(paramTable()),
       mods_(controller, [this](std::string m) { flash(std::move(m)); }),
       routing_(controller, [this](std::string m) { flash(std::move(m)); }),
@@ -726,14 +726,10 @@ void View::stepList(int param, int dir) {
         if (to != shown)
             edit(param, to);
         // An LFO holding the retired Custom shape (a state can) goes back to its size as it takes another, as a pick does.
-        if (isLfoShape(param) && sourceOf(param) == wideLfo_)
-            wideLfo_ = -1;
+        if (isLfoShape(param))
+            shapes_.narrow(sourceOf(param));
         return;
     }
-}
-
-Color View::clipColor(int unit) const {
-    return unit < kFxSlots ? fxColor(unit) : kShaperColor;
 }
 
 bool View::inspectorCovered() const {
@@ -746,8 +742,7 @@ void View::showView(RoutingView view) {
     controller_.layout().view = view;
     for (Panel *panel : panels_) // their menus (the MODS view's), opened on what showed before
         panel->closePopups();
-    shapeEditor_ = -1;
-    partialEditor_ = -1;
+    shapes_.close();
     listMenu_ = -1;
 }
 
@@ -790,8 +785,8 @@ float View::sourceOffset(const std::vector<int> &shown, size_t index) const {
 
 // Folding a card or unfolding it; a widened LFO card folded unfolds at its normal size.
 void View::setFolded(bool fx, int index, bool folded) {
-    if (!fx && folded && index == wideLfo_)
-        wideLfo_ = -1;
+    if (!fx && folded)
+        shapes_.narrow(index);
     mods_.setFolded(fx, index, folded);
 }
 
@@ -1018,6 +1013,14 @@ float View::cardOf(int source) const {
     return card;
 }
 
+Rect View::shapeHome(int shape) const {
+    if (isClipCurve(shape)) // in its card
+        return fxDisplayIn(fxCardOf(shape - kMaxSources).value_or(Rect{}), FxType::Shaper).inset(8.0f);
+    if (isShaperCurve(shape)) // on its page in the inspector
+        return kShaperDisplay.inset(8.0f);
+    return lfoCardPlot(cardOf(shape)); // an LFO's, in its widened card
+}
+
 void View::revealSource(int source) {
     const std::vector<int> shown = sources();
     const float place = sourceOffset(shown, static_cast<size_t>(std::find(shown.begin(), shown.end(), source) - shown.begin()));
@@ -1030,25 +1033,16 @@ int View::addSource(SourceType type, int copyOf) {
     const int source = mods_.addSource(type, copyOf);
     if (source < 0)
         return -1;
-    if (shapeEditor_ == source) // left open for a source the place held before
-        shapeEditor_ = -1;
-    if (wideLfo_ == source)
-        wideLfo_ = -1;
-    if (type == SourceType::Curve && copyOf < 0) { // widened, to draw its shape right there, as picking Custom did
-        wideLfo_ = source;
-        if (shapeEditing() >= 0 && !isCurve(shapeEditing()))
-            shapeEditor_ = -1;
-    }
+    shapes_.shapeGone(source); // left open for a source the place held before
+    if (type == SourceType::Curve && copyOf < 0) // widened, to draw its shape right there, as picking Custom did
+        shapes_.widen(source);
     revealSource(source);
     return source;
 }
 
 void View::removeSource(int source) {
     mods_.removeSource(source);
-    if (shapeEditor_ == source)
-        shapeEditor_ = -1;
-    if (wideLfo_ == source)
-        wideLfo_ = -1;
+    shapes_.shapeGone(source);
 }
 
 // Snapshots come once per audio block, which can be tens of milliseconds apart;
@@ -1092,6 +1086,12 @@ bool View::lfoRunsIdle(int lfo) const {
 
 bool View::lfoRunning(int lfo) const {
     return telemetry_.voices > 0 ? mods_.sourceOn(lfo) : lfoRunsIdle(lfo) || lfoInTail(telemetry_, lfo);
+}
+
+std::optional<std::pair<double, double>> View::lfoNow(int lfo) const {
+    if (!lfoRunning(lfo))
+        return std::nullopt;
+    return std::pair{lfoPhaseNow(lfo), lfoValueNow(lfo)};
 }
 
 bool View::lfoInTail(const Telemetry &t, int lfo) {
@@ -1647,26 +1647,7 @@ std::vector<View::Widget> View::widgets() const {
     };
     // A drawn shaper curve is edited right in its display, as in the big editor its edit button (beside its curve's
     // list, ClipDisplay) opens.
-    auto drawnCurve = [&](int unit, Rect display) {
-        const int shape = kMaxSources + unit;
-        add(Kind::ShapeArea, display, -1, shape);
-        const int count = shapePointCount(shape);
-        for (int point = 0; point + 1 < count; ++point) {
-            if (shapePointX(shape, point + 1) - shapePointX(shape, point) < 1e-6 || !pointShown(shape, point))
-                continue; // a jump straight up or down has nothing to bend
-            const Point c = shapeCurvePos(shape, point);
-            add(Kind::ShapeCurve, {c.x - 5.0f, c.y - 5.0f, 10.0f, 10.0f}, shapeIndex(shape, point, PointField::Curve),
-                shape, point);
-            list.back().compact = true;
-        }
-        for (int point = 0; point < count; ++point) {
-            if (!pointShown(shape, point))
-                continue;
-            const Point c = shapePointPos(shape, point);
-            add(Kind::ShapePoint, {c.x - 6.0f, c.y - 6.0f, 12.0f, 12.0f}, -1, shape, point);
-            list.back().compact = true;
-        }
-    };
+    auto drawnCurve = [&](int unit, Rect display) { shapes_.drawnWidgets(list, unit, display); };
 
     // Header.
     auto headerKnob = [&](int param, float x, float width, const char *label) {
@@ -1707,54 +1688,8 @@ std::vector<View::Widget> View::widgets() const {
     // Switched-off nodes are left out of the graph, and greyed out in the matrix; their tabs switch them back on.
     const int partials = partialEditing();
     const std::vector<int> on = routing_.enabledNodes();
-    if (editing >= 0) {
-        add(Kind::ShapeDone, shapeDone());
-        add(Kind::ShapeReset, shapeReset(), -1, editing);
-        for (int axis = 0; axis < 2; ++axis)
-            for (int part = 0; part < 3; ++part)
-                add(Kind::ShapeGrid, shapeGridButton(axis, part), -1, axis, part - 1);
-        add(Kind::ShapeArea, shapeArea().inset(-8.0f), -1, editing);
-        for (int mode = 0; mode < 3; ++mode) { // Points | Steps in one pill, and Snap, as in a widened LFO card
-            add(Kind::ShapeMode, shapeModeButton(mode), -1, editing, mode);
-            if (mode == 1)
-                merge(list.size() - 2);
-        }
-        if (isClipCurve(editing) || isShaperCurve(editing)) // a Custom curve's symmetric switch, as on its card or page
-            add(Kind::Toggle, shapeSymButton(), shaperParams(editing - kMaxSources).symmetric);
-        if (isNoteCurve(editing)) { // the range across, in the title row, after the title, close together
-            const char *const labels[] = {tr(Str::LabelLow), tr(Str::LabelHigh)};
-            const int range[] = {paramIndex(NoteParam::Low), paramIndex(NoteParam::High)};
-            for (int i = 0; i < 2; ++i) {
-                add(Kind::Knob, {kRouting.x + 148.0f + i * 96.0f, kRouting.y, 92.0f, 40.0f}, range[i]);
-                list.back().label = labels[i];
-                list.back().compact = true;
-            }
-        }
-        const int count = shapePointCount(editing);
-        for (int point = 0; point < count - (isCurve(editing) ? 1 : 0); ++point) { // a curve doesn't wrap
-            const double next = point + 1 < count ? shapePointX(editing, point + 1) : 1.0;
-            if (next - shapePointX(editing, point) < 1e-6 || !pointShown(editing, point))
-                continue; // a jump straight up or down has nothing to bend
-            const Point c = shapeCurvePos(editing, point);
-            add(Kind::ShapeCurve, {c.x - 6.0f, c.y - 6.0f, 12.0f, 12.0f}, shapeIndex(editing, point, PointField::Curve),
-                editing, point);
-        }
-        for (int point = 0; point < count; ++point) {
-            if (!pointShown(editing, point))
-                continue;
-            const Point c = shapePointPos(editing, point);
-            add(Kind::ShapePoint, {c.x - 7.0f, c.y - 7.0f, 14.0f, 14.0f}, -1, editing, point);
-        }
-    } else if (partials >= 0) {
-        add(Kind::ShapeDone, shapeDone());
-        add(Kind::PartialReset, shapeReset(), -1, partials);
-        add(Kind::PartialRandom, partialRandom(), -1, partials);
-        const size_t counts = list.size();
-        for (int choice = 0; choice < static_cast<int>(std::size(kPartialCounts)); ++choice)
-            add(Kind::Choice, partialCountButton(choice), partialCountIndex(partials), -1, kPartialCounts[choice]);
-        merge(counts);
-        add(Kind::PartialArea, kPartialLevels, -1, partials, 0);
-        add(Kind::PartialArea, kPartialPhases, -1, partials, 1);
+    if (editing >= 0 || partials >= 0) {
+        shapes_.widgets(list);
     } else if (view == RoutingView::Mods) {
         modsPanel_.widgets(list);
     } else if (view == RoutingView::Seq) {
@@ -2171,46 +2106,8 @@ std::vector<View::Widget> View::widgets() const {
         add(Kind::SourceRemove, sourceRemove(card, span), -1, s);
         if (widens)
             add(Kind::ShapeWiden, lfoWidenButton(card), -1, s);
-        if (widened) {
-            // Its shape in the card: the title row's buttons, the tools and modes where a normal card's display is,
-            // the grid's steppers under the plot, and the plot with its points; greyed out, taking no input and
-            // without its points, while the full-size editor has the shape.
-            const bool elsewhere = shapeEditing() == s;
-            const size_t editorStart = list.size();
-            add(Kind::ShapeCollapse, lfoCardButton(card, 0), -1, s);
-            add(Kind::ShapeReset, lfoCardButton(card, 1), -1, s);
-            add(Kind::ShapeExpand, lfoCardButton(card, 2), -1, s);
-            for (int tool = 0; tool < kShapeTools; ++tool)
-                add(Kind::ShapeTool, lfoToolButton(card, tool), -1, s, tool);
-            for (int mode = 0; mode < 3; ++mode) {
-                add(Kind::ShapeMode, lfoModeButton(card, mode), -1, s, mode);
-                if (mode == 1) // Points | Steps in one pill
-                    merge(list.size() - 2);
-            }
-            for (int axis = 0; axis < 2; ++axis)
-                for (int part = 0; part < 3; ++part)
-                    add(Kind::ShapeGrid, lfoCardGridButton(card, axis, part), -1, axis, part - 1);
-            add(Kind::ShapeArea, lfoCardPlot(card).inset(-8.0f), -1, s);
-            for (size_t i = editorStart; i < list.size(); ++i)
-                list[i].disabled = elsewhere;
-            if (!elsewhere) {
-                const int count = shapePointCount(s);
-                for (int point = 0; point < count; ++point) {
-                    const double next = point + 1 < count ? shapePointX(s, point + 1) : 1.0;
-                    if (next - shapePointX(s, point) < 1e-6)
-                        continue; // a jump straight up or down has nothing to bend
-                    const Point c = shapeCurvePos(s, point);
-                    add(Kind::ShapeCurve, {c.x - 5.0f, c.y - 5.0f, 10.0f, 10.0f}, shapeIndex(s, point, PointField::Curve),
-                        s, point);
-                    list.back().compact = true;
-                }
-                for (int point = 0; point < count; ++point) {
-                    const Point c = shapePointPos(s, point);
-                    add(Kind::ShapePoint, {c.x - 6.0f, c.y - 6.0f, 12.0f, 12.0f}, -1, s, point);
-                    list.back().compact = true;
-                }
-            }
-        }
+        if (widened)
+            shapes_.cardWidgets(list, s, card);
         if (lfo) {
             // An LFO's shape list, or a Random or Curve card's Unipolar | Bipolar in its place, one of them lit, as the
             // clock modes are: a Random card's sets its Bipolar, a Curve card's its Unipolar (on in the first).
@@ -2701,26 +2598,7 @@ void View::effectCardWidgets(std::vector<Widget> &list, int slot, Rect card) con
     };
     // A drawn shaper curve is edited right in its display, as in the big editor its edit button (beside its curve's
     // list, ClipDisplay) opens.
-    auto drawnCurve = [&](int unit, Rect display) {
-        const int shape = kMaxSources + unit;
-        add(Kind::ShapeArea, display, -1, shape);
-        const int count = shapePointCount(shape);
-        for (int point = 0; point + 1 < count; ++point) {
-            if (shapePointX(shape, point + 1) - shapePointX(shape, point) < 1e-6 || !pointShown(shape, point))
-                continue; // a jump straight up or down has nothing to bend
-            const Point c = shapeCurvePos(shape, point);
-            add(Kind::ShapeCurve, {c.x - 5.0f, c.y - 5.0f, 10.0f, 10.0f}, shapeIndex(shape, point, PointField::Curve),
-                shape, point);
-            list.back().compact = true;
-        }
-        for (int point = 0; point < count; ++point) {
-            if (!pointShown(shape, point))
-                continue;
-            const Point c = shapePointPos(shape, point);
-            add(Kind::ShapePoint, {c.x - 6.0f, c.y - 6.0f, 12.0f, 12.0f}, -1, shape, point);
-            list.back().compact = true;
-        }
-    };
+    auto drawnCurve = [&](int unit, Rect display) { shapes_.drawnWidgets(list, unit, display); };
     const FxType type = fx_.slotType(slot);
     auto at = [slot](FxParam f) { return paramIndex(slot, f); };
     auto knobs = [&](std::initializer_list<int> params, std::initializer_list<const char *> labels,
@@ -3119,10 +2997,8 @@ void View::paint(Canvas &c, Rect area) {
     paintPanels(c);
     if (headerShown)
         paintHeader(c);
-    if (shapeEditing() >= 0)
-        paintShapeEditor(c, shapeEditing());
-    else if (partialEditing() >= 0)
-        paintPartialEditor(c, partialEditing());
+    if (shapeEditing() >= 0 || partialEditing() >= 0)
+        shapes_.paintBack(c);
     else if (panelsShown) switch (controller_.layout().view) {
     case RoutingView::Graph:
         paintRouting(c);
@@ -3342,7 +3218,7 @@ void View::paintPanels(Canvas &c) {
     std::vector<Rect> panels = {modPanel(collapsed),
                                 keyboardPanel(keyboardTop(collapsed), controller_.layout().keysCollapsed)};
     if (shapeEditing() >= 0 && isClipCurve(shapeEditing()))
-        panels.push_back(shapePanel()); // the shaper curve's editor, narrower than the effects it covers
+        panels.push_back(shapes_.shapePanel()); // the shaper curve's editor, narrower than the effects it covers
     else // the effects or the modulations across it, or the routing panel with the inspector floating over it
         panels.push_back(kFxPanel);
     // A theme with soft shadows lifts its panels off the background with one, instead of an outline.
@@ -3981,7 +3857,7 @@ void View::paintFxCard(Canvas &c, int slot, Rect card, bool dragged) {
     c.fillRect(display, kDisplayColor, kRadiusCard);
     switch (type) {
     case FxType::Shaper:
-        paintShaperCurve(c, display, slot);
+        shapes_.paintShaperCurve(c, display, slot);
         break;
     case FxType::Delay:
         paintDelay(c, display, slot);
@@ -4053,511 +3929,6 @@ void View::paintFxCard(Canvas &c, int slot, Rect card, bool dragged) {
         c.text({card.x + 14.0f, y - 7.0f, width, 14.0f}, name, kTextSmall, on ? fx : kDim, Align::Left, true);
     }
     // Switched off, its body is dimmed with its widgets (see dimmedAreas()).
-}
-
-void View::paintShapeEditor(Canvas &c, int shape) {
-    if (isNoteCurve(shape)) {
-        paintNoteCurveEditor(c);
-        return;
-    }
-    if (isVelocityCurve(shape)) {
-        paintVelocityCurveEditor(c);
-        return;
-    }
-    if (isClipCurve(shape) || isShaperCurve(shape)) {
-        paintClipCurveEditor(c, shape);
-        return;
-    }
-    const int lfo = shape;
-    const Color color = kSourceColors[lfo];
-    const Rect title{kRouting.x + 16.0f, kRouting.y + 9.0f, 104.0f, 22.0f};
-    c.fillRect(title, color.alpha(0.18f), kRadiusControl);
-    c.text(title, trf(Str::TitleShape, {mods_.sourceName(lfo)}), kTextBody, color, Align::Center, true);
-    c.text({title.right() + 12.0f, kRouting.y + 10.0f, shapeReset().x - title.right() - 24.0f, 22.0f},
-           shapeHint(), kTextLabel, kFaint, Align::Right);
-
-    const Rect r = shapeArea();
-    c.fillRect(r.inset(-8.0f), kDisplayColor, kRadiusCard);
-    // The zero line: in the middle, or at the bottom for a unipolar LFO, which only swings up from it.
-    const double zero = value(paramIndex(lfo, SourceParam::Unipolar)) >= 0.5 ? -1.0 : 0.0;
-    paintShapeGrid(c, shapeArea(), zero, false);
-    paintShapeGridControls(c);
-
-    // The curve, filled toward the zero line.
-    auto get = [this](int index) { return value(index); };
-    std::vector<double> key = curveKey(Curve::LfoEditor, r);
-    keyShape(key, shapeCountIndex(lfo));
-    const std::vector<Point> points = curves_.get(key, [&] {
-        std::vector<Point> points;
-        shapeOutline(get, lfo, 400, [&](double x, double y) { points.push_back(shapeAt(x, y)); });
-        return points;
-    });
-    std::vector<Point> area = points;
-    area.push_back(shapeAt(1.0, zero));
-    area.push_back(shapeAt(0.0, zero));
-    c.fillPolygon(area.data(), area.size(), color.alpha(0.12f));
-    plotLine(c, points.data(), points.size(), color, 2.0f);
-
-    if (lfoRunning(lfo)) {
-        const Point dot = shapeAt(lfoPhaseNow(lfo), lfoValueNow(lfo));
-        c.fillCircle(dot, 8.0f, color.alpha(0.25f));
-        c.fillCircle(dot, 3.5f, kText);
-    }
-
-    // The point under the mouse, in numbers.
-    const Widget *focus = drag_.kind == DragKind::ShapePoint ? &drag_.widget : (hover_ ? &*hover_ : nullptr);
-    if (focus && focus->kind == Kind::ShapePoint && focus->a == lfo) {
-        const double x = shapePointX(lfo, focus->b);
-        const std::string cycle = number("%.1f", x * 100.0);
-        // What the LFO puts out there: a unipolar one maps -1..1 onto 0..1.
-        const double y = value(shapePointIndex(lfo, focus->b, PointField::Y));
-        const std::string level = zero < 0.0 ? number("%.2f", 0.5 * (y + 1.0)) : number("%+.2f", y);
-        c.text({r.x, r.bottom() + 10.0f, shapeModeButton(0).x - 12.0f - r.x, 16.0f},
-               trf(Str::CaptionShapePoint, {std::to_string(focus->b + 1), cycle, level}), kTextLabel, kDim, Align::Left);
-    }
-}
-
-std::string View::shapeHint() const {
-    const UiLayout &layout = controller_.layout();
-    return trf(Str::HintShape, {tr(layout.shapeSteps ? Str::HintShapeSteps : Str::HintShapePoints),
-                                tr(layout.shapeSnap ? Str::HintCtrlFree : Str::HintCtrlSnap)});
-}
-
-// A shaper's drawn curve: input across, output up, the plain line (no change) for reference.
-void View::paintClipCurveEditor(Canvas &c, int shape) {
-    const int unit = shape - kMaxSources;
-    const Color fx = clipColor(unit);
-    const Rect panel = shapePanel();
-    const Rect title{panel.x + 16.0f, panel.y + 9.0f, 132.0f, 22.0f};
-    c.fillRect(title, fx.alpha(0.18f), kRadiusControl);
-    c.text(title,
-           unit < kFxSlots ? trf(Str::TitleFxShaperCurve, {std::to_string(unit + 1)})
-                           : trf(Str::TitleShaperCurve, {std::to_string(unit - kFxSlots + 1)}),
-           kTextBody, fx, Align::Center, true);
-
-    const Rect r = shapeArea();
-    c.fillRect(r.inset(-8.0f), kDisplayColor, kRadiusCard);
-    paintShapeGrid(c, shapeArea(), 0.0, true);
-    paintShapeGridControls(c);
-    c.line(shapeAt(0.0, -1.0), shapeAt(1.0, 1.0), kFaint.alpha(0.6f), 1.0f, true);
-    c.text({r.right() - 120.0f, r.bottom() - 18.0f, 116.0f, 14.0f}, tr(Str::AxisInput), kTextLabel, kFaint, Align::Right);
-    c.text({r.x + 6.0f, r.y + 4.0f, 80.0f, 14.0f}, tr(Str::AxisOutput), kTextLabel, kFaint, Align::Left);
-
-    auto get = [this](int index) { return value(index); };
-    const int base = shapeBase(shape);
-    const bool symmetric = curveSymmetric(shape);
-    std::vector<double> key = curveKey(Curve::ClipEditor, r);
-    key.push_back(symmetric ? 1.0 : 0.0);
-    keyShape(key, base);
-    const std::vector<Point> points = curves_.get(key, [&] {
-        std::vector<Point> points;
-        for (int i = 0; i <= 400; ++i) {
-            const double x = i / 400.0;
-            points.push_back(shapeAt(x, shaperCurveValue(get, ClipMode::Custom, base, symmetric, 2.0 * x - 1.0)));
-        }
-        return points;
-    });
-    std::vector<Point> area = points;
-    area.push_back(shapeAt(1.0, 0.0));
-    area.push_back(shapeAt(0.0, 0.0));
-    c.fillPolygon(area.data(), area.size(), fx.alpha(0.12f));
-    if (symmetric) // the mirrored half, which follows the other, behind a veil
-        c.fillRect({r.x, r.y, r.w * 0.5f, r.h}, kDisplayColor.alpha(0.35f));
-    plotLine(c, points.data(), points.size(), fx, 2.0f);
-    paintMirroredPoints(c, shape, 4.0f);
-
-    // The point under the mouse in numbers, or how to edit, under the plot left of the grid's controls.
-    const Widget *focus = drag_.kind == DragKind::ShapePoint ? &drag_.widget : (hover_ ? &*hover_ : nullptr);
-    // (A voice shaper's editor has its switches there too, left of the grid's controls.)
-    const float end = isClipCurve(shape) ? shapeGridButton(0, 0).x : shapeSymButton().x;
-    const Rect below{r.x, r.bottom() + 10.0f, end - 12.0f - r.x, 16.0f};
-    if (focus && focus->kind == Kind::ShapePoint && focus->a == shape) {
-        const std::string in = number("%+.2f", 2.0 * shapePointX(shape, focus->b) - 1.0);
-        const std::string out = number("%+.2f", value(shapeIndex(shape, focus->b, PointField::Y)));
-        c.text(below, trf(Str::CaptionCurvePoint, {std::to_string(focus->b + 1), in, out}), kTextLabel, kDim, Align::Left);
-    } else {
-        c.text(below, shapeHint(), kTextLabel, kFaint, Align::Left);
-    }
-}
-
-// The note source's curve: the notes from Low to High across (the Cs between them named under the plot), what
-// the source puts out up, from nothing at the bottom to all of it at the top, and for reference, dashed, what would
-// take a cutoff at 0 by 100 % onto the note (the line it starts as); while notes play, a dot where the newest
-// voice is.
-void View::paintNoteCurveEditor(Canvas &c) {
-    const int shape = kNoteCurve;
-    const Color color = shapeColor(shape);
-    const Rect title{kRouting.x + 16.0f, kRouting.y + 9.0f, 120.0f, 22.0f};
-    c.fillRect(title, color.alpha(0.18f), kRadiusControl);
-    c.text(title, tr(Str::TitleNoteCurve), kTextBody, color, Align::Center, true);
-    const float hintX = kRouting.x + 148.0f + 2.0f * 96.0f + 12.0f; // after Low and High
-    c.text({hintX, kRouting.y + 10.0f, shapeReset().x - 12.0f - hintX, 22.0f}, shapeHint(), kTextLabel, kFaint,
-           Align::Right);
-
-    const Rect r = shapeArea();
-    c.fillRect(r.inset(-8.0f), kDisplayColor, kRadiusCard);
-    paintShapeGrid(c, shapeArea(), -1.0, false);
-    paintShapeGridControls(c);
-    const double low = value(paramIndex(NoteParam::Low)), high = value(paramIndex(NoteParam::High));
-    std::vector<double> key = curveKey(Curve::NoteExact, r);
-    key.insert(key.end(), {low, high});
-    const std::vector<Point> exact = curves_.get(key, [&] { // what would put a cutoff at 0 by 100 % on the note
-        std::vector<Point> exact;
-        for (int i = 0; i <= 120; ++i) {
-            const double x = i / 120.0;
-            exact.push_back(shapeAt(x, 2.0 * cutoffNormOfPitch(low + x * (high - low)) - 1.0));
-        }
-        return exact;
-    });
-    c.polyline(exact.data(), exact.size(), kFaint.alpha(0.6f), 1.0f, true);
-    for (int octave = 0; octave * 12.0 <= kMaxNotePitch; ++octave) {
-        const double x = high == low ? -1.0 : (octave * 12.0 - low) / (high - low);
-        if (x > 0.03 && x < 0.97)
-            c.text({shapeAt(x, -1.0).x - 20.0f, r.bottom() - 16.0f, 40.0f, 14.0f}, noteName(octave * 12), kTextLabel, kFaint);
-    }
-    c.text({r.x + 6.0f, r.y + 4.0f, 80.0f, 14.0f}, tr(Str::AxisOut), kTextLabel, kFaint, Align::Left);
-
-    auto get = [this](int index) { return value(index); };
-    const int base = shapeBase(shape);
-    key = curveKey(Curve::NoteEditor, r);
-    keyShape(key, base);
-    const std::vector<Point> points = curves_.get(key, [&] {
-        std::vector<Point> points;
-        for (int i = 0; i <= 400; ++i) {
-            const double x = i / 400.0;
-            points.push_back(shapeAt(x, clipCurveValue(get, base, 2.0 * x - 1.0)));
-        }
-        return points;
-    });
-    std::vector<Point> area = points;
-    area.push_back(shapeAt(1.0, -1.0));
-    area.push_back(shapeAt(0.0, -1.0));
-    c.fillPolygon(area.data(), area.size(), color.alpha(0.12f));
-    plotLine(c, points.data(), points.size(), color, 2.0f);
-    if (telemetry_.voices > 0) {
-        const double x = high == low ? (telemetry_.notePitch >= low ? 1.0 : 0.0)
-                                     : std::clamp((telemetry_.notePitch - low) / (high - low), 0.0, 1.0);
-        const Point dot = shapeAt(x, clipCurveValue(get, base, 2.0 * x - 1.0));
-        c.fillCircle(dot, 8.0f, color.alpha(0.25f));
-        c.fillCircle(dot, 3.5f, kText);
-    }
-
-    // The point under the mouse in numbers, or how to edit, under the plot left of the grid's controls.
-    const Widget *focus = drag_.kind == DragKind::ShapePoint ? &drag_.widget : (hover_ ? &*hover_ : nullptr);
-    const Rect below{r.x, r.bottom() + 10.0f, shapeModeButton(0).x - 12.0f - r.x, 16.0f};
-    if (focus && focus->kind == Kind::ShapePoint && focus->a == shape) {
-        char note[32];
-        formatParam(paramIndex(NoteParam::Low), low + shapePointX(shape, focus->b) * (high - low), note, sizeof(note));
-        const std::string out = number("%.0f", 50.0 * (value(shapeIndex(shape, focus->b, PointField::Y)) + 1.0));
-        c.text(below, trf(Str::CaptionNotePoint, {std::to_string(focus->b + 1), note, out}), kTextLabel, kDim, Align::Left);
-    } else {
-        c.text(below, tr(Str::HintNoteAxes), kTextLabel, kFaint, Align::Left);
-    }
-}
-
-// Velocity's curve: the velocities across (0 to 127, marked every 32), what the source puts out up, from nothing at
-// the bottom to all of it at the top, and for reference, dashed, the straight line it starts as; while notes play, a
-// dot where the newest voice's velocity is.
-void View::paintVelocityCurveEditor(Canvas &c) {
-    const int shape = kVelocityCurve;
-    const Color color = shapeColor(shape);
-    const Rect title{kRouting.x + 16.0f, kRouting.y + 9.0f, 136.0f, 22.0f};
-    c.fillRect(title, color.alpha(0.18f), kRadiusControl);
-    c.text(title, tr(Str::TitleVelocityCurve), kTextBody, color, Align::Center, true);
-    c.text({title.right() + 12.0f, kRouting.y + 10.0f, shapeReset().x - title.right() - 24.0f, 22.0f}, shapeHint(),
-           kTextLabel, kFaint, Align::Right);
-
-    const Rect r = shapeArea();
-    c.fillRect(r.inset(-8.0f), kDisplayColor, kRadiusCard);
-    paintShapeGrid(c, shapeArea(), -1.0, false);
-    paintShapeGridControls(c);
-    c.line(shapeAt(0.0, -1.0), shapeAt(1.0, 1.0), kFaint.alpha(0.6f), 1.0f, true);
-    for (int velocity = 32; velocity < 127; velocity += 32)
-        c.text({shapeAt(velocity / 127.0, -1.0).x - 20.0f, r.bottom() - 16.0f, 40.0f, 14.0f}, std::to_string(velocity),
-               kTextLabel, kFaint);
-    c.text({r.right() - 120.0f, r.bottom() - 18.0f, 116.0f, 14.0f}, tr(Str::AxisVelocity), kTextLabel, kFaint, Align::Right);
-    c.text({r.x + 6.0f, r.y + 4.0f, 80.0f, 14.0f}, tr(Str::AxisOut), kTextLabel, kFaint, Align::Left);
-
-    auto get = [this](int index) { return value(index); };
-    const int base = shapeBase(shape);
-    std::vector<double> key = curveKey(Curve::VelocityEditor, r);
-    keyShape(key, base);
-    const std::vector<Point> points = curves_.get(key, [&] {
-        std::vector<Point> points;
-        for (int i = 0; i <= 400; ++i) {
-            const double x = i / 400.0;
-            points.push_back(shapeAt(x, clipCurveValue(get, base, 2.0 * x - 1.0)));
-        }
-        return points;
-    });
-    std::vector<Point> area = points;
-    area.push_back(shapeAt(1.0, -1.0));
-    area.push_back(shapeAt(0.0, -1.0));
-    c.fillPolygon(area.data(), area.size(), color.alpha(0.12f));
-    plotLine(c, points.data(), points.size(), color, 2.0f);
-    if (telemetry_.voices > 0) {
-        const double x = std::clamp(static_cast<double>(telemetry_.noteVelocity), 0.0, 1.0);
-        const Point dot = shapeAt(x, clipCurveValue(get, base, 2.0 * x - 1.0));
-        c.fillCircle(dot, 8.0f, color.alpha(0.25f));
-        c.fillCircle(dot, 3.5f, kText);
-    }
-
-    // The point under the mouse in numbers, or how to edit, under the plot left of the grid's controls.
-    const Widget *focus = drag_.kind == DragKind::ShapePoint ? &drag_.widget : (hover_ ? &*hover_ : nullptr);
-    const Rect below{r.x, r.bottom() + 10.0f, shapeModeButton(0).x - 12.0f - r.x, 16.0f};
-    if (focus && focus->kind == Kind::ShapePoint && focus->a == shape) {
-        const std::string in = number("%.0f", 127.0 * shapePointX(shape, focus->b));
-        const std::string out = number("%.0f", 50.0 * (value(shapeIndex(shape, focus->b, PointField::Y)) + 1.0));
-        c.text(below, trf(Str::CaptionVelocityPoint, {std::to_string(focus->b + 1), in, out}), kTextLabel, kDim,
-               Align::Left);
-    } else {
-        c.text(below, tr(Str::HintVelocityAxes), kTextLabel, kFaint, Align::Left);
-    }
-}
-
-int View::partialEditing() const {
-    if (partialEditor_ < 0 || shapeEditing() >= 0)
-        return -1;
-    return isCustomWave(partialEditor_) ? partialEditor_ : -1;
-}
-
-int View::partialsShown(int op) const {
-    return partialCount(value(partialCountIndex(op)));
-}
-
-void View::paintPartialEditor(Canvas &c, int op) {
-    const Rect title{kRouting.x + 16.0f, kRouting.y + 9.0f, 120.0f, 22.0f};
-    c.fillRect(title, kAccent.alpha(0.18f), kRadiusControl);
-    c.text(title, trf(Str::TitlePartials, {kNodeNames[op]}), kTextBody, kAccent, Align::Center, true);
-    // Only the partials the wave plays show; the ones past them keep their values for when there are more again.
-    const int count = partialsShown(op);
-    // The partial under the mouse in numbers, or how to draw.
-    const Widget *focus = drag_.kind == DragKind::Partials ? &drag_.widget : (hover_ ? &*hover_ : nullptr);
-    std::string hint = tr(Str::HintPartials);
-    if (focus && focus->kind == Kind::PartialArea) {
-        const Point at = drag_.kind == DragKind::Partials ? drag_.now : hoverPoint_;
-        const int k = partialAt(focus->b == 0 ? kPartialLevels : kPartialPhases, at.x, count);
-        const double level = value(partialLevelIndex(op, k));
-        const std::string partial = std::to_string(k + 1), phase = number("%.0f", value(partialPhaseIndex(op, k)) * 360.0);
-        hint = level > 0.0 ? trf(Str::CaptionPartial, {partial, number("%.1f", 20.0 * std::log10(level)), phase})
-                           : trf(Str::CaptionPartialSilent, {partial, phase});
-    }
-    const float hintX = partialCountButton(static_cast<int>(std::size(kPartialCounts)) - 1).right() + 12.0f;
-    c.text({hintX, kRouting.y + 10.0f, partialRandom().x - hintX - 12.0f, 22.0f}, hint, kTextLabel, kFaint, Align::Right);
-
-    // The wave they make, one cycle, at its loudest from top to bottom, as the operator plays it.
-    const Rect wave = kPartialWave;
-    c.fillRect(wave.inset(-6.0f), kDisplayColor, kRadiusCard);
-    c.line({wave.x, wave.center().y}, {wave.right(), wave.center().y}, kBorder, 1.0f);
-    std::vector<double> key = curveKey(Curve::Partials, wave);
-    for (int k = 0; k < count; ++k)
-        key.insert(key.end(), {value(partialLevelIndex(op, k)), value(partialPhaseIndex(op, k))});
-    const std::vector<Point> points = curves_.get(key, [&] {
-        std::vector<double> samples(241, 0.0);
-        double peak = 0.0;
-        for (size_t i = 0; i < samples.size(); ++i) {
-            const double x = static_cast<double>(i) / (samples.size() - 1);
-            for (int k = 0; k < count; ++k)
-                if (const double level = value(partialLevelIndex(op, k)); level > 0.0)
-                    samples[i] +=
-                        level * std::sin(2.0 * std::numbers::pi * ((k + 1) * x + value(partialPhaseIndex(op, k))));
-            peak = std::max(peak, std::abs(samples[i]));
-        }
-        std::vector<Point> points;
-        for (size_t i = 0; i < samples.size(); ++i) {
-            const float y = static_cast<float>(peak > 0.0 ? samples[i] / peak : 0.0);
-            points.push_back({wave.x + wave.w * i / (samples.size() - 1), wave.center().y - y * wave.h * 0.5f});
-        }
-        return points;
-    });
-    plotLine(c, points.data(), points.size(), kAccent, 2.0f);
-
-    // Levels (in dB, a faint line every 12) and phases (a full cycle at the top) alike as bars from the bottom,
-    // in different colors; a phase is faint while its partial is silent.
-    for (int row = 0; row < 2; ++row) {
-        const Rect area = row == 0 ? kPartialLevels : kPartialPhases;
-        c.fillRect(area.inset(-6.0f), kDisplayColor, kRadiusCard);
-        c.text({area.x - 2.0f, area.y - 22.0f, 80.0f, 12.0f}, tr(row == 0 ? Str::HeadingLevel : Str::HeadingPhase), kTextLabel,
-               kFaint, Align::Left, true);
-        for (int k = 0; k < count; ++k) {
-            const Rect bar = partialBar(area, k, count);
-            const double v = row == 0 ? partialBarFromLevel(value(partialLevelIndex(op, k)))
-                                      : value(partialPhaseIndex(op, k));
-            const float h = static_cast<float>(v) * bar.h;
-            c.fillRect({bar.x, area.y, bar.w, area.h}, kRaised.alpha(0.5f), kRadiusMark);
-            if (h > 0.5f) {
-                const bool silent = row == 1 && value(partialLevelIndex(op, k)) <= 0.0;
-                const float alpha = (0.35f + 0.5f * static_cast<float>(v)) * (silent ? 0.4f : 1.0f);
-                c.fillRect({bar.x, bar.bottom() - h, bar.w, h}, (row == 0 ? kAccent : kFxColor).alpha(alpha), kRadiusMark);
-            }
-        }
-        if (row == 0)
-            for (int db = 0; db > kPartialFloorDb; db -= 12) {
-                const double bar = partialBarFromLevel(std::pow(10.0, db / 20.0));
-                const float y = area.bottom() - static_cast<float>(bar) * area.h;
-                if (db < 0)
-                    c.line({area.x, y}, {area.right(), y}, kBorder.alpha(0.5f), 1.0f);
-                c.text({area.x - 38.0f, y - 6.0f, 30.0f, 12.0f}, std::to_string(db), kTextSmall, kFaint, Align::Right);
-            }
-    }
-    // Each partial's number under it; of 64, the first and every fourth, where there is room for them.
-    for (int k = 0; k < count; ++k) {
-        if (count > kFirstPartials && k > 0 && (k + 1) % 4 != 0)
-            continue;
-        const Rect bar = partialBar(kPartialPhases, k, count);
-        c.text({bar.center().x - 12.0f, kPartialPhases.bottom() + 8.0f, 24.0f, 12.0f}, std::to_string(k + 1), kTextLabel,
-               kFaint);
-    }
-}
-
-void View::paintShapeGrid(Canvas &c, Rect r, double zero, bool centered) {
-    const int across = controller_.layout().shapeGridX;
-    const int upDown = controller_.layout().shapeGridY;
-    // Lines across stand out every quarter, or every third on a grid of thirds; a centered grid's middle more.
-    const int major = across % 4 == 0 && across > 4 ? across / 4 : (across % 3 == 0 && across > 3 ? across / 3 : 0);
-    for (int i = 1; i < across; ++i) {
-        const float x = r.x + r.w * i / across;
-        const float alpha = centered && 2 * i == across ? 1.0f : (major > 0 && i % major == 0 ? 0.9f : 0.35f);
-        c.line({x, r.y}, {x, r.bottom()}, kBorder.alpha(alpha), 1.0f);
-    }
-    // Up and down: solid at zero, dashed elsewhere, fainter between the halves.
-    for (int i = 0; i <= upDown; ++i) {
-        const double y = -1.0 + 2.0 * i / upDown;
-        const bool atZero = std::abs(y - zero) < 1e-9;
-        const bool half = 4 * i % upDown == 0;
-        c.line(areaAt(r, 0.0, y), areaAt(r, 1.0, y), kBorder.alpha(atZero ? 1.0f : (half ? 0.5f : 0.3f)), 1.0f,
-               !atZero);
-    }
-}
-
-// "GRID - 16 + x - 8 +" under the editor's right end; the buttons and counts are widgets.
-void View::paintShapeGridControls(Canvas &c) {
-    const Rect first = shapeGridButton(0, 0);
-    c.text({first.x - 48.0f, first.y, 42.0f, first.h}, tr(Str::HeadingGrid), kTextLabel, kFaint, Align::Right, true);
-    const Rect across = shapeGridButton(0, 2), upDown = shapeGridButton(1, 0);
-    c.text({across.right(), across.y, upDown.x - across.right(), across.h}, "\xC3\x97", kTextBody, kFaint);
-}
-
-// Transfer curve: input level across, output up, with the drive, output and mix applied (the Stack curve as many
-// times in a row as it is stacked, each driven and brought back down between, without its filters).
-void View::paintShaperCurve(Canvas &c, Rect r, int unit) {
-    const Color fx = clipColor(unit);
-    const ShaperParams clip = shaperParams(unit);
-    const int curve = kMaxSources + unit;
-    const ClipMode mode = clipMode(value(clip.mode));
-    if (mode == ClipMode::Custom && shapeEditing() != curve) { // with its points, unless its big editor has them
-        paintClipCurveCard(c, r, unit);
-        return;
-    }
-    const Rect inner = r.inset(8.0f);
-    constexpr double kRange = 1.3;
-    auto at = [&](double x, double y) {
-        return Point{inner.center().x + static_cast<float>(x / kRange) * inner.w * 0.5f,
-                     inner.center().y - static_cast<float>(std::clamp(y, -kRange, kRange) / kRange) * inner.h * 0.5f};
-    };
-    c.line(at(-kRange, 0.0), at(kRange, 0.0), kBorder, 1.0f);
-    c.line(at(0.0, -kRange), at(0.0, kRange), kBorder, 1.0f);
-    c.line(at(-kRange, 1.0), at(kRange, 1.0), kBorder.alpha(0.7f), 1.0f, true); // full scale
-    c.line(at(-kRange, -1.0), at(kRange, -1.0), kBorder.alpha(0.7f), 1.0f, true);
-    c.line(at(-kRange, -kRange), at(kRange, kRange), kFaint.alpha(0.6f), 1.0f);
-
-    const double drive = std::pow(10.0, liveValue(clip.drive) / 20.0); // as modulation takes them now
-    const double output =
-        std::pow(10.0, clipOutputDb(liveValue(clip.output), liveValue(clip.drive), value(clip.link) >= 0.5) / 20.0);
-    const double mix = liveValue(clip.mix);
-    auto get = [this](int index) { return value(index); };
-    const bool symmetric = curveSymmetric(curve);
-    const int stack = mode == ClipMode::Stack ? shaperStack(liveValue(clip.stack)) : 1;
-    const double between = shaperBetween(liveValue(clip.drive));
-    auto shape = [&](double x) {
-        double y = shaperCurveValue(get, mode, shapeBase(curve), symmetric, x);
-        for (int k = 1; k < stack; ++k)
-            y = clipShape(mode, y * between * drive);
-        return y;
-    };
-    std::vector<double> key = curveKey(Curve::Shaper, inner);
-    key.insert(key.end(), {static_cast<double>(mode), symmetric ? 1.0 : 0.0, drive, output, mix,
-                           static_cast<double>(stack)});
-    if (mode == ClipMode::Custom) // a drawn curve whose big editor has its points
-        keyShape(key, shapeBase(curve));
-    const std::vector<Point> points = curves_.get(key, [&] {
-        std::vector<Point> points;
-        for (int i = 0; i <= 240; ++i) {
-            const double x = kRange * (2.0 * i / 240.0 - 1.0);
-            points.push_back(at(x, x + (shape(x * drive) * output - x) * mix));
-        }
-        return points;
-    });
-    plotLine(c, points.data(), points.size(), fx, 2.0f);
-}
-
-// A symmetric curve's points, mirrored onto its left half as faint rings: they move with the ones they mirror.
-void View::paintMirroredPoints(Canvas &c, int shape, float radius) {
-    if (!curveSymmetric(shape))
-        return;
-    const Color color = shapeColor(shape).alpha(0.45f);
-    for (int point = 0; point < shapePointCount(shape); ++point)
-        if (pointShown(shape, point) && !middlePoint(shape, point))
-            c.strokeCircle(shapeAt(shape, 1.0 - shapePointX(shape, point), -value(shapeIndex(shape, point, PointField::Y))),
-                           radius, color, 1.0f);
-}
-
-// A drawn curve in its card, as in its editor (input across, output up, to full scale), with its points and
-// bends to drag (widgets); faintly behind it, what the shaper makes of it with its drive, output and mix.
-void View::paintClipCurveCard(Canvas &c, Rect r, int unit) {
-    const Color fx = clipColor(unit);
-    const ShaperParams clip = shaperParams(unit);
-    const int shape = kMaxSources + unit;
-    c.line(shapeAt(shape, 0.0, 0.0), shapeAt(shape, 1.0, 0.0), kBorder, 1.0f);
-    c.line(shapeAt(shape, 0.5, -1.0), shapeAt(shape, 0.5, 1.0), kBorder, 1.0f);
-    c.line(shapeAt(shape, 0.0, -1.0), shapeAt(shape, 1.0, 1.0), kFaint.alpha(0.6f), 1.0f, true);
-    auto get = [this](int index) { return value(index); };
-    const int base = shapeBase(shape);
-    const double drive = std::pow(10.0, liveValue(clip.drive) / 20.0); // as modulation takes them now
-    const double output =
-        std::pow(10.0, clipOutputDb(liveValue(clip.output), liveValue(clip.drive), value(clip.link) >= 0.5) / 20.0);
-    const double mix = liveValue(clip.mix);
-    const bool symmetric = curveSymmetric(shape);
-    auto curve = [&](double in) { return shaperCurveValue(get, ClipMode::Custom, base, symmetric, in); };
-    std::vector<double> key = curveKey(Curve::Drawn, shapeArea(shape));
-    key.push_back(symmetric ? 1.0 : 0.0);
-    keyShape(key, base);
-    const std::vector<Point> points = curves_.get(key, [&] {
-        std::vector<Point> points;
-        for (int i = 0; i <= 160; ++i) {
-            const double x = i / 160.0, in = 2.0 * x - 1.0;
-            points.push_back(shapeAt(shape, x, curve(in)));
-        }
-        return points;
-    });
-    key[0] = static_cast<double>(Curve::Driven);
-    key.insert(key.end(), {drive, output, mix});
-    const std::vector<Point> driven = curves_.get(key, [&] {
-        std::vector<Point> driven;
-        for (int i = 0; i <= 160; ++i) {
-            const double x = i / 160.0, in = 2.0 * x - 1.0;
-            const double out = in + (curve(in * drive) * output - in) * mix;
-            driven.push_back(shapeAt(shape, x, std::clamp(out, -1.1, 1.1)));
-        }
-        return driven;
-    });
-    c.polyline(driven.data(), driven.size(), fx.alpha(0.35f), 1.0f);
-    std::vector<Point> area = points;
-    area.push_back(shapeAt(shape, 1.0, 0.0));
-    area.push_back(shapeAt(shape, 0.0, 0.0));
-    c.fillPolygon(area.data(), area.size(), fx.alpha(0.12f));
-    plotLine(c, points.data(), points.size(), fx, 2.0f);
-    paintMirroredPoints(c, shape, 3.0f);
-
-    // The point under the mouse, in numbers (input to output), in the top left corner, which a curve
-    // leaves empty.
-    const Widget *focus = drag_.kind == DragKind::ShapePoint ? &drag_.widget : (hover_ ? &*hover_ : nullptr);
-    if (focus && focus->kind == Kind::ShapePoint && focus->a == shape) {
-        char text[48];
-        std::snprintf(text, sizeof(text), "%+.2f \xE2\x86\x92 %+.2f", 2.0 * shapePointX(shape, focus->b) - 1.0,
-                      value(shapeIndex(shape, focus->b, PointField::Y)));
-        c.text({r.x + 6.0f, r.y + 4.0f, r.w - 12.0f, 14.0f}, text, kTextLabel, kDim, Align::Left);
-    }
 }
 
 // The dry signal and the echoes on a timeline: the left side's above the line,
@@ -4681,7 +4052,7 @@ void View::paintParamEq(Canvas &c, Rect r, int slot) {
         for (int band = 0; band < kPeqBands; ++band)
             key.insert(key.end(), {value(peqTypeIndex(slot, band)), live(peqFreqIndex(slot, band)),
                                    live(peqGainIndex(slot, band)), live(peqQIndex(slot, band)), on(band) ? 1.0 : 0.0});
-        return curves_.get(key, [&] {
+        return curveCache().get(key, [&] {
             std::vector<Point> points;
             for (int i = 0; i <= 120; ++i) {
                 const double x = i / 120.0;
@@ -4734,7 +4105,7 @@ void View::paintEq(Canvas &c, Rect r, int slot) {
     const double high = liveValue(paramIndex(slot, FxParam::EqHigh));
     std::vector<double> key = curveKey(Curve::Eq, inner);
     key.insert(key.end(), {low, mid, high});
-    const std::vector<Point> points = curves_.get(key, [&] {
+    const std::vector<Point> points = curveCache().get(key, [&] {
         std::vector<Point> points;
         for (int i = 0; i <= 120; ++i) {
             const double x = i / 120.0;
@@ -5038,7 +4409,7 @@ void View::paintSweep(Canvas &c, Rect r, int slot, FxType type) {
         std::vector<double> key = curveKey(Curve::Sweep, inner);
         key.insert(key.end(), {phaser ? 1.0 : 0.0, curve.lfo, feedback, mix, depth, static_cast<double>(stages),
                                at(phaser ? FxParam::PhaserCenter : FxParam::FlangerDelay), polarity});
-        const std::vector<Point> points = curves_.get(key, [&] {
+        const std::vector<Point> points = curveCache().get(key, [&] {
             std::vector<Point> points;
             for (int i = 0; i <= 160; ++i) {
                 const double x = i / 160.0;
@@ -5660,7 +5031,7 @@ void View::paintPageTitle(Canvas &c, int node, Rect r, const std::string &head, 
 
 void View::paintShaperPage(Canvas &c, int shaper) {
     c.fillRect(kShaperDisplay, kDisplayColor, kRadiusCard);
-    paintShaperCurve(c, kShaperDisplay, kFxSlots + shaper);
+    shapes_.paintShaperCurve(c, kShaperDisplay, kFxSlots + shaper);
     c.text({kInspector.x + 16.0f, kInspector.y + 276.0f, 120.0f, 14.0f}, tr(Str::HeadingInputs), kTextLabel, kFaint,
            Align::Left, true);
 }
@@ -5717,7 +5088,7 @@ std::string View::fixedHzText(int op, bool compact) const {
 // A switch flips; the Fixed and symmetric switches with what goes along, as clicked or scrolled.
 void View::flipSwitch(int param) {
     if (fxFieldOf(param) == FxParam::ShaperSymmetric || shaperFieldOf(param) == ShaperParam::Symmetric)
-        switchSymmetric(param);
+        shapes_.switchSymmetric(param);
     else if (fixedSwitchOp(param) >= 0)
         switchFixed(fixedSwitchOp(param));
     else
@@ -6078,7 +5449,7 @@ void View::paintFilterResponse(Canvas &c, Rect r, int typeParam, int slopeParam,
         std::vector<double> key = curveKey(Curve::Filter, inner);
         key.insert(key.end(), {static_cast<double>(type), slope, cutoffNorm, res, mix, vowel, morph,
                                static_cast<double>(mode)});
-        return curves_.get(key, [&] {
+        return curveCache().get(key, [&] {
             std::vector<Point> points;
             for (int i = 0; i <= steps; ++i) {
                 const double x = static_cast<double>(i) / steps;
@@ -6136,7 +5507,7 @@ void View::paintEnvelope(Canvas &c, Rect r, int env, Color color, bool live) {
     std::vector<double> key = curveKey(Curve::Envelope, r);
     key.insert(key.end(), {s.scale, value(e.attack), value(e.hold), value(e.decay), sustain, value(e.release),
                            value(e.curve(0)), value(e.curve(1)), value(e.curve(2))});
-    const std::vector<Point> points = curves_.get(key, [&] {
+    const std::vector<Point> points = curveCache().get(key, [&] {
         std::vector<Point> points{s.p0};
         for (int segment = 0; segment < 3; ++segment) {
             if (segment == 1)
@@ -6261,11 +5632,11 @@ void View::paintLfo(Canvas &c, Rect r, int lfo) {
         std::vector<double> key = curveKey(Curve::Lfo, inner);
         key.push_back(static_cast<double>(shape));
         if (shape == LfoShape::Custom)
-            keyShape(key, shapeCountIndex(lfo));
+            shapes_.keyShape(key, shapeCountIndex(lfo));
         const double smooth = held ? 0.0 : value(paramIndex(lfo, SourceParam::RandomSmooth)); // held, it glides none
         if (shape == LfoShape::Random)
             key.insert(key.end(), {smooth, value(paramIndex(lfo, SourceParam::RandomChaos))});
-        points = curves_.get(key, [&] {
+        points = curveCache().get(key, [&] {
             if (shape == LfoShape::Custom) {
                 auto get = [this](int index) { return value(index); };
                 shapeOutline(get, lfo, 96, at);
@@ -6302,61 +5673,6 @@ void View::paintLfo(Canvas &c, Rect r, int lfo) {
         c.fillCircle(dot, 7.0f, color.alpha(0.25f));
         c.fillCircle(dot, 3.5f, kText);
     }
-}
-
-// A widened LFO card's shape: the grid and the shape in the plot's frame, filled toward its zero line, and where
-// the newest voice is; its points and bends are widgets, but for while the full-size editor has the shape, which the
-// plot then only shows. Under it the point under the mouse in numbers, and an arrow by each of the grid's steppers.
-void View::paintLfoCard(Canvas &c, float card, int lfo) {
-    const Color color = kSourceColors[lfo];
-    const Rect r = lfoCardPlot(card);
-    c.fillRect(r.inset(-8.0f), kDisplayColor, kRadiusCard);
-    // The zero line: in the middle, or at the bottom for a unipolar LFO, which only swings up from it.
-    const double zero = value(paramIndex(lfo, SourceParam::Unipolar)) >= 0.5 ? -1.0 : 0.0;
-    paintShapeGrid(c, r, zero, false);
-    auto get = [this](int index) { return value(index); };
-    std::vector<double> key = curveKey(Curve::LfoEditor, r);
-    keyShape(key, shapeCountIndex(lfo));
-    const std::vector<Point> points = curves_.get(key, [&] {
-        std::vector<Point> points;
-        shapeOutline(get, lfo, 200, [&](double x, double y) { points.push_back(areaAt(r, x, y)); });
-        return points;
-    });
-    std::vector<Point> area = points;
-    area.push_back(areaAt(r, 1.0, zero));
-    area.push_back(areaAt(r, 0.0, zero));
-    c.fillPolygon(area.data(), area.size(), color.alpha(0.12f));
-    plotLine(c, points.data(), points.size(), color, 2.0f);
-    if (lfoRunning(lfo)) {
-        const Point dot = areaAt(r, lfoPhaseNow(lfo), lfoValueNow(lfo));
-        c.fillCircle(dot, 7.0f, color.alpha(0.25f));
-        c.fillCircle(dot, 3.5f, kText);
-    }
-
-    const Rect readout = lfoCardReadout(card);
-    c.fillRect(readout, kDisplayColor, kRadiusControl);
-    const Rect text{readout.x + 8.0f, readout.y, readout.w - 16.0f, readout.h};
-    const Widget *focus = drag_.kind == DragKind::ShapePoint ? &drag_.widget : (hover_ ? &*hover_ : nullptr);
-    if (focus && focus->kind == Kind::ShapePoint && focus->a == lfo && shapeEditing() != lfo) {
-        // What the LFO puts out there: a unipolar one maps -1..1 onto 0..1.
-        const double y = value(shapePointIndex(lfo, focus->b, PointField::Y));
-        const std::string level = zero < 0.0 ? number("%.2f", 0.5 * (y + 1.0)) : number("%+.2f", y);
-        c.text(text, trf(Str::CaptionCardPointNumber, {std::to_string(focus->b + 1)}), kTextLabel, kText, Align::Left,
-               true);
-        c.text(text, trf(Str::CaptionCardPoint, {number("%.1f", shapePointX(lfo, focus->b) * 100.0), level}), kTextLabel,
-               kDim, Align::Right);
-    } else {
-        c.text(text, tr(Str::HintCardPoint), kTextLabel, kFaint, Align::Left);
-    }
-    for (int axis = 0; axis < 2; ++axis) {
-        const Rect down = lfoCardGridButton(card, axis, 0);
-        axisIcon(c, {down.x - 8.0f, down.center().y}, axis, kFaint);
-    }
-    // While the full-size editor has the shape, this row is greyed out like the rest of the card's editor (whose
-    // widgets are dimmed as disabled ones are).
-    if (shapeEditing() == lfo)
-        c.fillRect({readout.x, readout.y, r.w + 16.0f, readout.h},
-                   cardFace(kSourceColors[lfo], mods_.sourceOn(lfo)).alpha(1.0f - kDimOpacity), kRadiusMark);
 }
 
 void View::paintSources(Canvas &c) {
@@ -6417,7 +5733,7 @@ void View::paintSource(Canvas &c, float card, int s) {
            mods_.sourceOn(s) ? kText : kDim, Align::Left, true);
 
     if (s == wideLfo()) {
-        paintLfoCard(c, card, s);
+        shapes_.paintLfoCard(c, card, s);
     } else if (lfo) {
         paintLfo(c, sourceDisplay(card, mods_.lfoShapeOf(s) == LfoShape::Random), s);
     } else if (mods_.sourceTypeOf(s) == SourceType::Env) {
@@ -6575,17 +5891,6 @@ void View::paintNode(Canvas &c, const Widget &w) {
     }
     c.text({center.x - 22.0f, center.y + 5.0f, 44.0f, 14.0f}, ratio, kTextLabel, caption); // inside the ring
 }
-
-namespace {
-// An edit button, the same pencil wherever it opens an editor: lit in `color` under the mouse, and outlined in it
-// while what it opens is open.
-void editButton(Canvas &c, Rect r, Color color, bool hovered, bool open) {
-    c.fillRect(r, open ? color.alpha(0.22f) : hovered ? color.alpha(0.3f) : kRaised, kRadiusControl);
-    if (open)
-        c.strokeRect(r, color, 1.0f, kRadiusControl);
-    editIcon(c, r.center(), open || hovered ? kText : kDim);
-}
-} // namespace
 
 // A switch's face: lit, a tint of `color` (`tint` strong) outlined in it; hot (under the mouse, say), the track's; else
 // raised. In a flat theme, a well without an outline, lit filled solid with `color`, hot a little darker or lighter.
@@ -7123,34 +6428,6 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                waveName(static_cast<OpWave>(w.b)), kTextBody, hovered || selected ? kText : kDim, Align::Left, selected);
         break;
     }
-    case Kind::ShapeReset:
-    case Kind::PartialReset:
-        c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
-        if (outlined())
-            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
-        resetIcon(c, w.rect.center(), hovered ? kText : kDim);
-        break;
-    case Kind::PartialRandom:
-        c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
-        if (outlined())
-            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
-        diceIcon(c, w.rect.center(), hovered ? kText : kDim);
-        break;
-    case Kind::ShapeGrid: {
-        const UiLayout &layout = controller_.layout();
-        if (w.b == 0) { // the count
-            c.text(w.rect, std::to_string(w.a == 0 ? layout.shapeGridX : layout.shapeGridY), kTextBody,
-                   hovered ? kText : kDim, Align::Center, true);
-            break;
-        }
-        c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
-        const Point m = w.rect.center();
-        const Color color = hovered ? kText : kDim;
-        c.line({m.x - 3.5f, m.y}, {m.x + 3.5f, m.y}, color, 1.5f);
-        if (w.b > 0)
-            c.line({m.x, m.y - 3.5f}, {m.x, m.y + 3.5f}, color, 1.5f);
-        break;
-    }
     case Kind::UndoButton: {
         const bool redo = w.a == 1;
         const bool can = (redo ? controller_.nextRedo() : controller_.nextUndo()) != nullptr;
@@ -7199,16 +6476,6 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         }
         break;
     }
-    case Kind::ShapeArea: // the box dragged across it, picking points; the rest is drawn with its editor or card
-        if (drag_.kind == DragKind::ShapeBox && drag_.widget.a == w.a) {
-            const Rect box{std::min(drag_.start.x, drag_.now.x), std::min(drag_.start.y, drag_.now.y),
-                           std::abs(drag_.now.x - drag_.start.x), std::abs(drag_.now.y - drag_.start.y)};
-            c.pushClip(w.rect);
-            c.fillRect(box, shapeColor(w.a).alpha(0.12f));
-            c.strokeRect(box, shapeColor(w.a).alpha(0.7f), 1.0f);
-            c.popClip();
-        }
-        break;
     case Kind::MatrixLabel:
     case Kind::NoteDisplay:
     case Kind::Wire:
@@ -7409,17 +6676,6 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         }
         break;
     }
-    case Kind::LfoDisplay:
-        // A freeform LFO's display opens its editor.
-        if (mods_.lfoShapeOf(w.a) == LfoShape::Custom)
-            editButton(c, lfoEditButton(w.rect), kSourceColors[w.a], hovered, false);
-        break;
-    case Kind::PartialEdit: // a Custom wave's, lit while its partial editor is open
-        editButton(c, w.rect, kAccent, hovered, partialEditing() == w.a);
-        break;
-    case Kind::ClipDisplay: // a drawn curve's edit button, beside its list; lit while its big editor is open
-        editButton(c, w.rect, clipColor(w.a), hovered, shapeEditing() == kMaxSources + w.a);
-        break;
     case Kind::ListButton: {
         // A slope shows as it plays (a band-pass's 6 dB as 12), and faintly for a comb, which has none.
         const int shown = listShown(w.param);
@@ -7550,74 +6806,11 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                kTextBody, !fits ? kFaint : hovered || selected ? kText : kDim, Align::Left, selected);
         break;
     }
-    case Kind::ShapePoint: { // compact: smaller, in a shaper's card; picked: filled, and ringed
-        const bool focused = hovered || active;
-        const bool picked = shapePointPicked(w.a, w.b);
-        const Color color = shapeColor(w.a);
-        const float radius = w.compact ? (focused ? 5.0f : 3.8f) : (focused ? 6.5f : 5.0f);
-        c.fillCircle(w.rect.center(), radius, focused || picked ? color : kPanel);
-        c.strokeCircle(w.rect.center(), radius, color, w.compact ? 1.5f : 2.0f);
-        if (picked)
-            c.strokeCircle(w.rect.center(), radius + (w.compact ? 2.5f : 3.0f), color.alpha(0.6f), 1.0f);
-        break;
-    }
-    case Kind::ShapeCurve: {
-        const bool focused = hovered || active;
-        const Color color = shapeColor(w.a);
-        const float radius = w.compact ? (focused ? 3.8f : 2.4f) : (focused ? 4.5f : 3.0f);
-        c.fillCircle(w.rect.center(), radius, focused ? kText : color.alpha(0.6f));
-        break;
-    }
     case Kind::EnvCurve: {
         const bool focused = hovered || active;
         const Color color = w.a < kOps ? kAccent : kSourceColors[w.a - kOps];
         c.fillCircle(w.rect.center(), focused ? 4.5f : 3.0f, focused ? kText : color.alpha(0.6f));
         break; // its readout goes over the handles (paintEnvReadout())
-    }
-    case Kind::PartialArea:
-        break; // drawn with its editor
-    case Kind::ShapeDone:
-        c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
-        if (outlined())
-            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
-        doneIcon(c, w.rect.center(), kText);
-        break;
-    case Kind::ShapeCollapse:
-    case Kind::ShapeExpand:
-    case Kind::ShapeWiden:
-        c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
-        if (outlined())
-            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
-        if (w.kind == Kind::ShapeCollapse)
-            collapseIcon(c, w.rect.center(), hovered ? kText : kDim);
-        else
-            expandIcon(c, w.rect.center(), hovered ? kText : kDim);
-        break;
-    case Kind::ShapeTool: { // Paste faint while nothing is copied
-        const bool can = w.b != static_cast<int>(ShapeTool::Paste) || shapeCopied();
-        c.fillRect(w.rect, hovered && can ? kTrack : kRaised, kRadiusControl);
-        shapeToolIcon(c, w.rect.center(), w.b, !can ? kFaint : hovered ? kText : kDim);
-        break;
-    }
-    case Kind::ShapeMode: { // Points | Steps, the one picked lit, and Snap lit while it is on
-        const UiLayout &layout = controller_.layout();
-        const bool on = w.b == 2 ? layout.shapeSnap : layout.shapeSteps == (w.b == 1);
-        const Color color = shapeColor(w.a);
-        paintButtonFace(c, w, on, hovered, color, 0.22f, kRadiusControl);
-        const Color ink = on ? litInk(kText) : (hovered ? kText : kDim);
-        const Str names[] = {Str::SwitchPoints, Str::SwitchSteps, Str::SwitchSnap};
-        const char *name = tr(names[w.b]);
-        const float textW = c.textWidth(name, kTextLabel, on);
-        const float left = w.rect.center().x - (16.0f + textW) * 0.5f;
-        const Point icon{left + 6.0f, w.rect.center().y};
-        if (w.b == 0)
-            pointsIcon(c, icon, on ? litInk(color) : ink);
-        else if (w.b == 1)
-            stepsIcon(c, icon, on ? litInk(color) : ink);
-        else
-            gridIcon(c, icon, on ? litInk(color) : ink);
-        c.text({left + 16.0f, w.rect.y, textW + 2.0f, w.rect.h}, name, kTextLabel, ink, Align::Left, on);
-        break;
     }
     case Kind::Key:
         paintKey(c, w, hovered, active);
@@ -8396,13 +7589,6 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::SettingsHue && hover_->kind != Kind::SettingsGlow &&
          hover_->kind != Kind::SettingsLinks && hover_->kind != Kind::SettingsGrid &&
          !(hover_->kind == Kind::AlgorithmButton && !algorithmMenuOpen_) &&
-         hover_->kind != Kind::ShapeReset && hover_->kind != Kind::PartialReset &&
-         hover_->kind != Kind::PartialRandom &&
-         hover_->kind != Kind::PartialEdit && hover_->kind != Kind::ClipDisplay &&
-         hover_->kind != Kind::ShapeDone && hover_->kind != Kind::ShapeCollapse && hover_->kind != Kind::ShapeExpand &&
-         hover_->kind != Kind::ShapeWiden &&
-         hover_->kind != Kind::ShapeTool && hover_->kind != Kind::ShapeMode &&
-         !(hover_->kind == Kind::ShapeArea && hover_->a == wideLfo() && shapeEditing() != hover_->a) &&
          hover_->kind != Kind::SlotBypass && hover_->kind != Kind::MacroName &&
          hover_->kind != Kind::ModPill &&
          hover_->kind != Kind::SourcePolarity && hover_->kind != Kind::Wire &&
@@ -8415,8 +7601,7 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::NodeDelete && hover_->kind != Kind::ListStep &&
          hover_->kind != Kind::WireStart &&
          hover_->kind != Kind::DynGrip && hover_->kind != Kind::DynZone && !(hover_->kind == Kind::Knob && dynKnobTip(hover_->param) != Str::Count) &&
-         !(hover_->kind == Kind::ListButton && (isSlopeList(hover_->param) || isMidiInput(hover_->param))) &&
-         !(hover_->kind == Kind::ShapeGrid && hover_->b != 0)))
+         !(hover_->kind == Kind::ListButton && (isSlopeList(hover_->param) || isMidiInput(hover_->param)))))
         return;
     // A source's handle tells how to use it only until it modulates something.
     const bool handle = hover_->kind == Kind::MacroHandle || hover_->kind == Kind::SourceHandle;
@@ -8538,35 +7723,6 @@ void View::paintTooltip(Canvas &c) {
     }
     else if (hover_->kind == Kind::UndoButton)
         text = undoText(hover_->a == 1);
-    else if (hover_->kind == Kind::ShapeReset)
-        text = tr(isNoteCurve(hover_->a)                                ? Str::TipResetNoteCurve
-                  : isVelocityCurve(hover_->a)                          ? Str::TipResetVelocityCurve
-                  : isClipCurve(hover_->a) || isShaperCurve(hover_->a) ? Str::TipResetCurve
-                                                                       : Str::TipResetShape);
-    else if (hover_->kind == Kind::PartialReset)
-        text = tr(Str::TipResetPartials);
-    else if (hover_->kind == Kind::PartialRandom)
-        text = tr(Str::TipRandomPartials);
-    else if (hover_->kind == Kind::PartialEdit)
-        text = tr(partialEditing() == hover_->a ? Str::TipClosePartials : Str::TipEditPartials);
-    else if (hover_->kind == Kind::ClipDisplay)
-        text = tr(Str::TipEditCurve);
-    else if (hover_->kind == Kind::ShapeDone)
-        text = tr(Str::TipDone);
-    else if (hover_->kind == Kind::ShapeCollapse)
-        text = tr(Str::TipShapeCollapse);
-    else if (hover_->kind == Kind::ShapeExpand)
-        text = tr(Str::TipShapeExpand);
-    else if (hover_->kind == Kind::ShapeWiden)
-        text = tr(Str::TipShapeWiden);
-    else if (hover_->kind == Kind::ShapeTool) {
-        const Str tips[] = {Str::TipShapeInvert, Str::TipShapeReverse, Str::TipShapeShiftLeft,
-                            Str::TipShapeShiftRight, Str::TipShapeCopy, Str::TipShapePaste};
-        text = tr(tips[std::clamp(hover_->b, 0, kShapeTools - 1)]);
-    } else if (hover_->kind == Kind::ShapeMode)
-        text = tr(hover_->b == 0 ? Str::TipShapePoints : hover_->b == 1 ? Str::TipShapeSteps : Str::TipShapeSnap);
-    else if (hover_->kind == Kind::ShapeGrid)
-        text = tr(hover_->a == 0 ? Str::TipGridAcross : Str::TipGridUpDown);
     else if (hover_->kind == Kind::SourceRemove)
         text = tr(Str::TipSourceRemove);
     else if (isPowerParam(param))
@@ -9261,77 +8417,6 @@ void View::applyDrag(Point p) {
             set(peqGainIndex(w.a, w.b), db);
         break;
     }
-    case DragKind::ShapePoint: {
-        // Points keep their order: each stays between its neighbors. The first one stays at the
-        // start, and a curve's last one at the end. An LFO's may reach a neighbor's time, a line straight up or
-        // down (see shapeValue()); a curve's keep a little apart.
-        const int shape = w.a;
-        const int point = w.b;
-        double x = shapeXAt(shape, p);
-        double y = shapeYAt(shape, p);
-        if (drag_.snap) { // to the grid's lines
-            const UiLayout &layout = controller_.layout();
-            x = std::round(x * layout.shapeGridX) / layout.shapeGridX;
-            const double half = 0.5 * layout.shapeGridY; // lines per unit of height
-            y = std::round((y + 1.0) * half) / half - 1.0;
-        }
-        if (!drag_.points.empty()) { // the points picked, after it
-            moveShapePoints(shape, point, x, y);
-            break;
-        }
-        const int count = shapePointCount(shape);
-        // Symmetric, the middle point stays in the middle, and the others right of it.
-        if (point > 0 && !(isCurve(shape) && point + 1 == count) && !middlePoint(shape, point)) {
-            const double low = std::max(shapePointX(shape, point - 1), curveSymmetric(shape) ? 0.5 : 0.0);
-            const double high = point + 1 < count ? shapePointX(shape, point + 1) : 1.0;
-            const double apart = isCurve(shape) ? 0.002 : 0.0;
-            set(shapeIndex(shape, point, PointField::X), std::max(low + apart, std::min(x, high - apart)));
-        }
-        set(shapeIndex(shape, point, PointField::Y), y);
-        break;
-    }
-    case DragKind::ShapeStep: // drawn again into the shape as it was, where the mouse is; where it doesn't fit, it stays
-        if (!inMirroredHalf(w.a, p)) // held over the mirrored half, the step stays where it was
-            addShapeStep(w.a, p, drag_.snap, drag_.shapeBefore);
-        break;
-    case DragKind::ShapeBox: { // the points shown inside it, and those picked before it
-        const Rect box{std::min(drag_.start.x, p.x), std::min(drag_.start.y, p.y), std::abs(p.x - drag_.start.x),
-                       std::abs(p.y - drag_.start.y)};
-        std::vector<int> picked = drag_.boxBase;
-        for (int point = 0; point < shapePointCount(w.a); ++point)
-            if (pointShown(w.a, point) && box.contains(shapePointPos(w.a, point)))
-                picked.push_back(point);
-        setShapePick(w.a, std::move(picked));
-        break;
-    }
-    case DragKind::Partials: {
-        // A quick sweep sets every bar it passed, along a line (in bar heights) from where the last move was.
-        const int op = w.a;
-        const Rect area = w.b == 0 ? kPartialLevels : kPartialPhases;
-        const int k = partialAt(area, p.x, partialsShown(op));
-        const double v = std::clamp((area.bottom() - p.y) / area.h, 0.0f, 1.0f);
-        const int from = drag_.lastPartial < 0 ? k : drag_.lastPartial;
-        const double fromValue = drag_.lastPartial < 0 ? v : drag_.startValue;
-        for (int j = std::min(from, k); j <= std::max(from, k); ++j) {
-            const double t = from == k ? 1.0 : static_cast<double>(j - from) / (k - from);
-            const double bar = fromValue + (v - fromValue) * t;
-            if (w.b == 0)
-                set(partialLevelIndex(op, j), partialLevelFromBar(bar));
-            else
-                set(partialPhaseIndex(op, j), bar);
-        }
-        drag_.lastPartial = k;
-        drag_.startValue = v;
-        break;
-    }
-    case DragKind::ShapeCurve: {
-        // Dragging up lifts the middle of the segment, whichever way it runs.
-        const int shape = w.a;
-        const int next = w.b + 1 == shapePointCount(shape) ? 0 : w.b + 1;
-        const double rise = value(shapeIndex(shape, next, PointField::Y)) - value(shapeIndex(shape, w.b, PointField::Y));
-        set(w.param, drag_.startValue - (rise < 0.0 ? -1.0 : 1.0) * (drag_.start.y - p.y) / 100.0);
-        break;
-    }
     case DragKind::Scroll: {
         // The cards follow the thumb.
         const auto area = static_cast<ScrollArea>(w.a);
@@ -9446,9 +8531,6 @@ bool View::mouseMove(Point p, Modifiers mods) {
         drag_.start = p;
         drag_.startValue = drag_.kind == DragKind::Glow ? sliderDragged() : value(drag_.widget.param);
     }
-    drag_.snap = drag_.kind == DragKind::ShapePoint || drag_.kind == DragKind::ShapeStep
-                     ? shapeSnaps(drag_.widget.a, mods.ctrl)
-                     : mods.ctrl;
     drag_.now = p;
     if (!drag_.moved && std::hypot(p.x - drag_.start.x, p.y - drag_.start.y) > 3.0f) {
         drag_.moved = true;
@@ -9482,11 +8564,6 @@ void View::mouseDown(Point p, Modifiers mods) {
     // state load may have replaced the layout since it last ran.
     routing_.keepRoutes();
     const auto hit = hitTest(p);
-    // The points picked in a shape editor are let go of at a click anywhere but on that shape.
-    if (shapePick_.shape >= 0 && !(hit && (hit->kind == Kind::ShapeArea || hit->kind == Kind::ShapePoint ||
-                                           hit->kind == Kind::ShapeCurve) &&
-                                   hit->a == shapePick_.shape))
-        clearShapePick();
     // The MODS view's filter and the preset browser's search let the keyboard go at a click anywhere else, and the
     // points picked on the SEQ view's lane's curve let go at a click off the lane (see Panel::pressing()).
     for (Panel *panel : panels_)
@@ -9506,31 +8583,6 @@ void View::mouseDown(Point p, Modifiers mods) {
                       w.kind == Kind::OutLabel || w.kind == Kind::GridCell || w.kind == Kind::TempoBox ||
                       w.kind == Kind::ModsAuxDepth)) {
         startTyping(w);
-        return;
-    }
-    // A symmetric curve's left half only mirrors its right one: a click there does nothing.
-    if (w.kind == Kind::ShapeArea && inMirroredHalf(w.a, p))
-        return;
-    if (drawsStep(w, mods)) {
-        // Held, the step follows the mouse, up and down and from column to column, as one undo step.
-        const int shape = w.a;
-        clearShapePick(); // the points it takes the place of may have been picked
-        std::vector<double> before;
-        for (int f = 0; f < shapeParamCount(shape); ++f)
-            before.push_back(value(shapeBase(shape) + f));
-        controller_.beginStep();
-        const bool snap = shapeSnaps(shape, mods.ctrl);
-        if (!addShapeStep(shape, p, snap, before)) {
-            controller_.endStep();
-            flash(trf(Str::MsgShapeFull, {std::to_string(shapeMaxPoints(shape))}));
-            return;
-        }
-        drag_.kind = DragKind::ShapeStep;
-        drag_.widget = w;
-        drag_.start = drag_.now = p;
-        drag_.snap = snap;
-        drag_.step = true;
-        drag_.shapeBefore = std::move(before);
         return;
     }
     // A stepper's - and + step it as a notch of the wheel does, an undo step each.
@@ -9766,14 +8818,12 @@ void View::mouseDown(Point p, Modifiers mods) {
         else if (!routing_.nodeOn(w.a))
             edit(enabledParam(w.a), 1.0);
         layout.selectedNode = w.a;
-        if (partialEditor_ != w.a) // another node shown closes the partial editor
-            partialEditor_ = -1;
+        shapes_.closePartialsBut(w.a); // another node shown closes the partial editor
         break;
     case Kind::NodeGhost: // into the graph where it was, and into the inspector
         edit(enabledParam(w.a), 1.0);
         layout.selectedNode = w.a;
-        if (partialEditor_ != w.a)
-            partialEditor_ = -1;
+        shapes_.closePartialsBut(w.a);
         break;
     case Kind::ViewTab:
         showView(static_cast<RoutingView>(w.a));
@@ -9807,52 +8857,8 @@ void View::mouseDown(Point p, Modifiers mods) {
         flipSwitch(w.param);
         break;
 
-    case Kind::ShapeWiden:
-    case Kind::LfoDisplay: // a Custom LFO's widens its card, which then has the shape (and the full-size editor not)
-        if (mods_.lfoShapeOf(w.a) == LfoShape::Custom) {
-            wideLfo_ = w.a;
-            if (shapeEditing() >= 0 && !isCurve(shapeEditing()))
-                shapeEditor_ = -1;
-            revealSource(w.a);
-            hover_.reset();
-        }
-        break;
-    case Kind::ShapeDone: // an LFO's full-size editor goes back into its widened card
-        if (const int shape = shapeEditing(); shape >= 0 && !isCurve(shape)) {
-            wideLfo_ = shape;
-            revealSource(shape);
-        }
-        shapeEditor_ = -1;
-        partialEditor_ = -1;
-        break;
-    case Kind::ShapeCollapse:
-        wideLfo_ = -1;
-        hover_.reset();
-        break;
-    case Kind::ShapeExpand:
-        shapeEditor_ = w.a;
-        partialEditor_ = -1;
-        hover_.reset();
-        break;
-    case Kind::ShapeTool:
-        applyShapeTool(w.a, static_cast<ShapeTool>(w.b));
-        break;
-    case Kind::ShapeMode:
-        if (w.b == 2)
-            layout.shapeSnap = !layout.shapeSnap;
-        else
-            layout.shapeSteps = w.b == 1;
-        controller_.layoutChanged();
-        break;
-    case Kind::ClipDisplay:
-        shapeEditor_ = kMaxSources + w.a;
-        break;
-    case Kind::PartialEdit: // a second click closes it
-        partialEditor_ = partialEditing() == w.a ? -1 : w.a;
-        shapeEditor_ = -1;
-        break;
     case Kind::NoteDisplay:
-        shapeEditor_ = shapeEditor_ == curveOf(w.a) ? -1 : curveOf(w.a); // a second click closes it
+        shapes_.toggleShape(curveOf(w.a)); // a second click closes it
         hover_.reset();
         break;
     case Kind::ListButton:
@@ -9881,8 +8887,8 @@ void View::mouseDown(Point p, Modifiers mods) {
         listMenu_ = -1;
         edit(w.param, w.b); // a drawn curve is edited in the card, or the big editor
         // An LFO holding the retired Custom shape (a state can) goes back to its size as it takes another.
-        if (isLfoShape(w.param) && sourceOf(w.param) == wideLfo_)
-            wideLfo_ = -1;
+        if (isLfoShape(w.param))
+            shapes_.narrow(sourceOf(w.param));
         break;
     case Kind::PeqTypeButton:
         fxPanel_.showBand(w.a, w.b);
@@ -10010,47 +9016,6 @@ void View::mouseDown(Point p, Modifiers mods) {
         controller_.beginEdit(paramIndex(GlobalParam::PitchBend));
         applyDrag(p);
         break;
-    case Kind::ShapeArea: // a box across it picks the points it reaches, with Ctrl as well as those picked already
-        drag_.kind = DragKind::ShapeBox;
-        drag_.boxBase = mods.ctrl ? shapePicked(w.a) : std::vector<int>{};
-        setShapePick(w.a, drag_.boxBase);
-        break;
-    case Kind::ShapePoint: {
-        // A point not picked is picked alone, or with Ctrl along with the others; one picked already moves with the
-        // others, and let go of unmoved is picked alone, or with Ctrl let go.
-        drag_.kind = DragKind::ShapePoint;
-        std::vector<int> picked = shapePicked(w.a);
-        const bool was = std::find(picked.begin(), picked.end(), w.b) != picked.end();
-        if (mods.ctrl && was)
-            drag_.unpick = true;
-        else if (mods.ctrl)
-            picked.push_back(w.b);
-        else if (!was)
-            picked = {w.b};
-        else
-            drag_.narrow = picked.size() > 1;
-        setShapePick(w.a, picked);
-        picked = shapePicked(w.a);
-        if (picked.size() > 1) { // together, one undo step
-            controller_.beginStep();
-            drag_.step = true;
-            for (int point : picked) {
-                for (PointField field : {PointField::X, PointField::Y})
-                    controller_.beginEdit(shapeIndex(w.a, point, field));
-                drag_.origin.push_back({shapePointX(w.a, point), value(shapeIndex(w.a, point, PointField::Y))});
-            }
-            drag_.points = std::move(picked);
-            break;
-        }
-        for (PointField field : {PointField::X, PointField::Y})
-            controller_.beginEdit(shapeIndex(w.a, w.b, field));
-        break;
-    }
-    case Kind::ShapeCurve:
-        drag_.kind = DragKind::ShapeCurve;
-        drag_.startValue = value(w.param);
-        controller_.beginEdit(w.param);
-        break;
     case Kind::WaveButton:
         edit(paramIndex(w.a, OpParam::Wave), w.b);
         break;
@@ -10093,46 +9058,10 @@ void View::mouseDown(Point p, Modifiers mods) {
                 }
                 editMany(changes);
             }
-            partialEditor_ = w.a;
-            shapeEditor_ = -1;
+            shapes_.openPartials(w.a);
         }
         break;
     }
-    case Kind::PartialArea:
-        drag_.kind = DragKind::Partials;
-        drag_.step = true; // one undo step for the whole stroke
-        controller_.beginStep();
-        applyDrag(p);
-        break;
-    case Kind::PartialReset: {
-        std::vector<std::pair<int, double>> changes;
-        for (int k = 0; k < kPartials; ++k) {
-            changes.push_back({partialLevelIndex(w.a, k), table_[partialLevelIndex(w.a, k)].def});
-            changes.push_back({partialPhaseIndex(w.a, k), table_[partialPhaseIndex(w.a, k)].def});
-        }
-        editMany(changes);
-        break;
-    }
-    case Kind::PartialRandom: {
-        // Every partial, the hidden ones too: a random level under a pink slope (-3 dB an octave, the level of
-        // partial k at most 1 / sqrt(k)) and a random phase. One undo step.
-        std::uniform_real_distribution<double> unit(0.0, 1.0);
-        std::vector<std::pair<int, double>> changes;
-        for (int k = 0; k < kPartials; ++k) {
-            const double level = unit(random_) / std::sqrt(static_cast<double>(k + 1));
-            changes.push_back({partialLevelIndex(w.a, k), level});
-            changes.push_back({partialPhaseIndex(w.a, k), unit(random_)});
-        }
-        editMany(changes);
-        break;
-    }
-    case Kind::ShapeReset:
-        resetShape(w.a);
-        break;
-    case Kind::ShapeGrid:
-        if (w.b != 0)
-            stepShapeGrid(w.a, w.b);
-        break;
     case Kind::UndoButton:
         if (w.a == 1)
             redo();
@@ -10146,15 +9075,6 @@ void View::mouseDown(Point p, Modifiers mods) {
 
 void View::mouseUp(Point p, Modifiers) {
     const Widget &w = drag_.widget;
-    // A point clicked, not moved: with Ctrl, one picked already let go; without, one of several picked picked alone.
-    if (drag_.kind == DragKind::ShapePoint && !drag_.moved && (drag_.unpick || drag_.narrow)) {
-        std::vector<int> picked = shapePicked(w.a);
-        if (drag_.unpick)
-            std::erase(picked, w.b);
-        else
-            picked = {w.b};
-        setShapePick(w.a, std::move(picked));
-    }
     switch (drag_.kind) {
     case DragKind::Node:
         if (drag_.moved)
@@ -10247,10 +9167,6 @@ void View::mouseUp(Point p, Modifiers) {
     case DragKind::AmpMic:
     case DragKind::UtilityHandle:
     case DragKind::DynGrip:
-    case DragKind::ShapePoint:
-    case DragKind::ShapeCurve:
-    case DragKind::ShapeStep:
-    case DragKind::Partials:
     case DragKind::Key:
     case DragKind::ModWheel:
     case DragKind::BendWheel:
@@ -10333,7 +9249,6 @@ void View::finishDrag() {
         controller_.endEdit(w.param);
         break;
     case DragKind::EnvCurve:
-    case DragKind::ShapeCurve:
     case DragKind::ModWheel:
     case DragKind::UtilityHandle:
         controller_.endEdit(w.param);
@@ -10357,13 +9272,6 @@ void View::finishDrag() {
         for (int index : filterPointParams(w.a, w.b))
             controller_.endEdit(index);
         break;
-    case DragKind::ShapePoint:
-        if (drag_.points.empty())
-            drag_.points = {w.b};
-        for (int point : drag_.points)
-            for (PointField field : {PointField::Y, PointField::X})
-                controller_.endEdit(shapeIndex(w.a, point, field));
-        break;
     case DragKind::Key:
         controller_.playNote(keyboardBase() + w.a, false);
         break;
@@ -10375,9 +9283,6 @@ void View::finishDrag() {
     case DragKind::Glow: // the amount it was dragged to is kept only once it is let go (see mouseUp())
         glowDragged_ = linksDragged_ = gridDragged_ = hueDragged_ = -1.0f;
         break;
-    case DragKind::Partials: // its undo step closes below
-    case DragKind::ShapeStep:
-    case DragKind::ShapeBox:
     case DragKind::Node:
     case DragKind::Bend:
     case DragKind::InputsScroll:
@@ -10442,11 +9347,6 @@ void View::paintCardFace(Canvas &c, Rect card, Color color, bool on, int id, boo
     noteCard(id, card, shown);
     if (cardOutlined(id, dragged))
         c.strokeRect(card, dragged ? color : (on ? color.alpha(edge) : kBorder), dragged ? 1.5f : 1.0f, kRadiusCard);
-}
-
-// A card's face, as paintCardFace() fills it: the cards' color, in a flat theme tinted with `color` (faintly while off).
-Color View::cardFace(Color color, bool on) const {
-    return look.flat ? mix(kCardColor, color, look.cardTint * (on ? 1.0f : 0.4f)) : kCardColor;
 }
 
 // The face of the card a widget is on: its effect's or its source's card's.
@@ -10622,14 +9522,9 @@ bool View::dragsOnTouch(const Widget &w) const {
     case Kind::SettingsHue:
     case Kind::ModWheel:
     case Kind::BendWheel:
-    case Kind::ShapeArea:
-    case Kind::ShapePoint:
-    case Kind::ShapeCurve:
-    case Kind::PartialArea:
         return true;
-    default: // and the panels' own
-        return drawsStep(w, {}) || std::any_of(panels_.begin(), panels_.end(),
-                                               [&](const Panel *panel) { return panel->dragsOnTouch(w); });
+    default: // and the panels' own (the shape editors' among them)
+        return std::any_of(panels_.begin(), panels_.end(), [&](const Panel *panel) { return panel->dragsOnTouch(w); });
     }
 }
 
@@ -10764,20 +9659,20 @@ void View::doubleClick(Point p, Modifiers mods) {
     constexpr float kDoubleClickSlop = 8.0f;
     const bool paired = std::hypot(p.x - pressPoint_.x, p.y - pressPoint_.y) <= kDoubleClickSlop;
     if (paired && !(hit && pressed_ && hit->same(*pressed_)) &&
-        !(hit && (hit->kind == Kind::Key || drawsStep(*hit, mods))))
+        !(hit && (hit->kind == Kind::Key || shapes_.drawsStep(*hit, mods))))
         return;
     if (hit && std::any_of(panels_.begin(), panels_.end(),
                            [&](Panel *panel) { return panel->doubleClick(*hit, p, mods); }))
         return; // the panels' own (the presets', the SEQ view's)
     if (hit && (hit->kind == Kind::Key || hit->kind == Kind::Octave || hit->kind == Kind::UndoButton ||
                 hit->kind == Kind::PresetStep ||
-                hit->kind == Kind::SlotBypass || (hit->kind == Kind::ShapeGrid && hit->b != 0) ||
-                hit->kind == Kind::ShapeTool || hit->kind == Kind::ListStep || stepperButton(*hit, p) != 0 ||
-                drawsStep(*hit, mods) ||
+                hit->kind == Kind::SlotBypass || hit->kind == Kind::ListStep || stepperButton(*hit, p) != 0 ||
+                shapes_.drawsStep(*hit, mods) ||
                 std::any_of(panels_.begin(), panels_.end(), [&](const Panel *panel) { return panel->doublePress(*hit); }))) {
         // Windows turns a quick second click into a double-click instead of a press:
         // play it as a press so fast repeated notes, octave steps, undos, a list's arrows' steps, a stepper's - and +
-        // and steps aren't dropped (and the panels' own: the FX view's switches, nodes and +s).
+        // and steps aren't dropped (and the panels' own: the FX view's switches, nodes and +s, the shape editors' grid
+        // steppers and tools).
         mouseDown(p, mods);
         return;
     }
@@ -10833,21 +9728,7 @@ void View::doubleClick(Point p, Modifiers mods) {
         caretTicks_ = 0;
         return;
     }
-    if (hit && hit->kind == Kind::PartialArea) { // that bar to nothing
-        const int k = partialAt(hit->b == 0 ? kPartialLevels : kPartialPhases, p.x, partialsShown(hit->a));
-        edit(hit->b == 0 ? partialLevelIndex(hit->a, k) : partialPhaseIndex(hit->a, k), 0.0);
-        return;
-    }
-    if (hit && hit->kind == Kind::ShapeArea) {
-        if (!inMirroredHalf(hit->a, p)) // the mirrored half takes no points
-            addShapePoint(hit->a, p);
-        return;
-    }
-    if (hit && hit->kind == Kind::ShapePoint) {
-        removeShapePoint(hit->a, hit->b);
-        return;
-    }
-    if (hit && (hit->kind == Kind::ShapeCurve || hit->kind == Kind::EnvCurve || hit->kind == Kind::ModsCurve)) {
+    if (hit && (hit->kind == Kind::EnvCurve || hit->kind == Kind::ModsCurve)) {
         edit(hit->param, 0.0); // straight again: 0 %, whatever the segment started as
         return;
     }
@@ -10963,7 +9844,7 @@ void View::wheel(Point p, float steps, Modifiers mods) {
     }
     if (hit && hit->kind == Kind::ShapeGrid) {
         if (whole != 0)
-            stepShapeGrid(hit->a, whole);
+            shapes_.stepShapeGrid(hit->a, whole);
         return;
     }
     if (hit && hit->kind == Kind::SplitBand) { // a split's tabs: down a tab to the right, up one to the left
@@ -11131,7 +10012,6 @@ std::vector<MenuItem> View::contextMenu(Point p) {
     menuLive_ = true;
     menuParam_ = -1;
     menuSource_ = -1;
-    menuPoint_ = {-1, -1};
     menuValue_.reset();
     menuAuxDepth_.reset();
     const auto hit = hitTest(p);
@@ -11207,19 +10087,6 @@ std::vector<MenuItem> View::contextMenu(Point p) {
         }
         items.push_back({0, ""});
         items.push_back({100 + hit->a * kSlots + hit->b, trf(Str::MenuRemoveModulation, {mods_.sourceName(hit->a)})});
-        return items;
-    }
-    if (hit->kind == Kind::ShapePoint) {
-        const bool end = isCurve(hit->a) && hit->b + 1 == shapePointCount(hit->a);
-        if (hit->b > 0 && !end && shapePointCount(hit->a) > 2) {
-            menuPoint_ = {hit->a, hit->b};
-            items.push_back({5, tr(Str::MenuDeletePoint)});
-        }
-        return items;
-    }
-    if (hit->kind == Kind::ShapeCurve) {
-        menuParam_ = hit->param;
-        items.push_back({1, tr(Str::MenuStraighten)});
         return items;
     }
     if (hit->kind == Kind::Node || hit->kind == Kind::Port) { // the node, or its edge
@@ -11313,8 +10180,6 @@ void View::menuCommand(int command) {
         for (const Assignment &m : assignments())
             if (m.target == menuParam_)
                 mods_.removeSlot(m.source, m.slot);
-    } else if (command == 5 && menuPoint_.first >= 0) {
-        removeShapePoint(menuPoint_.first, menuPoint_.second);
     } else if (command == 3 && menuParam_ >= 0) {
         routing_.disconnect(menuParam_);
     } else if (command == 4 && menuParam_ >= 0) {
@@ -11576,11 +10441,9 @@ void View::endTyping(bool commit) {
         flash(trf(Str::MsgBadValue, {text, mods_.paramName(t.widget.param)}));
 }
 
-// A shape editor's points picked, or one under the mouse, take Delete and Ctrl+A first; then the panels' (the SEQ
-// view's), while nothing is typed, no dialog is open and no drag goes on.
+// The panels', while nothing is typed, no dialog is open and no drag goes on: a shape editor's points picked, or one
+// under the mouse, take Delete and Ctrl+A first (see ShapeEditor::key()), then the SEQ view's.
 bool View::seqKey(Key key, bool shift) {
-    if (shapeKey(key))
-        return true;
     if (typing() || dialogOpen() || drag_.kind != DragKind::None)
         return false;
     return std::any_of(panels_.begin(), panels_.end(), [&](Panel *panel) { return panel->key(key, shift); });
@@ -11614,11 +10477,9 @@ CursorKind View::cursor() const {
     case Kind::OutLabel:
     case Kind::GridCell:
     case Kind::ModDot:
-    case Kind::ShapeCurve:
     case Kind::EnvCurve:
     case Kind::TempoBox:
         return CursorKind::Vertical;
-    case Kind::ShapeArea:
     case Kind::SettingsBackdrop:
     case Kind::ConfirmBackdrop:
     case Kind::BrowserBackdrop:
@@ -11653,7 +10514,6 @@ CursorKind View::cursor() const {
     case Kind::AmpMic:
     case Kind::UtilityHandle:
     case Kind::SourceGrip:
-    case Kind::ShapePoint:
     case Kind::Wire:
         return CursorKind::Move;
     default:

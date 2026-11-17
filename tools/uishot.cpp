@@ -1042,7 +1042,7 @@ Point shapeGrid(int axis, int part) {
 // A Custom LFO's display, a click on which widens its card to two card places. The widened card's title row buttons:
 // back to a normal card (0), the shape's reset (1) and the full-size editor (2), left to right the reset, back to a
 // normal card and the full-size editor; its shape tools, by
-// View::ShapeTool, where a normal card's display is, and under them Points (0), Steps (1) and Snap (2); its plot,
+// ShapeEditor::ShapeTool, where a normal card's display is, and under them Points (0), Steps (1) and Snap (2); its plot,
 // 264 x 102 from 281 px into the card, 44 under its top; and the grid's steppers under it, per axis (0 across) a
 // step down (part 0), the count and a step up.
 Point lfoDisplay(float card) {
