@@ -754,7 +754,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     pixels);
   - every factory preset's routing graph rendered (in Spectrum, into `presets/`), none with a node on or near
     another, a wire, a line to OUT or a label over a node it doesn't join or through a loop, or two labels on each
-    other (`src/gui/arrange.h` counts them; `fmvibe-uishot <dir> 1 --presets` renders and checks these alone);
+    other (`src/gui/arrange.h` counts them; `fmvibe-uishot <dir> 1 --presets` renders and checks these alone;
+    `--seq` renders the SEQ view of each one that plays the sequencer, its roll fitted to its notes as a preset
+    load fits it);
   - every algorithm (`src/gui/algorithms.h`: six operators' 32, four's 8, three's 5 and two's 2, set by
     `RoutingModel::applyAlgorithm()`) on a new patch: laid out with
     no clash as arrange.h counts them, found again as the one the operators form, and taken back, params and

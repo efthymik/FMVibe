@@ -1923,10 +1923,12 @@ one may have changed since it last did.
   low-pass, the shaper also growling back onto the modulator, over a clean sub); Comb String (a noise burst
   ringing a comb tuned to the note, on through a 6 dB low-pass; the mod wheel damps it); Chip Pluck (alternating,
   half and abs sines like the classic FM chips, the note source easing the FM off up the keyboard, a hard clipper
-  going out beside it, and a Bite macro on FM Amount); Step Filter (an organ wave and a pulse through a resonant
+  going out beside it, and a Bite macro on FM Amount, playing a video-game arpeggio, mostly in eighths, while a key is
+  held, bouncing through C minor's chord and then A-flat major's, its accents as velocities louder and brighter); Step Filter (an organ wave and a pulse through a resonant
   18 dB low-pass that a drawn LFO shape opens on every eighth note, each its own height, into a cubic shaper; its
   Cutoff and Accent macros, the latter deepening the pattern); Glass Steps (a custom wave from 64 partials, the
-  Fibonacci ones, through a notch that jumps at random every sixteenth note); Vowel Lead (a vowel wave with a
+  Fibonacci ones, playing a sparse, leaping Lydian arpeggio while a key is held, two degrees lower in its second
+  bar, its accents louder, through a notch that jumps at random every sixteenth note); Vowel Lead (a vowel wave with a
   held bite and breath noise modulating it through a band-pass, gliding into every note, a bipolar envelope scooping
   into pitch and the mod wheel bringing in vibrato, a frequency shifter detuning the sides); Laser Zap (a
   one-shot LFO throwing the pitch down four octaves in a quarter second, a phase disperser and a staircase-curve
@@ -1945,7 +1947,10 @@ one may have changed since it last did.
   1:1 pair with feedback for the body, a 9:1 click for the thumb and a sub sine) and Grind Bass (a fed-back pair
   growled by a sub-octave linear FM through an asymmetric shaper and a driven low-pass, over a clean sub, its effects
   as a graph that keeps the lows below 140 Hz tight while the highs are clipped and widened; its Growl, Drive and
-  Width macros); Log Drum (a tuned log drum, a 3:1 knock dying in a blink as its pitch drops into the note) and Hard Kick (a fixed-pitch sine swept down from about 600 Hz into an asymmetric shaper whose tail distorts, under a
+  Width macros); Log Drum (a tuned log drum, a 3:1 knock dying in a blink as its pitch drops into the note, in mono, so
+  each hit cuts off the one before, playing a tribal 12/8 groove in eighth triplets while a key is held, an octave
+  down: a low call on C minor pentatonic toms answered higher, with a roll down at its end, looped every 24 steps so
+  it keeps to two 4/4 bars, its ghost hits softer than its accents) and Hard Kick (a fixed-pitch sine swept down from about 600 Hz into an asymmetric shaper whose tail distorts, under a
   noise click; its Pitch, Distortion, Length and Click macros); Jet Takeoff (a modulator at full feedback, driven
   by an inharmonic one, roaring through its carrier, noise made by FM alone, a slow pitch envelope lifting it two
   octaves under a flanger) and Crush Downer (an FM growl folded by a sine-fold shaper and falling three octaves
@@ -1962,8 +1967,10 @@ one may have changed since it last did.
   a sub and a noise click, hard-clipped, squashed OTT-style and echoed); and Mallet Steps (a marimba, a 1:1
   carrier knocked by a 4:1 modulator, struck in sixteenths by the sequencer while a key is held, through octaves,
   fifths and sevenths, each note's velocity its accent, louder and harder) and Hammer Gate
-  (a fed-back pair growled by a sub-octave linear FM through a driven, resonant low-pass into a hard clipper whose
-  output a drawn LFO gates in accented sixteenths, a second jumping octaves in the riff); and Future Plucks (a
+  (a fed-back pair growled by a sub-octave linear FM through a driven, resonant low-pass into a hard clipper, in
+  mono, playing a two-bar Phrygian riff while a key is held, two octaves down, its rests chopping it and octave
+  jumps in it, its accents as velocities brightening it and an envelope snapping the cutoff open on each
+  note; its Cutoff, Drive and Snap macros); and Future Plucks (a
   carrier knocked by a saw modulator through a low-pass an envelope plucks open, velocity brightening it and two
   Random sources wandering the indexes, playing the sequencer's Phrygian riff while a key is held, an octave down,
   humanized and with chords on some steps, through a chain of EQs, a disperser, compression, chorus, echoes and a

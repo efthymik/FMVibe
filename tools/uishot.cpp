@@ -3113,6 +3113,8 @@ void renderExample(const std::filesystem::path &dir, Renderer &renderer, const s
     }
     model.library = {{name, "", true, model.ui.presetInfo}}; // the preset bar shows its name and info
     model.setPreset(L"factory:" + std::wstring(name.begin(), name.end()));
+    if (seq)
+        model.clearHistory(); // as loading a preset does, so the roll fits itself to the notes
     view.poll();
     if (playing) { // an A3 held, its operators sounding and going into the effects, the glows risen to it
         model.live.voices = 1;
@@ -12922,7 +12924,7 @@ void run(const std::filesystem::path &dir, float scale) {
 
 int main(int argc, char **argv) {
     if (argc < 2) {
-        std::fprintf(stderr, "usage: fmvibe-uishot <output-dir> [scale] [--presets]\n");
+        std::fprintf(stderr, "usage: fmvibe-uishot <output-dir> [scale] [--presets | --library | --seq]\n");
         return 2;
     }
     const std::filesystem::path dir = argv[1];
@@ -12935,6 +12937,14 @@ int main(int argc, char **argv) {
     if (argc > 3 && std::strcmp(argv[3], "--presets") == 0) { // only the factory presets' routing views
         Renderer renderer(scale);
         renderFactoryPresets(dir, renderer);
+    } else if (argc > 3 && std::strcmp(argv[3], "--seq") == 0) { // only the SEQ views of the presets that play it
+        Renderer renderer(scale);
+        for (const FactoryPreset &preset : factoryPresets()) {
+            ParamValues values{};
+            gui::UiLayout layout;
+            if (loadFactoryPreset(preset, values, layout) && values[paramIndex(SeqParam::Enabled)] >= 0.5)
+                renderExample(dir, renderer, preset.name, "seq-" + preset.name, SIZE_MAX, "Spectrum", false, true);
+        }
     } else if (argc > 3 && std::strcmp(argv[3], "--library") == 0) { // only the preset library's
         Renderer renderer(scale);
         testPresetLibrary(dir, renderer);
