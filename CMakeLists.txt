@@ -25,6 +25,40 @@ set(FMVIBE_ENGINE_SOURCES
     src/effects.h
     src/envelope.h
     src/filter.h
+    src/fx/ampfx.cpp
+    src/fx/ampfx.h
+    src/fx/chorus.cpp
+    src/fx/chorus.h
+    src/fx/common.cpp
+    src/fx/common.h
+    src/fx/compressor.cpp
+    src/fx/compressor.h
+    src/fx/delay.cpp
+    src/fx/delay.h
+    src/fx/disperser.cpp
+    src/fx/disperser.h
+    src/fx/eq.cpp
+    src/fx/eq.h
+    src/fx/filterfx.cpp
+    src/fx/filterfx.h
+    src/fx/flanger.cpp
+    src/fx/flanger.h
+    src/fx/multidyn.cpp
+    src/fx/multidyn.h
+    src/fx/parameq.cpp
+    src/fx/parameq.h
+    src/fx/phaser.cpp
+    src/fx/phaser.h
+    src/fx/reverb.cpp
+    src/fx/reverb.h
+    src/fx/shaper.cpp
+    src/fx/shaper.h
+    src/fx/shifter.cpp
+    src/fx/shifter.h
+    src/fx/utility.cpp
+    src/fx/utility.h
+    src/fx/widener.cpp
+    src/fx/widener.h
     src/noise.h
     src/oversampler.h
     src/params.cpp

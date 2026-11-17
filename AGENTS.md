@@ -1057,7 +1057,9 @@ breakpoints in `src/` then hit.
 | `src/zerobuffer.h`, `src/zerobuffer.cpp` | Delay lines allocated as zero pages that only take memory once written |
 | `src/filter.h` | State-variable and comb filters, plus their response curves for the editor |
 | `src/clipcurve.h` | The shapers' curves, anti-aliasing and running, shared by the shaper effect and the voices' shapers |
-| `src/amp.h`, `src/amp.cpp` | The Amp effect's sound: its models (preamp stages, tone stack, power amp), cabinets and mics, its oversampling, and the responses the editor draws |
+| `src/effects.h`, `src/effects.cpp` | The effects on the voices' sum: `Effects`, its slots (each holding every effect type's state, so it switches type without allocating, and running its type through a static dispatch in `runSlot()`) and the effects graph that runs them (wires, splits, sums, the paths kept in step) |
+| `src/fx/` | Each effect type a slot runs, in a module of its own (`shaper`, `delay`, `eq`, `parameq`, `filterfx`, `compressor`, `multidyn`, `reverb`, `phaser`, `flanger`, `chorus`, `shifter`, `disperser`, `widener`, `utility`, `ampfx`): its state, its `prepare()`, `start()` and `run()`, and the responses the editor draws of it; `common.h` what they share (the `fx::Context` a slot hands its effect, the `fx::Meters` it writes, biquads and crossovers, ramps, delay line reads) |
+| `src/amp.h`, `src/amp.cpp` | The Amp effect's sound: its models (preamp stages, tone stack, power amp), cabinets and mics, its oversampling, and the responses the editor draws (`src/fx/ampfx.h` runs it in a slot) |
 | `src/analyzer.cpp` | The spectrum analyzer (FFT) behind the Param EQ's, filter effect's, phase disperser's and voice filters' displays |
 | `src/envelope.h` | AHDSR used by operators and mod envelopes |
 | `src/fxlag.h` | How late each path through the effects graph is from the effects that run oversampled, the pads that keep paths meeting in step, and the output's latency |
