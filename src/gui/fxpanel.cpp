@@ -1,9 +1,9 @@
-// The effects as a line of effects and splits from IN to OUT, which the editor reads from the wires and writes back to
-// them, and the View's methods that edit it; its two views, the row of cards (each split a container holding its
-// bands) and the graph on its slot grid, with their widgets and painting; and a split's controls, which both show.
-// The engine runs the wires as they are (see Effects::processGraph()); the editor only ever wires a line.
+// The FX view (FxPanel, see fxpanel.h): the effects' line of effects and splits from IN to OUT (which FxGraphModel,
+// fxgraphmodel.h, reads from the wires, writes back to them and edits) as it shows it: its two views, the row of cards
+// (each split a container holding its bands) and the graph on its slot grid, with their widgets, painting, moves,
+// glides and scrolling; a split's controls, which both show; the list of effects, its context menu and its questions.
 
-#include "view.h"
+#include "fxpanel.h"
 
 #include "fxgraph.h"
 #include "icons.h"
@@ -22,9 +22,6 @@ using namespace detail;
 
 namespace {
 
-// The bands of a split the grid uses: the high one along the row above the main line, the low one along the row below.
-constexpr int kHighBand = kFxBands - 1;
-constexpr int kLowBand = 0;
 // The grid's row a band's nodes sit on, by lane: the high band's above the main line, the low band's below, a middle
 // band's on it.
 int laneRow(int lane) {
@@ -161,273 +158,65 @@ Point wireMiddle(const Wire &w, const std::vector<Point> &points) {
     return {x, (w.from.y + w.to.y) * 0.5f};
 }
 
-// Where an item of the line sits: on the main line, or along one of a split's bands.
-struct LinePlace {
-    int item = -1; // the main line's item it is, or holds it
-    int lane = 0;  // 0 the main line, 1 the high band, 2 the low band, 3 the middle band
-    int at = 0;    // its place along the band
-};
-
-template <class Line>
-LinePlace placeOf(const Line &line, int node) {
-    for (int i = 0; i < static_cast<int>(line.size()); ++i) {
-        if (line[i].node == node)
-            return {i, 0, 0};
-        for (int lane : line[i].lanes()) {
-            const std::vector<int> &band = line[i].band(lane);
-            if (const auto it = std::find(band.begin(), band.end(), node); it != band.end())
-                return {i, lane, static_cast<int>(it - band.begin())};
-        }
-        if (line[i].joined && fxSumNode(line[i].node - kFxSlots) == node) // a split's join
-            return {i, 0, 0};
-    }
-    return {};
-}
-
-template <class Line>
-bool openSplit(const Line &line) {
-    return !line.empty() && fxNodeSplit(line.back().node) && !line.back().joined;
-}
-
 } // namespace
 
-void detail::paintGridMarks(Canvas &c, Rect area, int cols, int rows, const Point *target) {
-    for (int row = 0; row < rows; ++row)
-        for (int col = 0; col < cols; ++col) {
-            const Point p = gridPoint(area, cols, rows, col, row);
-            if (target && std::hypot(p.x - target->x, p.y - target->y) < 0.5f)
-                continue; // drawn lit below
-            c.line({p.x - 3.5f, p.y}, {p.x + 3.5f, p.y}, kFaint.alpha(0.45f), 1.0f);
-            c.line({p.x, p.y - 3.5f}, {p.x, p.y + 3.5f}, kFaint.alpha(0.45f), 1.0f);
-        }
-    if (target) {
-        c.line({target->x - 7.0f, target->y}, {target->x + 7.0f, target->y}, kAccent, 1.6f);
-        c.line({target->x, target->y - 7.0f}, {target->x, target->y + 7.0f}, kAccent, 1.6f);
-    }
+FxPanel::FxPanel(PanelHost &host)
+    : host_(host), fx_(host.fxGraphModel()), table_(paramTable()) {}
+
+bool FxPanel::wide() const {
+    return controller().layout().view == RoutingView::Fx && !host_.shapeEditorOpen();
 }
 
-// --- The routing graph's grid (Ctrl+drag)
-
-bool View::setCtrl(bool held) {
-    if (held == ctrlHeld_)
-        return false;
-    ctrlHeld_ = held;
-    return true; // the grid's points show or go, and a node being dragged snaps or goes free
+bool FxPanel::graph() const {
+    return controller().layout().fxGraphView;
 }
 
-bool View::routingGridShown() const {
-    return ctrlHeld_ && controller_.layout().view == RoutingView::Graph && shapeEditing() < 0 &&
-           partialEditing() < 0 && (drag_.kind == DragKind::Node || (drag_.kind == DragKind::None && kRouting.contains(hoverPoint_)));
+void FxPanel::forgetScoped() {
+    line_.forget();
+    hitWires_.forget();
+    rowShown_.forget();
+    rowLength_.forget();
 }
 
-// The grid's points nearest `want` first; a point a node fits at, clear of the others, takes it.
-namespace {
-template <class Fits>
-Point nearestGridPoint(Rect area, int cols, int rows, Point want, Fits fits, Point otherwise) {
-    std::vector<Point> points;
-    for (int row = 0; row < rows; ++row)
-        for (int col = 0; col < cols; ++col)
-            points.push_back(gridPoint(area, cols, rows, col, row));
-    std::sort(points.begin(), points.end(), [&](Point a, Point b) {
-        return std::hypot(a.x - want.x, a.y - want.y) < std::hypot(b.x - want.x, b.y - want.y);
-    });
-    for (const Point p : points)
-        if (fits(p))
-            return p;
-    return otherwise;
-}
-} // namespace
+// --- The line, and the grid it is laid out on
 
-Point View::routingGridPoint(int node, Point want) const {
-    // Where nodePlace() would leave it untouched, nothing is in its way.
-    auto fits = [&](Point p) {
-        bool found = false;
-        const Point at = nodePlace(node, p, &found);
-        return found && std::hypot(at.x - p.x, at.y - p.y) < 0.5f;
-    };
-    return nearestGridPoint(kGraph, kRoutingGridCols, kRoutingGridRows, want, fits, nodePlace(node, want));
+FxPanel::FxLine FxPanel::fxLine() const {
+    return line_.get(host_, [&] { return fx_.line(); });
 }
 
-// --- Model
-
-bool View::fxGraph() const {
-    return controller_.layout().fxGraphView;
+std::vector<int> FxPanel::fxChain() const {
+    return FxGraphModel::chain(fxLine());
 }
 
-bool View::fxNodeShown(int node) const {
-    if (node == kFxOutNode)
-        return true;
-    if (node < 0 || node >= kFxNodes)
-        return false;
-    if (node < kFxSlots)
-        return fxSlotType(node) != FxType::None;
-    if (const int sum = fxNodeSum(node); sum >= 0)
-        return value(paramIndex(sum, SumParam::Used)) >= 0.5;
-    return value(paramIndex(node - kFxSlots, SplitParam::Used)) >= 0.5;
+Color FxPanel::fxColor(int slot) const {
+    return fxTypeColor(fx_.slotType(slot));
 }
 
-std::vector<View::FxWireRef> View::fxWires() const {
-    std::vector<FxWireRef> wires;
-    for (int node = 0; node < kFxNodes; ++node) {
-        if (!fxNodeShown(node))
-            continue;
-        for (int input = 0; input < fxInputCount(node); ++input) {
-            const int port = fxPortOf(value(fxInputIndex(node, input, FxInputField::From)));
-            if (port < 0)
-                continue;
-            const int from = fxPortNode(port);
-            if (from >= 0 && !fxNodeShown(from))
-                continue;
-            // A split of two bands has no middle one.
-            if (fxPortBand(port) == 1 && std::lround(value(paramIndex(fxPortSplit(port), SplitParam::Bands))) < 3)
-                continue;
-            wires.push_back({node, input, port});
-        }
-    }
-    return wires;
+float FxPanel::fxCardSpan(int slot) const {
+    return fxFolded(slot) ? kFoldedFx : fxSpan(fx_.slotType(slot));
 }
 
-View::FxLine View::fxLine() const {
-    if (fxDerived_.line) // only kept while a scope goes on
-        return *fxDerived_.line;
-    FxLine line = fxLineOfWires();
-    if (derivedDepth_ > 0)
-        fxDerived_.line = line;
-    return line;
+bool FxPanel::fxShadow() const {
+    return fxChain().size() < static_cast<size_t>(kFxSlots);
 }
 
-View::FxLine View::fxLineOfWires() const {
-    const std::vector<FxWireRef> wires = fxWires();
-    // Where a port goes: the first node that takes it other than the output, else the output, else nowhere.
-    auto into = [&](int port) {
-        int out = -1;
-        for (const FxWireRef &w : wires)
-            if (w.port == port) {
-                if (w.node != kFxOutNode)
-                    return w.node;
-                out = kFxOutNode;
-            }
-        return out;
-    };
-    std::vector<bool> taken(kFxNodes, false);
-    // A band's effects, from its port on as far as effects take it; where it goes after them.
-    auto band = [&](int port, std::vector<int> &slots) {
-        for (int node = into(port); node >= 0 && node < kFxSlots && !taken[node]; node = into(port)) {
-            taken[node] = true;
-            slots.push_back(node);
-            port = fxSlotPort(node);
-        }
-        return into(port);
-    };
-    FxLine line;
-    int port = kFxPortIn;
-    for (int node = into(port); node >= 0 && node != kFxOutNode && !taken[node]; node = into(port)) {
-        if (node < kFxSlots) {
-            taken[node] = true;
-            line.push_back({node, {}, {}, false});
-            port = fxSlotPort(node);
-            continue;
-        }
-        if (!fxNodeSplit(node)) // a sum where the line goes on: not a line the grid draws
-            break;
-        taken[node] = true;
-        const int split = node - kFxSlots;
-        FxLineItem item{node, {}, {}, false};
-        item.three = splitThree(split);
-        const int high = band(fxBandPort(split, kHighBand), item.hi);
-        const int low = band(fxBandPort(split, kLowBand), item.lo);
-        const int mid = item.three ? band(fxBandPort(split, 1), item.mid) : high;
-        item.joined = high >= 0 && high == low && high == mid && fxNodeSum(high) >= 0 && !taken[high];
-        line.push_back(item);
-        if (!item.joined) // open: the line ends here
-            break;
-        taken[high] = true;
-        port = fxSumPort(fxNodeSum(high));
-    }
-    // The effects the wires leave out go at its end, by number, on the high band while a split is open.
-    const bool open = openSplit(line);
-    for (int slot = 0; slot < kFxSlots; ++slot)
-        if (!taken[slot] && fxSlotType(slot) != FxType::None) {
-            if (open)
-                line.back().hi.push_back(slot);
-            else
-                line.push_back({slot, {}, {}, false});
-        }
-    return line;
+float FxPanel::rowLength() const {
+    return rowLength_.get(host_, [&] { return fxRow(fxLine()).items.back() + (fxShadow() ? 1.0f : 0.0f); });
 }
 
-void View::writeFxLine(const FxLine &line) {
-    std::map<int, double> want;
-    std::array<bool, kFxSplits> used{}, joined{}, three{};
-    for (const FxLineItem &item : line)
-        if (fxNodeSplit(item.node)) {
-            used[item.node - kFxSlots] = true;
-            joined[item.node - kFxSlots] = item.joined;
-            three[item.node - kFxSlots] = item.three;
-        }
-    // Every wire goes, at full level, but for a join's bands, which keep theirs. A level reset loses its
-    // modulation: the grid shows no other wire's level.
-    std::vector<int> reset;
-    for (int node = 0; node < kFxNodes; ++node)
-        for (int input = 0; input < fxInputCount(node); ++input) {
-            want[fxInputIndex(node, input, FxInputField::From)] = 0.0;
-            const int sum = fxNodeSum(node);
-            if (sum >= 0 && joined[sum] && input < (three[sum] ? 3 : 2))
-                continue;
-            want[fxInputIndex(node, input, FxInputField::Level)] = table_[fxInputIndex(node, input, FxInputField::Level)].def;
-            reset.push_back(fxInputIndex(node, input, FxInputField::Level));
-        }
-    auto wire = [&](int node, int input, int port) {
-        want[fxInputIndex(node, input, FxInputField::From)] = fxPortValue(port);
-    };
-    int port = kFxPortIn;
-    for (const FxLineItem &item : line) {
-        if (item.node < kFxSlots) {
-            wire(item.node, 0, port);
-            port = fxSlotPort(item.node);
-            continue;
-        }
-        const int split = item.node - kFxSlots;
-        wire(item.node, 0, port);
-        for (int lane : item.lanes()) { // each band from its port through its effects into the join, or out
-            int band = fxBandPort(split, laneBand(lane));
-            for (int slot : item.band(lane)) {
-                wire(slot, 0, band);
-                band = fxSlotPort(slot);
-            }
-            wire(item.joined ? fxJoinNode(split) : kFxOutNode, laneJoinInput(lane), band);
-        }
-        port = item.joined ? fxSumPort(split) : -1; // open, the line's last: its bands go out
-    }
-    if (port >= 0)
-        wire(kFxOutNode, 0, port);
-    for (int split = 0; split < kFxSplits; ++split) {
-        want[paramIndex(split, SplitParam::Used)] = used[split] ? 1.0 : 0.0;
-        want[paramIndex(split, SplitParam::Bands)] = used[split] && three[split] ? 3.0 : 2.0;
-        want[paramIndex(split, SumParam::Used)] = joined[split] ? 1.0 : 0.0;
-        if (!joined[split]) // a join taken out starts again unsoloed
-            for (const SumParam f : {SumParam::SoloHigh, SumParam::SoloLow, SumParam::SoloMid})
-                want[paramIndex(split, f)] = 0.0;
-        else if (!three[split]) // and a middle band gone takes its solo with it
-            want[paramIndex(split, SumParam::SoloMid)] = 0.0;
-    }
-    // What modulated a level reset, or the crossover of a split no longer in use, goes.
-    for (const Assignment &m : assignments()) {
-        const int split = splitOf(m.target);
-        const bool crossover = split >= 0 && !used[split] &&
-                               (m.target == paramIndex(split, SplitParam::Low) ||
-                                m.target == paramIndex(split, SplitParam::High));
-        if (crossover || std::find(reset.begin(), reset.end(), m.target) != reset.end())
-            removeSlot(m.source, m.slot);
-    }
-    std::vector<std::pair<int, double>> changes;
-    for (const auto &[index, v] : want)
-        if (value(index) != v)
-            changes.push_back({index, v});
-    editMany(changes);
+float FxPanel::fxScroll() const {
+    return std::clamp(fxScroll_, 0.0f, std::max(rowLength() - kVisibleFx, 0.0f));
 }
 
-View::FxGridLayout View::fxGridLayout(const FxLine &line) {
+float FxPanel::graphLength() const {
+    return fxGraphScrollMost(fxGridLayout(fxLine())) + fxGraphArea().w;
+}
+
+float FxPanel::graphScroll() const {
+    return fxGraphScroll(fxGridLayout(fxLine()));
+}
+
+FxPanel::FxGridLayout FxPanel::fxGridLayout(const FxLine &line) {
     FxGridLayout grid;
     int col = 1; // IN takes the first column
     bool open = false;
@@ -463,18 +252,18 @@ View::FxGridLayout View::fxGridLayout(const FxLine &line) {
     return grid;
 }
 
-float View::fxGraphScrollMost(const FxGridLayout &grid) const {
+float FxPanel::fxGraphScrollMost(const FxGridLayout &grid) const {
     // As far as its narrowest box (beside the widest card) needs: picking a node, which may widen the box, never moves
     // the graph under the mouse, a box widened leaving a little room after OUT at the scroll's end instead.
     const float width = kFxGridLeft + static_cast<float>(grid.outCol) * kFxGridCol + kFxEndHalfW + 16.0f;
     return std::max(width - detail::fxGraphArea(1.5f).w, 0.0f);
 }
 
-float View::fxGraphScroll(const FxGridLayout &grid) const {
+float FxPanel::fxGraphScroll(const FxGridLayout &grid) const {
     return std::clamp(fxGraphScroll_, 0.0f, fxGraphScrollMost(grid));
 }
 
-void View::revealFxNode(int node) {
+void FxPanel::revealFxNode(int node) {
     const FxGridLayout grid = fxGridLayout(fxLine());
     const float scroll = fxGraphScroll(grid);
     const Rect area = fxGraphArea();
@@ -488,56 +277,56 @@ void View::revealFxNode(int node) {
         }
 }
 
-int View::fxHoveredNode() const {
+int FxPanel::fxHoveredNode() const {
     if (drag_.kind == DragKind::FxNodeMove) // not while one is held
         return -1;
-    return hover_ && (hover_->kind == Kind::FxNode || hover_->kind == Kind::FxNodeDelete ||
-                      hover_->kind == Kind::FxNodePower)
-               ? hover_->a
+    return hover() && (hover()->kind == Kind::FxNode || hover()->kind == Kind::FxNodeDelete ||
+                      hover()->kind == Kind::FxNodePower)
+               ? hover()->a
                : -1;
 }
 
-Point View::fxDeleteAt(int node, Point center) {
+Point FxPanel::fxDeleteAt(int node, Point center) {
     const Rect r = nodeRect(node, center); // at its box's upper right corner
     return {r.right() - 2.0f, r.y + 2.0f};
 }
 
-Point View::fxPowerAt(int node, Point center) {
+Point FxPanel::fxPowerAt(int node, Point center) {
     const Rect r = nodeRect(node, center); // at its box's upper left corner, mirroring the x
     return {r.x + 2.0f, r.y + 2.0f};
 }
 
-Rect View::fxInspector(int node) const {
-    return fxInspectorCard(node >= 0 && node < kFxSlots ? fxSpan(fxSlotType(node)) : 1.0f);
+Rect FxPanel::fxInspector(int node) const {
+    return fxInspectorCard(node >= 0 && node < kFxSlots ? fxSpan(fx_.slotType(node)) : 1.0f);
 }
 
-float View::fxInspectorSpan() const {
+float FxPanel::fxInspectorSpan() const {
     const int node = fxSelectedNode();
-    return node >= 0 && node < kFxSlots ? fxSpan(fxSlotType(node)) : 1.0f;
+    return node >= 0 && node < kFxSlots ? fxSpan(fx_.slotType(node)) : 1.0f;
 }
 
-Rect View::fxGraphArea() const {
+Rect FxPanel::fxGraphArea() const {
     return detail::fxGraphArea(fxInspectorSpan());
 }
 
-Rect View::fxGraphScrollTrack() const {
+Rect FxPanel::fxGraphScrollTrack() const {
     return detail::fxGraphScrollTrack(fxInspectorSpan());
 }
 
-int View::fxSelectedNode() const {
-    const int node = controller_.layout().fxSelected;
-    if (node >= 0 && node < kFxNodes && node != kFxOutNode && fxNodeShown(node))
+int FxPanel::fxSelectedNode() const {
+    const int node = controller().layout().fxSelected;
+    if (node >= 0 && node < kFxNodes && node != kFxOutNode && fx_.nodeShown(node))
         return node;
     const std::vector<int> chain = fxChain(); // none picked: the first effect, else the first split
     if (!chain.empty())
         return chain.front();
     for (int split = 0; split < kFxSplits; ++split)
-        if (fxNodeShown(fxSplitNode(split)))
+        if (fx_.nodeShown(fxSplitNode(split)))
             return fxSplitNode(split);
     return -1;
 }
 
-std::optional<Rect> View::fxCardOf(int slot) const {
+std::optional<Rect> FxPanel::cardOf(int slot) const {
     if (fxGraph())
         return fxSelectedNode() == slot ? std::optional(fxInspector(slot)) : std::nullopt;
     for (const FxRowCard &card : fxRowShown().cards)
@@ -552,238 +341,95 @@ std::optional<Rect> View::fxCardOf(int slot) const {
 
 // --- Editing
 
-void View::fxPlaceNew(int slot, int copyOf) {
-    FxLine line = fxLine();
-    // The line lists it at its end already, as an effect the wires leave out: it goes where it was asked for instead.
-    for (FxLineItem &item : line)
-        for (int lane : {1, 2, 3}) {
-            std::vector<int> &band = item.band(lane);
-            band.erase(std::remove(band.begin(), band.end(), slot), band.end());
-        }
-    line.erase(std::remove_if(line.begin(), line.end(), [slot](const FxLineItem &i) { return i.node == slot; }),
-               line.end());
-    // Into the band at `lane` of item `i`, at `at`, or on the main line at `i`.
-    auto put = [&](int i, int lane, int at) {
-        // A band asked for that the line no longer has (the list stayed open while an undo or a state load took
-        // the split away): at the line's end instead.
-        if (lane != 0 && (i < 0 || i >= static_cast<int>(line.size()) || !fxNodeSplit(line[i].node) ||
-                          (lane == 3 && !line[i].three) || lane < 0 || lane > 3)) {
-            lane = 0;
-            i = static_cast<int>(line.size()) - (openSplit(line) ? 1 : 0);
-        }
-        if (lane == 0) {
-            line.insert(line.begin() + std::clamp(i, 0, static_cast<int>(line.size())), FxLineItem{slot, {}, {}, false});
-            return;
-        }
-        std::vector<int> &band = line[i].band(lane);
-        band.insert(band.begin() + std::clamp(at, 0, static_cast<int>(band.size())), slot);
-    };
-    const bool open = openSplit(line);
-    const int last = static_cast<int>(line.size()) - 1;
-    if (const LinePlace was = copyOf >= 0 ? placeOf(line, copyOf) : LinePlace{}; was.item >= 0 && fxGraph()) {
-        put(was.lane == 0 ? was.item + 1 : was.item, was.lane, was.at + 1); // a copy right after its original
-    } else if (was.item >= 0) { // in the row, at the line's end, or its band's
-        if (was.lane == 0)
-            put(open ? last : last + 1, 0, 0);
-        else
-            put(was.item, was.lane, static_cast<int>(line[was.item].band(was.lane).size()));
-    } else if (fxSlot_.lane >= 0 && fxSlot_.item >= 0) { // a wire's middle
-        put(fxSlot_.item, fxSlot_.lane, fxSlot_.place);
-    } else if (fxSlot_.lane == 0 || (fxSlot_.lane > 0 && !open)) { // the main line's +
-        put(open ? last : last + 1, 0, 0);
-    } else if (fxSlot_.lane > 0) { // a band's +
-        put(last, fxSlot_.lane, static_cast<int>(line[last].band(fxSlot_.lane).size()));
-    } else if (const int selected = controller_.layout().fxSelected;
-               selected >= 0 && selected != slot && placeOf(line, selected).item >= 0) {
-        // After the node picked: an effect in its band or on the main line, a join on the main line, a split at the
-        // end of its shortest band (the highest of those as short).
-        const LinePlace at = placeOf(line, selected);
-        if (fxNodeSplit(selected)) {
-            const FxLineItem &item = line[at.item];
-            int lane = 1;
-            for (int l : item.lanes())
-                if (item.band(l).size() < item.band(lane).size())
-                    lane = l;
-            put(at.item, lane, static_cast<int>(item.band(lane).size()));
-        } else {
-            put(at.lane == 0 ? at.item + 1 : at.item, at.lane, at.at + 1);
-        }
-    } else if (open) { // none picked: at the end, on the high band while a split is open
-        put(last, 1, static_cast<int>(line[last].hi.size()));
-    } else {
-        put(last + 1, 0, 0);
-    }
-    writeFxLine(line);
-    controller_.layout().fxSelected = slot;
-    controller_.layoutChanged();
+void FxPanel::addEffect(FxType type, int copyOf) {
+    // Where the list was opened, after the node the graph shows, or a copy after its original; either view scrolls to
+    // show it.
+    const int slot = fx_.addEffect(type, copyOf, fxSlot_);
+    if (slot < 0)
+        return;
+    effectFilled(slot, copyOf);
     revealFxNode(slot);
     revealFxRow(slot);
 }
 
-void View::addSplit(int bands) {
-    FxLine line = fxLine();
-    // With its join right after it, its bands empty: where a wire's middle on the main line was clicked, else at
-    // the line's end.
-    const bool between = fxSlot_.lane == 0 && fxSlot_.item >= 0;
-    if (!between && openSplit(line))
-        return; // the main line has no + while a split is open (only an earlier patch leaves one so)
-    int split = -1;
-    for (int s = 0; s < kFxSplits && split < 0; ++s)
-        if (placeOf(line, fxSplitNode(s)).item < 0)
-            split = s;
-    if (split < 0) {
-        flash(trf(Str::MsgSplitsFull, {std::to_string(kFxSplits)}));
-        return;
-    }
-    const UndoScope step(controller_);
-    std::vector<std::pair<int, double>> changes; // a fresh split's crossovers
-    for (const SplitParam f : {SplitParam::Low, SplitParam::High})
-        changes.push_back({paramIndex(split, f), table_[paramIndex(split, f)].def});
-    for (int input = 0; input < 3; ++input) // and its join's band levels
-        changes.push_back({fxInputIndex(fxJoinNode(split), input, FxInputField::Level), 0.0}); // 0 dB
-    if (bands >= 3 && filterSlope(value(paramIndex(split, SplitParam::Slope))) == 0) // three bands have no 6 dB
-        changes.push_back({paramIndex(split, SplitParam::Slope), 1.0});
-    editMany(changes);
-    FxLineItem item{fxSplitNode(split), {}, {}, true};
-    item.three = bands >= 3;
-    line.insert(line.begin() + (between ? std::clamp(fxSlot_.item, 0, static_cast<int>(line.size()))
-                                        : static_cast<int>(line.size())),
-                item);
-    writeFxLine(line);
-    controller_.layout().fxSelected = fxSplitNode(split);
-    controller_.layoutChanged();
-    revealFxNode(fxSplitNode(split));
-    revealFxRow(fxSplitNode(split));
+// What the editor keeps of an effect slot that another effect now fills, or that empties: a shape editor left open on
+// its curve closes, and its card shows the band its original's does, or the first.
+void FxPanel::effectFilled(int slot, int copyOf) {
+    effectGone(slot);
+    fxBand_[slot] = copyOf >= 0 ? fxBand_[copyOf] : 0;
 }
 
-void View::removeFxNode(int node, int effects) {
+void FxPanel::effectGone(int slot) {
+    host_.shapeGone(kMaxSources + slot);
+}
+
+void FxPanel::removeEffect(int slot) {
+    fx_.removeEffect(slot);
+    effectGone(slot);
+}
+
+void FxPanel::clearFx() {
+    for (int slot : fx_.clear())
+        effectGone(slot);
+    fxScroll_ = 0.0f;
+    fxGraphScroll_ = 0.0f;
+}
+
+void FxPanel::addSplit(int bands) {
+    const int node = fx_.addSplit(bands, fxSlot_);
+    if (node < 0)
+        return;
+    revealFxNode(node);
+    revealFxRow(node);
+}
+
+void FxPanel::removeFxNode(int node, int effects) {
     if (node >= 0 && node < kFxSlots) {
         removeEffect(node);
         return;
     }
-    FxLine line = fxLine();
-    const LinePlace at = placeOf(line, node); // a join's is its split's: it goes with it
-    if (at.item < 0)
+    const std::optional<FxLineItem> split = fx_.itemOf(node); // a join's is its split's: it goes with it
+    if (!split)
         return;
-    const FxLineItem split = line[at.item];
-    std::vector<int> held; // its bands' effects: the high band's first (then a middle band's)
-    for (int lane : split.lanes())
-        for (int slot : split.band(lane))
-            held.push_back(slot);
-    if (!held.empty() && effects < 0) { // whether they stay is asked first
-        confirm_ = kConfirmSplitRemove;
-        confirmSplit_ = split.node - kFxSlots;
-        confirmEffects_ = held.size();
-        hover_.reset();
+    size_t held = 0; // its bands' effects
+    for (int lane : split->lanes())
+        held += split->band(lane).size();
+    if (held > 0 && effects < 0) { // whether they stay is asked first
+        confirmSplit_ = split->node - kFxSlots;
+        confirmEffects_ = held;
+        host_.askConfirm(*this, kConfirmSplitRemove);
         return;
     }
-    // A split, or its join: its bands' effects go on the main line in its place, or with it.
-    const UndoScope step(controller_);
-    line.erase(line.begin() + at.item);
-    if (effects != 1) {
-        std::vector<FxLineItem> kept;
-        for (int slot : held)
-            kept.push_back({slot, {}, {}, false});
-        line.insert(line.begin() + at.item, kept.begin(), kept.end());
-    }
-    writeFxLine(line);
-    if (effects == 1)
-        for (int slot : held) // removed, with their modulation
-            removeEffect(slot);
+    for (int slot : fx_.removeNode(node, effects == 1))
+        effectGone(slot);
 }
 
-std::vector<int> View::fxOtherBands(int slot) const {
-    const FxLine line = fxLine();
-    const LinePlace at = placeOf(line, slot);
-    std::vector<int> lanes;
-    if (at.item < 0 || at.lane == 0)
-        return lanes;
-    for (int lane : {2, 3, 1}) // low, middle, high
-        if (lane != at.lane && (lane != 3 || line[at.item].three))
-            lanes.push_back(lane);
-    return lanes;
+void FxPanel::setSplitBands(int split, int bands, int midTo) {
+    if (bands < 3 && midTo < 0)
+        if (const std::vector<int> mid = fx_.middleEffects(split); !mid.empty()) { // where they go is asked first
+            confirmSplit_ = split;
+            confirmEffects_ = mid.size();
+            host_.askConfirm(*this, kConfirmMidBand);
+            return;
+        }
+    for (int slot : fx_.setSplitBands(split, bands, midTo))
+        effectGone(slot);
 }
 
-void View::moveFxToBand(int slot, int lane) {
-    FxLine line = fxLine();
-    const LinePlace at = placeOf(line, slot);
-    if (at.item < 0 || at.lane == 0 || at.lane == lane || (lane == 3 && !line[at.item].three))
-        return;
-    const UndoScope step(controller_);
-    std::vector<int> &from = line[at.item].band(at.lane);
-    from.erase(from.begin() + at.at);
-    line[at.item].band(lane).push_back(slot);
-    writeFxLine(line);
-}
-
-bool View::splitThree(int split) const {
-    return split >= 0 && split < kFxSplits && std::lround(value(paramIndex(split, SplitParam::Bands))) >= 3;
-}
-
-void View::setSplitBands(int split, int bands, int midTo) {
-    FxLine line = fxLine();
-    const LinePlace at = placeOf(line, fxSplitNode(split));
-    if (at.item < 0)
-        return;
-    FxLineItem &item = line[at.item];
-    const bool three = bands >= 3;
-    if (three == item.three)
-        return;
-    if (!three && !item.mid.empty() && midTo < 0) { // where its effects go is asked first
-        confirm_ = kConfirmMidBand;
-        confirmSplit_ = split;
-        confirmEffects_ = item.mid.size();
-        hover_.reset();
-        return;
-    }
-    const UndoScope step(controller_);
-    item.three = three;
-    if (three) {
-        // The high crossover at its 2500 Hz, or two octaves above the low one where that is higher (as high as it
-        // goes), so the low crossover's own 250 Hz gives 250 and 2500; the middle band in at 0 dB, shown.
-        const double low =
-            splitCrossovers(value(paramIndex(split, SplitParam::Low)), value(paramIndex(split, SplitParam::High)))[0];
-        const double high =
-            std::max(table_[paramIndex(split, SplitParam::High)].def, normFromCutoff(std::min(4.0 * low, kMaxCutoff)));
-        std::vector<std::pair<int, double>> changes{
-            {paramIndex(split, SplitParam::High), high},
-            {fxInputIndex(fxJoinNode(split), laneJoinInput(3), FxInputField::Level), 0.0}};
-        // Its slope kept, but 6 dB, which three bands don't have: 12 dB, the nearest they do.
-        if (filterSlope(value(paramIndex(split, SplitParam::Slope))) == 0)
-            changes.push_back({paramIndex(split, SplitParam::Slope), 1.0});
-        editMany(changes);
-        writeFxLine(line);
-        showSplitBand(split, tabOfLane(3));
-        return;
-    }
-    const std::vector<int> mid = std::move(item.mid);
-    item.mid.clear();
-    if (midTo == 2)
-        item.lo.insert(item.lo.end(), mid.begin(), mid.end());
-    else if (midTo == 1)
-        item.hi.insert(item.hi.begin(), mid.begin(), mid.end());
-    writeFxLine(line);
-    if (midTo != 1 && midTo != 2)
-        for (int slot : mid) // removed, with their modulation
-            removeEffect(slot);
-    if (splitLane(split) == 2 && controller_.layout().splitBand[split] == tabOfLane(3)) // the middle one was shown
-        showSplitBand(split, midTo == 1 ? tabOfLane(1) : tabOfLane(2));
-}
-
-void View::setFxGraph(bool on) {
+void FxPanel::setFxGraph(bool on) {
     // Two views of the same line: only what shows changes.
     if (on == fxGraph())
         return;
-    controller_.layout().fxGraphView = on;
-    controller_.layoutChanged();
+    controller().layout().fxGraphView = on;
+    controller().layoutChanged();
     fxMenuOpen_ = false;
     fxSlot_ = {};
-    hover_.reset();
+    host_.resetHover();
 }
 
 // --- Places
 
-View::FxPlaces View::fxPlacesOf(const FxGridLayout &grid, float scroll) const {
+FxPanel::FxPlaces FxPanel::fxPlacesOf(const FxGridLayout &grid, float scroll) const {
     FxPlaces at;
     for (const auto &place : grid.nodes)
         at.node[place.node] = fxGridCell(place.col, place.row, scroll);
@@ -794,7 +440,7 @@ View::FxPlaces View::fxPlacesOf(const FxGridLayout &grid, float scroll) const {
     return at;
 }
 
-View::FxPlaces View::fxPlacesShown(const FxGridLayout &grid, float scroll) const {
+FxPanel::FxPlaces FxPanel::fxPlacesShown(const FxGridLayout &grid, float scroll) const {
     if (!fxGlide_.on)
         return fxPlacesOf(grid, scroll);
     // What is being dragged shows its placeholder where it would land at once, as a node there would be: the wires
@@ -815,15 +461,15 @@ View::FxPlaces View::fxPlacesShown(const FxGridLayout &grid, float scroll) const
     return at;
 }
 
-View::FxLine View::fxLineShown() const {
+FxPanel::FxLine FxPanel::fxLineShown() const {
     if ((drag_.kind == DragKind::FxNodeMove || drag_.kind == DragKind::FxMove) && drag_.moved && fxDrag_)
-        return fxLineWith(fxDrag_->rest, fxDrag_->item, fxDrag_->at);
+        return FxGraphModel::lineWith(fxDrag_->rest, fxDrag_->item, fxDrag_->at);
     return fxLine();
 }
 
 // --- Widgets
 
-void View::fxGraphWidgets(std::vector<Widget> &list) const {
+void FxPanel::fxGraphWidgets(std::vector<Widget> &list) const {
     const Rect area = fxGraphArea(); // the graph scrolls inside its area
     auto add = [&list, area](Kind kind, Rect rect, int param = -1, int a = -1, int b = -1) {
         Widget w;
@@ -870,17 +516,21 @@ void View::fxGraphWidgets(std::vector<Widget> &list) const {
         }
 }
 
-bool View::fxWireHit(const Widget &w, Point p) const {
+std::optional<bool> FxPanel::hits(const Widget &w, Point p) const {
+    if (w.kind != Kind::FxWire)
+        return std::nullopt;
+    return w.rect.contains(p) && fxWireHit(w, p);
+}
+
+bool FxPanel::fxWireHit(const Widget &w, Point p) const {
     // The wires where they sit on their cells, worked out once while a scope goes on (each FxWire widget the mouse
     // is over asks).
-    std::optional<std::vector<FxGraphWire>> fresh;
-    std::optional<std::vector<FxGraphWire>> &kept = derivedDepth_ > 0 ? fxDerived_.hitWires : fresh;
-    if (!kept) {
+    const std::vector<FxGraphWire> kept = hitWires_.get(host_, [&] {
         const FxLine line = fxLine();
         const FxGridLayout grid = fxGridLayout(line);
-        kept = fxGraphWires(line, fxPlacesOf(grid, fxGraphScroll(grid)));
-    }
-    for (const FxGraphWire &wire : *kept)
+        return fxGraphWires(line, fxPlacesOf(grid, fxGraphScroll(grid)));
+    });
+    for (const FxGraphWire &wire : kept)
         if (wire.at.lane == w.a && wire.at.item * kFxGapStride + wire.at.place == w.b) {
             const std::vector<Point> &points = wire.path;
             for (size_t k = 1; k < points.size(); ++k)
@@ -891,17 +541,7 @@ bool View::fxWireHit(const Widget &w, Point p) const {
     return false;
 }
 
-bool View::fxBandSoloedOut(const FxLineItem &item, int lane) const {
-    if (!fxNodeSplit(item.node) || !item.joined)
-        return false;
-    const int sum = item.node - kFxSlots; // a split's join is the sum of its number
-    bool any = false;
-    for (int l : item.lanes())
-        any = any || value(paramIndex(sum, laneSolo(l))) >= 0.5;
-    return any && value(paramIndex(sum, laneSolo(lane))) < 0.5;
-}
-
-std::vector<View::FxGraphWire> View::fxGraphWires(const FxLine &line, const FxPlaces &places) const {
+std::vector<FxPanel::FxGraphWire> FxPanel::fxGraphWires(const FxLine &line, const FxPlaces &places) const {
     // The main line's wires grey, a split's bands' in their colors all the way into the join (or out, left open).
     const Color mainLine = kDim;
     struct Tail {
@@ -945,7 +585,7 @@ std::vector<View::FxGraphWire> View::fxGraphWires(const FxLine &line, const FxPl
             for (size_t k = 0; k < effects.size(); ++k) {
                 const Point e = at[effects[k]];
                 wire(bands[lane], {e.x - kFxNodeR, e.y}, true, {lane, i, static_cast<int>(k)});
-                wires.back().faint = fxBandSoloedOut(item, lane);
+                wires.back().faint = fx_.bandSoloedOut(item, lane);
                 bands[lane] = {{e.x + kFxNodeR, e.y}, laneColor(lane), fxSlotPort(effects[k])};
             }
         }
@@ -957,7 +597,7 @@ std::vector<View::FxGraphWire> View::fxGraphWires(const FxLine &line, const FxPl
                 const float row = static_cast<float>(laneRow(lane));
                 const Point into{j.x - kFxJoinHalfW, j.y - row * input};
                 const FxSlotAt end{lane, i, static_cast<int>(effects.size())};
-                const bool faint = fxBandSoloedOut(item, lane);
+                const bool faint = fx_.bandSoloedOut(item, lane);
                 if (!effects.empty()) {
                     wire(bands[lane], into, true, end);
                     wires.back().faint = faint;
@@ -999,15 +639,15 @@ std::vector<View::FxGraphWire> View::fxGraphWires(const FxLine &line, const FxPl
     return wires;
 }
 
-float View::fxGlow(int port) const {
+float FxPanel::fxGlow(int port) const {
     return port >= 0 && port < kFxPorts ? fxGlow_[port] : 0.0f;
 }
 
-// How strongly a port of the effects graph glows as of the last snapshot, which fxGlow_ follows (see View::follow()).
-float View::fxGlowTarget(int port) const {
-    if (port < 0 || port >= kFxPorts || !(telemetry_.age < 0.5f))
+// How strongly a port of the effects graph glows as of snapshot `t`, which fxGlow_ follows (see follow()).
+float FxPanel::fxGlowTarget(const Telemetry &t, int port) {
+    if (port < 0 || port >= kFxPorts || !(t.age < 0.5f))
         return 0.0f;
-    const float level = telemetry_.fxPortLevels[port];
+    const float level = t.fxPortLevels[port];
     if (!(level > 0.0f))
         return 0.0f;
     return std::clamp((20.0f * std::log10(level) - kFxGlowFloorDb) / -kFxGlowFloorDb, 0.0f, 1.0f);
@@ -1015,7 +655,7 @@ float View::fxGlowTarget(int port) const {
 
 // --- A split's controls
 
-Rect View::splitDisplay(Rect card, bool three) {
+Rect FxPanel::splitDisplay(Rect card, bool three) {
     return {card.x + 14.0f, card.y + 66.0f, card.w - 28.0f, three ? 70.0f : 104.0f};
 }
 
@@ -1046,15 +686,15 @@ int bandLane(int band) {
 }
 } // namespace
 
-double View::splitBandGain(int split, int band) const {
+double FxPanel::splitBandGain(int split, int band) const {
     // As far along as its knob is, from silence to 0 dB: as a gain, half the knob would leave a curve at 3 % of its
     // height.
     const double db = value(fxInputIndex(fxJoinNode(split), laneJoinInput(bandLane(band)), FxInputField::Level));
     return std::clamp((db - kSumFloorDb) / -kSumFloorDb, 0.0, 1.0);
 }
 
-Point View::splitHandle(int split, Rect display, int which) const {
-    const bool three = splitThree(split);
+Point FxPanel::splitHandle(int split, Rect display, int which) const {
+    const bool three = fx_.splitThree(split);
     const std::array<double, 2> crossovers =
         splitCrossovers(value(paramIndex(split, SplitParam::Low)), value(paramIndex(split, SplitParam::High)));
     const double hz = crossovers[which == 1 && three ? 1 : 0];
@@ -1069,31 +709,7 @@ Point View::splitHandle(int split, Rect display, int which) const {
     return {std::clamp(x, display.x, display.right()), responseY(display, at)};
 }
 
-int View::splitLane(int split) const {
-    const int tab = controller_.layout().splitBand[split];
-    return tab == 2 && !splitThree(split) ? 2 : laneOfTab(tab);
-}
-
-void View::showSplitBand(int split, int band) {
-    if (controller_.layout().splitBand[split] == band)
-        return;
-    controller_.layout().splitBand[split] = band;
-    controller_.layoutChanged();
-}
-
-bool View::splitFolded(int split) const {
-    return (controller_.layout().splitsFolded >> split) & 1u;
-}
-
-void View::setSplitFolded(int split, bool folded) {
-    uint32_t &bits = controller_.layout().splitsFolded;
-    const uint32_t before = bits;
-    bits = folded ? bits | (1u << split) : bits & ~(1u << split);
-    if (bits != before)
-        controller_.layoutChanged();
-}
-
-std::optional<Rect> View::splitCardOf(int split) const {
+std::optional<Rect> FxPanel::splitCardOf(int split) const {
     if (fxGraph()) {
         const int node = fxSelectedNode();
         if (node == fxSplitNode(split) || node == fxJoinNode(split))
@@ -1109,7 +725,7 @@ std::optional<Rect> View::splitCardOf(int split) const {
     return std::nullopt;
 }
 
-void View::splitControlWidgets(std::vector<Widget> &list, int split, Rect card, bool row) const {
+void FxPanel::splitControlWidgets(std::vector<Widget> &list, int split, Rect card, bool row) const {
     auto add = [&list](Kind kind, Rect rect, int param = -1, int a = -1, int b = -1) {
         Widget w;
         w.kind = kind;
@@ -1126,7 +742,7 @@ void View::splitControlWidgets(std::vector<Widget> &list, int split, Rect card, 
         add(Kind::FxBoxFold, cardFold(card, false), -1, split);
         add(Kind::FxNodeRemove, cardClose(card), -1, fxSplitNode(split));
     }
-    const bool three = splitThree(split);
+    const bool three = fx_.splitThree(split);
     const std::vector<int> tabs = three ? std::vector<int>{0, 2, 1} : std::vector<int>{0, 1};
     for (int tab : tabs)
         add(Kind::SplitBand, splitTab(card, tabPosition(tab, three), static_cast<int>(tabs.size())), -1, split, tab);
@@ -1188,21 +804,21 @@ void View::splitControlWidgets(std::vector<Widget> &list, int split, Rect card, 
 
 // --- The row
 
-float View::fxBoxSpan(const FxLineItem &item) const {
+float FxPanel::fxBoxSpan(const FxLineItem &item) const {
     const int split = item.node - kFxSlots;
-    if (splitFolded(split))
+    if (fx_.splitFolded(split))
         return kFoldedFx;
     float span = 2.0f * kFxBoxEdge + 1.0f + kFxBoxAddSpan;
-    for (int slot : item.band(splitLane(split)))
+    for (int slot : item.band(fx_.splitLane(split)))
         span += fxCardSpan(slot);
     return span;
 }
 
-float View::boxColumn(const FxRowBox &box) {
+float FxPanel::boxColumn(const FxRowBox &box) {
     return box.place + (box.folded ? 0.0f : kFxBoxEdge);
 }
 
-View::FxRow View::fxRow(const FxLine &line) const {
+FxPanel::FxRow FxPanel::fxRow(const FxLine &line) const {
     FxRow row;
     float place = 0.0f;
     for (int i = 0; i < static_cast<int>(line.size()); ++i) {
@@ -1215,7 +831,7 @@ View::FxRow View::fxRow(const FxLine &line) const {
             continue;
         }
         const int split = item.node - kFxSlots;
-        FxRowBox box{split, i, splitLane(split), place, fxBoxSpan(item), splitFolded(split), 0.0f};
+        FxRowBox box{split, i, fx_.splitLane(split), place, fxBoxSpan(item), fx_.splitFolded(split), 0.0f};
         if (!box.folded) { // the band it shows, after its controls
             float at = boxColumn(box) + 1.0f;
             const std::vector<int> &band = item.band(box.lane);
@@ -1233,16 +849,11 @@ View::FxRow View::fxRow(const FxLine &line) const {
     return row;
 }
 
-View::FxRow View::fxRowShown() const {
-    if (fxRowDerived_) // only kept while a scope goes on
-        return *fxRowDerived_;
-    FxRow row = fxRowShownOf(fxLineShown());
-    if (derivedDepth_ > 0)
-        fxRowDerived_ = row;
-    return row;
+FxPanel::FxRow FxPanel::fxRowShown() const {
+    return rowShown_.get(host_, [&] { return fxRowShownOf(fxLineShown()); });
 }
 
-View::FxRow View::fxRowShownOf(const FxLine &line) const {
+FxPanel::FxRow FxPanel::fxRowShownOf(const FxLine &line) const {
     FxRow row = fxRow(line);
     const FxRowGlide &g = fxRowGlide_;
     if (!g.on)
@@ -1277,7 +888,7 @@ View::FxRow View::fxRowShownOf(const FxLine &line) const {
     return row;
 }
 
-void View::startFxRowGlide() {
+void FxPanel::startFxRowGlide() {
     if (fxRowGlide_.on)
         return;
     const FxRow row = fxRow(fxLineShown());
@@ -1296,7 +907,7 @@ void View::startFxRowGlide() {
     fxRowGlide_ = g;
 }
 
-bool View::glideFxRow() {
+bool FxPanel::glideFxRow() {
     FxRowGlide &g = fxRowGlide_;
     if (!g.on)
         return false;
@@ -1339,7 +950,7 @@ bool View::glideFxRow() {
     return moving;
 }
 
-void View::revealFxRow(int node) {
+void FxPanel::revealFxRow(int node) {
     const FxLine line = fxLine();
     const FxRow row = fxRow(line);
     float place = -1.0f, span = 1.0f;
@@ -1362,7 +973,7 @@ void View::revealFxRow(int node) {
                                                     : first;
 }
 
-void View::startRowDrag(int node) {
+void FxPanel::startRowDrag(int node) {
     fxDrag_.reset();
     FxLine line = fxLine();
     const FxRow row = fxRow(line);
@@ -1395,7 +1006,7 @@ void View::startRowDrag(int node) {
     fxDrag_ = std::move(d);
 }
 
-void View::retargetRowDrag(Point mouse) {
+void FxPanel::retargetRowDrag(Point mouse) {
     if (!fxDrag_)
         return;
     FxDrag &d = *fxDrag_;
@@ -1407,7 +1018,7 @@ void View::retargetRowDrag(Point mouse) {
             if (box.folded)
                 continue;
             const Rect column = fxCard(boxColumn(box) - fxScroll(), 1.0f);
-            const bool three = splitThree(box.split);
+            const bool three = fx_.splitThree(box.split);
             for (int tab = 0; tab < (three ? 3 : 2); ++tab) {
                 if (!splitTab(column, tabPosition(tab, three), three ? 3 : 2).contains(mouse))
                     continue;
@@ -1504,7 +1115,7 @@ void View::retargetRowDrag(Point mouse) {
     d.at = {0, to, 0};
 }
 
-void View::dropRowDrag() {
+void FxPanel::dropRowDrag() {
     if (!fxDrag_)
         return;
     const FxDrag d = std::move(*fxDrag_);
@@ -1512,82 +1123,21 @@ void View::dropRowDrag() {
     const bool stays = d.at.lane == d.was.lane && d.at.item == d.was.item && d.at.place == d.was.place;
     if (!drag_.moved || (stays && !d.copy)) // a copy lands even beside its original
         return;
-    const UndoScope step(controller_);
-    writeFxLine(fxLineWith(d.rest, d.item, d.at));
+    const UndoScope step(controller());
+    fx_.writeLine(FxGraphModel::lineWith(d.rest, d.item, d.at));
 }
 
-std::optional<View::FxLineItem> View::copyFxItem(const FxLineItem &item, std::map<int, int> &copies) {
-    const bool split = fxNodeSplit(item.node);
-    if (split && !item.joined) // a split left open ends the line, which has room for one
-        return std::nullopt;
-    std::vector<int> effects; // what it holds, the high band's first
-    if (!split)
-        effects.push_back(item.node);
-    for (int lane : split ? item.lanes() : std::span<const int>())
-        effects.insert(effects.end(), item.band(lane).begin(), item.band(lane).end());
-    size_t free = 0;
-    for (int s = 0; s < kFxSlots; ++s)
-        free += fxSlotType(s) == FxType::None;
-    if (free < effects.size()) {
-        flash(trf(Str::MsgChainFull, {std::to_string(kFxSlots)}));
-        return std::nullopt;
-    }
-    int to = -1; // a split the line doesn't use
-    if (split) {
-        const FxLine line = fxLine();
-        for (int s = 0; s < kFxSplits && to < 0; ++s)
-            if (placeOf(line, fxSplitNode(s)).item < 0)
-                to = s;
-        if (to < 0) {
-            flash(trf(Str::MsgSplitsFull, {std::to_string(kFxSplits)}));
-            return std::nullopt;
-        }
-    }
-    for (int slot : effects) {
-        const int copy = freeFxSlot();
-        fillEffect(copy, fxSlotType(slot), slot);
-        setFolded(true, copy, fxFolded(slot));
-        copies[slot] = copy;
-    }
-    if (!split)
-        return FxLineItem{copies[item.node], {}, {}, false};
-    // Its crossovers and slope, and its join's band levels and solos (which the line keeps for a joined split).
-    const int from = item.node - kFxSlots;
-    std::vector<std::pair<int, double>> changes;
-    for (const SplitParam f : {SplitParam::Low, SplitParam::High, SplitParam::Slope})
-        changes.push_back({paramIndex(to, f), value(paramIndex(from, f))});
-    for (const SumParam f : {SumParam::SoloHigh, SumParam::SoloLow, SumParam::SoloMid})
-        changes.push_back({paramIndex(to, f), value(paramIndex(from, f))});
-    for (int input = 0; input < 3; ++input)
-        changes.push_back({fxInputIndex(fxJoinNode(to), input, FxInputField::Level),
-                           value(fxInputIndex(fxJoinNode(from), input, FxInputField::Level))});
-    editMany(changes);
-    controller_.layout().splitBand[to] = controller_.layout().splitBand[from];
-    controller_.layoutChanged();
-    setSplitFolded(to, splitFolded(from));
-    copies[item.node] = fxSplitNode(to);
-    copies[fxJoinNode(from)] = fxJoinNode(to);
-    FxLineItem copy = item;
-    copy.node = fxSplitNode(to);
-    for (int lane : copy.lanes())
-        for (int &slot : copy.band(lane))
-            slot = copies[slot];
+std::optional<FxPanel::FxLineItem> FxPanel::copyFxItem(const FxLineItem &item, std::map<int, int> &copies) {
+    const std::optional<FxLineItem> copy = fx_.copyItem(item, copies);
+    for (const auto &[slot, to] : copies)
+        if (slot < kFxSlots)
+            effectFilled(to, slot);
     return copy;
 }
 
 // --- Dragging nodes
 
-View::FxLine View::fxLineWith(FxLine line, const FxLineItem &item, FxSlotAt at) {
-    if (at.lane == 0) {
-        line.insert(line.begin() + std::clamp(at.item, 0, static_cast<int>(line.size())), item);
-    } else if (at.item >= 0 && at.item < static_cast<int>(line.size())) {
-        std::vector<int> &band = line[at.item].band(at.lane);
-        band.insert(band.begin() + std::clamp(at.place, 0, static_cast<int>(band.size())), item.node);
-    }
-    return line;
-}
-
-void View::startFxDrag(int node) {
+void FxPanel::startFxDrag(int node) {
     fxDrag_.reset();
     FxLine line = fxLine();
     const int taken = fxNodeSum(node) >= 0 ? fxSplitNode(fxNodeSum(node)) : node; // a join is carried by its split
@@ -1627,7 +1177,7 @@ void View::startFxDrag(int node) {
     fxDrag_ = std::move(d);
 }
 
-void View::retargetFxDrag(Point mouse) {
+void FxPanel::retargetFxDrag(Point mouse) {
     if (!fxDrag_)
         return;
     FxDrag &d = *fxDrag_;
@@ -1779,7 +1329,7 @@ void View::retargetFxDrag(Point mouse) {
         d.at = over;
 }
 
-void View::dropFxNode(bool take) {
+void FxPanel::dropFxNode(bool take) {
     if (!fxDrag_)
         return;
     const FxDrag d = std::move(*fxDrag_);
@@ -1791,15 +1341,15 @@ void View::dropFxNode(bool take) {
     fxGlide_.on = true;
     const bool stays = d.at.lane == d.was.lane && d.at.item == d.was.item && d.at.place == d.was.place;
     if (take && (!stays || d.copy)) { // a copy lands even beside its original
-        const UndoScope step(controller_);
-        writeFxLine(fxLineWith(d.rest, d.item, d.at));
+        const UndoScope step(controller());
+        fx_.writeLine(FxGraphModel::lineWith(d.rest, d.item, d.at));
     }
     for (const auto &p : fxGridLayout(fxLine()).nodes)
         if (std::find(d.nodes.begin(), d.nodes.end(), p.node) != d.nodes.end())
             fxGlide_.node[p.node] = {static_cast<float>(p.col), static_cast<float>(p.row)};
 }
 
-bool View::glideFxGraph() {
+bool FxPanel::glideFxGraph() {
     if (!fxGlide_.on)
         return false;
     const bool dragging = drag_.kind == DragKind::FxNodeMove && drag_.moved && fxDrag_.has_value();
@@ -1847,15 +1397,15 @@ bool View::glideFxGraph() {
 
 // --- Mouse
 
-bool View::fxGraphPress(const Widget &w, Point p) {
+bool FxPanel::fxGraphPress(const Widget &w, Point p) {
     switch (w.kind) {
     case Kind::FxMode:
         setFxGraph(w.b == 1);
         return true;
     case Kind::FxNode: // picked; dragged, onto another place
-        controller_.layout().fxSelected = w.a;
-        controller_.layoutChanged();
-        drag_.kind = DragKind::FxNodeMove;
+        controller().layout().fxSelected = w.a;
+        controller().layoutChanged();
+        startDrag(DragKind::FxNodeMove, w, p);
         startFxDrag(w.a);
         return true;
     case Kind::FxWire: // only its + takes a click
@@ -1868,14 +1418,14 @@ bool View::fxGraphPress(const Widget &w, Point p) {
         return true;
     case Kind::SplitBand:
     case Kind::SplitArea:
-        showSplitBand(w.a, w.b);
+        fx_.showSplitBand(w.a, w.b);
         return true;
     case Kind::FxBoxFold:
-        setSplitFolded(w.a, !splitFolded(w.a));
-        hover_.reset();
+        fx_.setSplitFolded(w.a, !fx_.splitFolded(w.a));
+        host_.resetHover();
         return true;
     case Kind::FxBoxGrip: // dragged along the row with its bands; a click does nothing else
-        drag_.kind = DragKind::FxMove;
+        startDrag(DragKind::FxMove, w, p);
         drag_.scrollStart = fxScroll();
         startRowDrag(w.a);
         return true;
@@ -1885,22 +1435,24 @@ bool View::fxGraphPress(const Widget &w, Point p) {
                              ? static_cast<int>(line[w.b].band(w.a).size())
                              : 0;
         fxSlot_ = {w.a, w.b, size};
-        fxMenuAt_ = menuAtMouse(p, fxMenu({0.0f, 0.0f}));
+        fxMenuAt_ = menuAt(p, fxMenu({0.0f, 0.0f}), host_.height());
         fxMenuOpen_ = true;
-        hover_.reset();
+        host_.resetHover();
         return true;
     }
     case Kind::FxSlot: // the list of effects beside it, with a split or a join after them
         fxSlot_ = {w.a, -1, 0};
-        fxMenuAt_ = menuAtMouse({w.rect.center().x + 26.0f, w.rect.center().y - 44.0f}, fxMenu({0.0f, 0.0f}, true));
+        fxMenuAt_ = menuAt({w.rect.center().x + 26.0f, w.rect.center().y - 44.0f}, fxMenu({0.0f, 0.0f}, true),
+                           host_.height());
         fxMenuOpen_ = true;
-        hover_.reset();
+        host_.resetHover();
         return true;
     case Kind::FxGap: // the same beside it, a split after the effects only on the main line
         fxSlot_ = {w.a, w.b / kFxGapStride, w.b % kFxGapStride};
-        fxMenuAt_ = menuAtMouse({w.rect.center().x + 26.0f, w.rect.center().y - 44.0f}, fxMenu({0.0f, 0.0f}, w.a == 0));
+        fxMenuAt_ = menuAt({w.rect.center().x + 26.0f, w.rect.center().y - 44.0f}, fxMenu({0.0f, 0.0f}, w.a == 0),
+                           host_.height());
         fxMenuOpen_ = true;
-        hover_.reset();
+        host_.resetHover();
         return true;
     case Kind::FxAddNode: // a split, with its join
         fxMenuOpen_ = false;
@@ -1910,15 +1462,15 @@ bool View::fxGraphPress(const Widget &w, Point p) {
     case Kind::FxNodeRemove:
     case Kind::FxNodeDelete:
         removeFxNode(w.a);
-        hover_.reset();
+        host_.resetHover();
         return true;
     case Kind::FxNodePower: // the effect on or off; the mouse stays over its node
-        flipSwitch(w.param);
+        edit(w.param, value(w.param) >= 0.5 ? 0.0 : 1.0);
         return true;
     case Kind::SplitPoint:
-        drag_.kind = DragKind::SplitPoint;
+        startDrag(DragKind::SplitPoint, w, p);
         drag_.startValue = value(w.param);
-        controller_.beginEdit(w.param);
+        controller().beginEdit(w.param);
         fxGraphDrag(p);
         return true;
     default:
@@ -1926,7 +1478,7 @@ bool View::fxGraphPress(const Widget &w, Point p) {
     }
 }
 
-void View::fxGraphDrag(Point p) {
+void FxPanel::fxGraphDrag(Point p) {
     if (drag_.kind == DragKind::FxNodeMove) {
         if (drag_.moved && fxDrag_) {
             fxGlide_.on = true; // the others make room for it, gliding
@@ -1939,13 +1491,13 @@ void View::fxGraphDrag(Point p) {
     const std::optional<Rect> card = splitCardOf(drag_.widget.a);
     if (!card)
         return;
-    const Rect display = splitDisplay(*card, splitThree(drag_.widget.a));
-    controller_.setValue(drag_.widget.param, std::clamp((p.x - display.x) / display.w, 0.0f, 1.0f));
+    const Rect display = splitDisplay(*card, fx_.splitThree(drag_.widget.a));
+    controller().setValue(drag_.widget.param, std::clamp((p.x - display.x) / display.w, 0.0f, 1.0f));
 }
 
 // --- Painting
 
-void View::paintFxGraph(Canvas &c) {
+void FxPanel::paintFxGraph(Canvas &c) {
     const Rect area = fxGraphArea();
     c.fillRect(area, kDisplayColor, kRadiusCard);
     const FxLine line = fxLineShown();
@@ -1958,10 +1510,10 @@ void View::paintFxGraph(Canvas &c) {
         return dragging && std::find(fxDrag_->nodes.begin(), fxDrag_->nodes.end(), node) != fxDrag_->nodes.end();
     };
     auto effectColor = [&](int slot) {
-        return value(paramIndex(slot, FxParam::Enabled)) >= 0.5 ? fxTypeColor(fxSlotType(slot)) : kFaint;
+        return value(paramIndex(slot, FxParam::Enabled)) >= 0.5 ? fxTypeColor(fx_.slotType(slot)) : kFaint;
     };
     c.pushClip(area);
-    paintFxBackdrop(c, area, at.out);
+    host_.paintBackdrop(c, area, at.out);
     // The grid's places, faintly: a dot where a node can sit.
     for (int col = 1; col < grid.outCol; ++col)
         for (int row = -1; row <= 1; ++row)
@@ -1998,15 +1550,15 @@ void View::paintFxGraph(Canvas &c) {
         const int b = w.at.item * kFxGapStride + w.at.place;
         const bool listed = fxMenuOpen_ && fxSlot_.lane == w.at.lane && fxSlot_.item == w.at.item &&
                             fxSlot_.place == w.at.place;
-        const bool hot = hover_ && (hover_->kind == Kind::FxGap || hover_->kind == Kind::FxWire) &&
-                         hover_->a == w.at.lane && hover_->b == b;
+        const bool hot = hover() && (hover()->kind == Kind::FxGap || hover()->kind == Kind::FxWire) &&
+                         hover()->a == w.at.lane && hover()->b == b;
         // After a split's band's last node (or on an empty band) it shows always, faint until the mouse is on it; on
         // the other wires only while the mouse is on its wire.
         const bool bandEnd = w.at.lane > 0 && w.at.item < static_cast<int>(line.size()) &&
                              w.at.place == static_cast<int>(line[w.at.item].band(w.at.lane).size());
         if (!listed && !hot && !bandEnd)
             continue;
-        const bool onPlus = hover_ && hover_->kind == Kind::FxGap && hover_->a == w.at.lane && hover_->b == b;
+        const bool onPlus = hover() && hover()->kind == Kind::FxGap && hover()->a == w.at.lane && hover()->b == b;
         const Point m = w.middle;
         // In its wire's color: grey on the main line, a band's color on a band. Faint until the mouse is on it (or its
         // list is open).
@@ -2025,7 +1577,7 @@ void View::paintFxGraph(Canvas &c) {
         if (fxNodeSplit(item.node)) {
             const Point split = at.node[item.node];
             for (int lane : item.lanes()) {
-                const float heard = fxBandSoloedOut(item, lane) ? kSoloedOutAlpha : 1.0f;
+                const float heard = fx_.bandSoloedOut(item, lane) ? kSoloedOutAlpha : 1.0f;
                 for (int slot : item.band(lane))
                     soloedOut[slot] = heard < 1.0f;
                 // The high band's name just over its wire and the low band's just under it, where they level out on
@@ -2062,7 +1614,7 @@ void View::paintFxGraph(Canvas &c) {
         if (fill < 0.0f)
             fill = alpha;
         const bool isSelected = node == selected;
-        const bool hot = !dragging && hover_ && hover_->kind == Kind::FxNode && hover_->a == node;
+        const bool hot = !dragging && hover() && hover()->kind == Kind::FxNode && hover()->a == node;
         const float width = hot ? 2.4f : 1.6f;
         if (ghost) {
             c.strokeRect(nodeRect(node, center), kFaint, 1.3f, kRadiusControl, true);
@@ -2089,13 +1641,13 @@ void View::paintFxGraph(Canvas &c) {
                 c.fillRect(r, isSelected ? color.alpha(kSelectedFill) : kCardColor.alpha(fill), kRadiusControl);
                 c.strokeRect(r, color, width, kRadiusControl);
             }
-            fxIcon(c, {center.x - 12.0f, center.y - 8.5f, 24.0f, 17.0f}, fxSlotType(node), color);
-            name(kFxNodeHalfH, fxTitle(fxSlotType(node)));
+            fxIcon(c, {center.x - 12.0f, center.y - 8.5f, 24.0f, 17.0f}, fx_.slotType(node), color);
+            name(kFxNodeHalfH, fxTitle(fx_.slotType(node)));
             return;
         }
         const bool join = fxNodeSum(node) >= 0;
         const int sum = join ? fxNodeSum(node) : node - kFxSlots; // a split's join is the sum of its number
-        const bool three = splitThree(sum);
+        const bool three = fx_.splitThree(sum);
         const Color color = (join ? sumColor() : splitColor()).alpha(alpha);
         const Rect r = nodeRect(node, center);
         const float glow = alpha < 1.0f ? 0.0f
@@ -2218,7 +1770,7 @@ void View::paintFxGraph(Canvas &c) {
         if (place.node != fxHoveredNode())
             continue;
         const Point x = fxDeleteAt(place.node, at.node[place.node]);
-        const bool hot = hover_->kind == Kind::FxNodeDelete;
+        const bool hot = hover()->kind == Kind::FxNodeDelete;
         const Color ink = hot ? kText : kDim;
         c.fillCircle(x, 7.5f, hot ? kRaised : kCardColor);
         c.strokeCircle(x, 7.5f, ink, 1.2f);
@@ -2228,9 +1780,9 @@ void View::paintFxGraph(Canvas &c) {
         if (place.node >= kFxSlots)
             continue;
         const Point o = fxPowerAt(place.node, at.node[place.node]);
-        const bool hotPower = hover_->kind == Kind::FxNodePower;
+        const bool hotPower = hover()->kind == Kind::FxNodePower;
         const bool on = value(paramIndex(place.node, FxParam::Enabled)) >= 0.5;
-        const Color mark = on ? fxTypeColor(fxSlotType(place.node)) : hotPower ? kText : kDim;
+        const Color mark = on ? fxTypeColor(fx_.slotType(place.node)) : hotPower ? kText : kDim;
         c.fillCircle(o, 7.5f, hotPower ? kRaised : kCardColor);
         c.strokeCircle(o, 7.5f, hotPower ? kText : kDim, 1.2f);
         constexpr float kRadius = 3.2f, kGap = 0.75f; // the power symbol, small enough for the circle
@@ -2246,7 +1798,7 @@ void View::paintFxGraph(Canvas &c) {
             break;
         const Point m = at.slot[slot.lane];
         const bool listed = fxMenuOpen_ && fxSlot_.lane == slot.lane && fxSlot_.item < 0;
-        const bool hot = hover_ && hover_->kind == Kind::FxSlot && hover_->a == slot.lane;
+        const bool hot = hover() && hover()->kind == Kind::FxSlot && hover()->a == slot.lane;
         const float shown = listed || hot ? 1.0f : kFxPlusIdleAlpha;
         const Color color = (slot.lane > 0 ? laneColor(slot.lane) : kDim).alpha(shown);
         c.fillCircle(m, kFxSlotHalf, kDisplayColor);
@@ -2266,7 +1818,7 @@ void View::paintFxGraph(Canvas &c) {
 
     // The node it shows, in the inspector.
     if (selected >= 0 && selected < kFxSlots)
-        paintFxCard(c, selected, fxInspector(selected), false);
+        host_.paintCard(c, kMaxSources + selected, fxInspector(selected), false);
     else if (fxNodeSplit(selected)) // a split and its join share their controls' card
         paintSplitControls(c, selected - kFxSlots, fxInspector(selected), false);
     else if (fxNodeSum(selected) >= 0)
@@ -2278,24 +1830,24 @@ void View::paintFxGraph(Canvas &c) {
     }
 }
 
-void View::paintSplitControls(Canvas &c, int split, Rect card, bool row) {
+void FxPanel::paintSplitControls(Canvas &c, int split, Rect card, bool row) {
     // On grey: in the row, its container paints it; in the graph, its card.
     if (!row) { // on a shadow and outlined as an effect's card is: in a flat theme only while the mouse is over it
         paintCardShadow(c, card);
         c.fillRect(card, splitFill(), kRadiusCard);
-        if (!look.flat || (drag_.kind == DragKind::None && card.contains(hoverPoint_)))
+        if (!look.flat || (!host_.dragging() && card.contains(host_.mouse())))
             c.strokeRect(card, splitLine(), 1.3f, kRadiusCard);
     }
     const bool grabbed = (drag_.kind == DragKind::FxMove && drag_.widget.kind == Kind::FxBoxGrip &&
                           drag_.widget.a == fxSplitNode(split)) ||
-                         (hover_ && hover_->kind == Kind::FxBoxGrip && hover_->a == fxSplitNode(split) &&
-                          drag_.kind == DragKind::None);
-    splitIcon(c, fxIconRect(card), grabbed ? kText : kDim, splitThree(split) ? 3 : 2);
+                         (hover() && hover()->kind == Kind::FxBoxGrip && hover()->a == fxSplitNode(split) &&
+                          !host_.dragging());
+    splitIcon(c, fxIconRect(card), grabbed ? kText : kDim, fx_.splitThree(split) ? 3 : 2);
     c.text({card.x + 36.0f, card.y + 6.0f, kSplitTitleW - 4.0f, 20.0f}, trf(Str::NodeSplit, {std::to_string(split + 1)}),
            kTextBody, kText, Align::Left, true);
     // The bands' responses on the cutoff grid, each in its color and lowered by its level, the one shown filled, a
     // handle on each crossover where they cut.
-    const bool three = splitThree(split);
+    const bool three = fx_.splitThree(split);
     const Rect display = splitDisplay(card, three);
     c.fillRect(display, kDisplayColor, kRadiusCard);
     for (double hz : {100.0, 1000.0, 10000.0}) {
@@ -2305,7 +1857,7 @@ void View::paintSplitControls(Canvas &c, int split, Rect card, bool row) {
     const std::array<double, 2> crossovers =
         splitCrossovers(value(paramIndex(split, SplitParam::Low)), value(paramIndex(split, SplitParam::High)));
     const int slope = slopeDb(filterSlope(value(paramIndex(split, SplitParam::Slope))));
-    const int shown = laneBand(splitLane(split));
+    const int shown = laneBand(fx_.splitLane(split));
     std::vector<int> bands; // the one shown last, over the others
     for (const int band : {kLowBand, 1, kHighBand})
         if (band != shown && (three || band != 1))
@@ -2332,7 +1884,7 @@ void View::paintSplitControls(Canvas &c, int split, Rect card, bool row) {
     for (int which = 0; which < (three ? 2 : 1); ++which) {
         const Point h = splitHandle(split, display, which);
         c.line({h.x, display.y + 2.0f}, {h.x, display.bottom() - 2.0f}, kText.alpha(0.3f), 1.0f);
-        const bool hot = (hover_ && hover_->kind == Kind::SplitPoint && hover_->a == split && hover_->b == which) ||
+        const bool hot = (hover() && hover()->kind == Kind::SplitPoint && hover()->a == split && hover()->b == which) ||
                          (drag_.kind == DragKind::SplitPoint && drag_.widget.a == split && drag_.widget.b == which);
         c.fillCircle(h, hot ? 7.0f : 6.0f, kText);
         c.strokeCircle(h, hot ? 7.0f : 6.0f, kDisplayColor, 1.5f);
@@ -2350,6 +1902,1084 @@ void View::paintSplitControls(Canvas &c, int split, Rect card, bool row) {
         x = std::clamp(x, display.x - 18.0f, display.right() - 62.0f);
         c.text({x, display.bottom() - 18.0f, 80.0f, 14.0f}, text, kTextSmall, kText);
     }
+}
+
+// --- The view's widgets
+
+// A card's widgets, where it shows: in the row, or in the effects graph's inspector (`graph`), where it neither folds
+// nor moves.
+void FxPanel::cardWidgets(std::vector<Widget> &list, int slot, size_t pos, Rect card, bool graph) const {
+    auto add = [&list](Kind kind, Rect rect, int param = -1, int a = -1, int b = -1) {
+        Widget w;
+        w.kind = kind;
+        w.rect = rect;
+        w.param = param;
+        w.a = a;
+        w.b = b;
+        list.push_back(w);
+    };
+    auto at = [slot](FxParam f) { return paramIndex(slot, f); };
+    // The title row, as every card's: the icon at the title's left (which also switches the effect on and
+    // off, and drags the card like the title does), then the fold button, the power switch and the cross. In
+    // the graph, only the power switch, in the cross's corner: the node's own cross removes the effect.
+    const Rect icon = fxIconRect(card).inset(-4.0f);
+    if (!graph && fxFolded(slot)) { // a strip: the icon, a grip, the switch and cross, then the rest unfolds it
+        add(Kind::FxPower, icon, at(FxParam::Enabled), slot, static_cast<int>(pos));
+        add(Kind::FxGrip, {card.x, card.y + 30.0f, card.w, 16.0f}, -1, slot, static_cast<int>(pos));
+        add(Kind::Toggle, {card.center().x - 10.0f, card.y + 50.0f, 20.0f, 19.0f}, at(FxParam::Enabled));
+        add(Kind::FxRemove, {card.center().x - 7.0f, card.y + 73.0f, 14.0f, 21.0f}, -1, slot);
+        add(Kind::FxFold, {card.x, card.y + 98.0f, card.w, card.h - 98.0f}, -1, slot);
+        return;
+    }
+    if (!graph) // in the graph, the card stays in the inspector
+        add(Kind::FxGrip, {card.x, card.y, cardTitleRight(card) - card.x, 34.0f}, -1, slot,
+            static_cast<int>(pos));
+    add(Kind::FxPower, icon, at(FxParam::Enabled), slot, static_cast<int>(pos));
+    if (!graph)
+        add(Kind::FxFold, cardFold(card), -1, slot);
+    add(Kind::Toggle, graph ? cardPowerInGraph(card) : cardPower(card), at(FxParam::Enabled));
+    if (!graph)
+        add(Kind::FxRemove, cardClose(card), -1, slot);
+    host_.cardWidgets(list, kMaxSources + slot, card); // what is below its title row
+}
+
+void FxPanel::widgets(std::vector<Widget> &list) const {
+    auto add = [&list](Kind kind, Rect rect, int param = -1, int a = -1, int b = -1) {
+        Widget w;
+        w.kind = kind;
+        w.rect = rect;
+        w.param = param;
+        w.a = a;
+        w.b = b;
+        list.push_back(w);
+    };
+    add(Kind::FxMenuButton, fxMenuButton());
+    const size_t cardsStart = list.size();
+    if (fxGraph()) {
+        fxGraphWidgets(list);
+        if (const int node = fxSelectedNode(); node >= 0 && node < kFxSlots)
+            cardWidgets(list, node, 0, fxInspector(node), true);
+        else if (fxNodeSplit(node)) // a split and its join share their controls' card
+            splitControlWidgets(list, node - kFxSlots, fxInspector(node), false);
+        else if (fxNodeSum(node) >= 0)
+            splitControlWidgets(list, fxNodeSum(node), fxInspector(node), false);
+    } else {
+        // The row: the effects' cards, and each split's container, its controls, its band's cards and its dashed
+        // card that adds to that band.
+        const FxRow row = fxRowShown();
+        const float scroll = fxScroll();
+        for (const FxRowCard &card : row.cards)
+            if (const float place = card.place - scroll; onScreen(place, kVisibleFx, card.span))
+                cardWidgets(list, card.slot, 0, fxCard(place, card.span), false);
+        carriedWidgets_.clear();
+        if (drag_.kind == DragKind::FxMove && drag_.moved && fxDrag_ && fxDrag_->item.node < kFxSlots &&
+            !fxFolded(fxDrag_->item.node)) {
+            const size_t mark = list.size();
+            cardWidgets(list, fxDrag_->item.node, 0, fxCard(fxDrag_->startPlace - drag_.scrollStart, fxDrag_->span),
+                        false);
+            carriedWidgets_.assign(list.begin() + static_cast<std::ptrdiff_t>(mark), list.end());
+            list.resize(mark);
+        }
+        for (const FxRowBox &box : row.boxes) {
+            const float place = box.place - scroll;
+            if (box.folded) { // a strip: the icon and a grip drag it, the cross, then the rest unfolds it
+                if (!onScreen(place, kVisibleFx, box.span))
+                    continue;
+                const Rect strip = fxCard(place, box.span);
+                add(Kind::FxBoxGrip, {strip.x, strip.y, strip.w, 46.0f}, -1, fxSplitNode(box.split));
+                add(Kind::FxNodeRemove, {strip.center().x - 9.0f, strip.y + 50.0f, 18.0f, 21.0f}, -1,
+                    fxSplitNode(box.split));
+                add(Kind::FxBoxFold, {strip.x, strip.y + 76.0f, strip.w, strip.h - 76.0f}, -1, box.split);
+                continue;
+            }
+            if (const float column = boxColumn(box) - scroll; onScreen(column, kVisibleFx))
+                splitControlWidgets(list, box.split, fxCard(column, 1.0f), true);
+            if (const float at = box.add - scroll; fxShadow() && onScreen(at, kVisibleFx, kFxBoxAddSpan)) {
+                const Rect card = fxCard(at);
+                add(Kind::FxBoxAdd, fxBoxAddCard(card), -1, box.lane, box.item);
+            }
+        }
+        if (const float place = row.items.back() - scroll; fxShadow() && onScreen(place, kVisibleFx))
+            add(Kind::FxShadow, fxCard(place));
+        // The arrows between the cards, while there is room for another effect: a click adds one there. On the
+        // main line before each item, the first too; in a container, before each of its band's cards (the first
+        // after its controls). None goes before a dashed card, which adds there itself.
+        auto insert = [&](float place, int lane, int item, int at) {
+            if (place - scroll >= 0.0f && place - scroll < kVisibleFx) {
+                const Rect card = fxCard(place - scroll);
+                add(Kind::FxInsert, {card.x - kFxGap * 0.5f - 10.0f, card.center().y - 14.0f, 20.0f, 28.0f}, -1,
+                    lane, item * kFxGapStride + at);
+            }
+        };
+        for (size_t i = 0; i + 1 < row.items.size() && fxShadow(); ++i)
+            insert(row.items[i], 0, static_cast<int>(i), 0);
+        for (const FxRowBox &box : row.boxes) {
+            if (box.folded || !fxShadow())
+                continue;
+            int k = 0;
+            for (const FxRowCard &card : row.cards)
+                if (card.at.lane == box.lane && card.at.item == box.item)
+                    insert(card.place, box.lane, box.item, k++);
+        }
+    }
+    for (size_t i = cardsStart; i < list.size() && !fxGraph(); ++i)
+        list[i].clip = fxCardClip();
+    for (int graph = 0; graph < 2; ++graph) // the switch between the chain and the graph
+        add(Kind::FxMode, fxModeButton(graph), -1, -1, graph);
+    mergeButtons(list, list.size() - 2);
+    add(Kind::FxClear, fxClearButton());
+}
+
+void FxPanel::popups(std::vector<Widget> &list) const {
+    auto add = [&list](Kind kind, Rect rect, int param = -1, int a = -1, int b = -1) {
+        Widget w;
+        w.kind = kind;
+        w.rect = rect;
+        w.param = param;
+        w.a = a;
+        w.b = b;
+        list.push_back(w);
+    };
+    if (fxMenuOpen_ && wide()) {
+        // Opened for the main line (from a + or a wire of the graph, from the row's arrows, its dashed card or ADD
+        // EFFECT), it offers a split (with its join) after the effects; for a band, effects only.
+        const bool withNode = fxSlot_.lane == 0;
+        add(Kind::FxMenu, {0.0f, 0.0f, View::kWidth, host_.height()}, -1, 0);
+        add(Kind::FxMenu, fxMenu(fxMenuAt_, withNode), -1, 1);
+        for (FxType type : kFxOffered)
+            add(Kind::FxAdd, fxMenuItem(fxMenuAt_, type), -1, static_cast<int>(type));
+        if (withNode)
+            for (int bands : {2, 3})
+                add(Kind::FxAddNode, fxMenuNodeItem(fxMenuAt_, bands), -1, -1, bands);
+    }
+}
+
+// --- Painting the view
+
+void FxPanel::paintBack(Canvas &c) {
+    paintFx(c);
+}
+
+void FxPanel::paintFx(Canvas &c, std::optional<Rect> only) {
+    // Left out with `only`: what isn't across from it.
+    auto away = [&](Rect r) { return only && (r.right() <= only->x || r.x >= only->right()); };
+    if (!only) {
+        const std::vector<int> chain = fxChain();
+        // How many of the effects' places are taken, beside ADD EFFECT.
+        const Rect count{fxMenuButton().right() + 10.0f, fxMenuButton().y, 44.0f, fxMenuButton().h};
+        const bool full = chain.size() >= static_cast<size_t>(kFxSlots);
+        c.text(count, std::to_string(chain.size()) + "/" + std::to_string(kFxSlots), kTextBody, full ? kText : kDim,
+               Align::Left, full);
+        const float hintX = count.right() + 8.0f;
+        if (!chain.empty()) // how to work the cards or the graph's nodes, while there are some
+            c.text({hintX, kFxPanel.y + 10.0f, fxClearButton().x - 12.0f - hintX, 22.0f},
+                   tr(fxGraph() ? Str::HintFxGraph : Str::HintFx), kTextLabel, kFaint, Align::Right);
+    }
+    if (fxGraph()) {
+        paintFxGraph(c);
+        return;
+    }
+    const FxRow row = fxRowShown();
+    const FxLine shownLine = fxLineShown();
+    const float scroll = fxScroll();
+    // In the gap before the card at `place`, an arrow: the signal runs left to right. Under the mouse, or with its
+    // list open, it is a plus that adds an effect there (in the line, `at` on `lane` of item `item`).
+    auto chevron = [&](float place, int lane, int item, int at, Color color) {
+        const Rect next = fxCard(place - scroll);
+        const Point m{next.x - kFxGap * 0.5f, next.center().y};
+        if (away({m.x - 8.0f, m.y - 8.0f, 16.0f, 16.0f}))
+            return;
+        const int b = item * kFxGapStride + at;
+        const bool lit = (hover() && hover()->kind == Kind::FxInsert && hover()->a == lane && hover()->b == b) ||
+                         (fxMenuOpen_ && fxSlot_.lane == lane && fxSlot_.item == item && fxSlot_.place == at);
+        if (lit) {
+            c.fillCircle(m, 8.0f, kAccent.alpha(0.25f));
+            c.strokeCircle(m, 8.0f, kAccent, 1.2f);
+            c.line({m.x - 4.0f, m.y}, {m.x + 4.0f, m.y}, kText, 1.5f);
+            c.line({m.x, m.y - 4.0f}, {m.x, m.y + 4.0f}, kText, 1.5f);
+            return;
+        }
+        const Point arrow[] = {{m.x - 3.0f, m.y - 6.0f}, {m.x + 3.0f, m.y}, {m.x - 3.0f, m.y + 6.0f}};
+        c.polyline(arrow, 3, color, 1.5f);
+    };
+    // The grip's dots on a folded strip, lit while it is hovered or held.
+    auto gripDots = [&](Rect strip, bool lit) {
+        for (int d = 0; d < 6; ++d)
+            c.fillCircle({strip.center().x - 5.0f + (d / 2) * 5.0f, strip.y + 35.0f + (d % 2) * 5.0f}, 1.4f,
+                         lit ? kText : kFaint);
+    };
+    c.pushClip(fxCardClip());
+    for (size_t i = 0; i + 1 < row.items.size(); ++i) // before each item on the main line, the first too
+        chevron(row.items[i], 0, static_cast<int>(i), 0, kFaint);
+    // Each split's container under its cards: its outline round them a little out, its controls on grey at its left
+    // (out to the outline above, below and before them, and only to their card place after them),
+    // then the cards of the band it shows (painted below) and its dashed card (a widget).
+    for (const FxRowBox &box : row.boxes) {
+        const float place = box.place - scroll;
+        if (!onScreen(place, kVisibleFx, box.span))
+            continue;
+        // Unfolded, inside the room it keeps before and after it.
+        const Rect whole = box.folded ? fxCard(place, box.span)
+                                      : fxCard(boxColumn(box) - scroll, box.span - 2.0f * kFxBoxEdge);
+        if (away(whole.inset(-kFxBoxPad)))
+            continue;
+        const bool held = drag_.kind == DragKind::FxMove && drag_.widget.kind == Kind::FxBoxGrip &&
+                          drag_.widget.a == fxSplitNode(box.split);
+        const bool hot = held || (hover() && hover()->kind == Kind::FxBoxGrip &&
+                                  hover()->a == fxSplitNode(box.split) && !host_.dragging());
+        const Color outline = held ? kText.alpha(0.7f) : splitLine();
+        if (box.folded) { // a strip: its icon, a grip, its cross, then its name down the rest
+            // On a shadow and outlined as a folded card is: always, or in a flat theme while the mouse is over it.
+            paintCardShadow(c, whole);
+            c.fillRect(whole, splitFill(), kRadiusCard);
+            if (!look.flat || hot || (!host_.dragging() && whole.contains(host_.mouse())))
+                c.strokeRect(whole, outline, held ? 1.6f : 1.3f, kRadiusCard);
+            splitIcon(c, fxIconRect(whole), hot ? kText : kDim, fx_.splitThree(box.split) ? 3 : 2);
+            gripDots(whole, hot);
+            paintDownward(c, {whole.x, whole.y + 82.0f, whole.w, whole.h - 90.0f},
+                          trf(Str::NodeSplit, {std::to_string(box.split + 1)}), kText);
+            continue;
+        }
+        const Rect outer = whole.inset(-kFxBoxPad);
+        const Rect column = fxCard(boxColumn(box) - scroll, 1.0f);
+        // The grey ends at the controls' card place, so the arrow into the band is as far from it as from a card.
+        const float bandX = column.right();
+        paintCardShadow(c, outer, kFxBoxRadius); // as the cards beside it
+        c.fillRect(outer, splitFill(), kFxBoxRadius);
+        c.fillRect({bandX, outer.y, outer.right() - bandX, outer.h}, kPanel, kFxBoxRadius);
+        c.fillRect({bandX, outer.y, kFxBoxRadius, outer.h}, kPanel);
+        if (look.flat) { // without its outline, the band shown faintly behind its cards, in the band's color
+            c.pushClip({bandX, outer.y, outer.right() - bandX, outer.h});
+            c.fillRect(outer, laneColor(box.lane).alpha(look.cardTint * 0.7f), kFxBoxRadius);
+            c.popClip();
+        }
+        // Outlined as a card is: always, or in a theme whose cards go without one, while the mouse is over it.
+        if (!look.flat || hot || (!host_.dragging() && outer.contains(host_.mouse())))
+            c.strokeRect(outer, outline, held ? 1.6f : 1.3f, kFxBoxRadius);
+        host_.noteCard(kMaxSources + kFxSlots + box.split, outer, kFxPanel);
+        paintSplitControls(c, box.split, column, true);
+        // The arrows along its band, into each of its cards, in the band's color; none into its dashed card.
+        // Faint along a band its join doesn't let through, the other band soloed.
+        const float heard = box.item < static_cast<int>(shownLine.size()) &&
+                                    fx_.bandSoloedOut(shownLine[box.item], box.lane)
+                                ? kSoloedOutAlpha
+                                : 1.0f;
+        const Color band = laneColor(box.lane).alpha(heard);
+        int k = 0;
+        for (const FxRowCard &card : row.cards)
+            if (card.at.lane == box.lane && card.at.item == box.item) {
+                chevron(card.place, box.lane, box.item, k, band);
+                ++k;
+            }
+    }
+    for (const FxRowCard &card : row.cards) {
+        const int slot = card.slot;
+        const FxType type = fx_.slotType(slot);
+        const float pos = card.place - scroll;
+        if (!onScreen(pos, kVisibleFx, card.span))
+            continue;
+        const Rect r = fxCard(pos, card.span);
+        if (away(r))
+            continue;
+        const bool on = value(paramIndex(slot, FxParam::Enabled)) >= 0.5;
+        // Lit while grabbed by its title; by its icon only once it moves, as a click there only switches it.
+        const bool dragged = drag_.kind == DragKind::FxMove && drag_.widget.kind != Kind::FxBoxGrip &&
+                             drag_.widget.a == slot && (drag_.moved || drag_.widget.kind != Kind::FxPower);
+        if (fxFolded(slot)) {
+            const Color fx = fxTypeColor(type);
+            host_.paintCardFace(c, r, fx, on, kMaxSources + slot, dragged, 0.45f, kFxPanel);
+            // its icon and cross (widgets), the grip's dots between, then its name down the strip
+            gripDots(r, (hover() && hover()->kind == Kind::FxGrip && hover()->a == slot && !host_.dragging()) ||
+                            dragged);
+            paintDownward(c, {r.x, r.y + 104.0f, r.w, r.h - 110.0f}, fxTitle(type), on ? kText : kDim);
+            continue;
+        }
+        host_.paintCard(c, kMaxSources + slot, r, dragged);
+    }
+    c.popClip();
+
+}
+
+void FxPanel::paintOverWidgets(Canvas &c) {
+    if (wide() && !fxGraph()) {
+        c.pushClip(fxCardClip());
+        const FxRow row = fxRowShown();
+        // The card or container carried, faint where it would land until it is let go of; and the cards of a band a
+        // container shows that its join doesn't let through, the other band soloed.
+        const FxLine line = fxLineShown();
+        for (const FxRowCard &card : row.cards) {
+            const float pos = card.place - fxScroll();
+            if (!onScreen(pos, kVisibleFx, card.span))
+                continue;
+            if (card.faint)
+                c.fillRect(fxCard(pos, card.span).inset(-1.0f), kPanel.alpha(0.65f), kRadiusCard + 1.0f);
+            else if (card.at.lane != 0 && card.at.item < static_cast<int>(line.size()) &&
+                     fx_.bandSoloedOut(line[card.at.item], card.at.lane))
+                c.fillRect(fxCard(pos, card.span).inset(-1.0f), kPanel.alpha(1.0f - kSoloedOutAlpha), kRadiusCard + 1.0f);
+        }
+        for (const FxRowBox &box : row.boxes) {
+            if (!box.faint || !onScreen(box.place - fxScroll(), kVisibleFx, box.span))
+                continue;
+            if (box.folded)
+                c.fillRect(fxCard(box.place - fxScroll(), box.span).inset(-1.0f), kPanel.alpha(0.65f), kRadiusCard + 1.0f);
+            else
+                c.fillRect(fxCard(boxColumn(box) - fxScroll(), box.span - 2.0f * kFxBoxEdge).inset(-kFxBoxPad - 1.0f),
+                           kPanel.alpha(0.65f), kFxBoxRadius + 1.0f);
+        }
+        c.popClip();
+    }
+}
+
+void FxPanel::paintDrag(Canvas &c) {
+    // The card being dragged: where it would land only its outline, and a faint image of it under the mouse wherever
+    // it goes (over every panel, held to none), before it snaps into place: an effect card or a split's container. The
+    // image is the card painted at its landing place, moved, with the widgets on it (not the row's dashed card, which
+    // may glide through there).
+    auto outlined = [&](Rect landing, Rect row, float radius, Color color) {
+        c.pushClip(row);
+        c.fillRect(landing.inset(-1.0f), kPanel, radius + 1.0f);
+        c.strokeRect(landing, color.alpha(0.6f), 1.0f, radius);
+        c.popClip();
+    };
+    auto carried = [&](Rect landing, Rect start, Rect row, float radius, Color color, auto paintCard) {
+        outlined(landing, row, radius, color);
+        const Point offset{start.x + drag_.now.x - drag_.start.x - landing.x,
+                           start.y + drag_.now.y - drag_.start.y - landing.y};
+        c.pushLayer(offset, 0.5f, landing.inset(-1.0f));
+        c.pushClip(landing);
+        paintCard();
+        std::vector<Widget> list;
+        widgets(list);
+        for (const Widget &w : list)
+            if (!w.popup && w.kind != Kind::FxShadow && w.rect.x < landing.right() && w.rect.right() > landing.x && w.rect.y < landing.bottom() &&
+                w.rect.bottom() > landing.y)
+                host_.paintWidget(c, w);
+        c.popClip();
+        c.popLayer();
+    };
+    if (drag_.kind == DragKind::FxMove && drag_.moved && fxDrag_ && !fxGraph()) {
+        const int node = fxDrag_->item.node;
+        const FxRow row = fxRowShown();
+        std::optional<Rect> landing;
+        float radius = kRadiusCard;
+        for (const FxRowCard &card : row.cards)
+            if (card.slot == node)
+                landing = fxCard(card.place - fxScroll(), card.span);
+        for (const FxRowBox &box : row.boxes)
+            if (fxSplitNode(box.split) == node) {
+                landing = box.folded ? fxCard(box.place - fxScroll(), box.span)
+                                     : fxCard(boxColumn(box) - fxScroll(), box.span - 2.0f * kFxBoxEdge)
+                                           .inset(-kFxBoxPad);
+                radius = box.folded ? kRadiusCard : kFxBoxRadius;
+            }
+        Rect start = fxCard(fxDrag_->startPlace - drag_.scrollStart, fxDrag_->span);
+        if (node < kFxSlots && !fxFolded(node)) {
+            // An effect card: its outline where it lands, if that shows (not on a band its container hides), and its
+            // image painted afresh where it was picked up from, moved under the mouse.
+            if (landing)
+                outlined(*landing, fxCardClip(), radius, fxColor(node));
+            // Its glow and the knobs' labels reach a little past it.
+            c.pushLayer({drag_.now.x - drag_.start.x, drag_.now.y - drag_.start.y}, 0.5f, start.inset(-24.0f));
+            host_.paintCard(c, kMaxSources + node, start, true);
+            for (const Widget &w : carriedWidgets_)
+                host_.paintWidget(c, w);
+            c.popLayer();
+        } else if (landing) { // a container, or a folded card: painted at its landing place, moved
+            if (node >= kFxSlots && landing->w > start.w) // a container's outline stands out round it
+                start = start.inset(-kFxBoxPad);
+            carried(*landing, start, fxCardClip(), radius, node < kFxSlots ? fxColor(node) : splitLine(),
+                    [&] { paintFx(c, *landing); });
+        }
+    }
+}
+
+bool FxPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
+    switch (w.kind) {
+    case Kind::FxGrip:
+        break; // drawn with its card
+    case Kind::FxPower: {
+        // The effect's icon: in its color while the effect is on, grey while it is off, as its card is, whatever
+        // the mouse does. An effect that is on lights it up while the card is grabbed, by its title or the icon,
+        // and under the mouse it sits on a button, as a click switches it.
+        const FxType type = fx_.slotType(w.a);
+        const bool grabbed = (drag_.kind == DragKind::FxMove && drag_.widget.a == w.a) ||
+                             (hover() && hover()->kind == Kind::FxGrip && hover()->a == w.a && !host_.dragging());
+        if (hovered)
+            c.fillRect(w.rect, kTrack, kRadiusControl);
+        const bool on = value(w.param) >= 0.5;
+        fxIcon(c, w.rect.inset(4.0f), type, !on ? kDim : (hovered || grabbed ? kText : fxTypeColor(type)));
+        break;
+    }
+    case Kind::FxBoxFold: { // as an effect card's
+        if (fx_.splitFolded(w.a)) {
+            if (hovered)
+                c.fillRect(w.rect.inset(3.0f), kText.alpha(0.06f), kRadiusControl);
+            break;
+        }
+        const Color color = hovered ? kText : kDim;
+        const Point m = w.rect.center();
+        const Point chevron[] = {{m.x + 2.5f, m.y - 5.0f}, {m.x - 2.5f, m.y}, {m.x + 2.5f, m.y + 5.0f}};
+        c.polyline(chevron, 3, color, 1.5f);
+        break;
+    }
+    case Kind::FxBoxGrip: // the title row: drawn with the split's controls
+        break;
+    case Kind::SplitBand: {
+        // The band's name on the tabs' line after a dot in its color, the one shown underlined in it, as an operator
+        // page's tabs are in the accent. A band soloed has an S in its color in its dot's place; a hidden one, how many
+        // effects it holds after its name.
+        const int lane = laneOfTab(w.b);
+        const bool shown = fx_.splitLane(w.a) == lane;
+        const Color band = laneColor(lane);
+        const char *name = tr(lane == 1 ? Str::TabBandHigh : lane == 3 ? Str::TabBandMid : Str::TabBandLow);
+        const float width = c.textWidth(name, kTextLabel, true);
+        size_t effects = 0;
+        for (const FxLineItem &item : fxLine())
+            if (item.node == fxSplitNode(w.a))
+                effects = item.band(lane).size();
+        const bool soloed = value(paramIndex(w.a, laneSolo(lane))) >= 0.5;
+        // The dot (an S in a circle while soloed), the name and its count centered together, so three tabs keep to
+        // their own.
+        const bool counted = !shown && effects > 0;
+        const float lead = soloed ? 4.0f : 0.0f; // the S's circle wider than the dot
+        const float x = w.rect.center().x - 0.5f * (width + (counted ? 12.0f : 0.0f) - lead) + 4.0f,
+                    y = w.rect.center().y;
+        const float base = w.rect.bottom();
+        // Lit in its band's color while an effect carried over it would land on that band.
+        if (drag_.kind == DragKind::FxMove && drag_.moved && fxDrag_ && fxDrag_->item.node < kFxSlots &&
+            w.rect.contains(drag_.now)) {
+            c.fillRect(w.rect, band.alpha(0.18f), kRadiusControl);
+            c.strokeRect(w.rect, band.alpha(0.8f), 1.2f, kRadiusControl);
+        }
+        c.line({w.rect.x, base - 0.5f}, {w.rect.right(), base - 0.5f}, mix(kCardColor, kDim, 0.25f), 1.0f);
+        if (shown)
+            c.line({w.rect.x + 8.0f, base - 1.0f}, {w.rect.right() - 8.0f, base - 1.0f}, band, 2.0f);
+        if (soloed) {
+            const Point badge{x - 11.0f, y};
+            c.fillCircle(badge, 6.0f, band);
+            c.text({badge.x - 6.0f, badge.y - 6.5f, 12.0f, 13.0f}, tr(Str::SoloMark), kTextSmall, kDisplayColor,
+                   Align::Center, true);
+        } else {
+            c.fillCircle({x - 9.0f, y}, 3.0f, band.alpha(shown ? 1.0f : 0.45f));
+        }
+        c.text({x, w.rect.y, width + 2.0f, w.rect.h}, name, kTextLabel, shown || hovered ? kText : kDim, Align::Left, true);
+        if (counted)
+            c.text({x + width + 1.0f, w.rect.y, 16.0f, w.rect.h}, std::to_string(effects), kTextSmall, kDim.alpha(0.8f));
+        break;
+    }
+    case Kind::SplitSolo: { // a plain S, filled in its band's color while soloed
+        const bool on = value(w.param) >= 0.5;
+        const Color band = laneColor(w.b);
+        if (look.flat) { // as the other switches: a dark well, filled solid with its band's color while on
+            c.fillRect(w.rect, on ? band : hovered ? wellHover() : wellColor(), kRadiusControl);
+            c.text(w.rect, tr(Str::SoloMark), kTextLabel, on ? litInk(kText) : hovered ? kText : kDim, Align::Center,
+                   true);
+            break;
+        }
+        c.fillRect(w.rect, on ? band.alpha(0.22f) : (hovered ? kTrack : kCardColor), kRadiusControl);
+        c.strokeRect(w.rect, on ? band : mix(kCardColor, kDim, 0.25f), 1.0f, kRadiusControl);
+        c.text(w.rect, tr(Str::SoloMark), kTextLabel, on || hovered ? kText : kDim, Align::Center, true);
+        break;
+    }
+    case Kind::FxBoxAdd: {
+        // As the dashed card after the effects, narrower: a plus, then which band it adds to.
+        const float arm = 9.0f;
+        const Point m{w.rect.center().x, w.rect.center().y - 14.0f};
+        const Color ink = paintAddCard(c, w.rect, m, arm, hovered);
+        // In capitals, as ADD EFFECT and ADD SOURCE are.
+        c.text({w.rect.x, m.y + arm + 6.0f, w.rect.w, 14.0f}, upperCase(tr(Str::ButtonAddToBand)), kTextLabel, ink,
+               Align::Center, true);
+        c.text({w.rect.x, m.y + arm + 20.0f, w.rect.w, 14.0f},
+               upperCase(tr(w.a == 1 ? Str::TabBandHigh : w.a == 3 ? Str::TabBandMid : Str::TabBandLow)),
+               kTextLabel, ink, Align::Center, true);
+        break;
+    }
+    case Kind::FxMenuButton: // its list, not the dashed card's
+        paintMenuButton(c, w.rect, tr(Str::ButtonEffect), hovered, fxMenuOpen_ && fxMenuAt_.x < 0.0f,
+                        fxChain().size() >= static_cast<size_t>(kFxSlots));
+        break;
+    case Kind::FxInsert: // drawn with the arrows between the cards
+        break;
+    case Kind::FxMode: {
+        const bool on = fxGraph() == (w.b == 1);
+        host_.paintButtonFace(c, w, on, hovered, kAccent, 0.22f, kRadiusControl);
+        fxModeIcon(c, w.rect.center(), w.b == 1, on ? litInk(kAccent) : (hovered ? kText : kDim));
+        break;
+    }
+    case Kind::FxClear: { // a bin, faint while there is nothing to remove
+        const bool any = fx_.anyToClear();
+        // As the other icon buttons (the title bar's, the shape editor's): raised, outlined where controls are.
+        c.fillRect(w.rect, hovered && any ? kTrack : kRaised, kRadiusControl);
+        if (outlined())
+            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
+        binIcon(c, w.rect.center(), !any ? kFaint : hovered ? kText : kDim);
+        break;
+    }
+    case Kind::FxNode: // drawn with the effects graph (see paintFxGraph())
+    case Kind::FxWire:
+    case Kind::FxSlot:
+    case Kind::FxGap:
+    case Kind::FxNodeDelete:
+    case Kind::FxNodePower:
+    case Kind::SplitPoint:
+    case Kind::SplitArea: // drawn with the split's display
+        break;
+    case Kind::FxMenu:
+        if (w.a == 1) { // the list's panel, with each group's name on a strip over its effects (and from the main line
+                        // the splits')
+            static constexpr Str kGroups[] = {Str::MenuFxDrive, Str::MenuFxEqFilter,   Str::MenuFxDynamics,
+                                              Str::MenuFxSpace, Str::MenuFxModulation, Str::MenuFxStereo,
+                                              Str::MenuFxSplit};
+            static_assert(std::size(kGroups) == kFxMenuSplitGroup + 1, "each group of the list of effects has its name");
+            paintMenuPanel(c, w.rect);
+            const int groups = fxSlot_.lane == 0 ? kFxMenuSplitGroup + 1 : kFxMenuGroupCount;
+            for (int g = 0; g < groups; ++g) {
+                const Rect head = fxMenuHead(fxMenuAt_, g);
+                const Rect strip{head.x, head.y, head.w, head.h - 2.0f};
+                c.fillRect(strip, kPanel, kRadiusControl);
+                c.text({strip.x + 8.0f, strip.y, strip.w - 16.0f, strip.h}, tr(kGroups[g]), kTextSmall, kText,
+                       Align::Left, true);
+            }
+        }
+        break;
+    case Kind::FxAdd:
+        paintMenuRow(c, w.rect, hovered, false);
+        fxIcon(c, {w.rect.x + 9.0f, w.rect.center().y - 7.0f, 18.0f, 14.0f}, static_cast<FxType>(w.a),
+               hovered ? fxTypeColor(static_cast<FxType>(w.a)) : kDim);
+        c.text({w.rect.x + 36.0f, w.rect.y, w.rect.w - 46.0f, w.rect.h}, fxName(static_cast<FxType>(w.a)), kTextBody,
+               hovered ? kText : kDim, Align::Left);
+        break;
+    case Kind::FxAddNode: { // in the splits' group, under the left column: a split in two bands or three
+        const Color color = splitColor();
+        const bool three = w.b == 3;
+        paintMenuRow(c, w.rect, hovered, false);
+        const Rect icon{w.rect.x + 9.0f, w.rect.center().y - 7.0f, 18.0f, 14.0f};
+        splitIcon(c, icon, hovered ? color : kDim, three ? 3 : 2);
+        c.text({w.rect.x + 36.0f, w.rect.y, w.rect.w - 46.0f, w.rect.h}, tr(three ? Str::MenuSplitThree : Str::MenuSplitBands),
+               kTextBody, hovered ? kText : kDim, Align::Left);
+        break;
+    }
+    case Kind::SplitBands: { // the BANDS switch: 2 | 3, the one it is lit in the accent
+        const bool on = (w.b == 3) == fx_.splitThree(w.a);
+        if (look.flat) { // as the S beside it and the other switches: a well, filled solid with the accent while lit
+            c.fillRect(w.rect, on ? kAccent : hovered ? wellHover() : wellColor(), kRadiusControl);
+            c.text(w.rect, std::to_string(w.b), kTextLabel, on ? litInk(kText) : hovered ? kText : kDim, Align::Center,
+                   true);
+            break;
+        }
+        c.fillRect(w.rect, on ? kAccent.alpha(0.22f) : (hovered ? kTrack : kRaised), kRadiusControl);
+        c.strokeRect(w.rect, on ? kAccent.alpha(0.8f) : kBorder, 1.0f, kRadiusControl);
+        c.text(w.rect, std::to_string(w.b), kTextLabel, on || hovered ? kText : kDim, Align::Center, true);
+        break;
+    }
+    default:
+        return false;
+    }
+    return true;
+}
+
+// --- The mouse on the view
+
+void FxPanel::startDrag(DragKind kind, const Widget &w, Point p) {
+    drag_ = Drag{};
+    drag_.kind = kind;
+    drag_.widget = w;
+    drag_.start = drag_.now = p;
+    host_.startDrag(*this, w, p, false);
+}
+
+void FxPanel::settle() {
+    fxRowGlide_.on = false; // the row's cards still settling snap into place, where a click means them
+}
+
+void FxPanel::closePopups() {
+    fxMenuOpen_ = false;
+}
+
+void FxPanel::undoing() {
+    fxMenuOpen_ = false; // so is the place in the line the list of effects was opened at
+    fxSlot_ = {};
+}
+
+bool FxPanel::press(const Widget &w, Point p, Modifiers) {
+    if (fxGraphPress(w, p)) // the effects graph's own
+        return true;
+    switch (w.kind) {
+    case Kind::FxMenuButton:
+        if (fxChain().size() >= static_cast<size_t>(kFxSlots)) {
+            host_.flash(trf(Str::MsgChainFull, {std::to_string(kFxSlots)}));
+        } else {
+            fxMenuOpen_ = !fxMenuOpen_ || fxMenuAt_.x >= 0.0f; // from another list, to the button's
+            fxMenuAt_ = {-1.0f, -1.0f};
+            // In the row, at the main line's end; in the graph, after the node picked.
+            fxSlot_ = fxGraph() ? FxSlotAt{} : FxSlotAt{0, static_cast<int>(fxLine().size()), 0};
+        }
+        break;
+    case Kind::FxShadow: // the list at the mouse, kept inside the editor, for the main line's end
+        fxMenuAt_ = menuAt(p, fxMenu({0.0f, 0.0f}, true), host_.height());
+        fxMenuOpen_ = true;
+        fxSlot_ = {0, static_cast<int>(fxLine().size()), 0};
+        host_.resetHover();
+        break;
+    case Kind::FxInsert: { // the list over the cards on either side, its middle at the arrow, kept inside the panel
+        const Rect menu = fxMenu({0.0f, 0.0f}, w.a == 0); // the main line's with a split after the effects
+        fxMenuAt_ = {std::clamp(w.rect.center().x - 0.5f * menu.w, kFxPanel.x + 8.0f, kFxPanel.right() - 8.0f - menu.w),
+                     std::min(kFxTop + 8.0f, kFxPanel.bottom() - 4.0f - menu.h)};
+        fxMenuOpen_ = true;
+        fxSlot_ = {w.a, w.b / kFxGapStride, w.b % kFxGapStride};
+        host_.resetHover();
+        break;
+    }
+    case Kind::FxMenu:
+        if (w.a == 0) // a click anywhere else closes the list
+            fxMenuOpen_ = false;
+        break;
+    case Kind::FxAdd:
+        fxMenuOpen_ = false;
+        addEffect(static_cast<FxType>(w.a));
+        fxSlot_ = {};
+        break;
+    case Kind::FxRemove:
+        removeEffect(w.a);
+        break;
+    case Kind::FxClear: // asking first, while there is anything to remove
+        if (fx_.anyToClear()) {
+            host_.askConfirm(*this, kConfirmFxClear);
+        }
+        break;
+    case Kind::FxGrip:
+    case Kind::FxPower: // the icon: let go without moving, it switches the effect
+        if (fxGraph()) { // in the graph's inspector, where the card doesn't move
+            if (w.kind == Kind::FxPower)
+                edit(w.param, value(w.param) >= 0.5 ? 0.0 : 1.0);
+            break;
+        }
+        startDrag(DragKind::FxMove, w, p);
+        drag_.scrollStart = fxScroll();
+        startRowDrag(w.a);
+        break;
+    case Kind::FxFold:
+        fx_.setFolded(true, w.a, !fxFolded(w.a));
+        host_.resetHover();
+        break;
+    default:
+        return false;
+    }
+    return true;
+}
+
+// A quick second click on a card's icon, a node's power switch, the chain | graph switch, a + or a node comes as a
+// double-click: it plays as a press.
+bool FxPanel::doublePress(const Widget &w) const {
+    switch (w.kind) {
+    case Kind::FxPower:
+    case Kind::FxNodePower:
+    case Kind::FxMode:
+    case Kind::FxSlot:
+    case Kind::FxGap:
+    case Kind::FxNode:
+        return true;
+    default:
+        return false;
+    }
+}
+
+void FxPanel::drag(const DragState &d) {
+    drag_.start = d.start;
+    drag_.now = d.now;
+    drag_.moved = d.moved;
+    if (d.moved && !drag_.copied) { // it starts to move: with Ctrl held, a copy of it is carried
+        drag_.copied = true;
+        if (d.mods.ctrl)
+            copyDragged();
+    }
+    switch (drag_.kind) {
+    case DragKind::FxMove: // where it would land follows the mouse, the others gliding aside
+        if (drag_.moved) {
+            startFxRowGlide();
+            retargetRowDrag(d.now);
+        }
+        break;
+    case DragKind::FxNodeMove:
+    case DragKind::SplitPoint:
+        fxGraphDrag(d.now);
+        break;
+    case DragKind::None:
+        break;
+    }
+}
+
+void FxPanel::drop(const DragState &d) {
+    drag_.now = d.now;
+    drag_.moved = d.moved;
+    drag_.dropped = true;
+    const Widget &w = drag_.widget;
+    switch (drag_.kind) {
+    case DragKind::FxMove:
+        if (!drag_.moved) { // a click: the icon switches the effect, and the card stays where it is
+            fxDrag_.reset();
+            if (w.kind == Kind::FxPower)
+                edit(w.param, value(w.param) >= 0.5 ? 0.0 : 1.0);
+            break;
+        }
+        retargetRowDrag(d.now);
+        dropRowDrag(); // where it would land, along the main line or onto a container's band
+        break;
+    case DragKind::FxNodeMove: // where it is let go of, if it moved
+        dropFxNode(true);
+        break;
+    case DragKind::SplitPoint: // each move set it already
+    case DragKind::None:
+        break;
+    }
+}
+
+void FxPanel::release() {
+    if (!drag_.dropped) { // called off
+        if (drag_.kind == DragKind::FxNodeMove) // back where it was taken from
+            dropFxNode(false);
+        if (drag_.kind == DragKind::FxMove) // a card or container stays where it was
+            fxDrag_.reset();
+    }
+    if (drag_.kind == DragKind::SplitPoint)
+        controller().endEdit(drag_.widget.param);
+    drag_ = Drag{};
+}
+
+void FxPanel::copyDragged() {
+    if ((drag_.kind != DragKind::FxMove && drag_.kind != DragKind::FxNodeMove) || !fxDrag_)
+        return;
+    host_.beginCopyDrag();
+    std::map<int, int> copies;
+    const std::optional<FxLineItem> item = copyFxItem(fxDrag_->item, copies);
+    if (!item) {
+        host_.cancelCopyDrag();
+        return;
+    }
+    // The original back where it was, and the copy carried from right after it.
+    FxDrag &d = *fxDrag_;
+    d.rest = FxGraphModel::lineWith(d.rest, d.item, d.was);
+    d.was = d.was.lane == 0 ? FxSlotAt{0, d.was.item + 1, 0} : FxSlotAt{d.was.lane, d.was.item, d.was.place + 1};
+    d.at = d.was;
+    d.item = *item;
+    for (int &node : d.nodes) {
+        d.from[copies[node]] = d.from[node];
+        node = copies[node];
+    }
+    d.copy = true;
+    if (const auto grabbed = copies.find(drag_.widget.a); grabbed != copies.end())
+        drag_.widget.a = grabbed->second;
+    if (drag_.kind == DragKind::FxNodeMove) { // the copy's card in the inspector
+        controller().layout().fxSelected = drag_.widget.a;
+        controller().layoutChanged();
+    }
+}
+
+bool FxPanel::dragsOnTouch(const Widget &w) const {
+    switch (w.kind) {
+    case Kind::FxGrip:
+    case Kind::FxPower:
+    case Kind::FxNode:
+    case Kind::FxBoxGrip:
+    case Kind::SplitPoint:
+        return true;
+    default:
+        return false;
+    }
+}
+
+std::optional<CursorKind> FxPanel::cursor(const Widget &w) const {
+    if (drag_.kind == DragKind::FxNodeMove && drag_.moved)
+        return CursorKind::Move;
+    switch (w.kind) {
+    case Kind::SplitPoint:
+        return CursorKind::Horizontal;
+    case Kind::FxMenu: // an open list's own panel and what is around it, where a click picks nothing
+        return CursorKind::Arrow;
+    case Kind::FxGrip:
+    case Kind::FxBoxGrip:
+    case Kind::FxNode:
+        return CursorKind::Move;
+    case Kind::FxWire: // only its + takes a click
+        return CursorKind::Arrow;
+    default:
+        return std::nullopt;
+    }
+}
+
+std::string FxPanel::tooltip(const Widget &w) const {
+    switch (w.kind) {
+    case Kind::FxMode:
+        return tr(w.b == 1 ? Str::TipFxGraph : Str::TipFxChain);
+    case Kind::FxNode:
+        return tr(Str::TipFxNode);
+    case Kind::FxSlot:
+        return tr(w.a == 0 ? Str::TipFxSlot : Str::TipFxSlotBand);
+    case Kind::FxClear:
+        return tr(Str::TipFxClear);
+    case Kind::FxGap:
+        return tr(w.a == 0 ? Str::TipFxGap : Str::TipFxGapBand);
+    case Kind::FxNodeRemove:
+    case Kind::FxNodeDelete:
+        return tr(w.a < kFxSlots           ? Str::TipFxRemove
+                  : fxNodeSum(w.a) >= 0   ? Str::TipRemoveJoin
+                                          : Str::TipRemoveSplit);
+    case Kind::FxNodePower: // only switches, unlike the card's icon, which also drags
+        return trf(value(w.param) >= 0.5 ? Str::TipSwitchNodeOff : Str::TipSwitchNodeOn, {fxName(fx_.slotType(w.a))});
+    case Kind::FxInsert: // on the main line, a split too; in a container, on its band
+        return tr(w.a == 0 ? Str::TipFxInsert : Str::TipFxGapBand);
+    case Kind::FxRemove:
+        return tr(Str::TipFxRemove);
+    case Kind::FxPower: // the icon on its card
+        return tr(value(w.param) >= 0.5 ? Str::TipFxOn : Str::TipFxOff);
+    default:
+        return {};
+    }
+}
+
+// --- What moves by itself
+
+void FxPanel::poll(const Telemetry &t, std::vector<Rect> &repaint) {
+    // The effects graph's nodes' and wires' glow follow what they show as the glow behind OUT does (see follow()); the
+    // panel is painted again while any moves visibly.
+    bool moved = false;
+    for (int port = 0; port < kFxPorts; ++port) {
+        const float next = follow(fxGlow_[port], fxGlowTarget(t, port));
+        moved = moved || std::abs(next - fxGlow_[port]) > 0.002f;
+        fxGlow_[port] = next;
+    }
+    if (moved && wide() && fxGraph() && host_.shownGlow() > 0.0f)
+        repaint.push_back(kPanelsBand);
+}
+
+bool FxPanel::step() {
+    bool moved = false;
+    // A card held near either end of the row scrolls it that way, where it lands following.
+    if (drag_.kind == DragKind::FxMove && drag_.moved && wide())
+        if (const float speed = edgePull(kFxPanel, drag_.now, drag_.start.x); speed != 0.0f) {
+            const float before = fxScroll();
+            setRowScroll(before + edgeScrollStep(speed));
+            if (fxScroll() != before) {
+                moved = true;
+                retargetRowDrag(drag_.now);
+            }
+        }
+    if (glideFxGraph()) // the effects graph's nodes making room for one dragged, or settling after
+        moved = true;
+    if (glideFxRow()) // the row's cards and containers likewise
+        moved = true;
+    return moved;
+}
+
+bool FxPanel::scrollToward(Point p) {
+    if (!wide())
+        return false;
+    const float speed = edgePull(kFxPanel, p, std::nullopt);
+    if (speed == 0.0f)
+        return false;
+    const float before = fxScroll();
+    setRowScroll(before + edgeScrollStep(speed));
+    return fxScroll() != before;
+}
+
+// --- Scrolling
+
+bool FxPanel::wheelAcross(Point p, float steps) {
+    // As the wheel scrolls them, the other way round: a notch to the right moves on as a notch down does.
+    if (!wide())
+        return false;
+    const std::optional<Widget> hit = host_.widgetAt(p);
+    if (fxGraph() && (fxGraphArea().contains(p) || (hit && hit->kind == Kind::Scrollbar))) {
+        const FxGridLayout grid = fxGridLayout(fxLine());
+        fxGraphScroll_ = std::clamp(fxGraphScroll(grid) + steps * 0.5f * kFxGridCol, 0.0f, fxGraphScrollMost(grid));
+        if (fxSlot_.lane >= 0)
+            fxMenuOpen_ = false;
+        return true;
+    }
+    if (!fxGraph() && kFxPanel.contains(p)) {
+        setRowScroll(fxScroll() + steps * 0.4f);
+        host_.closeGoneLists();
+        return true;
+    }
+    return false;
+}
+
+bool FxPanel::wheelBehind(Point p, float steps) {
+    if (!wide() || !kFxPanel.contains(p) || steps == 0.0f)
+        return false;
+    if (fxGraph()) {
+        const std::optional<Widget> hit = host_.widgetAt(p);
+        if (fxGraphArea().contains(p) || (hit && hit->kind == Kind::Scrollbar)) {
+            // The graph sideways, half a column a notch, closing a +'s list.
+            const FxGridLayout grid = fxGridLayout(fxLine());
+            fxGraphScroll_ = std::clamp(fxGraphScroll(grid) - steps * 0.5f * kFxGridCol, 0.0f, fxGraphScrollMost(grid));
+            if (fxSlot_.lane >= 0)
+                fxMenuOpen_ = false;
+        }
+        return true;
+    }
+    setRowScroll(fxScroll() - steps * 0.4f);
+    host_.closeGoneLists();
+    return true;
+}
+
+// Its parts the middle button pans: the row (0), by card places, and the graph (1), by pixels.
+std::optional<std::pair<int, float>> FxPanel::panAt(Point p) const {
+    if (wide() && fxGraph() && fxGraphArea().contains(p))
+        return std::pair{1, graphScroll()};
+    if (wide() && !fxGraph() && kFxPanel.contains(p))
+        return std::pair{0, fxScroll()};
+    return std::nullopt;
+}
+
+std::optional<float> FxPanel::pan(int part, float first, float across, float) {
+    // What was under the mouse as the button went down stays under it. Past either end, the row stops there.
+    const bool graphPart = part == 1;
+    const float wanted = graphPart ? first - across : first - across / (kFxCardW + kFxGap);
+    const float most = graphPart ? fxGraphScrollMost(fxGridLayout(fxLine())) : rowLength() - kVisibleFx;
+    const float to = std::clamp(wanted, 0.0f, std::max(most, 0.0f));
+    if (graphPart)
+        fxGraphScroll_ = to;
+    else
+        setRowScroll(to);
+    return to != wanted ? std::optional(to) : std::nullopt;
+}
+
+// --- Its context menu and questions
+
+bool FxPanel::contextMenu(const std::optional<Widget> &hit, Point, std::vector<MenuItem> &items) {
+    menuFx_ = -1;
+    if (!hit)
+        return false;
+    if ((hit->kind == Kind::FxNode && hit->a >= kFxSlots) || hit->kind == Kind::FxBoxGrip) { // a split or a join
+        menuFx_ = hit->a;
+        items.push_back({kMenuRemove, tr(Str::MenuRemove)});
+        return true;
+    }
+    if (hit->kind == Kind::FxGrip || hit->kind == Kind::FxPower || hit->kind == Kind::FxNode ||
+        hit->kind == Kind::FxNodePower) {
+        menuFx_ = hit->a;
+        if (fxChain().size() < static_cast<size_t>(kFxSlots))
+            items.push_back({kMenuDuplicate, tr(Str::MenuDuplicate)});
+        items.push_back({kMenuReset, tr(Str::MenuResetSettings)});
+        if (fx_.slotType(menuFx_) == FxType::MultiDyn)
+            items.push_back({kOttCommand, tr(Str::MenuOtt)});
+        // An amp's: how many times the host rate its stages run at, the one in force checked.
+        if (fx_.slotType(menuFx_) == FxType::Amp) {
+            items.push_back({0, ""});
+            const long now = std::lround(value(paramIndex(menuFx_, FxParam::AmpOversampling)));
+            for (int i = 0; i < kAmpOversamplings; ++i)
+                items.push_back({kAmpOversamplingCommand + i, trf(Str::MenuOversampling, {std::to_string(1 << i) + "x"}),
+                                 now == i});
+        }
+        // On a split's band, in the row: the split's other bands it can move to.
+        if (!fxGraph()) {
+            const std::vector<int> bands = fx_.otherBands(menuFx_);
+            if (!bands.empty())
+                items.push_back({0, ""});
+            for (int lane : bands)
+                items.push_back({kMoveBandCommand + lane,
+                                 trf(Str::MenuMoveToBand, {tr(lane == 1   ? Str::BandHigh
+                                                              : lane == 3 ? Str::BandMid
+                                                                          : Str::BandLow)})});
+        }
+        items.push_back({0, ""});
+        items.push_back({kMenuRemove, tr(Str::MenuRemove)});
+        return true;
+    }
+    return false;
+}
+
+bool FxPanel::menuCommand(int command) {
+    if (command == kMenuRemove && menuFx_ >= kFxSlots) {
+        removeFxNode(menuFx_);
+    } else if (menuFx_ >= kFxSlots) {
+        // a split or a join offers nothing else, and the View nothing for it
+    } else if (command == kMenuDuplicate && menuFx_ >= 0) {
+        addEffect(fx_.slotType(menuFx_), menuFx_);
+    } else if (command == kMenuRemove && menuFx_ >= 0) {
+        removeEffect(menuFx_);
+    } else if (command == kMenuReset && menuFx_ >= 0) {
+        // Every field back to its default, apart from which effect it is and whether it is on.
+        std::vector<std::pair<int, double>> changes;
+        for (int f = static_cast<int>(FxParam::Enabled) + 1; f < kFxParamCount; ++f) {
+            const int index = paramIndex(menuFx_, static_cast<FxParam>(f));
+            changes.push_back({index, table_[index].def});
+        }
+        for (int f = 0; f < kShapeParamCount; ++f)
+            changes.push_back({clipCurveCountIndex(menuFx_) + f, table_[clipCurveCountIndex(menuFx_) + f].def});
+        fx_.editMany(changes);
+    } else if (command > kMoveBandCommand && command <= kMoveBandCommand + 3 && menuFx_ >= 0) {
+        fx_.moveToBand(menuFx_, command - kMoveBandCommand);
+    } else if (command == kOttCommand && menuFx_ >= 0 && fx_.slotType(menuFx_) == FxType::MultiDyn) {
+        fx_.editMany(mdOttSettings(menuFx_));
+    } else if (command >= kAmpOversamplingCommand && command < kAmpOversamplingCommand + kAmpOversamplings &&
+               menuFx_ >= 0 && fx_.slotType(menuFx_) == FxType::Amp) {
+        edit(paramIndex(menuFx_, FxParam::AmpOversampling), command - kAmpOversamplingCommand);
+    } else {
+        return false;
+    }
+    return true;
+}
+
+Panel::ConfirmWords FxPanel::confirmWords(int kind) const {
+    ConfirmWords words;
+    if (kind == kConfirmMidBand) { // where a middle band's effects go: none is more likely than the others
+        words.title = tr(Str::ConfirmMidBandTitle);
+        words.what = confirmEffects_ == 1 ? std::string(tr(Str::ConfirmMidBandOne))
+                                          : trf(Str::ConfirmMidBand, {std::to_string(confirmEffects_)});
+        words.ok = tr(Str::ButtonMidRemove);
+        words.lit = false;
+        // Onto the low band's end (2) or the high one's start (3), each in that band's color.
+        words.choices = {{tr(Str::ButtonMidToLow), laneColor(2)}, {tr(Str::ButtonMidToHigh), laneColor(1)}};
+    } else if (kind == kConfirmSplitRemove) { // the split with its bands' effects (4), or without them
+        words.title = tr(Str::ConfirmSplitRemoveTitle);
+        words.what = confirmEffects_ == 1 ? std::string(tr(Str::ConfirmSplitRemoveOne))
+                                          : trf(Str::ConfirmSplitRemove, {std::to_string(confirmEffects_)});
+        words.ok = tr(Str::ButtonSplitKeep);
+        words.shorter = true;
+        words.third = tr(Str::ButtonSplitDelete);
+    } else { // every effect, which undo brings back
+        words.title = tr(Str::ConfirmFxClearTitle);
+        words.what = tr(Str::ConfirmFxClear);
+        words.ok = tr(Str::ButtonClearFx);
+    }
+    return words;
+}
+
+void FxPanel::confirmed(int kind, int button) {
+    if (kind == kConfirmSplitRemove) { // the split removed, its bands' effects kept on the main line (1) or with it (4)
+        if (button == 1 || button == 4)
+            removeFxNode(fxSplitNode(confirmSplit_), button == 4 ? 1 : 0);
+        confirmSplit_ = -1;
+    } else if (kind == kConfirmMidBand) { // back in two bands: the middle band's effects removed (1), onto the low
+                                          // band (2), the high one (3)
+        if (button > 0)
+            setSplitBands(confirmSplit_, 2, button == 1 ? 0 : button == 2 ? 2 : 1);
+        confirmSplit_ = -1;
+    } else if (button == 1) {
+        clearFx();
+    }
+}
+
+std::vector<std::tuple<int, Rect, Rect>> FxPanel::offCards() const {
+    // A switched-off effect's card, in the effects graph's inspector or along the row.
+    std::vector<std::tuple<int, Rect, Rect>> cards;
+    if (!wide())
+        return cards;
+    if (fxGraph()) {
+        if (const int node = fxSelectedNode();
+            node >= 0 && node < kFxSlots && value(paramIndex(node, FxParam::Enabled)) < 0.5)
+            cards.emplace_back(node, fxInspector(node), fxInspector(node));
+        return cards;
+    }
+    for (const FxRowCard &card : fxRowShown().cards) {
+        const float pos = card.place - fxScroll();
+        if (onScreen(pos, kVisibleFx, card.span) && value(paramIndex(card.slot, FxParam::Enabled)) < 0.5 &&
+            !fxFolded(card.slot))
+            cards.emplace_back(card.slot, fxCard(pos, card.span), fxCardClip());
+    }
+    return cards;
 }
 
 } // namespace fmvibe::gui

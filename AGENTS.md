@@ -39,7 +39,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
 
 ## Testing
 
-`ctest` runs four programs:
+`ctest` runs four programs, four at a time (the test presets' and `build.sh`'s jobs):
 
 - **Smoke test** (`tests/smoke_host.cpp`): a small headless host. (It and the VST3 test set `FMVIBE_SETTINGS_DIR`,
   which `src/usersettings.cpp` reads in place of the roaming app data, so their editor resizes don't land in your
@@ -756,7 +756,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     another, a wire, a line to OUT or a label over a node it doesn't join or through a loop, or two labels on each
     other (`src/gui/arrange.h` counts them; `fmvibe-uishot <dir> 1 --presets` renders and checks these alone);
   - every algorithm (`src/gui/algorithms.h`: six operators' 32, four's 8, three's 5 and two's 2, set by
-    `View::applyAlgorithm()`) on a new patch: laid out with
+    `RoutingModel::applyAlgorithm()`) on a new patch: laid out with
     no clash as arrange.h counts them, found again as the one the operators form, and taken back, params and
     layout, by one undo; and onto a patch of its own, a route it has kept at its depth, the others disconnected with
     their mode and modulation (undone back), a carrier going out through a filter left so and counted as one, the
@@ -932,7 +932,7 @@ To add or change one:
 4. Build and run `ctest`.
 
 A factory preset changed here reaches users with the next release. Being built in, it can't be saved over: Save
-on one opens Save As (`Controller::presetWritable()`). Versions up to 0.11 wrote the factory presets out into the
+on one opens Save As (`PresetStore::presetWritable()`). Versions up to 0.11 wrote the factory presets out into the
 preset folder's `Factory` subfolder: the scan leaves that subfolder out, and `PresetLibrary::resolve()` takes a file
 there named as a factory preset for the built-in one, so a project naming it loads the built-in one.
 
@@ -1057,29 +1057,42 @@ breakpoints in `src/` then hit.
 | `src/zerobuffer.h`, `src/zerobuffer.cpp` | Delay lines allocated as zero pages that only take memory once written |
 | `src/filter.h` | State-variable and comb filters, plus their response curves for the editor |
 | `src/clipcurve.h` | The shapers' curves, anti-aliasing and running, shared by the shaper effect and the voices' shapers |
-| `src/amp.h`, `src/amp.cpp` | The Amp effect's sound: its models (preamp stages, tone stack, power amp), cabinets and mics, its oversampling, and the responses the editor draws |
+| `src/effects.h`, `src/effects.cpp` | The effects on the voices' sum: `Effects`, its slots (each holding every effect type's state, so it switches type without allocating, and running its type through a static dispatch in `runSlot()`) and the effects graph that runs them (wires, splits, sums, the paths kept in step) |
+| `src/fx/` | Each effect type a slot runs, in a module of its own (`shaper`, `delay`, `eq`, `parameq`, `filterfx`, `compressor`, `multidyn`, `reverb`, `phaser`, `flanger`, `chorus`, `shifter`, `disperser`, `widener`, `utility`, `ampfx`): its state, its `prepare()`, `start()` and `run()`, and the responses the editor draws of it; `common.h` what they share (the `fx::Context` a slot hands its effect, the `fx::Meters` it writes, biquads and crossovers, ramps, delay line reads) |
+| `src/amp.h`, `src/amp.cpp` | The Amp effect's sound: its models (preamp stages, tone stack, power amp), cabinets and mics, its oversampling, and the responses the editor draws (`src/fx/ampfx.h` runs it in a slot) |
 | `src/analyzer.cpp` | The spectrum analyzer (FFT) behind the Param EQ's, filter effect's, phase disperser's and voice filters' displays |
 | `src/envelope.h` | AHDSR used by operators and mod envelopes |
 | `src/fxlag.h` | How late each path through the effects graph is from the effects that run oversampled, the pads that keep paths meeting in step, and the output's latency |
 | `src/unison.h` | Where an operator's unison copies go: their detune, place and level by its Unison Curve, Pan and Blend, for the voices and the UNISON tab alike |
 | `src/warp.h` | An operator's warps: where along its cycle it reads its wave, how much they squeeze it and where they bend it |
-| `src/gui/view.cpp` | The editor: its widgets, drawing and mouse and keyboard handling, and the model access behind them. Window-free, so it also renders offscreen |
+| `src/gui/view.cpp` | The editor: its widgets, drawing and mouse and keyboard handling, reading the patch through the models below, and handing its panels (`src/gui/panel.h`) what is theirs. Window-free, so it also renders offscreen |
+| `src/gui/widget.h` | What the editor is made of for input, shared by the `View` and its panels: the `Widget` and its kinds, the mouse's modifiers and cursors, the keys, a context menu's entries and the text fields |
+| `src/gui/panel.h` | The editor's areas as classes of their own: the `Panel` interface each implements (its widgets and popups, painting, cursor, polls, mouse, wheel, keys, text fields, pans, context menu, a source's handle dropped on it and the questions it asks), the `PanelHost` through which it reaches what the `View` keeps for every area, the drag going on as a panel is handed it (`DragState`), what a panel keeps for a paint or hit test (`ScopeCache`), and how a row of cards scrolls under a drag held at its edge (`edgePull()`) |
+| `src/gui/patchedits.h`, `src/gui/patchedits.cpp` | What the editor's models of the patch stand on: the params read and edited through the `Controller` as the editor edits them, the layout saved with them, and the messages an edit refused leaves. Window-free and without a `View`, so a tool can edit a patch through them |
+| `src/gui/modulationmodel.h`, `src/gui/modulationmodel.cpp` | `ModulationModel`: the sources in their places, their slots' targets, depths, auxes, bypass and polarity, what a source may modulate, the MODS view's empty modulations; assigning, moving, retargeting and removing modulations, adding and removing sources |
+| `src/gui/routingmodel.h`, `src/gui/routingmodel.cpp` | `RoutingModel`: the routing graph's nodes on and where they sit, its routes and outputs (shown, kept at 0 %, how far their wires bow), connecting, rerouting and disconnecting them, and setting the classic algorithms |
+| `src/gui/fxgraphmodel.h`, `src/gui/fxgraphmodel.cpp` | `FxGraphModel`: the effects' line of effects, splits and joins, read from the wires and written back to them; filling, adding, copying and removing effects, and adding, splitting in three and removing splits |
 | `src/gui/theme.h`, `src/gui/theme.cpp` | The editor's color themes, the colors of the one being painted, and the graphs' glow |
 | `src/gui/layout.h` | Where the editor's panels, cards, buttons, lists and dialogs go, in logical pixels |
 | `src/gui/icons.h`, `src/gui/icons.cpp` | The editor's icons (effects, filter types, band shapes, LFO modes, waves) and the point cache behind them and the graphs' curves |
-| `src/gui/routing.h`, `src/gui/routing.cpp` | The routing graph: which param joins two nodes, wires and arrowheads; connecting and rerouting |
-| `src/gui/fxgraph.h`, `src/gui/fxgraph.cpp` | The effects' line of effects, splits and joins, read from the wires and written back to them; its two views, the row (each split a container holding its bands) and the graph's slot grid with its +s and inspector; and a split's controls, which both show |
-| `src/gui/shapes.cpp` | Editing drawn shapes: Curve sources' shapes, shaper curves and the note source's curve |
-| `src/gui/mods.cpp` | The MODS view: every modulation as a row, its filter, and the cascading menus (the target's with a search) that move it, retarget it and pick its aux |
-| `src/gui/seq.cpp` | The SEQ view: the sequencer's settings card, and the piano roll with its tools, ruler, keys and lane |
-| `src/gui/dialogs.cpp` | The settings and confirm dialogs, the preset actions, and the text fields' editing |
-| `src/gui/presetui.cpp` | The preset bar's info and its card, the preset browser (its sidebar, list and search) and the Save dialog with its New Category and New Folder forms |
+| `src/gui/routing.h` | The routing graph's geometry: which param joins two nodes, wires and arrowheads, their bows and grips, a node's edge, and where the inspector's lens's leader starts |
+| `src/gui/routingpanel.h`, `src/gui/routingpanel.cpp` | The routing panel, `RoutingPanel`: the routing graph and the matrix, with ALGORITHM and its panel of algorithms: the graph's nodes, wires and labels (clear of each other), its glow (the effects graph's backdrop too), halos and grid's points for Ctrl+drag, the drags that move nodes and routes and bend wires, a label's list of modes and the routing's context menus |
+| `src/gui/inspectorpanel.h`, `src/gui/inspectorpanel.cpp` | The inspector, `InspectorPanel`: the lens over the routing panel's left end and the page of the node it shows (an operator's waves and their list, its tabs, unison copies, scope and INPUTS rows, a filter's response and handle, a shaper's curve), its title and nodes' tabs; what covers it, and a node's tab or name clicked showing that node |
+| `src/gui/filterdisplay.h`, `src/gui/filterdisplay.cpp` | A filter's display, shared by the inspector's filter page and the filter effect's card: its response with its modulation's reach, the spectrum behind it and its handle |
+| `src/gui/lists.h` | The lists the editor's list buttons open: which params open one, their entries' values and names, and which have arrows that step along them |
+| `src/gui/fxpanel.h`, `src/gui/fxpanel.cpp` | The FX view, `FxPanel`: the effects' line of effects, splits and joins as it shows it: its two views, the row (each split a container holding its bands) and the graph's slot grid with its +s and inspector, their cards' and nodes' moves (and Ctrl-drag copies), glides and scrolling; a split's controls, which both show; the list of effects, the bin and its questions. What an effect's card holds below its title row is still the `View`'s |
+| `src/gui/fxgraph.h` | The effects graph's look (its bands' colors and the splits'), shared by the editor's files |
+| `src/gui/shapeeditor.h`, `src/gui/shapeeditor.cpp` | The drawn shapes' editors, `ShapeEditor`: Curve sources' shapes, shaper curves and the note source's and velocity's curves, edited in place (a widened source card, an effect's card, a voice shaper's page) or in the full-size editor over the panels' row, and a Custom wave's partial editor; which are open, the points picked, Points \| Steps and Snap, the grid, symmetric curves, and the shared painters of a shaper's curve and a widened card's shape |
+| `src/gui/modspanel.h`, `src/gui/modspanel.cpp` | The MODS view, `ModsPanel`: every modulation as a row, its filter, and the cascading menus (the target's with a search) that move it, retarget it and pick its aux |
+| `src/gui/seqpanel.h`, `src/gui/seqpanel.cpp` | The SEQ view, `SeqPanel`: the sequencer's settings card, and the piano roll with its tools, ruler, keys and lane |
+| `src/gui/dialogs.cpp` | The settings and confirm dialogs, the preset bar's actions (Init, Load, Save, Save As, the arrows), and the text fields' editing |
+| `src/gui/presetbrowser.h`, `src/gui/presetbrowser.cpp` | The presets panel, `PresetBrowser`: the preset bar's info and its card, the preset browser (its sidebar, list and search) and the Save dialog with its New Category, New Folder and Rename forms |
 | `src/gui/canvas.cpp` | Small Direct2D/DirectWrite drawing layer |
 | `src/gui/canvas_web.cpp` | The same drawing layer over the browser's 2D context, for the demo |
 | `src/gui/canvas_cairo.cpp` | The same drawing layer over Cairo, for the Linux development build |
 | `src/gui/editor.cpp` | Win32 child window that hosts the view in the plugin window |
-| `src/gui/controller.h` | What the editor needs from the plugin (values, edits, telemetry, layout) |
-| `src/gui/controller.cpp` | The undo history, which the plugin keeps for the editor |
+| `src/gui/controller.h` | What the editor needs from the plugin: the `Controller` (values, edits, telemetry, layout, settings), the `PresetStore` it reaches the preset library through (`NoPresetFiles` for a host without files), the user's `EditorSettings` and the `UndoHistory` each `Controller` keeps |
+| `src/gui/controller.cpp` | The undo history, which each `Controller` keeps for the editor |
 | `src/factory.cpp` | The factory presets' loading; the presets themselves are `presets/Factory/*.fmv`, built in by `cmake/embed_presets.cmake` (see [Factory presets](#factory-presets)) |
 | `presets/` | The factory presets' files, and `factory.txt`, the order they came in |
 | `tools/presettool.cpp` | `fmvibe-presettool`: makes preset files sparse, as the factory ones are stored, lays their routing graphs out (`--arrange`) and sets their info (`--author`, `--category`, `--description`) |
@@ -1152,7 +1165,7 @@ itself.
   output 35000+, its sums 35100 + 20·sum and the wires into them 35200 + 20·sum. A wire's From stores its port + 1
   (0 = none): the input, then each slot's output, each split's bands, low to high, then each sum's output. The graph's
   nodes are numbered the slots, the splits, the output, then the sums. The editor wires a line (see
-  `src/gui/fxgraph.cpp`): a split's two bands are its low and high ones (Bands 2), and its join is the sum of its
+  `src/gui/fxgraphmodel.cpp`): a split's two bands are its low and high ones (Bands 2), and its join is the sum of its
   number, whose first two inputs take the high band and the low band. The effects always run as the graph: a chain
   is a line of it (the output's first wire comes from the input to begin with), and the FX view's row and graph are
   two views of it, the view a layout field (`UiLayout::fxGraphView`). The chain's places (33400 + place) are only
@@ -1166,7 +1179,9 @@ itself.
   warp (`OpWarp`), unison curve (`UniCurve`), unison pan (`UniPan`), morph mode (`MorphMode`) and the sequencer's play
   mode, rate, order and scale (`SeqPlay`, `SeqRate`, `SeqOrder`, `SeqScale`) and curve (`SeqCurve`) lists, the routing views and the operator page's tabs,
   which are stored by number. `src/params.h` pins each section's first and last ids, the counts they come from and
-  the stored lists' members with static_asserts, so a change that renumbers them doesn't compile; a field added to
+  the stored lists' members with static_asserts, so a change that renumbers them doesn't compile (and
+  `src/params.cpp` checks that every param's id leads back to it: a check that costs MSVC seconds goes in a `.cpp`,
+  run once, rather than in a header every file pays it in); a field added to
   `FxParam` also needs its effect type in `kFxFieldRuns`. A retired type keeps its number and fields: the
   three-band compressor (`FxType::MultiComp`) is no longer offered, and `readParams()` loads a slot holding one in a
   state from before version 6 as a three-band dynamics set from its fields, moving the modulation aimed at them

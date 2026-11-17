@@ -1,4 +1,4 @@
-#include "view.h"
+#include "routingmodel.h"
 
 #include "algorithms.h"
 #include "arrange.h"
@@ -18,7 +18,7 @@ namespace fmvibe::gui {
 
 using namespace detail;
 
-void View::connect(int from, int to) {
+void RoutingModel::connect(int from, int to) {
     const UndoScope step(controller_); // the output a filter or shaper takes over goes in the same step
     const int param = routeParam(from, to);
     if (value(param) > 0.0)
@@ -32,7 +32,7 @@ void View::connect(int from, int to) {
         if (level > 0.0) {
             // The output's modulation goes along with it, as with a route moved by its arrowhead (see reroute()),
             // unless its source modulates the send already.
-            const std::vector<Assignment> mods = assignments();
+            const std::vector<Assignment> mods = modulation().assignments();
             std::vector<std::pair<int, double>> moved;
             for (const Assignment &m : mods)
                 if (m.target == out && std::none_of(mods.begin(), mods.end(), [&](const Assignment &o) {
@@ -50,12 +50,12 @@ void View::connect(int from, int to) {
     keepRoutes();
 }
 
-void View::reroute(int from, int to, int into) {
+void RoutingModel::reroute(int from, int to, int into) {
     const int param = routeTo(from, to), next = routeTo(from, into);
     if (next == param)
         return;
     if (wired(next)) {
-        flash(trf(Str::MsgRouteExists, {nodeTitle(from), into == kNodes ? tr(Str::BusOut) : nodeTitle(into)}));
+        say(trf(Str::MsgRouteExists, {nodeTitle(from), into == kNodes ? tr(Str::BusOut) : nodeTitle(into)}));
         return;
     }
     const UndoScope step(controller_); // with the routes it keeps
@@ -68,7 +68,7 @@ void View::reroute(int from, int to, int into) {
             changes.push_back({nextMode, value(mode)});
         changes.push_back({mode, 0.0});
     }
-    for (const Assignment &m : assignments())
+    for (const Assignment &m : modulation().assignments())
         if (m.target == param)
             changes.push_back({slotTargetIndex(m.source, m.slot), slotTargetValue(next)});
     // A node's output moved into a filter or shaper goes out through it: the box goes out unless its sound gets
@@ -86,12 +86,12 @@ void View::reroute(int from, int to, int into) {
     controller_.layoutChanged();
 }
 
-void View::rerouteFrom(int from, int to, int source) {
+void RoutingModel::rerouteFrom(int from, int to, int source) {
     const int param = routeTo(from, to), next = routeTo(source, to);
     if (next == param)
         return;
     if (wired(next)) {
-        flash(trf(Str::MsgRouteExists, {nodeTitle(source), to == kNodes ? tr(Str::BusOut) : nodeTitle(to)}));
+        say(trf(Str::MsgRouteExists, {nodeTitle(source), to == kNodes ? tr(Str::BusOut) : nodeTitle(to)}));
         return;
     }
     const UndoScope step(controller_); // with the routes it keeps
@@ -104,7 +104,7 @@ void View::rerouteFrom(int from, int to, int source) {
             changes.push_back({nextMode, value(mode)});
         changes.push_back({mode, 0.0});
     }
-    for (const Assignment &m : assignments())
+    for (const Assignment &m : modulation().assignments())
         if (m.target == param)
             changes.push_back({slotTargetIndex(m.source, m.slot), slotTargetValue(next)});
     editMany(changes);
@@ -116,7 +116,7 @@ void View::rerouteFrom(int from, int to, int source) {
 }
 
 // Filters and shapers can feed each other round in a loop, so each is looked at once.
-bool View::boxGoesOut(int node) const {
+bool RoutingModel::boxGoesOut(int node) const {
     std::array<bool, kNodes> seen{};
     auto out = [&](auto &self, int box) -> bool {
         if (seen[box])
@@ -132,26 +132,21 @@ bool View::boxGoesOut(int node) const {
     return out(out, node);
 }
 
-int View::rerouting() const {
-    return (drag_.kind == DragKind::Reroute || drag_.kind == DragKind::RerouteFrom) && drag_.moved ? drag_.widget.param
-                                                                                                    : -1;
-}
-
-bool View::soundsOut(int node) const {
+bool RoutingModel::soundsOut(int node) const {
     return value(outParam(node)) > 0.0 && (isBoxNode(node) ? boxHasInput(node) : nodeOn(node));
 }
 
 // Operators, filters and shapers alike, whether anything goes into them or not.
-bool View::goesOut(int node) const {
+bool RoutingModel::goesOut(int node) const {
     return wired(outParam(node));
 }
 
-bool View::wired(int param) const {
+bool RoutingModel::wired(int param) const {
     const std::vector<int> &kept = controller_.layout().keptRoutes;
     return value(param) > 0.0 || std::find(kept.begin(), kept.end(), param) != kept.end();
 }
 
-void View::keepRoutes() {
+void RoutingModel::keepRoutes() {
     std::vector<int> &kept = controller_.layout().keptRoutes;
     auto keep = [&](int param) {
         if (value(param) > 0.0 && std::find(kept.begin(), kept.end(), param) == kept.end())
@@ -165,11 +160,11 @@ void View::keepRoutes() {
 }
 
 // Its modulation goes with it, or the route would still open and close unseen.
-void View::disconnect(int param) {
+void RoutingModel::disconnect(int param) {
     const UndoScope step(controller_);
-    for (const Assignment &m : assignments())
+    for (const Assignment &m : modulation().assignments())
         if (m.target == param)
-            removeSlot(m.source, m.slot);
+            modulation().removeSlot(m.source, m.slot);
     edit(param, 0.0);
     if (const int mode = routeModeOfRoute(param); mode >= 0 && value(mode) != 0.0) // a new route starts as Phase
         edit(mode, 0.0);
@@ -177,134 +172,18 @@ void View::disconnect(int param) {
     std::erase_if(controller_.layout().wireBends, [&](const auto &bend) { return bend.first == param; });
 }
 
-bool View::nodeOn(int node) const {
+bool RoutingModel::nodeOn(int node) const {
     return value(enabledParam(node)) >= 0.5;
 }
 
 // What a matrix route joins switches on: the row's node, and the column's unless it is the output.
-void View::switchOnRoute(int from, int to) {
+void RoutingModel::switchOnRoute(int from, int to) {
     for (int node : {from, to})
         if (node < kNodes && !nodeOn(node))
             edit(enabledParam(node), 1.0);
 }
 
-// Whether a label's chip `r` comes within 2 px of any of the labels `taken`.
-static bool meetsLabel(Rect r, const std::vector<Rect> &taken) {
-    constexpr float kGap = 2.0f;
-    for (const Rect &other : taken)
-        if (r.x < other.right() + kGap && other.x < r.right() + kGap && r.y < other.bottom() + kGap &&
-            other.y < r.bottom() + kGap)
-            return true;
-    return false;
-}
-
-Point View::labelAlong(Point start, Point control, Point end, Point middle, float width,
-                       const std::vector<Rect> &taken) const {
-    constexpr float kClear = kSelectedRing + 1.0f; // clear of a selected node's ring too
-    constexpr float kStep = 0.035f;                // along the curve, either way from its middle
-    constexpr int kSteps = 8;                      // and no further than a fifth of it from either end
-    const std::vector<int> nodes = enabledNodes();
-    std::vector<Point> centers;
-    centers.reserve(nodes.size());
-    for (int node : nodes)
-        centers.push_back(nodeCenter(node));
-    auto clear = [&](Point p, bool ofLabels) {
-        const Rect r = chip(p, width);
-        for (size_t i = 0; i < nodes.size(); ++i)
-            if (overNode(nodes[i], centers[i], r, kClear))
-                return false;
-        return !ofLabels || !meetsLabel(r, taken);
-    };
-    const Rect inside{kRouting.x + 0.5f * width + 4.0f, kRouting.y + 12.0f, kRouting.w - width - 8.0f,
-                      kRouting.h - 24.0f}; // where its center keeps the chip in the panel, as wireInside() has it
-    for (const bool ofLabels : {true, false}) {
-        if (clear(middle, ofLabels))
-            return middle;
-        for (int k = 1; k <= kSteps; ++k)
-            for (const float side : {-1.0f, 1.0f}) {
-                const float t = 0.5f + side * kStep * static_cast<float>(k), s = 1.0f - t;
-                const Point p{s * s * start.x + 2.0f * s * t * control.x + t * t * end.x,
-                              s * s * start.y + 2.0f * s * t * control.y + t * t * end.y};
-                if (inside.contains(p) && clear(p, ofLabels))
-                    return p;
-            }
-    }
-    return middle;
-}
-
-std::vector<std::pair<int, Rect>> View::routeLabels() const {
-    const std::vector<int> on = enabledNodes();
-    const int moving = rerouting();
-    std::vector<std::pair<int, Rect>> labels;
-    std::vector<Rect> taken; // each at rest, a mode's glyph widening it about its middle (see labelPill())
-    struct Between {
-        int param;
-        Wire wire;
-        float width;
-    };
-    std::vector<Between> wires;
-    for (int from : on)
-        for (int to : on) {
-            const int param = routeParam(from, to);
-            if (from == to || !wired(param) || param == moving)
-                continue;
-            const int mode = routeModeParam(from, to);
-            const bool glyph = mode >= 0 && routeMode(value(mode)) != RouteMode::Phase;
-            wires.push_back({param, wireBetween(from, nodeCenter(from), to, nodeCenter(to), wireBend(param)),
-                             glyph ? 38.0f + 18.0f : 38.0f});
-        }
-    // A loop's label goes beside it on the right, or else on its left, above it or at an upper corner: the first
-    // of these clear of the other nodes, the loops' labels before it and where the wires' labels would rest with
-    // no other label about, inside the panel. Where none is, the first clear of the loops' labels alone; where none
-    // is, on the right.
-    std::vector<Rect> wished;
-    for (const Between &b : wires)
-        wished.push_back(chip(labelAlong(b.wire.start, b.wire.control, b.wire.end, b.wire.label, b.width), b.width));
-    constexpr float kLoopLabelW = 44.0f;
-    const Rect inside{kRouting.x + 4.0f, kRouting.y + 3.0f, kRouting.w - 8.0f, kRouting.h - 6.0f};
-    for (int node : on)
-        if (const int param = routeParam(node, node); wired(param) && param != moving) {
-            const Point loop = loopCenter(node, nodeCenter(node));
-            const Point offsets[] = {{32.0f, 0.0f}, {-32.0f, 0.0f}, {0.0f, -21.0f}, {32.0f, -20.0f}, {-32.0f, -20.0f}};
-            auto clearOf = [&](Rect r, bool all) {
-                if (!inside.contains({r.x, r.y}) || !inside.contains({r.right(), r.bottom()}) || meetsLabel(r, taken))
-                    return false;
-                if (!all)
-                    return true;
-                for (int other : on)
-                    if (other != node && overNode(other, nodeCenter(other), r, 1.0f))
-                        return false;
-                return !meetsLabel(r, wished);
-            };
-            Rect idle = chip({loop.x + offsets[0].x, loop.y + offsets[0].y}, kLoopLabelW);
-            bool found = false;
-            for (const bool all : {true, false})
-                for (const Point o : offsets)
-                    if (const Rect r = chip({loop.x + o.x, loop.y + o.y}, kLoopLabelW); !found && clearOf(r, all)) {
-                        idle = r;
-                        found = true;
-                    }
-            labels.emplace_back(param, idle);
-            taken.push_back(idle);
-        }
-    for (const Between &b : wires) {
-        const Point at = labelAlong(b.wire.start, b.wire.control, b.wire.end, b.wire.label, b.width, taken);
-        labels.emplace_back(b.param, chip(at, 38.0f));
-        taken.push_back(chip(at, b.width));
-    }
-    for (int node : on)
-        if (goesOut(node) && outParam(node) != moving) {
-            const OutWire w = outWireOf(node, nodeCenter(node), wireBend(outParam(node)));
-            // Beside the line where it is too short for the label to fit along it; else along it, clear of the nodes
-            // and the labels before it.
-            const Point at = w.beside ? w.label : labelAlong(w.start, w.control, w.end, w.label, 40.0f, taken);
-            labels.emplace_back(outParam(node), chip(at, 40.0f));
-            taken.push_back(chip(at, 40.0f));
-        }
-    return labels;
-}
-
-std::vector<int> View::enabledNodes() const {
+std::vector<int> RoutingModel::enabledNodes() const {
     std::vector<int> nodes;
     for (int node = 0; node < kNodes; ++node)
         if (nodeOn(node))
@@ -313,7 +192,7 @@ std::vector<int> View::enabledNodes() const {
 }
 
 // Filters and shapers can feed each other round in a loop, so each is looked at once.
-bool View::boxHasInput(int node) const {
+bool RoutingModel::boxHasInput(int node) const {
     std::array<bool, kNodes> seen{};
     auto fed = [&](auto &self, int box) -> bool {
         if (seen[box] || !nodeOn(box))
@@ -327,34 +206,7 @@ bool View::boxHasInput(int node) const {
     return fed(fed, node);
 }
 
-bool View::reachesOut(int node) const {
-    // A search along the routes that are open, from `node` through switched-on nodes to one that goes out.
-    std::array<bool, kNodes> visited{};
-    auto reaches = [&](auto &self, int from) -> bool {
-        if (visited[from] || !nodeOn(from))
-            return false;
-        visited[from] = true;
-        if (liveAmount(outParam(from)) > 0.0)
-            return true;
-        for (int to = 0; to < kNodes; ++to)
-            if (to != from && liveAmount(routeParam(from, to)) > 0.0 && self(self, to))
-                return true;
-        return false;
-    };
-    return reaches(reaches, node);
-}
-
-double View::outLevel(int node) const {
-    if (!nodeOn(node))
-        return 0.0;
-    double level = liveAmount(outParam(node));
-    for (int to = 0; to < kNodes; ++to)
-        if (to != node && liveAmount(routeParam(node, to)) > level && reachesOut(to))
-            level = liveAmount(routeParam(node, to));
-    return level;
-}
-
-Point View::nodeCenter(int node) const {
+Point RoutingModel::nodeCenter(int node) const {
     const UiLayout &layout = controller_.layout();
     if (isBoxNode(node))
         return {kGraph.x + layout.boxX[node - kOps] * kGraph.w, kGraph.y + layout.boxY[node - kOps] * kGraph.h};
@@ -365,7 +217,7 @@ Point View::nodeCenter(int node) const {
 // that one's way to kNodeGap past its outline, and kept inside the graph. A node and the one it is pushed from each
 // take a rounded box, their outlines' sum: a circle's is a point grown by its radius, a filter's or a shaper's its box.
 // Pushed into a third one with no room left, it stays where it was (and `found`, when given, is false).
-Point View::nodePlace(int node, Point want, bool *found) const {
+Point RoutingModel::nodePlace(int node, Point want, bool *found) const {
     if (found)
         *found = true;
     constexpr float kNodeGap = 10.0f; // the edges' bands, kEdgeOut each, just meet
@@ -410,7 +262,7 @@ Point View::nodePlace(int node, Point want, bool *found) const {
 
 // A node just switched on goes where it was, unless that covers a node shown: then out of its way, or, with no room
 // there, to the free place nearest it on a grid over the graph. With none free anywhere, it stays.
-void View::placeSwitchedOn(int node) {
+void RoutingModel::placeSwitchedOn(int node) {
     const Point was = nodeCenter(node);
     bool found = false;
     Point at = nodePlace(node, was, &found);
@@ -444,14 +296,38 @@ void View::placeSwitchedOn(int node) {
     }
 }
 
-bool View::outThroughBox(int op) const {
+bool RoutingModel::outThroughBox(int op) const {
     for (int box = kOps; box < kNodes; ++box)
         if (nodeOn(box) && value(routeParam(op, box)) > 0.0 && boxGoesOut(box))
             return true;
     return false;
 }
 
-void View::applyAlgorithm(int index) {
+float RoutingModel::wireBend(int param) const {
+    for (const auto &[route, bend] : controller_.layout().wireBends)
+        if (route == param)
+            return bend;
+    return defaultWireBend(param);
+}
+
+// A wire between nodes bows to begin with; a node's line to OUT runs straight.
+float RoutingModel::defaultWireBend(int param) {
+    for (int node = 0; node < kNodes; ++node)
+        if (outParam(node) == param)
+            return 0.0f;
+    return kDefaultWireBend;
+}
+
+void RoutingModel::setWireBend(int param, float bend) {
+    std::vector<std::pair<int, float>> &bends = controller_.layout().wireBends;
+    std::erase_if(bends, [&](const auto &b) { return b.first == param; });
+    bend = std::clamp(bend, -kMaxWireBend, kMaxWireBend);
+    if (bend != defaultWireBend(param))
+        bends.push_back({param, bend});
+    controller_.layoutChanged();
+}
+
+void RoutingModel::applyAlgorithm(int index) {
     if (index < 0 || index >= static_cast<int>(kAlgorithms.size()))
         return;
     const Algorithm &a = kAlgorithms[index];
@@ -534,7 +410,7 @@ void View::applyAlgorithm(int index) {
     controller_.layoutChanged();
 }
 
-int View::currentAlgorithm() const {
+int RoutingModel::currentAlgorithm() const {
     OpShape now;
     for (int op = 0; op < kOps; ++op)
         if (nodeOn(op))
@@ -551,20 +427,6 @@ int View::currentAlgorithm() const {
     for (size_t i = 0; i < kAlgorithms.size(); ++i)
         if (shapeOf(kAlgorithms[i]) == now)
             return static_cast<int>(i);
-    return -1;
-}
-
-int View::nodeAt(Point p) const {
-    for (int node = kNodes - 1; node >= 0; --node) {
-        if (!nodeOn(node))
-            continue;
-        const Point c = nodeCenter(node);
-        const bool inside = isBoxNode(node)
-                                ? std::abs(p.x - c.x) <= kFilterHalfW + 4.0f && std::abs(p.y - c.y) <= kFilterHalfH + 4.0f
-                                : std::hypot(p.x - c.x, p.y - c.y) <= kNodeRadius + 4.0f;
-        if (inside)
-            return node;
-    }
     return -1;
 }
 

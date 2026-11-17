@@ -35,6 +35,9 @@ constexpr float kPanelRadius = kRadiusPanel; // the panels' corners
 // graph's OUT is a core at its right end, the orbit rings around it reaching back across the panel.
 constexpr Rect kInspector{24.0f, kPanelsTop + 6.0f, 300.0f, 360.0f};
 constexpr Rect kRouting{kInspector.x + kInspector.w + 8.0f, kPanelsTop, 852.0f, 372.0f};
+// The editor's band the panels' row keeps to, under the header: the routing panel or what takes its place, and the
+// inspector, or the full-size editors over them (see View::poll(), which repaints what moves there).
+constexpr Rect kPanelsBand{0.0f, kHeaderH, View::kWidth, kRouting.y + kRouting.h - kHeaderH};
 constexpr Point kOutCore{kRouting.x + kRouting.w - 70.0f, kRouting.y + 0.5f * kRouting.h};
 constexpr float kOutCoreRadius = 34.0f;
 constexpr Rect kGraph{kRouting.x + 40.0f, kRouting.y + 56.0f, kRouting.w - 190.0f, kRouting.h - 112.0f}; // node centers
@@ -642,7 +645,7 @@ constexpr float kSlotNameW = 96.0f;
 // smaller in a label's or cell's corner; wider from +10 on. Its list: a title, then a row per modulation: its bypass
 // dot, the source's name, its aux (a column only while one of the rows has one), its depth bar with its value and its
 // remove.
-// Both come in three sizes, a setting of the user's (Controller::handleSize()), the smallest first; they stay as far
+// Both come in three sizes, a setting of the user's (EditorSettings::handleSize), the smallest first; they stay as far
 // apart at each.
 struct ModHandleSize {
     float dot, dotHover;                 // a depth handle's radius under a knob, and hovered or dragged
@@ -1303,6 +1306,9 @@ constexpr int kBlackAfter[12] = {-1, 0, -1, 1, -1, -1, 3, -1, 4, -1, 5, -1};
 constexpr bool isBlackKey(int key) {
     return kBlackAfter[key % 12] >= 0;
 }
+// How far a key's light moves each poll as it eases up to lit and back down, the keyboard strip's and the SEQ view's
+// roll's: about 35 ms up and 80 ms down at 60 polls a second.
+constexpr float kKeyLightRise = 0.5f, kKeyLightFall = 0.22f;
 
 // Position in the grid: rows are nodes, columns nodes and then the output.
 inline Rect gridCell(int row, int col) {
@@ -1433,6 +1439,19 @@ inline Rect confirmBandsPanel(float viewHeight) {
 inline Rect confirmBandButton(Rect panel, int choice) {
     const float w = (panel.w - 48.0f - 8.0f) * 0.5f;
     return {panel.x + 24.0f + (choice == 3 ? w + 8.0f : 0.0f), panel.y + 74.0f, w, 28.0f};
+}
+
+// On screen, at least in part, for a card `span` places wide, of a row that shows `shown` at a time.
+inline bool onScreen(float place, int shown, float span = 1.0f) {
+    return place > -span && place < static_cast<float>(shown);
+}
+
+// The top left of a list as wide and high as `menu` that opens at the mouse, moved back inside the editor (as high as
+// `height`) where it would reach past an edge.
+inline Point menuAt(Point mouse, Rect menu, float height) {
+    constexpr float kMargin = 4.0f;
+    return {std::clamp(mouse.x, kMargin, std::max(View::kWidth - kMargin - menu.w, kMargin)),
+            std::clamp(mouse.y, kMargin, std::max(height - kMargin - menu.h, kMargin))};
 }
 
 } // namespace fmvibe::gui::detail
