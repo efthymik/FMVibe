@@ -68,7 +68,7 @@ enum class WidgetKind {
                   // drag onto another node, which it then comes from
     Wire,         // param = the route, a = from node, b = to node: along its curve; drag to bend it
     LabelMode,    // param = the route's mode, a = from node, b = to operator: the left part of a wire label's pill
-                  // (see labelPill()), its mode's glyph; a click opens the list of modes, the wheel steps them
+                  // (see RoutingPanel::labelPill()), its mode's glyph; a click opens the list of modes, the wheel steps them
     LabelRemove,  // param = the route, a = from node, b = to node (kNodes: the output): the x at the right of a
                   // wire or OUT label's pill; a click removes the route with its modulation
     GridCell,     // param, a = row node, b = column

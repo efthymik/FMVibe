@@ -193,17 +193,22 @@ void View::answerConfirm(int button) {
     }
 }
 
+bool View::dialogOpen() const {
+    return settingsOpen_ || confirm_ >= 0 ||
+           std::any_of(panels_.begin(), panels_.end(), [](const Panel *panel) { return panel->dialog(); });
+}
+
 bool View::dialogKey(Key key) {
     if (typing_ || !dialogOpen() || (key != Key::Enter && key != Key::Escape))
         return false;
-    if (!settingsOpen_ && confirm_ < 0) // the panels' (the preset browser's info card and the browser itself)
+    // The panels' (the preset browser's info card and the browser itself, the panel of algorithms).
+    if (!settingsOpen_ && confirm_ < 0)
         for (Panel *panel : panels_)
             if (const std::optional<bool> taken = panel->dialogKey(key))
                 return *taken;
-    if (!settingsOpen_ && confirm_ < 0) { // the panel of algorithms: Escape closes it, Enter goes on to the host
+    if (!settingsOpen_ && confirm_ < 0) { // a panel's dialog left the keys to the View: Escape is taken, Enter not
         if (key != Key::Escape)
             return false;
-        algorithmMenuOpen_ = false;
         hover_.reset();
         return true;
     }

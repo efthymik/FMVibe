@@ -4,9 +4,10 @@
 // (the widgets it owns, pressed, dragged, scrolled, typed into, painted), and which reaches what the View keeps for
 // every area (the controller, what is under the mouse, the text fields, the confirm dialog, the messages) through a
 // PanelHost. A panel knows nothing else of the View. So far the preset browser is one (presetbrowser.h), which shows
-// over the editor (modal), and the SEQ view (seqpanel.h), the MODS view (modspanel.h) and the FX view (fxpanel.h),
-// which show in their places among the editor's areas; and so are the drawn shapes' editors (shapeeditor.h), whose
-// full-size editors show over the panels' row and whose widgets show wherever a shape is edited in place.
+// over the editor (modal), and the SEQ view (seqpanel.h), the MODS view (modspanel.h), the FX view (fxpanel.h) and the
+// routing panel (routingpanel.h), which show in their places among the editor's areas; and so are the drawn shapes'
+// editors (shapeeditor.h), whose full-size editors show over the panels' row and whose widgets show wherever a shape
+// is edited in place.
 
 #include "widget.h"
 
@@ -66,8 +67,15 @@ public:
     // (see DragState). With `step`, the undo step the panel opened (Controller::beginStep()) closes as it ends.
     virtual void startDrag(Panel &from, const Widget &w, Point p, bool step) = 0;
     // A drag of the param a widget of the panel's shows (`w`'s), pressed at `p`: up and down, as the View drags a
-    // knob's value (finely with Shift), as one gesture.
+    // knob's value (finely with Shift), as one gesture (see Panel::draggingValue()).
     virtual void dragValue(const Widget &w, Point p, Modifiers mods) = 0;
+    // What a drag going on holds (the widget pressed, the View's drag or a panel's), or nothing.
+    virtual std::optional<Widget> dragged() const = 0;
+    // Whether Ctrl is held, as the keyboard or the mouse's last message said (see View::setCtrl()).
+    virtual bool ctrlHeld() const = 0;
+    // Whole notches of the wheel on `target` (a param), with `steps` added: a trackpad's smaller steps add up toward
+    // them while the wheel stays on that target (see View::wheelNotches()).
+    virtual int wheelNotches(int target, float steps) = 0;
     // A key going through the editor as the window sends it (see View::seqKey()): what a menu command that does what
     // a key does sends. Whether something took it.
     virtual bool sendKey(Key key, bool shift) = 0;
@@ -117,6 +125,8 @@ public:
     // The param whose list (a ListButton's) is open, or -1: a list of the panel's own, which it lists (see
     // Panel::popups()) and whose entries the View picks as it picks every list's.
     virtual int openList() const = 0;
+    // Opens the list of `param` (one of the panel's own, as above), or with -1 closes the one open.
+    virtual void showList(int param) = 0;
     // How strongly a grid's lines show: the GRID setting, or where its slider is dragged to (0..1, 0.5 as they were
     // drawn before it could be set).
     virtual float shownGrid() const = 0;
@@ -136,6 +146,9 @@ public:
     // A graph's backdrop, under its nodes and wires in `area`: the routing graph's glow and orbit rings, spreading from
     // its OUT at `out`.
     virtual void paintBackdrop(Canvas &c, Rect area, Point out) = 0;
+    // Each modulation of `param`'s range along `bar` (a route's label, a matrix cell), as a knob's ring shows them, the
+    // one whose depth handle is under the mouse over the others, and where the set value is and modulation takes it now.
+    virtual void paintModRange(Canvas &c, Rect bar, int param) = 0;
     // A switch's face, as the View paints its own: lit, a tint of `color` (`tint` strong); hot (under the mouse, say);
     // its part of a row merged into a pill (see mergeButtons()).
     virtual void paintButtonFace(Canvas &c, const Widget &w, bool lit, bool hot, Color color, float tint,
@@ -216,8 +229,9 @@ public:
     // The cursor over a widget of its own, or holding one in a drag of its own; nothing to leave it to the View.
     virtual std::optional<CursorKind> cursor(const Widget &) const { return std::nullopt; }
 
-    // Whether `p`, inside a widget of its own, hits it (a wire, along its path); true for another.
-    virtual bool hits(const Widget &, Point) const { return true; }
+    // Whether `p` hits a widget of its own whose shape isn't its rect (a wire, along its path; a circle, within it), or
+    // nothing to leave it to the rect, as for every other widget.
+    virtual std::optional<bool> hits(const Widget &, Point) const { return std::nullopt; }
 
     // What it keeps while the host's scope goes on (see ScopeCache), let go of as one begins and ends.
     virtual void forgetScoped() {}
@@ -236,6 +250,9 @@ public:
     // The mouse moving onto something else (`hit`, or nothing) while no drag goes on: a menu of its own opening what
     // it is over, say.
     virtual void hoverChanged(const std::optional<Widget> & /*hit*/) {}
+    // The mouse moving from `before` to `now` while no drag goes on: whether what it shows changes with it, beyond what
+    // is under the mouse (a grid shown while Ctrl is held over its area, say).
+    virtual bool hoverMoves(Point /*before*/, Point /*now*/) const { return false; }
     // Its popups (a menu or list open) closing: as another opens, or as what they were opened on may change or scroll
     // away (an undo, a pan, another view shown).
     virtual void closePopups() {}
@@ -255,6 +272,9 @@ public:
     virtual void drag(const DragState &) {}
     virtual void drop(const DragState &) {}
     virtual void release() {}
+    // A widget of its own whose value the View drags (see PanelHost::dragValue()) about to take a move: what goes with
+    // it, in the same gesture (a matrix cell switching on the nodes it joins).
+    virtual void draggingValue(const Widget &) {}
     // What a finger moving on a widget of its own drags rather than pans past (see View::touchMove()).
     virtual bool dragsOnTouch(const Widget &) const { return false; }
     // A source's handle dragged over the editor (see View's ModSource drag): whether a widget of its own takes it
@@ -286,6 +306,9 @@ public:
     // A context menu opened on `hit` (or nothing) at `p`: it forgets what an earlier one was opened on, and puts its
     // entries in `items` if it owns what is hit; a command picked from it.
     virtual bool contextMenu(const std::optional<Widget> &, Point, std::vector<MenuItem> &) { return false; }
+    // A context menu the View fills for what a widget of its own shows as a knob shows a param (Edit Value, Reset to
+    // Default, then the modulations'): its own entries, after Reset to Default. Its commands come to menuCommand() too.
+    virtual void paramMenu(const Widget &, std::vector<MenuItem> &) {}
     virtual bool menuCommand(int) { return false; }
 
     // The keyboard. Whether it shows a dialog that takes Enter and Escape (see View::dialogKey()), and those keys, with

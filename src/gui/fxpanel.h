@@ -81,7 +81,7 @@ public:
     void paintOverWidgets(Canvas &c) override;
     void paintDrag(Canvas &c) override;
     bool paintWidget(Canvas &c, const Widget &w, bool hovered) override;
-    bool hits(const Widget &w, Point p) const override;
+    std::optional<bool> hits(const Widget &w, Point p) const override;
     std::string tooltip(const Widget &w) const override;
     std::optional<CursorKind> cursor(const Widget &w) const override;
     bool poll(const Telemetry &t) override;

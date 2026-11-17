@@ -9,6 +9,7 @@
 #include "panel.h"
 #include "presetbrowser.h"
 #include "routingmodel.h"
+#include "routingpanel.h"
 #include "seqpanel.h"
 #include "shapeeditor.h"
 #include "widget.h"
@@ -128,7 +129,7 @@ public:
     // A dialog over the editor (a confirm dialog, the settings) takes Enter, which presses its lit button, and Escape,
     // which cancels it or closes the settings; the panel of algorithms takes Escape, which closes it. While one is open
     // the window should send it those keys: true if one was taken.
-    bool dialogOpen() const { return settingsOpen_ || confirm_ >= 0 || algorithmMenuOpen_ || presets_.dialog(); }
+    bool dialogOpen() const;
     // What the preset browser, the info card and the Save dialog show: whether each is open, the presets the browser
     // lists (in its order) and the one picked (see PresetBrowser).
     bool browserShown() const { return presets_.browserShown(); }
@@ -167,10 +168,6 @@ private:
     enum class DragKind {
         None,
         Value,
-        Node,
-        Connect,
-        Reroute,
-        RerouteFrom, // a route by its start, onto another node to come from
         ModSource,
         EnvPoint,
         EnvCurve,
@@ -184,7 +181,6 @@ private:
         BendWheel,
         Glow,
         TextSelect, // across a text field (drag_.widget.a: its Field)
-        Bend,       // a wire, sideways: how far it bows
         InputsScroll, // the INPUTS tab's thumb
         Panel,      // a panel's own (drag_.panel): its moves go to it
         ModListScroll, // a pill's open list's thumb
@@ -200,7 +196,6 @@ private:
         DragKind kind = DragKind::None;
         Widget widget;
         double startValue = 0.0;
-        bool leftNode = false; // a route being dragged has been well clear of the node it comes from
         bool fine = false;
         float scrollStart = 0.0f; // moving a card: where its row was scrolled to when it was grabbed
         // A card or node Ctrl-dragged, which carries a copy (see beginCopyDrag()): every param and the layout before the
@@ -278,7 +273,6 @@ private:
     std::vector<int> usedSlots(int source) const;
     // Whether a source does something: it modulates a target, or scales another source's modulation as its aux.
     bool sourceUsed(int source) const;
-    Point routePoint(int node) const; // a node's center, or OUT's (kNodes)
     // Shows a routing view (the tabs' click), taking the panels back from the shape and partial editors.
     void showView(RoutingView view);
     // The MODS view, its rows scrolled to the source's first; with none there yet, a new empty modulation from it
@@ -286,9 +280,6 @@ private:
     void showSourceMods(int source);
     // "Bypass LFO 1 modulation", or "Resume ..." for one that is bypassed.
     std::string bypassLabel(int source, int slot) const;
-    // The route whose arrowhead or start is being dragged elsewhere, which the graph then draws following the mouse;
-    // else -1.
-    int rerouting() const;
     // Whether a source's handle let go of on `w` modulates what it shows: a knob, a route's label or matrix cell, or
     // a depth bar, as the drag's overlay rings them; never the source's own output (a macro's or the mod wheel's
     // knob), nor a macro's knob that would loop (see ModulationModel::canModulate()).
@@ -304,11 +295,6 @@ private:
     // Steps a list's choice to the entry before (dir -1) or after (1) the one shown, round its ends (its button's
     // arrows).
     void stepList(int param, int dir);
-    // Whether `node` is heard in the end: it goes out, or feeds or modulates a node that is, by routes open where
-    // modulation takes them now (see liveAmount()).
-    bool reachesOut(int node) const;
-    // How far `node` is let through to the output now: the largest live amount of its routes that lead there (0..1).
-    double outLevel(int node) const;
     // Effects (see FxPanel). The FX view takes the place of the routing panel and the inspector.
     bool fxWide() const;
     // The slots that hold an effect, in the line's order (see FxGraphModel::chain()), kept while a scope goes on.
@@ -320,58 +306,13 @@ private:
     // PanelHost::cardWidgets() and paintCard()).
     void effectCardWidgets(std::vector<Widget> &list, int slot, Rect card) const;
     void paintFxCard(Canvas &c, int slot, Rect card, bool dragged);
-    // The routing graph's nodes under the mouse, or whose x is (see Kind::NodeDelete), -1 for none.
-    int routingHoveredNode() const;
     // Ctrl held as a source card starts to move: what is carried becomes a copy of it, the original staying where it
     // is, made as the drag's undo step opens (a source into a free place; a panel's cards make their own, see
     // PanelHost::beginCopyDrag()). Too few free, it stays a move, with a message.
     void copyDragged();
-    // Where the inspector's lens is joined to the node it shows: that node's left side, while the graph shows it.
-    std::optional<Point> lensLeaderStart() const;
     // The keyboard strip's keys lit as they are held (see poll()): each eases up to lit and back down a step every
     // poll, rather than switching (see kKeyLightRise), by MIDI key, 0..1.
     std::array<float, 128> keyLight_{};
-public:
-    // The routing graph's glow behind it (see paintRouting()): its shape at this zoom, over the part of the panel it
-    // reaches, and its pixels for the strength and accent it was filled with last.
-    struct RadarGlow {
-        Rect area;
-        Rect panel;   // what it is drawn in, the corners rounded
-        Point center; // where it spreads from
-        float scale = 0.0f;
-        std::vector<float> distance; // each pixel's from OUT
-        std::vector<float> cover;    // how much of it is in the panel, at its rounded corners
-        Image image;
-        float strength = -1.0f;
-        float reach = -1.0f;
-        Color accent{};
-    };
-
-    // The effects graph's backdrop, under its nodes and wires in `area`: the routing graph's glow and orbit rings, spreading
-    // from its OUT at `out`.
-    void paintFxBackdrop(Canvas &c, Rect area, Point out);
-
-private:
-    RadarGlow radarGlow_;
-    RadarGlow fxRadarGlow_; // the same behind the effects graph (see paintBackdrop())
-    std::array<float, kNodes> nodeGlow_{};               // what the routing graph shows of each node's halo, following it
-    std::vector<std::pair<int, float>> wireAmounts_;     // and of each wire's amount, by route
-    float nodeGlowTarget(int node) const;
-    float boxLevel(int node) const;
-    float shownAmount(int param) const;
-    float radarLevel_ = 0.0f; // the output's level the glow has risen or fallen to, 0 to 1 (see poll())
-    struct RadarLook {
-        float strength; // its alpha on OUT
-        float reach;    // how far out it fades to nothing
-    };
-    RadarLook radarLook() const;
-    static float sentOutLevel(const Telemetry &t);
-    bool routingGraphShown() const;
-    static Point nodeDeleteAt(int node, Point center);
-    // Ctrl+drag in the routing graph: where a node dragged to `want` goes on its grid, the nearest point it fits at
-    // clear of the other nodes; and whether the grid's points show now.
-    Point routingGridPoint(int node, Point want) const;
-    bool routingGridShown() const;
     // Cards folded to a strip, which take fewer places: kFoldedFx or kFoldedSource of one.
     bool fxFolded(int slot) const;
     bool sourceFolded(int source) const;
@@ -490,17 +431,6 @@ private:
     // Geometry.
     std::vector<Widget> widgets() const;
     std::optional<Widget> hitTest(Point p) const;
-    int nodeAt(Point p) const;
-    // Where a label `width` wide goes on a wire, a quadratic curve from `start` by `control` to `end` whose middle is
-    // `middle`: there, unless that puts it over a node or one of the labels `taken`; then slid along the wire, either
-    // way, as little as clears every node shown and those labels, staying inside the panel. Where nowhere does, as
-    // little as clears the nodes alone; where nowhere does that, at the middle.
-    Point labelAlong(Point start, Point control, Point end, Point middle, float width,
-                     const std::vector<Rect> &taken = {}) const;
-    // Where the graph's labels rest, by route (and OUT line): the feedback loops' first, then each wire's and each OUT
-    // line's along it, clear of the labels before it as labelAlong() has it. Each is the label as labelPill() takes
-    // it, before a mode's glyph widens it. The route being dragged has none.
-    std::vector<std::pair<int, Rect>> routeLabels() const;
     Rect envRect(int env) const;
     static Point knobCenter(const Widget &w);
     // An operator's Ratio, a knob drawn as a 7-segment readout (see kRatioBox).
@@ -541,7 +471,7 @@ private:
     void finishDrag();
     // Whole notches of the wheel on `target` (a param, or another of the wheel's targets), with `steps` added: a
     // trackpad's smaller steps add up toward them while the wheel stays on that target.
-    int wheelNotches(int target, float steps);
+    int wheelNotches(int target, float steps) override;
 
     // Painting.
     void paintPanels(Canvas &c);
@@ -549,8 +479,6 @@ private:
     void paintKeyboard(Canvas &c);
     void paintKey(Canvas &c, const Widget &w, bool hovered, bool active);
     void paintWheel(Canvas &c, const Widget &w, bool hovered, bool active);
-    void paintRouting(Canvas &c);
-    void paintMatrixLabels(Canvas &c);
     void paintDisperser(Canvas &c, Rect r, int slot);
     void paintWidener(Canvas &c, Rect r, int slot);
     void paintUtility(Canvas &c, Rect r, int slot);
@@ -598,16 +526,6 @@ private:
     std::vector<Point> opWavePoints(int op, Rect r, int cycles, bool plain) const;
     // The tab an operator's page shows: the one picked, but a noise operator's envelope for the scope it hasn't.
     InspectorTab opTabShown(int op) const;
-    // A route's label in the graph, from its place as it rests (`idle`): while it or its parts are under the mouse,
-    // its list of modes is open or it is dragged, a pill, the mode's part on its left (`mode`, a route into an
-    // operator only, its feedback aside) and the x on its right; otherwise the label alone, widened for its mode's
-    // glyph when that isn't Phase. `whole` is all of it.
-    struct LabelPill {
-        Rect depth, mode, remove, whole;
-        bool open = false;
-        bool glyph = false;
-    };
-    LabelPill labelPill(int param, int mode, Rect idle) const;
     // The nodes whose routes into operator `op` its INPUTS tab lists, in the graph's order, and that tab's picture.
     std::vector<int> inputsOf(int op) const;
     // Its rows (the feedback's among them), how far they scroll at most and where they are scrolled to, in rows; the
@@ -626,9 +544,6 @@ private:
     // the pill (see Widget::group), with a line between it and the next part unless one of them is lit.
     void paintButtonFace(Canvas &c, const Widget &w, bool lit, bool hot, Color color, float tint, float radius) override;
     bool lastPartLit_ = false; // whether the part of a pill painted last was lit, for the line after it
-    void paintNode(Canvas &c, const Widget &w);
-    void paintOpBacking(Canvas &c, int op, Point center);
-    bool opHeard(int op) const;
     void paintKnob(Canvas &c, const Widget &w);
     void paintRatio(Canvas &c, const Widget &w);
     void paintStepper(Canvas &c, const Widget &w);
@@ -641,7 +556,7 @@ private:
     // the effects play it: what their displays draw.
     double liveValue(int param) const override;
     // Under a route's label or matrix cell: each modulation's range, as on a knob's ring, and where it is now.
-    void paintModRange(Canvas &c, Rect bar, int param);
+    void paintModRange(Canvas &c, Rect bar, int param) override;
     // A pill's list: every modulation of its target, a row each, under the pill (or over it, short of room), kept
     // inside the editor. It opens from a click on the pill, or under a source's handle dragged over the pill (then it
     // closes again unless the handle is let go of on a row); a click anywhere else but on a source's handle closes it,
@@ -712,6 +627,10 @@ private:
     void askConfirm(Panel &from, int kind) override;
     void startDrag(Panel &from, const Widget &w, Point p, bool step) override;
     void dragValue(const Widget &w, Point p, Modifiers mods) override;
+    std::optional<Widget> dragged() const override {
+        return drag_.kind != DragKind::None ? std::optional(drag_.widget) : std::nullopt;
+    }
+    bool ctrlHeld() const override { return ctrlHeld_; }
     bool sendKey(Key key, bool shift) override { return seqKey(key, shift); }
     bool dragging() const override { return drag_.kind != DragKind::None; }
     void beginCopyDrag() override;
@@ -726,7 +645,7 @@ private:
         effectCardWidgets(list, card - kMaxSources, r);
     }
     void paintCard(Canvas &c, int card, Rect r, bool dragged) override { paintFxCard(c, card - kMaxSources, r, dragged); }
-    void paintBackdrop(Canvas &c, Rect area, Point out) override { paintFxBackdrop(c, area, out); }
+    void paintBackdrop(Canvas &c, Rect area, Point out) override { routingPanel_.paintFxBackdrop(c, area, out); }
     bool scoped() const override { return derivedDepth_ > 0; }
     const Telemetry &telemetry() const override { return telemetry_; }
     Point mouse() const override { return hoverPoint_; }
@@ -739,17 +658,20 @@ private:
     std::optional<std::pair<double, double>> lfoNow(int lfo) const override;
     std::vector<Widget> listedWidgets() const override { return widgets(); }
     int openList() const override { return listMenu_; }
+    void showList(int param) override { listMenu_ = param; }
 
     Controller &controller_;
     // The preset library and the patch as a file (see Controller::presetStore()).
     PresetStore &presetStore() const { return controller_.presetStore(); }
-    // The panels: the shape editors, the preset browser, the SEQ view, the MODS view, the FX view, and all of them, in
-    // the order they are handed what goes on (the shape editors first, for the keys they take before the others).
+    // The panels: the shape editors, the preset browser, the SEQ view, the MODS view, the FX view, the routing panel,
+    // and all of them, in the order they are handed what goes on (the shape editors first, for the keys they take
+    // before the others).
     ShapeEditor shapes_;
     PresetBrowser presets_;
     SeqPanel seq_;
     ModsPanel modsPanel_;
     FxPanel fxPanel_;
+    RoutingPanel routingPanel_;
     std::vector<Panel *> panels_;
     // The one showing over the editor (see Panel::modal()), if any.
     Panel *modalPanel() const;
@@ -812,9 +734,6 @@ private:
     int listMenu_ = -1;                      // the param whose list (ListButton) is open, or -1
     int peqMenu_ = -1;                       // the band type param whose list of shapes is open, or -1
     int waveMenu_ = -1;                      // the operator whose list of more waves is open, or -1
-    bool algorithmMenuOpen_ = false; // the panel of algorithms, under ALGORITHM
-    int algorithmOps_ = 6;           // the set it shows: the algorithms of this many operators (see kAlgorithmSets)
-    bool algorithmsShown() const;    // ALGORITHM is there: with ROUTING or MATRIX, no editor over the panels
     bool sourceMenuOpen_ = false;            // the list of source types, opened from the dashed card after the sources
     Point sourceMenuAt_{0.0f, 0.0f};         // its top left: where the mouse clicked that card; x < 0 under + SOURCE
     float inputsScroll_ = 0.0f;              // rows the INPUTS tab is scrolled to, before clamping

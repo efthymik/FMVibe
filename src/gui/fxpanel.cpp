@@ -516,8 +516,10 @@ void FxPanel::fxGraphWidgets(std::vector<Widget> &list) const {
         }
 }
 
-bool FxPanel::hits(const Widget &w, Point p) const {
-    return w.kind != Kind::FxWire || fxWireHit(w, p);
+std::optional<bool> FxPanel::hits(const Widget &w, Point p) const {
+    if (w.kind != Kind::FxWire)
+        return std::nullopt;
+    return w.rect.contains(p) && fxWireHit(w, p);
 }
 
 bool FxPanel::fxWireHit(const Widget &w, Point p) const {

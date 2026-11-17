@@ -160,10 +160,11 @@ add_library(fmvibe-core STATIC
     src/gui/patchedits.h
     src/gui/presetbrowser.cpp
     src/gui/presetbrowser.h
-    src/gui/routing.cpp
     src/gui/routing.h
     src/gui/routingmodel.cpp
     src/gui/routingmodel.h
+    src/gui/routingpanel.cpp
+    src/gui/routingpanel.h
     src/gui/shapeeditor.cpp
     src/gui/shapeeditor.h
     src/gui/theme.cpp
