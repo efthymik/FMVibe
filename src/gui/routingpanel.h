@@ -15,8 +15,8 @@
 // knob shows a param: the View drags, types and turns it and puts the modulation's depth handles on it as it does a
 // knob's, the panel adding what is the routing's (a cell dragged switching on what it joins, a double-click connecting
 // or disconnecting, the modes and Disconnect in its menu), wherever one shows (on the operator page's INPUTS tab too).
-// The matrix's names do what the inspector's tabs do, and are the View's with them. The glow is the effects graph's
-// backdrop too (see paintFxBackdrop()), which the View paints for the FX view.
+// The matrix's names do what the inspector's tabs do, and are the inspector's with them (see InspectorPanel). The glow
+// is the effects graph's backdrop too (see paintFxBackdrop()), which the View paints for the FX view.
 
 #include "panel.h"
 #include "routingmodel.h"
@@ -39,8 +39,6 @@ public:
     bool shown() const;
     // The panel of algorithms closes, as an open list does as something scrolls under the middle button.
     void closeAlgorithms() { algorithmMenuOpen_ = false; }
-    // Where the inspector's lens is joined to the node it shows: that node's left side, while the graph shows it.
-    std::optional<Point> lensLeaderStart() const;
     // The glow behind OUT follows the output's level in `now`, the newest telemetry (see follow()): whether how it shows
     // changed. Then, once the View has taken `now` in, the nodes' halos and the wires' swell follow what they let
     // through: whether any moved visibly. (The View repaints what shows them: the graph, or the effects graph's

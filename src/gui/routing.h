@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <optional>
 #include <string>
 
 namespace fmvibe::gui::detail {
@@ -153,6 +154,16 @@ inline bool isPowerParam(int param) {
         if (enabledParam(node) == param)
             return true;
     return false;
+}
+
+// The inspector's lens's leader: from the node it shows (`node`), while the routing graph shows it (`graphShown`) and it
+// is on, level across to the lens; where it starts, that node's left side.
+inline std::optional<Point> lensLeaderStart(const RoutingModel &routing, int node, bool graphShown) {
+    if (!graphShown || !routing.nodeOn(node))
+        return std::nullopt;
+    const Point center = routing.nodeCenter(node);
+    const float extent = (isBoxNode(node) ? kFilterHalfW : kNodeRadius) + kSelectedRing + 2.0f;
+    return Point{center.x - extent, center.y};
 }
 
 inline std::string nodeTitle(int node) {

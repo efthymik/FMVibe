@@ -35,6 +35,9 @@ constexpr float kPanelRadius = kRadiusPanel; // the panels' corners
 // graph's OUT is a core at its right end, the orbit rings around it reaching back across the panel.
 constexpr Rect kInspector{24.0f, kPanelsTop + 6.0f, 300.0f, 360.0f};
 constexpr Rect kRouting{kInspector.x + kInspector.w + 8.0f, kPanelsTop, 852.0f, 372.0f};
+// The editor's band the panels' row keeps to, under the header: the routing panel or what takes its place, and the
+// inspector, or the full-size editors over them (see View::poll(), which repaints what moves there).
+constexpr Rect kPanelsBand{0.0f, kHeaderH, View::kWidth, kRouting.y + kRouting.h - kHeaderH};
 constexpr Point kOutCore{kRouting.x + kRouting.w - 70.0f, kRouting.y + 0.5f * kRouting.h};
 constexpr float kOutCoreRadius = 34.0f;
 constexpr Rect kGraph{kRouting.x + 40.0f, kRouting.y + 56.0f, kRouting.w - 190.0f, kRouting.h - 112.0f}; // node centers

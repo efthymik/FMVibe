@@ -43,7 +43,7 @@ public:
     bool tipAtMouse(const Widget &w) const override;
     // The cursor over the roll (a pen while drawing, moving and stretching over a note), none elsewhere.
     std::optional<CursorKind> cursor(const Widget &w) const override;
-    bool poll(const Telemetry &now) override;
+    void poll(const Telemetry &now, std::vector<Rect> &repaint) override;
     bool step() override;
     void pressing(const Widget *hit) override;
     bool press(const Widget &w, Point p, Modifiers mods) override;

@@ -84,7 +84,7 @@ public:
     std::optional<bool> hits(const Widget &w, Point p) const override;
     std::string tooltip(const Widget &w) const override;
     std::optional<CursorKind> cursor(const Widget &w) const override;
-    bool poll(const Telemetry &t) override;
+    void poll(const Telemetry &t, std::vector<Rect> &repaint) override;
     bool step() override;
     bool scrollToward(Point p) override;
     void settle() override;

@@ -4,10 +4,10 @@
 // (the widgets it owns, pressed, dragged, scrolled, typed into, painted), and which reaches what the View keeps for
 // every area (the controller, what is under the mouse, the text fields, the confirm dialog, the messages) through a
 // PanelHost. A panel knows nothing else of the View. So far the preset browser is one (presetbrowser.h), which shows
-// over the editor (modal), and the SEQ view (seqpanel.h), the MODS view (modspanel.h), the FX view (fxpanel.h) and the
-// routing panel (routingpanel.h), which show in their places among the editor's areas; and so are the drawn shapes'
-// editors (shapeeditor.h), whose full-size editors show over the panels' row and whose widgets show wherever a shape
-// is edited in place.
+// over the editor (modal), and the SEQ view (seqpanel.h), the MODS view (modspanel.h), the FX view (fxpanel.h), the
+// routing panel (routingpanel.h) and the inspector (inspectorpanel.h), which show in their places among the editor's
+// areas; and so are the drawn shapes' editors (shapeeditor.h), whose full-size editors show over the panels' row and
+// whose widgets show wherever a shape is edited in place.
 
 #include "widget.h"
 
@@ -146,6 +146,12 @@ public:
     // A graph's backdrop, under its nodes and wires in `area`: the routing graph's glow and orbit rings, spreading from
     // its OUT at `out`.
     virtual void paintBackdrop(Canvas &c, Rect area, Point out) = 0;
+    // An envelope (an operator's, or kOps + a source's for a mod envelope), as the View edits every one, on its cards
+    // and pages alike: its handles, listed into `list` where its display shows it, which the View drags (holding the
+    // display's zoom while one is dragged or the mouse stays over it); and the display painted into `r` in `color`,
+    // with (`live`) a line at the newest voice's level and a dot where it is along the curve.
+    virtual void envelopeWidgets(std::vector<Widget> &list, int env) const = 0;
+    virtual void paintEnvelope(Canvas &c, Rect r, int env, Color color, bool live) = 0;
     // Each modulation of `param`'s range along `bar` (a route's label, a matrix cell), as a knob's ring shows them, the
     // one whose depth handle is under the mouse over the others, and where the set value is and modulation takes it now.
     virtual void paintModRange(Canvas &c, Rect bar, int param) = 0;
@@ -236,10 +242,11 @@ public:
     // What it keeps while the host's scope goes on (see ScopeCache), let go of as one begins and ends.
     virtual void forgetScoped() {}
     // At each poll of the View's: the newest telemetry taken in, before the View keeps it (PanelHost::telemetry() is
-    // still the poll before's), and whether what it shows of it moved, which repaints the band of the editor it shows
-    // in. Then a step of what moves by itself (a glide, a scroll while a drag is held at an edge, the patch loaded):
-    // whether anything moved, which repaints the whole editor.
-    virtual bool poll(const Telemetry &) { return false; }
+    // still the poll before's), and where what it shows of it moved, added to `repaint`: the band of the editor it shows
+    // in (kPanelsBand, say), or the part of it that shows that alone, which the View can repaint alone. Then a step of
+    // what moves by itself (a glide, a scroll while a drag is held at an edge, the patch loaded): whether anything
+    // moved, which repaints the whole editor.
+    virtual void poll(const Telemetry &, std::vector<Rect> & /*repaint*/) {}
     virtual bool step() { return false; }
     // A source's handle (a drag of the View's) held at `p`, near an edge of a row of its own: the row scrolls that way a
     // step (see edgePull()). Whether it moved.

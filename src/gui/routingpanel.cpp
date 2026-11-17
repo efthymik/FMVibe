@@ -303,16 +303,6 @@ bool RoutingPanel::shown() const {
            !host_.partialEditorOpen();
 }
 
-// The lens's leader: from the node the inspector shows, while it is in the graph, level across to the lens.
-std::optional<Point> RoutingPanel::lensLeaderStart() const {
-    const int node = controller().layout().selectedNode;
-    if (!graphShown() || !routing_.nodeOn(node))
-        return std::nullopt;
-    const Point center = routing_.nodeCenter(node);
-    const float extent = (isBoxNode(node) ? kFilterHalfW : kNodeRadius) + kSelectedRing + 2.0f;
-    return Point{center.x - extent, center.y};
-}
-
 // --- Geometry.
 
 bool RoutingPanel::isNoise(int op) const {
@@ -899,7 +889,8 @@ void RoutingPanel::paintRouting(Canvas &c) {
         const Point target = drag_.kind == DragKind::Node ? routing_.nodeCenter(drag_.widget.a) : Point{};
         paintGridMarks(c, kGraph, kRoutingGridCols, kRoutingGridRows, drag_.kind == DragKind::Node ? &target : nullptr);
     }
-    if (const std::optional<Point> leader = lensLeaderStart()) {
+    // The lens's leader: from the node the inspector shows, while it is in the graph, level across to the lens.
+    if (const std::optional<Point> leader = lensLeaderStart(routing_, controller().layout().selectedNode, graphShown())) {
         const Color color = nodeColor(controller().layout().selectedNode);
         c.line(*leader, {kInspector.right(), leader->y}, color.alpha(0.18f), 1.5f, true);
         c.fillCircle(*leader, 2.5f, color.alpha(0.4f));

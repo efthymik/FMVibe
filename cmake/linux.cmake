@@ -24,6 +24,8 @@ add_library(fmvibe-core STATIC
     src/gui/controller.cpp
     src/gui/controller.h
     src/gui/dialogs.cpp
+    src/gui/filterdisplay.cpp
+    src/gui/filterdisplay.h
     src/gui/fxgraph.h
     src/gui/fxgraphmodel.cpp
     src/gui/fxgraphmodel.h
@@ -31,6 +33,9 @@ add_library(fmvibe-core STATIC
     src/gui/fxpanel.h
     src/gui/icons.cpp
     src/gui/icons.h
+    src/gui/inspectorpanel.cpp
+    src/gui/inspectorpanel.h
+    src/gui/lists.h
     src/gui/modulationmodel.cpp
     src/gui/modulationmodel.h
     src/gui/modspanel.cpp

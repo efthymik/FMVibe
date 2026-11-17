@@ -2,8 +2,10 @@
 
 #include "canvas.h"
 #include "controller.h"
+#include "filterdisplay.h"
 #include "fxgraphmodel.h"
 #include "fxpanel.h"
+#include "inspectorpanel.h"
 #include "modspanel.h"
 #include "modulationmodel.h"
 #include "panel.h"
@@ -181,7 +183,6 @@ private:
         BendWheel,
         Glow,
         TextSelect, // across a text field (drag_.widget.a: its Field)
-        InputsScroll, // the INPUTS tab's thumb
         Panel,      // a panel's own (drag_.panel): its moves go to it
         ModListScroll, // a pill's open list's thumb
         Pan,        // the middle button: what a panel that scrolls shows, along with the mouse (a = PanArea)
@@ -262,12 +263,6 @@ private:
     void edit(int index, double value) { mods_.edit(index, value); }
     // Several params changed as one gesture.
     void editMany(const std::vector<std::pair<int, double>> &changes) { mods_.editMany(changes); }
-    // Noise has no pitch or unison copies: just a slope and a stereo spread.
-    bool isNoise(int op) const;
-    // Plays at its Freq x Mult rather than following the note (see OpParam::Fixed).
-    bool isFixed(int op) const;
-    bool isCustomWave(int op) const; // its wave is drawn from partials
-    std::string fixedHzText(int op, bool compact) const;
     // ModulationModel's, from the sources as sources() keeps them; and a source's slots, kept while a scope goes on.
     std::vector<Assignment> assignments() const;
     std::vector<int> usedSlots(int source) const;
@@ -322,10 +317,10 @@ private:
     // What scrolls sideways with a scrollbar: the effects chain and the modulation sources, by card places, and the
     // effects graph, by pixels. How long each is, how much of it shows, where it is scrolled to and its thumb.
     enum class ScrollArea { Fx, Sources, FxGraph };
-    // What the middle button drags along: the source cards, the INPUTS tab's rows, a pill's list's, or a panel's own
-    // part (drag_.panel, drag_.widget.b its part): the preset browser's list or sidebar, the SEQ view's roll, the MODS
-    // view's rows or the FX view's row and graph, say.
-    enum class PanArea { Sources, Panel, Inputs, ModList };
+    // What the middle button drags along: the source cards, a pill's list's, or a panel's own part (drag_.panel,
+    // drag_.widget.b its part): the preset browser's list or sidebar, the SEQ view's roll, the MODS view's rows, the FX
+    // view's row and graph or the INPUTS tab's rows, say.
+    enum class PanArea { Sources, Panel, ModList };
     void applyPan(Point p);
     // What the middle button (or a finger) would pan at `p`, and where it is scrolled to now; none over a dialog, an
     // open list or menu that doesn't scroll, or while a drag goes on.
@@ -375,9 +370,8 @@ private:
     int wideLfo() const { return shapes_.wideLfo(); }
     int partialEditing() const { return shapes_.partialEditing(); }
     // The FX view, the shaper's curve editor that opens from it, or an LFO's shape editor takes the inspector's
-    // place.
+    // place (see InspectorPanel::covered()).
     bool inspectorCovered() const;
-    void switchFixed(int op);
     void flipSwitch(int param); // as a click on its switch flips it
     // While an LFO's or envelope's handle, or a card of the row, is dragged near either end of a row of cards, the
     // row scrolls that way.
@@ -390,7 +384,6 @@ private:
     std::vector<int> sources() const;
     std::vector<int> sourcesShown() const;
     std::vector<int> sourcesMoved() const; // sourcesShown() worked out
-    std::pair<double, double> modReach(const Assignment &m) const;
     // Whether `m`'s depth handle is under the mouse or being dragged: its range is drawn wider, over the others.
     bool modFocused(const Assignment &m) const;
     // Whether it does anything, as its handle shows: a source once it is used (see sourceUsed()), and an LFO or
@@ -430,6 +423,9 @@ private:
 
     // Geometry.
     std::vector<Widget> widgets() const;
+    // An envelope's handles (an operator's, kOps + a source's for a mod envelope), where its display shows it: the
+    // operator's for its page's ENVELOPE tab, which the inspector lists, a mod envelope's on its card.
+    void envelopeWidgets(std::vector<Widget> &list, int env) const override;
     std::optional<Widget> hitTest(Point p) const;
     Rect envRect(int env) const;
     static Point knobCenter(const Widget &w);
@@ -494,7 +490,6 @@ private:
     void paintDelay(Canvas &c, Rect r, int slot);
     void paintEq(Canvas &c, Rect r, int slot);
     void paintParamEq(Canvas &c, Rect r, int slot);
-    void paintSpectrum(Canvas &c, Rect area, const Spectrum &spectrum);
     // Where a parametric EQ band's handle sits: at its gain, or for a cut, at its resonance's peak.
     Point peqHandle(Rect area, int slot, int band) const;
     void paintCompressor(Canvas &c, Rect r, int slot);
@@ -504,40 +499,13 @@ private:
     void paintSweep(Canvas &c, Rect r, int slot, FxType type);
     void paintChorus(Canvas &c, Rect r, int slot);
     void paintShifter(Canvas &c, Rect r, int slot);
-    void paintInspector(Canvas &c);
-    // A shaper's page in the inspector: its summary in `summary`, its transfer curve, and the label over its inputs.
-    void paintShaperPage(Canvas &c, int shaper);
-    void paintPageTitle(Canvas &c, int node, Rect r, const std::string &head, const std::string &rest);
-    std::string boxRoutes(int node) const;
     void paintSources(Canvas &c);
     void paintSource(Canvas &c, float card, int source);
-    void paintEnvelope(Canvas &c, Rect r, int env, Color color, bool live);
+    void paintEnvelope(Canvas &c, Rect r, int env, Color color, bool live) override;
     // The values of the envelope handle `w` (hovered or dragged), at its display's top right over everything else.
     void paintEnvReadout(Canvas &c, const Widget &w);
-    // A filter's response, from its params; its key tracking (`keyTrackParam`) follows `pitch` (semitones, 69 is
-    // A4). `spectrum`: what the filter puts out, measured, to show behind the response, if any.
-    void paintFilterResponse(Canvas &c, Rect r, int typeParam, int slopeParam, int cutoffParam, int resonanceParam,
-                             int keyTrackParam, int mixParam, double pitch, Color color,
-                             const Spectrum *spectrum = nullptr);
-    void paintUnison(Canvas &c, Rect r, int op);
-    void paintScope(Canvas &c, Rect r, int op);
-    OpWarp opWarp(int op) const;
-    bool opSynced(int op) const;
-    std::vector<Point> opWavePoints(int op, Rect r, int cycles, bool plain) const;
-    // The tab an operator's page shows: the one picked, but a noise operator's envelope for the scope it hasn't.
-    InspectorTab opTabShown(int op) const;
-    // The nodes whose routes into operator `op` its INPUTS tab lists, in the graph's order, and that tab's picture.
-    std::vector<int> inputsOf(int op) const;
-    // Its rows (the feedback's among them), how far they scroll at most and where they are scrolled to, in rows; the
-    // place a row is drawn at, and the scrollbar's thumb.
-    int inputsRows(int op) const;
-    float inputsEnd(int op) const;
-    float inputsFirst(int op) const;
-    float inputsRowY(int op, int row) const;
-    Rect inputsThumb(int op) const;
-    void paintInputs(Canvas &c, int op);
-    bool opTabModulated(int op, InspectorTab tab) const;
-    void paintNoiseSlope(Canvas &c, Rect r, int op);
+    // What a filter's display reads (see filterdisplay.h): the params, where modulation takes them now and how far.
+    detail::FilterReads filterReads() const;
     void paintLfo(Canvas &c, Rect r, int lfo);
     void paintWidget(Canvas &c, const Widget &w) override;
     // A button's face: on its own a rounded box, outlined in `color` while lit; merged into a row's pill, its part of
@@ -664,14 +632,15 @@ private:
     // The preset library and the patch as a file (see Controller::presetStore()).
     PresetStore &presetStore() const { return controller_.presetStore(); }
     // The panels: the shape editors, the preset browser, the SEQ view, the MODS view, the FX view, the routing panel,
-    // and all of them, in the order they are handed what goes on (the shape editors first, for the keys they take
-    // before the others).
+    // the inspector, and all of them, in the order they are handed what goes on (the shape editors first, for the keys
+    // they take before the others).
     ShapeEditor shapes_;
     PresetBrowser presets_;
     SeqPanel seq_;
     ModsPanel modsPanel_;
     FxPanel fxPanel_;
     RoutingPanel routingPanel_;
+    InspectorPanel inspector_;
     std::vector<Panel *> panels_;
     // The one showing over the editor (see Panel::modal()), if any.
     Panel *modalPanel() const;
@@ -733,10 +702,8 @@ private:
     float sourceScroll_ = 0.0f;              // how many source cards are scrolled past, before clamping
     int listMenu_ = -1;                      // the param whose list (ListButton) is open, or -1
     int peqMenu_ = -1;                       // the band type param whose list of shapes is open, or -1
-    int waveMenu_ = -1;                      // the operator whose list of more waves is open, or -1
     bool sourceMenuOpen_ = false;            // the list of source types, opened from the dashed card after the sources
     Point sourceMenuAt_{0.0f, 0.0f};         // its top left: where the mouse clicked that card; x < 0 under + SOURCE
-    float inputsScroll_ = 0.0f;              // rows the INPUTS tab is scrolled to, before clamping
     float modListScroll_ = 0.0f;             // rows a pill's open list is scrolled to, before clamping
     int octave_ = 0;                         // the keyboard's shift, -2..2 octaves from C1
     bool settingsOpen_ = false;
@@ -788,10 +755,9 @@ private:
     }
     bool metering_ = false;                  // the output meter showed something when last polled
     std::vector<Rect> changedAreas_;         // see changedAreas()
-    // The scopes' levels, following their spans' peaks (see followScopeLevel()): the output scope's, which its trace is
-    // drawn to, and the operator scope's, which its dB readout shows.
+    // The output scope's level, following its spans' peaks (see followScopeLevel()), which its trace is drawn to (the
+    // operator scope's is the inspector's).
     float outScopeLevel_ = 0.0f;
-    float opScopeLevel_ = 0.0f;
     float glow_ = 0.0f;                      // how strongly the curves glowed when painted last
     float glowDragged_ = -1.0f;              // the glow slider's amount while it is dragged, else -1
     float shownGlow() const override {

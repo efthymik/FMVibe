@@ -6,6 +6,8 @@
 
 #include "patchedits.h"
 
+#include <algorithm>
+#include <cmath>
 #include <optional>
 #include <string>
 #include <utility>
@@ -23,6 +25,15 @@ struct Assignment {
     double scale;  // its Amount, which scales the depth (see SlotAuxParam)
     int aux;       // the source that scales it too, or -1
 };
+
+// How far a modulation takes its target from the set value, down and up, as a share of its range: bipolar, half its
+// depth either way; unipolar, all of it one way.
+inline std::pair<double, double> modReach(const Assignment &m) {
+    const double depth = m.amount * m.scale; // as far as an aux, if it has one, lets it go
+    if (m.bipolar)
+        return {-0.5 * std::abs(depth), 0.5 * std::abs(depth)};
+    return {std::min(depth, 0.0), std::max(depth, 0.0)};
+}
 
 // An empty modulation's row stands in for a slot as emptyModSlot(its place in the list), always below -1;
 // emptyModOf() takes it back, -1 for a slot of a source.

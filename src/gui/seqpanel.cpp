@@ -257,7 +257,7 @@ bool SeqPanel::seqEdgeScroll() {
 
 // The playhead, while the view shows, and the notes it plays glowing; the keys easing whether shown or not, so they
 // show where they are.
-bool SeqPanel::poll(const Telemetry &t) {
+void SeqPanel::poll(const Telemetry &t, std::vector<Rect> &repaint) {
     const Telemetry &was = host_.telemetry();
     bool moved = false;
     if (wide() && (t.seqPosition != was.seqPosition || t.seqPattern != was.seqPattern || t.seqKeys != was.seqKeys))
@@ -266,7 +266,8 @@ bool SeqPanel::poll(const Telemetry &t) {
         moved = true;
     if (seqFollowKeys(t) && wide())
         moved = true;
-    return moved;
+    if (moved)
+        repaint.push_back(kPanelsBand);
 }
 
 // The roll scrolling under a drag held at its edge; and a patch loaded (a preset, Init, the host's state), the roll

@@ -2739,7 +2739,7 @@ std::string FxPanel::tooltip(const Widget &w) const {
 
 // --- What moves by itself
 
-bool FxPanel::poll(const Telemetry &t) {
+void FxPanel::poll(const Telemetry &t, std::vector<Rect> &repaint) {
     // The effects graph's nodes' and wires' glow follow what they show as the glow behind OUT does (see follow()); the
     // panel is painted again while any moves visibly.
     bool moved = false;
@@ -2748,7 +2748,8 @@ bool FxPanel::poll(const Telemetry &t) {
         moved = moved || std::abs(next - fxGlow_[port]) > 0.002f;
         fxGlow_[port] = next;
     }
-    return moved && wide() && fxGraph() && host_.shownGlow() > 0.0f;
+    if (moved && wide() && fxGraph() && host_.shownGlow() > 0.0f)
+        repaint.push_back(kPanelsBand);
 }
 
 bool FxPanel::step() {
