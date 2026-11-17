@@ -197,7 +197,7 @@ private:
     void removeShapePoint(int shape, int point);
     void resetShape(int shape);
     // The points picked in a shape editor, which a drag on one of them moves together and Delete removes: picked by a
-    // box dragged across the shape from empty space, Ctrl+click adding a point or taking it away, Ctrl+A picking every
+    // box dragged across the shape from empty space, Shift+click adding a point or taking it away, Ctrl+A picking every
     // one. Not saved; the editor's alone. A click anywhere else lets them go, and so does any change of how many
     // points the shape has.
     struct ShapePick {
@@ -249,9 +249,9 @@ private:
         int lastPartial = -1; // drawing partials: the one the last move was over, and its value in startValue
         std::vector<double> shapeBefore; // drawing a step: the shape's params before it
         // Points moved together (DragKind::ShapePoint with more than one picked): which, and where each was as they
-        // were grabbed (x, y). Pressed with Ctrl on one picked already, `unpick` lets it go if it is let go unmoved;
+        // were grabbed (x, y). Pressed with Shift on one picked already, `unpick` lets it go if it is let go unmoved;
         // pressed without on one of several picked, `narrow` picks it alone then. A box (DragKind::ShapeBox): the
-        // points picked before it, which Ctrl adds it to.
+        // points picked before it, which Shift adds it to.
         std::vector<int> points;
         std::vector<std::pair<double, double>> origin;
         bool unpick = false;

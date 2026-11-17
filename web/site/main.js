@@ -339,9 +339,9 @@ canvas.addEventListener('mousedown', (e) => {
   const [x, y] = lastPoint = viewPoint(e);
   // The second press of a double-click is one, as in Windows' WM_LBUTTONDBLCLK.
   if (e.detail === 2)
-    ui._ui_double_click(x, y, e.shiftKey, ctrlOf(e));
+    ui._ui_double_click(x, y, e.shiftKey, ctrlOf(e), e.altKey);
   else
-    ui._ui_mouse_down(x, y, e.shiftKey, ctrlOf(e));
+    ui._ui_mouse_down(x, y, e.shiftKey, ctrlOf(e), e.altKey);
   afterInput();
 });
 
@@ -349,7 +349,7 @@ window.addEventListener('mousemove', (e) => {
   if (!dragging && !panning && e.target !== canvas)
     return;
   const [x, y] = lastPoint = viewPoint(e);
-  afterInput(ui._ui_mouse_move(x, y, e.shiftKey, ctrlOf(e)) !== 0);
+  afterInput(ui._ui_mouse_move(x, y, e.shiftKey, ctrlOf(e), e.altKey) !== 0);
 });
 
 window.addEventListener('mouseup', (e) => {
@@ -366,7 +366,7 @@ window.addEventListener('mouseup', (e) => {
     return;
   dragging = false;
   const [x, y] = viewPoint(e);
-  ui._ui_mouse_up(x, y, e.shiftKey, ctrlOf(e));
+  ui._ui_mouse_up(x, y, e.shiftKey, ctrlOf(e), e.altKey);
   if (e.target !== canvas)
     ui._ui_mouse_leave();
   afterInput();

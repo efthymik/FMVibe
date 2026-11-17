@@ -3584,7 +3584,7 @@ void testShapers(const std::filesystem::path &dir, Renderer &renderer) {
     const bool added = model.value(shaperCurveCountIndex(shaper)) == 4.0;
     {
         // The big editor has the SYM switch too, left of its Points | Steps; on, the curve's left half takes no
-        // clicks: a double-click there adds no point, a Shift+click draws no step. Undone, SYM goes off again.
+        // clicks: a double-click there adds no point, an Alt+click draws no step. Undone, SYM goes off again.
         const Point sym{detail::kRouting.x + 366.0f, detail::kRouting.y + detail::kRouting.h - 18.0f};
         const int count = shaperCurveCountIndex(shaper);
         const double before = model.value(count);
@@ -3592,7 +3592,7 @@ void testShapers(const std::filesystem::path &dir, Renderer &renderer) {
         const bool on = at(ShaperParam::Symmetric) == 1.0;
         const double points = model.value(count);
         view.doubleClick(noteCurveAt(0.2, 0.3), {});
-        click(view, noteCurveAt(0.3, -0.4), {true, false});
+        click(view, noteCurveAt(0.3, -0.4), {false, false, true});
         const bool ignored = model.value(count) == points;
         view.mouseMove(noteCurveAt(0.2, 0.3), {});
         const bool shot = renderer.save(view, dir / "30c-shaper-editor-sym.png");
@@ -3613,7 +3613,7 @@ void testShapers(const std::filesystem::path &dir, Renderer &renderer) {
 }
 // Points picked in the shape editors, to move and remove together. In a Curve source's full-size editor: a box from
 // empty space picking the points it reaches (drawn filled, read off the rendered pixels), one of them dragged moving
-// them all as far, one undo step, stopping as a whole at a neighbor not picked and at the top; Ctrl+click adding a
+// them all as far, one undo step, stopping as a whole at a neighbor not picked and at the top; Shift+click adding a
 // point and taking one away, a click on one of several picked picking it alone, Ctrl+A picking every one and Delete
 // removing all but the two it keeps, undoably, and a click on empty space letting them go. On a symmetric voice
 // shaper's page, the middle point picked with another staying in the middle as they move.
@@ -3644,7 +3644,7 @@ void testShapePick(const std::filesystem::path &dir, Renderer &renderer) {
         view.mouseMove(to, mods);
         view.mouseUp(to, mods);
     };
-    const Modifiers ctrl{false, true, false};
+    const Modifiers shift{true, false, false};
     auto lit = [](uint32_t c) { return ((c >> 16 & 255) + (c >> 8 & 255) + (c & 255)) / 3; };
 
     // The box over the 3rd and 4th points: they draw filled, the 2nd hollow; while dragged, the box shows.
@@ -3673,18 +3673,18 @@ void testShapePick(const std::filesystem::path &dir, Renderer &renderer) {
     view.undo();
     check(stopped, "points moved together stop as a whole at a neighbor not picked and at the shape's top");
 
-    // Ctrl+click adds the 5th and takes the 4th away: dragged by the 3rd, the 3rd and 5th move, the 4th stays.
-    click(view, shapeAt(0.8, -0.5), ctrl);
-    click(view, shapeAt(0.6, 0.5), ctrl);
+    // Shift+click adds the 5th and takes the 4th away: dragged by the 3rd, the 3rd and 5th move, the 4th stays.
+    click(view, shapeAt(0.8, -0.5), shift);
+    click(view, shapeAt(0.6, 0.5), shift);
     drag(view, shapeAt(0.4, 0.0), shapeAt(0.4, -0.2));
-    const bool ctrlPicked = nearly(py(2), -0.2) && nearly(py(4), -0.7) && nearly(py(3), 0.5);
+    const bool shiftPicked = nearly(py(2), -0.2) && nearly(py(4), -0.7) && nearly(py(3), 0.5);
     view.undo();
     // A click on the 3rd, one of the two picked, picks it alone: dragged, the 5th stays.
     click(view, shapeAt(0.4, 0.0));
     drag(view, shapeAt(0.4, 0.0), shapeAt(0.4, 0.2));
     const bool alone = nearly(py(2), 0.2) && nearly(py(4), -0.5);
     view.undo();
-    check(ctrlPicked && alone, "Ctrl+click adds a point and takes one away, and a click on one picked picks it alone");
+    check(shiftPicked && alone, "Shift+click adds a point and takes one away, and a click on one picked picks it alone");
 
     // Ctrl+A picks every point; Delete removes all but the first and one more, undoably.
     view.mouseMove(shapeAt(0.1, 0.9), {});
@@ -3961,7 +3961,7 @@ void testWideLfoCard(const std::filesystem::path &dir, Renderer &renderer) {
           "a widened card's tools invert, reverse and shift its shape, each one undo step");
     model.layout().shapeGridX = 16;
 
-    // Steps: a plain click draws a step, Shift+click works with points; Snap snaps a dragged point to the grid, Ctrl
+    // Steps: a plain click draws a step, Alt+click works with points; Snap snaps a dragged point to the grid, Ctrl
     // letting it go. Both are the editor's, in the layout.
     click(view, lfoMode(0, 1));
     const bool stepsOn = model.layout().shapeSteps;
@@ -12091,14 +12091,14 @@ void run(const std::filesystem::path &dir, float scale) {
     }
     {
         // SYM, in its title row left of Points | Steps, switches the curve symmetric here too; its left half then
-        // takes no clicks, a double-click or a Shift+click there doing nothing.
+        // takes no clicks, a double-click or an Alt+click there doing nothing.
         const int count = clipCurveCountIndex(0), symmetric = paramIndex(0, FxParam::ShaperSymmetric);
         const double before = model.value(count);
         click(view, {536.0f, 158.0f});
         const bool on = model.value(symmetric) == 1.0;
         const double points = model.value(count);
         view.doubleClick(clipAt(0.2, 0.4), {});
-        click(view, clipAt(0.1, -0.6), {true, false});
+        click(view, clipAt(0.1, -0.6), {false, false, true});
         const bool ignored = model.value(count) == points;
         view.mouseMove(clipAt(0.2, 0.4), {});
         const bool shot = renderer.save(view, dir / "8c-clip-curve-sym.png");
@@ -12107,11 +12107,11 @@ void run(const std::filesystem::path &dir, float scale) {
               "the big curve editor's SYM switches, and its mirrored half takes no clicks");
     }
     {
-        // Shift+click draws steps here too, as many as on an LFO's shape: one in every column of a grid of 32.
+        // Alt+click draws steps here too, as many as on an LFO's shape: one in every column of a grid of 32.
         const int grid = model.layout().shapeGridX;
         model.layout().shapeGridX = 32;
         for (int step = 0; step < 32; ++step)
-            click(view, clipAt((step + 0.5) / 32.0, step % 2 ? -0.5 : 0.5), {true, false});
+            click(view, clipAt((step + 0.5) / 32.0, step % 2 ? -0.5 : 0.5), {false, false, true});
         const int last = shapeFieldIndex(clipCurveCountIndex(0), 63, PointField::Y);
         check(model.value(clipCurveCountIndex(0)) == 64.0 && std::abs(model.value(last) + 0.5) < 0.01,
               "a shaper's curve takes a step in every column of a grid of 32");
@@ -12350,32 +12350,32 @@ void run(const std::filesystem::path &dir, float scale) {
     view.undo();
     check(model.value(count) == 2.0 && std::abs(pointValue(1, PointField::X) - 0.4) < 0.01,
           "the vertical line undoes");
-    // Shift+click draws a step between the grid lines either side, a point at each end. The next column's step
+    // Alt+click draws a step between the grid lines either side, a point at each end. The next column's step
     // starts beside the first one's end, the shape jumping there. Redrawing the first keeps the next one's start,
-    // and a quick second Shift+click there (a double-click) leaves it as it is, adding no point.
+    // and a quick second Alt+click there (a double-click) leaves it as it is, adding no point.
     {
         const double column = 1.0 / model.layout().shapeGridX;
         auto roughly = [](double a, double b) { return std::abs(a - b) < 0.01; };
         auto pointIs = [&](int point, double x, double y) {
             return std::abs(pointValue(point, PointField::X) - x) < 1e-9 && roughly(pointValue(point, PointField::Y), y);
         };
-        click(view, shapeAt(2.5 * column, 0.25), {true, false});
+        click(view, shapeAt(2.5 * column, 0.25), {false, false, true});
         const bool first = model.value(count) == 4.0 && pointIs(1, 2.0 * column, 0.25) &&
                            pointIs(2, 3.0 * column, 0.25) && pointValue(1, PointField::Curve) == 0.0 &&
                            roughly(pointValue(3, PointField::X), 0.4);
-        click(view, shapeAt(3.5 * column, -0.5), {true, false});
+        click(view, shapeAt(3.5 * column, -0.5), {false, false, true});
         const bool next = model.value(count) == 6.0 && pointIs(2, 3.0 * column, 0.25) &&
                           pointIs(3, 3.0 * column, -0.5) && pointIs(4, 4.0 * column, -0.5);
-        click(view, shapeAt(2.5 * column, 0.75), {true, false});
-        view.doubleClick(shapeAt(2.5 * column, 0.75), {true, false});
-        view.mouseUp(shapeAt(2.5 * column, 0.75), {true, false});
+        click(view, shapeAt(2.5 * column, 0.75), {false, false, true});
+        view.doubleClick(shapeAt(2.5 * column, 0.75), {false, false, true});
+        view.mouseUp(shapeAt(2.5 * column, 0.75), {false, false, true});
         const bool redrawn = model.value(count) == 6.0 && pointIs(1, 2.0 * column, 0.75) &&
                              pointIs(2, 3.0 * column, 0.75) && pointIs(3, 3.0 * column, -0.5) &&
                              roughly(pointValue(5, PointField::X), 0.4) && model.openEdits == 0;
         view.mouseMove(shapeAt(0.7, 0.0), {});
         check(first && next && redrawn && renderer.save(view, dir / "10b-lfo-steps.png"),
-              "Shift+click draws steps between the grid's lines");
-        click(view, shapeAt(0.5 * column, 1.0), {true, false}); // the first column moves the first point
+              "Alt+click draws steps between the grid's lines");
+        click(view, shapeAt(0.5 * column, 1.0), {false, false, true}); // the first column moves the first point
         check(model.value(count) == 7.0 && pointIs(0, 0.0, 1.0) && pointIs(1, column, 1.0) &&
                   pointIs(2, 2.0 * column, 0.75),
               "a step in the first column takes the first point");
@@ -12386,8 +12386,8 @@ void run(const std::filesystem::path &dir, float scale) {
         // first as it was; the whole stroke one undo step.
         {
             const int lines = model.layout().shapeGridX;
-            view.mouseDown(shapeAt(2.5 * column, 0.25), {true, false});
-            view.mouseMove(shapeAt(2.5 * column, -0.5), {true, false});
+            view.mouseDown(shapeAt(2.5 * column, 0.25), {false, false, true});
+            view.mouseMove(shapeAt(2.5 * column, -0.5), {false, false, true});
             const bool level = model.value(count) == 4.0 && pointIs(1, 2.0 * column, -0.5) &&
                                pointIs(2, 3.0 * column, -0.5) && model.openEdits == 0;
             view.mouseMove(shapeAt(1.0 - 0.5 * column, 0.5), {});
@@ -12402,7 +12402,7 @@ void run(const std::filesystem::path &dir, float scale) {
         const int grid = model.layout().shapeGridX;
         model.layout().shapeGridX = 32;
         for (int step = 0; step < 32; ++step)
-            click(view, shapeAt((step + 0.5) / 32.0, step % 2 ? -0.5 : 0.5), {true, false});
+            click(view, shapeAt((step + 0.5) / 32.0, step % 2 ? -0.5 : 0.5), {false, false, true});
         check(model.value(count) == 64.0 && pointIs(63, 1.0, -0.5), "a step fits in every column of a grid of 32");
         for (int step = 0; step < 32; ++step)
             view.undo();

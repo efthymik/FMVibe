@@ -276,8 +276,8 @@ std::unique_ptr<View> view;
 Resources resources;
 std::vector<MenuItem> menu; // the context menu last asked for
 
-Modifiers mods(int shift, int ctrl) {
-    return {shift != 0, ctrl != 0};
+Modifiers mods(int shift, int ctrl, int alt) {
+    return {shift != 0, ctrl != 0, alt != 0};
 }
 
 } // namespace
@@ -315,16 +315,16 @@ EMSCRIPTEN_KEEPALIVE int ui_ctrl(int held) {
     return view->setCtrl(held != 0) ? 1 : 0;
 }
 
-EMSCRIPTEN_KEEPALIVE int ui_mouse_move(float x, float y, int shift, int ctrl) {
-    return view->mouseMove({x, y}, mods(shift, ctrl)) ? 1 : 0;
+EMSCRIPTEN_KEEPALIVE int ui_mouse_move(float x, float y, int shift, int ctrl, int alt) {
+    return view->mouseMove({x, y}, mods(shift, ctrl, alt)) ? 1 : 0;
 }
 
-EMSCRIPTEN_KEEPALIVE void ui_mouse_down(float x, float y, int shift, int ctrl) {
-    view->mouseDown({x, y}, mods(shift, ctrl));
+EMSCRIPTEN_KEEPALIVE void ui_mouse_down(float x, float y, int shift, int ctrl, int alt) {
+    view->mouseDown({x, y}, mods(shift, ctrl, alt));
 }
 
-EMSCRIPTEN_KEEPALIVE void ui_mouse_up(float x, float y, int shift, int ctrl) {
-    view->mouseUp({x, y}, mods(shift, ctrl));
+EMSCRIPTEN_KEEPALIVE void ui_mouse_up(float x, float y, int shift, int ctrl, int alt) {
+    view->mouseUp({x, y}, mods(shift, ctrl, alt));
 }
 
 // The page lost the mouse mid-drag: the drag ends without dropping anything (as WM_CAPTURECHANGED in the plugin).
@@ -345,8 +345,8 @@ EMSCRIPTEN_KEEPALIVE void ui_mouse_leave() {
     view->mouseLeave();
 }
 
-EMSCRIPTEN_KEEPALIVE void ui_double_click(float x, float y, int shift, int ctrl) {
-    view->doubleClick({x, y}, mods(shift, ctrl));
+EMSCRIPTEN_KEEPALIVE void ui_double_click(float x, float y, int shift, int ctrl, int alt) {
+    view->doubleClick({x, y}, mods(shift, ctrl, alt));
 }
 
 // Alt too: over the SEQ view's roll, Alt+wheel zooms its rows.

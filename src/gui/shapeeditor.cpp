@@ -380,10 +380,10 @@ bool ShapeEditor::addShapeStep(int shape, Point p, bool snap, const std::vector<
     return true;
 }
 
-// Shift+click anywhere in the big editor or a widened LFO card, over its points and bends too, draws a step; or
+// Alt+click anywhere in the big editor or a widened LFO card, over its points and bends too, draws a step; or
 // with Steps picked, a plain click.
 bool ShapeEditor::drawsStep(const Widget &w, Modifiers mods) const {
-    return mods.shift != shapeSteps(w.a) &&
+    return mods.alt != shapeSteps(w.a) &&
            (w.kind == Kind::ShapeArea || w.kind == Kind::ShapePoint || w.kind == Kind::ShapeCurve) &&
            (w.a == shapeEditing() || w.a == wideLfo());
 }
@@ -1747,22 +1747,22 @@ bool ShapeEditor::press(const Widget &w, Point p, Modifiers mods) {
         partialEditor_ = partialEditing() == w.a ? -1 : w.a;
         shapeEditor_ = -1;
         return true;
-    case Kind::ShapeArea: { // a box across it picks the points it reaches, with Ctrl as well as those picked already
-        std::vector<int> base = mods.ctrl ? shapePicked(w.a) : std::vector<int>{};
+    case Kind::ShapeArea: { // a box across it picks the points it reaches, with Shift as well as those picked already
+        std::vector<int> base = mods.shift ? shapePicked(w.a) : std::vector<int>{};
         startDrag(DragKind::ShapeBox, w, p, false);
         drag_.boxBase = std::move(base);
         setShapePick(w.a, drag_.boxBase);
         return true;
     }
     case Kind::ShapePoint: {
-        // A point not picked is picked alone, or with Ctrl along with the others; one picked already moves with the
-        // others, and let go of unmoved is picked alone, or with Ctrl let go.
+        // A point not picked is picked alone, or with Shift along with the others; one picked already moves with the
+        // others, and let go of unmoved is picked alone, or with Shift let go.
         std::vector<int> picked = shapePicked(w.a);
         const bool was = std::find(picked.begin(), picked.end(), w.b) != picked.end();
         bool unpick = false, narrow = false;
-        if (mods.ctrl && was)
+        if (mods.shift && was)
             unpick = true;
-        else if (mods.ctrl)
+        else if (mods.shift)
             picked.push_back(w.b);
         else if (!was)
             picked = {w.b};
@@ -1955,7 +1955,7 @@ void ShapeEditor::moveTo(Point p, bool ctrl) {
 
 void ShapeEditor::drop(const DragState &d) {
     const Widget &w = drag_.widget;
-    // A point clicked, not moved: with Ctrl, one picked already let go; without, one of several picked picked alone.
+    // A point clicked, not moved: with Shift, one picked already let go; without, one of several picked picked alone.
     if (drag_.kind == DragKind::ShapePoint && !d.moved && (drag_.unpick || drag_.narrow)) {
         std::vector<int> picked = shapePicked(w.a);
         if (drag_.unpick)

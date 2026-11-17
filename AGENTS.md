@@ -566,7 +566,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     plain click, and Snap snapping a shaper effect's curve point in its editor;
   - points picked in a shape editor: in a Curve source's full-size editor a box from empty space picking the points
     it reaches (drawn filled, read off the rendered pixels), one of them dragged moving them all as far, one undo
-    step, stopping as a whole at a neighbor not picked and at the top, Ctrl+click adding a point and taking one away,
+    step, stopping as a whole at a neighbor not picked and at the top, Shift+click adding a point and taking one away,
     a click on one of several picked picking it alone, Ctrl+A and Delete removing all but the two kept, undoably, and a
     click on empty space letting them go; on a symmetric voice shaper's page the middle point picked with another
     staying in the middle; with the Curve card still widened beside the SEQ view, Ctrl+A over the roll picking its

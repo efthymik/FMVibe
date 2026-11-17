@@ -1438,7 +1438,7 @@ one may have changed since it last did.
     another Curve source (faint until a shape is copied; for now Curve sources' shapes only). Under them, **Points | Steps** picks what a
     click on the shape does, in the card and in every big editor below, which has them too (left of its GRID, or in
     a shaper effect's narrower editor in its title row, left of the reset button): with Points, as below; with
-    Steps, a click draws a step, as Shift+click does with Points, and Shift+click works with points. **Snap** snaps
+    Steps, a click draws a step, as Alt+click does with Points, and Alt+click works with points. **Snap** snaps
     points and steps to the grid without Ctrl, which then lets them go (a shaper's curve drawn right in its card or on
     its page, which show no grid, snaps with Ctrl only). Both belong to the editor, like the grid, and go for every
     shape and curve. How to edit a shape, as they have it, shows in each editor's title row (a shaper effect's under
@@ -1449,8 +1449,8 @@ one may have changed since it last did.
     the shape goes on from. Double-click empty space to add a point and a point to delete it (or right-click it).
     **Picking several points**, in every shape editor (a Curve source's, in its widened card and full size; a shaper
     effect's and a voice shaper's drawn curve, on the card or page and in the big editor; the note source's and
-    velocity's curves): a drag from empty space draws a box that picks the points it reaches (with Steps, Shift+drag,
-    since a plain click draws a step there), and with Ctrl adds them to those picked already; Ctrl+click on a point
+    velocity's curves): a drag from empty space draws a box that picks the points it reaches (with Steps, Alt+drag,
+    since a plain click draws a step there), and with Shift adds them to those picked already; Shift+click on a point
     picks it along with the others, or lets it go if it was picked. A click on a point not picked picks it alone, and
     on one of several picked, let go without moving, picks it alone too. Picked points are filled and ringed. Dragging
     any of them moves them all as far as it moves, in one undo step, keeping their spacing: across, as far as the
@@ -1460,12 +1460,12 @@ one may have changed since it last did.
     card's), and Delete removes those picked, all but the first, a curve's ends, a symmetric curve's middle and as many
     as keep two points, as one undo step. A click anywhere off the shape, any change of how many points it has, and
     the shape tools and reset let the points go. What is picked isn't saved.
-    Shift+click (over a point or a bend dot too) draws a step, as in a step sequencer: a level line at the
+    Alt+click (over a point or a bend dot too) draws a step, as in a step sequencer: a level line at the
     click's height from the grid line left of it to the one right of it, with a point at each end (Ctrl snaps its
     height to the grid too). The points between those lines go; a step beside another starts where that one ends,
     at the same place, so the shape jumps straight up or down there, and a step in the first column takes the
     first point. Held, the step follows the mouse: up and down to another height, and across to another column,
-    the one it left going back to how it was, until the button is let go (one undo step). Shift+click a step
+    the one it left going back to how it was, until the button is let go (one undo step). Alt+click a step
     again to redraw it at another height. An LFO's shape and a shaper's curve
     hold 64 points, so every column can hold a step even on the finest grid, 32 across; the note source's curve
     and velocity's hold 16. The small dots halfway along each segment bend it (a jump has none): drag them up or down,
