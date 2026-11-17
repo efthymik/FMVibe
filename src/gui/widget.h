@@ -220,7 +220,7 @@ enum class WidgetKind {
     SettingsClose,
     ModWheel,     // param = mod wheel: drag or scroll
     BendWheel,    // drag; springs back to center on release
-    // The effects graph (see fxgraph.cpp).
+    // The effects graph (see fxpanel.cpp).
     FxMode,       // b = 0 the chain, 1 the graph: the switch at the FX panel's top right
     FxNode,       // a = node: a click shows it in the inspector
     FxSlot,       // a = lane (0 the main line, 1 the high band, 2 the low band, 3 the middle band): a +, which opens

@@ -4,11 +4,12 @@
 // (the widgets it owns, pressed, dragged, scrolled, typed into, painted), and which reaches what the View keeps for
 // every area (the controller, what is under the mouse, the text fields, the confirm dialog, the messages) through a
 // PanelHost. A panel knows nothing else of the View. So far the preset browser is one (presetbrowser.h), which shows
-// over the editor (modal), and the SEQ view (seqpanel.h) and the MODS view (modspanel.h), which show in their places
-// among the editor's areas.
+// over the editor (modal), and the SEQ view (seqpanel.h), the MODS view (modspanel.h) and the FX view (fxpanel.h),
+// which show in their places among the editor's areas.
 
 #include "widget.h"
 
+#include <algorithm>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -69,6 +70,20 @@ public:
     // A key going through the editor as the window sends it (see View::seqKey()): what a menu command that does what
     // a key does sends. Whether something took it.
     virtual bool sendKey(Key key, bool shift) = 0;
+    // Whether a drag goes on, the View's or a panel's (see startDrag()).
+    virtual bool dragging() const = 0;
+    // The drag going on carries a copy of what it holds, which the panel makes next: every param and the layout as they
+    // are now are kept, which the drag called off goes back to (dropping the copy, its undo step left empty), and the
+    // drag's undo step opens if it hasn't. Then, if no copy could be made after all, nothing is kept to go back to.
+    virtual void beginCopyDrag() = 0;
+    virtual void cancelCopyDrag() = 0;
+    // The widget at `p`, as a press there would find it.
+    virtual std::optional<Widget> widgetAt(Point p) const = 0;
+    // The open lists (ListButtons') whose buttons no longer show close: scrolled away with their card, say.
+    virtual void closeGoneLists() = 0;
+    // A drawn shape whose place is taken by something else, or emptied (an effect's slot): the full-size editor showing
+    // it, if it does, closes.
+    virtual void shapeGone(int shape) = 0;
 
     // Whether a paint or a hit test goes on, in which nothing a panel reads changes: what it works out from the patch,
     // the layout and its own state it may keep until then (see ScopeCache, and Panel::forgetScoped()).
@@ -91,6 +106,22 @@ public:
     // How strongly a grid's lines show: the GRID setting, or where its slider is dragged to (0..1, 0.5 as they were
     // drawn before it could be set).
     virtual float shownGrid() const = 0;
+    // How strongly the graphs glow: the GLOW setting, or where its slider is dragged to (0..1).
+    virtual float shownGlow() const = 0;
+    // The cards of the rows the View shows (an effect's, a source's), by their number: a source's place, or kMaxSources
+    // and an effect's slot. Noting where one shows (as much of it as `shown` shows), for the mouse to find and a theme
+    // whose cards go without an outline to outline it under the mouse; a card's face, as every card's is painted
+    // (its shadow, its fill, tinted with `color` in a flat theme, faintly while it is off, and its outline in `color` at
+    // `edge` while it is on), noted; and what the View still lays out and paints of an effect's card: its widgets below
+    // its title row, and the card itself (its face, its title and its display; its widgets are painted with the others).
+    virtual void noteCard(int card, Rect r, Rect shown) = 0;
+    virtual void paintCardFace(Canvas &c, Rect r, Color color, bool on, int card, bool dragged, float edge,
+                               Rect shown) = 0;
+    virtual void cardWidgets(std::vector<Widget> &list, int card, Rect r) const = 0;
+    virtual void paintCard(Canvas &c, int card, Rect r, bool dragged) = 0;
+    // A graph's backdrop, under its nodes and wires in `area`: the routing graph's glow and orbit rings, spreading from
+    // its OUT at `out`.
+    virtual void paintBackdrop(Canvas &c, Rect area, Point out) = 0;
     // A switch's face, as the View paints its own: lit, a tint of `color` (`tint` strong); hot (under the mouse, say);
     // its part of a row merged into a pill (see mergeButtons()).
     virtual void paintButtonFace(Canvas &c, const Widget &w, bool lit, bool hot, Color color, float tint,
@@ -103,6 +134,25 @@ protected:
 // What a panel works out for a paint or a hit test (its rows, a menu's entries), kept while the host's scope goes on
 // (see PanelHost::scoped()) and let go of as one begins and ends (Panel::forgetScoped()); outside one, worked out
 // afresh each time.
+// How hard a drag held at `p` near the left or right edge of a row of cards in `panel` pulls the row that way, -1..1 (0
+// clear of them): within kEdgeZone of an edge, or past it. A card grabbed that close to an edge (at `grabbedX`) only
+// pulls once it is taken further toward it than where it was grabbed; a source's handle (no `grabbedX`) only within
+// the panel's height. And the cards the row scrolls a poll for it.
+constexpr float kEdgeZone = 28.0f;
+inline float edgePull(Rect panel, Point p, std::optional<float> grabbedX) {
+    if (!grabbedX && (p.y < panel.y || p.y >= panel.bottom()))
+        return 0.0f;
+    const float leftEdge = grabbedX ? std::min(panel.x + kEdgeZone, *grabbedX - 4.0f) : panel.x + kEdgeZone;
+    const float rightEdge = grabbedX ? std::max(panel.right() - kEdgeZone, *grabbedX + 4.0f) : panel.right() - kEdgeZone;
+    const float left = (leftEdge - p.x) / kEdgeZone;
+    const float right = (p.x - rightEdge) / kEdgeZone;
+    return left > 0.0f ? -std::min(left, 1.0f) : (right > 0.0f ? std::min(right, 1.0f) : 0.0f);
+}
+inline float edgeScrollStep(float pull) {
+    constexpr float kStep = 0.06f;
+    return kStep * (pull < 0.0f ? -0.35f + 0.65f * pull : 0.35f + 0.65f * pull);
+}
+
 template <class T>
 class ScopeCache {
 public:
@@ -137,6 +187,10 @@ public:
     virtual void popups(std::vector<Widget> &) const {}
     // Paints its area under its widgets, in its place among the editor's areas (a view in the panels' row, say).
     virtual void paintBack(Canvas &) {}
+    // Paints over the widgets of its area, under the open lists: what veils some of them (the cards a card carried would
+    // land among, say). Then over the open lists, what a drag of its own carries, under the View's drags' overlays.
+    virtual void paintOverWidgets(Canvas &) {}
+    virtual void paintDrag(Canvas &) {}
     // Paints what it shows over the editor's widgets, under the dialogs and the tooltip.
     virtual void paint(Canvas &) {}
     // Paints a widget of its own, wherever it is listed (`hovered` while the mouse is over it); false for another.
@@ -148,6 +202,9 @@ public:
     // The cursor over a widget of its own, or holding one in a drag of its own; nothing to leave it to the View.
     virtual std::optional<CursorKind> cursor(const Widget &) const { return std::nullopt; }
 
+    // Whether `p`, inside a widget of its own, hits it (a wire, along its path); true for another.
+    virtual bool hits(const Widget &, Point) const { return true; }
+
     // What it keeps while the host's scope goes on (see ScopeCache), let go of as one begins and ends.
     virtual void forgetScoped() {}
     // At each poll of the View's: the newest telemetry taken in, before the View keeps it (PanelHost::telemetry() is
@@ -156,6 +213,11 @@ public:
     // whether anything moved, which repaints the whole editor.
     virtual bool poll(const Telemetry &) { return false; }
     virtual bool step() { return false; }
+    // A source's handle (a drag of the View's) held at `p`, near an edge of a row of its own: the row scrolls that way a
+    // step (see edgePull()). Whether it moved.
+    virtual bool scrollToward(Point) { return false; }
+    // The mouse going down, before anything is hit: what glides into place settles there at once, where a click means it.
+    virtual void settle() {}
 
     // The mouse moving onto something else (`hit`, or nothing) while no drag goes on: a menu of its own opening what
     // it is over, say.
@@ -163,6 +225,8 @@ public:
     // Its popups (a menu or list open) closing: as another opens, or as what they were opened on may change or scroll
     // away (an undo, a pan, another view shown).
     virtual void closePopups() {}
+    // An undo or redo about to change the patch: what it keeps of where a list was opened may not hold after.
+    virtual void undoing() {}
     // A press anywhere, before it goes to what it hit (`hit`, or nothing): what lets go at a click elsewhere (a field
     // taking the keyboard, say) lets go here.
     virtual void pressing(const Widget * /*hit*/) {}
@@ -171,6 +235,9 @@ public:
     // whose end, let go of or called off, to release().
     virtual bool press(const Widget &, Point, Modifiers) { return false; }
     virtual bool doubleClick(const Widget &, Point, Modifiers) { return false; }
+    // Whether a double-click on a widget of its own comes as a second press, as a quick second click on a switch does
+    // (see View::doubleClick()).
+    virtual bool doublePress(const Widget &) const { return false; }
     virtual void drag(const DragState &) {}
     virtual void drop(const DragState &) {}
     virtual void release() {}
@@ -224,12 +291,19 @@ public:
 
     // A confirm dialog it asked for (see PanelHost::askConfirm()): its title, what it says, its button that goes ahead
     // and whether it says to save the patch first (it replaces the patch; else what goes is no part of it, or undo
-    // brings it back); and the button pressed (0 cancels, 1 goes ahead). Its kinds are numbered apart from the
+    // brings it back); whether it is a line shorter (it says one line), whether its way ahead is lit in the accent
+    // (which Enter presses; else none is more likely than the others, and Enter leaves it open), a third button
+    // beside them, if any, and choices of their own over them on a taller dialog, each in its color; and the button
+    // pressed (0 cancels, 1 goes ahead, 2 and on the choices, 4 the third). Its kinds are numbered apart from the
     // others' (see View::confirm_).
     struct ConfirmWords {
         std::string title, what;
         std::string ok;
         bool saveFirst = false;
+        bool shorter = false;
+        bool lit = true;
+        std::string third;
+        std::vector<std::pair<std::string, Color>> choices;
     };
     virtual ConfirmWords confirmWords(int /*kind*/) const { return {}; }
     virtual void confirmed(int /*kind*/, int /*button*/) {}

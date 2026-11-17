@@ -3,6 +3,7 @@
 
 #include "view.h"
 
+#include "fxgraph.h"
 #include "layout.h"
 #include "routing.h"
 
@@ -177,6 +178,64 @@ int View::nodeAt(Point p) const {
             return node;
     }
     return -1;
+}
+
+
+void detail::paintGridMarks(Canvas &c, Rect area, int cols, int rows, const Point *target) {
+    for (int row = 0; row < rows; ++row)
+        for (int col = 0; col < cols; ++col) {
+            const Point p = gridPoint(area, cols, rows, col, row);
+            if (target && std::hypot(p.x - target->x, p.y - target->y) < 0.5f)
+                continue; // drawn lit below
+            c.line({p.x - 3.5f, p.y}, {p.x + 3.5f, p.y}, kFaint.alpha(0.45f), 1.0f);
+            c.line({p.x, p.y - 3.5f}, {p.x, p.y + 3.5f}, kFaint.alpha(0.45f), 1.0f);
+        }
+    if (target) {
+        c.line({target->x - 7.0f, target->y}, {target->x + 7.0f, target->y}, kAccent, 1.6f);
+        c.line({target->x, target->y - 7.0f}, {target->x, target->y + 7.0f}, kAccent, 1.6f);
+    }
+}
+
+// --- The routing graph's grid (Ctrl+drag)
+
+bool View::setCtrl(bool held) {
+    if (held == ctrlHeld_)
+        return false;
+    ctrlHeld_ = held;
+    return true; // the grid's points show or go, and a node being dragged snaps or goes free
+}
+
+bool View::routingGridShown() const {
+    return ctrlHeld_ && controller_.layout().view == RoutingView::Graph && shapeEditing() < 0 &&
+           partialEditing() < 0 && (drag_.kind == DragKind::Node || (drag_.kind == DragKind::None && kRouting.contains(hoverPoint_)));
+}
+
+// The grid's points nearest `want` first; a point a node fits at, clear of the others, takes it.
+namespace {
+template <class Fits>
+Point nearestGridPoint(Rect area, int cols, int rows, Point want, Fits fits, Point otherwise) {
+    std::vector<Point> points;
+    for (int row = 0; row < rows; ++row)
+        for (int col = 0; col < cols; ++col)
+            points.push_back(gridPoint(area, cols, rows, col, row));
+    std::sort(points.begin(), points.end(), [&](Point a, Point b) {
+        return std::hypot(a.x - want.x, a.y - want.y) < std::hypot(b.x - want.x, b.y - want.y);
+    });
+    for (const Point p : points)
+        if (fits(p))
+            return p;
+    return otherwise;
+}
+} // namespace
+
+Point View::routingGridPoint(int node, Point want) const {
+    // Where RoutingModel::nodePlace() would leave it untouched, nothing is in its way.
+    auto fits = [&](Point p) {
+        bool found = false;
+        const Point at = routing_.nodePlace(node, p, &found);
+        return found && std::hypot(at.x - p.x, at.y - p.y) < 0.5f;
+    };
+    return nearestGridPoint(kGraph, kRoutingGridCols, kRoutingGridRows, want, fits, routing_.nodePlace(node, want));
 }
 
 } // namespace fmvibe::gui

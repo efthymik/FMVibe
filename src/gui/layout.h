@@ -1438,4 +1438,17 @@ inline Rect confirmBandButton(Rect panel, int choice) {
     return {panel.x + 24.0f + (choice == 3 ? w + 8.0f : 0.0f), panel.y + 74.0f, w, 28.0f};
 }
 
+// On screen, at least in part, for a card `span` places wide, of a row that shows `shown` at a time.
+inline bool onScreen(float place, int shown, float span = 1.0f) {
+    return place > -span && place < static_cast<float>(shown);
+}
+
+// The top left of a list as wide and high as `menu` that opens at the mouse, moved back inside the editor (as high as
+// `height`) where it would reach past an edge.
+inline Point menuAt(Point mouse, Rect menu, float height) {
+    constexpr float kMargin = 4.0f;
+    return {std::clamp(mouse.x, kMargin, std::max(View::kWidth - kMargin - menu.w, kMargin)),
+            std::clamp(mouse.y, kMargin, std::max(height - kMargin - menu.h, kMargin))};
+}
+
 } // namespace fmvibe::gui::detail

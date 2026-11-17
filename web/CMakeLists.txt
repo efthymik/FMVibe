@@ -33,8 +33,8 @@ add_executable(fmvibe-ui
     ${PROJECT_SOURCE_DIR}/src/gui/canvas_web.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/controller.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/dialogs.cpp
-    ${PROJECT_SOURCE_DIR}/src/gui/fxgraph.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/fxgraphmodel.cpp
+    ${PROJECT_SOURCE_DIR}/src/gui/fxpanel.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/icons.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/modulationmodel.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/modspanel.cpp

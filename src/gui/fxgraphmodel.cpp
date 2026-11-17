@@ -1,6 +1,6 @@
 // The effects as a line of effects and splits from IN to OUT, which the editor reads from the wires and writes back to
 // them, and the edits that change it. The engine runs the wires as they are (see Effects::processGraph()); the editor
-// only ever wires a line. Its two views, the row and the graph, are fxgraph.cpp's.
+// only ever wires a line. Its two views, the row and the graph, are the FX view's (fxpanel.cpp).
 
 #include "fxgraphmodel.h"
 

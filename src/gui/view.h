@@ -3,6 +3,7 @@
 #include "canvas.h"
 #include "controller.h"
 #include "fxgraphmodel.h"
+#include "fxpanel.h"
 #include "modspanel.h"
 #include "modulationmodel.h"
 #include "panel.h"
@@ -199,7 +200,6 @@ private:
         FilterPoint,
         PeqPoint,
         DynGrip,
-        FxMove,
         SourceMove,
         Scroll,
         ShapePoint,
@@ -217,8 +217,6 @@ private:
         Panel,      // a panel's own (drag_.panel): its moves go to it
         ModListScroll, // a pill's open list's thumb
         Pan,        // the middle button: what a panel that scrolls shows, along with the mouse (a = PanArea)
-        SplitPoint, // a split's crossover handle, across
-        FxNodeMove, // a node of the effects graph (a split or a join with what it holds), onto another place
         Tempo,      // the title bar's tempo, up and down (drag_.startValue: the tempo it started at)
         AmpMic,     // an amp's mic, across and away from its cabinet's cone
         UtilityHandle, // a handle on the utility's display: Gain and Mono Bass up and down, Pan and Width across
@@ -245,7 +243,7 @@ private:
         bool unpick = false;
         bool narrow = false;
         std::vector<int> boxBase;
-        // A card or node Ctrl-dragged, which carries a copy (see copyDragged()): every param and the layout before the
+        // A card or node Ctrl-dragged, which carries a copy (see beginCopyDrag()): every param and the layout before the
         // copy was made, which a drag called off goes back to.
         std::vector<double> copyBefore;
         std::optional<UiLayout> copyLayout;
@@ -287,7 +285,7 @@ private:
     };
     struct Derived {
         std::optional<std::vector<int>> chain, sources, sourcesShown;
-        std::optional<float> fxLength, sourcesLength;
+        std::optional<float> sourcesLength;
         std::array<std::optional<std::vector<int>>, kAllSources> slots{};
         std::array<std::optional<float>, kMaxSources> cards{};
         std::array<std::optional<Rect>, kMaxSources + kShaperUnits + 3> shapeAreas{}; // by shape + 1, to kVelocityCurve
@@ -352,150 +350,23 @@ private:
     bool reachesOut(int node) const;
     // How far `node` is let through to the output now: the largest live amount of its routes that lead there (0..1).
     double outLevel(int node) const;
-    // Effects. The FX view takes the place of the routing panel and the inspector.
+    // Effects (see FxPanel). The FX view takes the place of the routing panel and the inspector.
     bool fxWide() const;
     // The slots that hold an effect, in the line's order (see FxGraphModel::chain()), kept while a scope goes on.
     std::vector<int> fxChain() const;
-    // FxGraphModel's edits, with what the editor's own state needs around them: an effect added where the list was
-    // opened (see fxSlot_), shown in either view; a slot filled or emptied (see effectFilled()).
-    void addEffect(FxType type, int copyOf = -1);
-    void removeEffect(int slot);
-    // What the editor keeps of an effect slot that another effect now fills (as `copyOf`'s copy, or fresh), or that
-    // empties.
-    void effectFilled(int slot, int copyOf);
-    void effectGone(int slot);
-    // The effects (see fxgraphmodel.h): a line the FX view shows as a row of cards, each split a container holding its
-    // bands (fxRow()), or as a graph on a fixed grid: two views of one line, which the editor reads from the wires
-    // (fxLine()) and FxGraphModel writes the wires from, so the engine runs what either shows.
-    using FxWireRef = gui::FxWireRef;
-    using FxLineItem = gui::FxLineItem;
-    using FxLine = gui::FxLine;
-    // Where the grid puts things: each node (row -1 the high band, 0 the main line and a middle band, 1 the low band),
-    // each + (lane 0 the main line, 1 the high band, 2 the low band, 3 the middle band) and OUT's column.
-    struct FxGridLayout {
-        struct Place {
-            int node, col, row;
-        };
-        struct Slot {
-            int lane, col, row;
-        };
-        std::vector<Place> nodes;
-        std::vector<Slot> slots;
-        int outCol = 1;
-    };
-    using FxSlotAt = gui::FxSlotAt;
-    static constexpr int kFxGapStride = 64; // a band's places, more than it can hold
-    // The wires the grid draws: level from `from` to `to` (an arrowhead's base where `arrow`), bending S-shaped from one
-    // row to another within a gap between nodes, in `color`, and
-    // where a node clicked in at their middle goes (`at`, lane -1 for none).
-    struct FxGraphWire {
-        Point from, to;
-        Color color;
-        bool arrow = true;
-        FxSlotAt at;
-        FxSlotAt drop;             // where a node dropped anywhere on it goes: `at`, or on to a +, a join or OUT its end
-        std::optional<Point> plus; // where its + shows, if not at its middle: an empty band's, on the band's row
-        int port = -1;             // what it carries: the port it comes from, which lights it as loud as that is
-        bool faint = false;        // along a band its join doesn't hear, the other one soloed
-        bool bendAtStart = false;  // bending to its row as it leaves (out of a split's band), else as it arrives
-        std::vector<Point> path;   // its points, from `from` to `to` (see wirePath()), worked out once
-        Point middle;              // where its + shows: `plus`, or on its path halfway across
-    };
-    // How brightly a port of the effects graph lights what it goes out of and along, 0..1: by its level in the
-    // telemetry, in dB from kFxGlowFloorDb up to full scale; 0 while the audio has stopped.
-    static constexpr float kFxGlowFloorDb = -48.0f;
-    float fxGlow(int port) const;
-    float fxGlowTarget(int port) const;
-    std::array<float, kFxPorts> fxGlow_{}; // what the effects graph shows of each port's glow, following it
-    // Where the graph's nodes (by node), +s (by lane), IN and OUT show on screen: on their cells (fxPlacesOf()), or,
-    // while a node is dragged and until they settle after, gliding there (fxPlacesShown(), see fxGlide_).
-    struct FxPlaces {
-        std::array<Point, kFxNodes> node{};
-        std::array<Point, 4> slot{};
-        Point in, out;
-    };
-    FxPlaces fxPlacesOf(const FxGridLayout &grid, float scroll) const;
-    FxPlaces fxPlacesShown(const FxGridLayout &grid, float scroll) const;
-    std::vector<FxGraphWire> fxGraphWires(const FxLine &line, const FxPlaces &places) const;
-    bool fxWireHit(const Widget &w, Point p) const; // whether `p` is on the wire an FxWire widget stands for
-    // The line and the wires hit tests look along, kept while a DerivedScope goes on, as derived_ is: widgets(),
-    // hitTest() and paint() ask for them many times over.
-    struct FxDerived {
-        std::optional<FxLine> line;
-        std::optional<std::vector<FxGraphWire>> hitWires;
-    };
-    mutable FxDerived fxDerived_;
-    // Dragging a node: what is dragged (an effect, or a split with its bands and join, by its split or its join),
-    // the line without it, where it was taken from and where it would land now, and where its nodes were on screen.
-    struct FxDrag {
-        FxLineItem item;
-        FxLine rest;
-        FxSlotAt was, at;
-        std::vector<int> nodes;
-        std::array<Point, kFxNodes> from{};
-        float startPlace = 0.0f, span = 1.0f; // in the row: where its card or container was, and how wide
-        bool byMouse = false; // in the row: the mouse has been over a container, and where it lands goes by the mouse
-        bool copy = false;    // a copy carried, the original left in `rest`: let go of anywhere, it lands
-    };
-    // Ctrl held as a card or node starts to move: what is carried becomes a copy of it, the original staying where it
-    // is, made as the drag's undo step opens (an effect into a free slot, a split with its join and its bands'
-    // effects, a source into a free place). Too few free, it stays a move, with a message.
-    void copyDragged();
-    // A copy of `item` (an effect, or a split with its join and the effects on its bands): its settings, not its
-    // modulation, in free slots and a free split, shown folded as the original; `copies` maps each node to its copy.
-    // None, with a message, where there aren't enough.
-    std::optional<FxLineItem> copyFxItem(const FxLineItem &item, std::map<int, int> &copies);
-    // The nodes' places as shown, in grid cells (fractions while they glide).
-    struct FxGlide {
-        bool on = false;
-        std::array<Point, kFxNodes> node{};
-        std::array<Point, 4> slot{};
-        float outCol = 1.0f;
-    };
-    FxLine fxLineShown() const; // the line, or while a node, card or container is dragged, with it where it would land
-    void startFxDrag(int node);
-    void retargetFxDrag(Point mouse); // where it would land, for the mouse at `mouse`
-    void dropFxNode(bool take);       // let go of: moved there if `take`, in its placeholder's place at once
-    bool glideFxGraph();              // a step of the glide, in poll(): whether anything moved
-    // Every effect (and every split and join) gone, as FxGraphModel::clear() has it, the row and the graph scrolled
-    // back to their start.
-    void clearFx();
-    bool fxGraph() const;
-    // The line the wires make (see FxGraphModel::line()), kept while a scope goes on.
-    FxLine fxLine() const;
-    static FxGridLayout fxGridLayout(const FxLine &line);
-    float fxGraphScroll(const FxGridLayout &grid) const;     // how far the graph is scrolled, held to its width
-    float fxGraphScrollMost(const FxGridLayout &grid) const; // how far it scrolls at most
-    void revealFxNode(int node);                         // scrolls the graph to show that node
-    // The card the effects graph's inspector shows the node in.
-    Rect fxInspector(int node) const;
-    // How many card places the inspector's card takes: the node picked's (a wide effect's 1.5), else one. The graph's
-    // box and its scrollbar take what is left of them (they hide detail::fxGraphArea() and fxGraphScrollTrack() here).
-    float fxInspectorSpan() const;
-    Rect fxGraphArea() const;
-    Rect fxGraphScrollTrack() const;
-    // The card of the effect in `slot` where it shows now: in the row, or in the graph's inspector; none while it
-    // doesn't show.
-    std::optional<Rect> fxCardOf(int slot) const;
-    int fxSelectedNode() const; // the node the inspector shows, -1 for none
-    // A split with its join right after it, its bands empty: where the list was opened on the main line (an arrow in
-    // the row, a wire's middle in the graph; see fxSlot_), else at the line's end; shown.
-    void addSplit(int bands = 2);
-    // A split in two bands or three, as FxGraphModel::setSplitBands() has it: with effects on its middle band and
-    // `midTo` -1, the confirm dialog asks first where they go (0 removed, 1 the high band's start, 2 the low band's
-    // end).
-    void setSplitBands(int split, int bands, int midTo = -1);
-    // An effect, or a split with its join (a join's x removes its split), as FxGraphModel::removeNode() has it: a
-    // split's bands' effects stay on the main line (`effects` 0) or go with it (1); with any on its bands, -1 asks
-    // which first (kConfirmSplitRemove).
-    void removeFxNode(int node, int effects = -1);
-    // The FX view showing the effects as a graph, or as the row: only the view changes.
-    void setFxGraph(bool on);
-    // The node of the graph under the mouse, or whose x or power switch is (see Kind::FxNodeDelete and FxNodePower),
-    // -1 for none; and where its x goes, at its upper right, and an effect's power switch, at its upper left.
-    int fxHoveredNode() const;
-    // The same for the routing graph's nodes, whose x switches the node off (see Kind::NodeDelete).
+    // Whether the FX view shows the effects as a graph, and where an effect's card shows now, if it does (see FxPanel).
+    bool fxGraph() const { return fxPanel_.graph(); }
+    std::optional<Rect> fxCardOf(int slot) const { return fxPanel_.cardOf(slot); }
+    // What an effect's card holds below its title row, and the card itself: its frame, title and display (see
+    // PanelHost::cardWidgets() and paintCard()).
+    void effectCardWidgets(std::vector<Widget> &list, int slot, Rect card) const;
+    void paintFxCard(Canvas &c, int slot, Rect card, bool dragged);
+    // The routing graph's nodes under the mouse, or whose x is (see Kind::NodeDelete), -1 for none.
     int routingHoveredNode() const;
+    // Ctrl held as a source card starts to move: what is carried becomes a copy of it, the original staying where it
+    // is, made as the drag's undo step opens (a source into a free place; a panel's cards make their own, see
+    // PanelHost::beginCopyDrag()). Too few free, it stays a move, with a message.
+    void copyDragged();
     // Where the inspector's lens is joined to the node it shows: that node's left side, while the graph shows it.
     std::optional<Point> lensLeaderStart() const;
     // The keyboard strip's keys lit as they are held (see poll()): each eases up to lit and back down a step every
@@ -523,7 +394,7 @@ public:
 
 private:
     RadarGlow radarGlow_;
-    RadarGlow fxRadarGlow_; // the same behind the effects graph
+    RadarGlow fxRadarGlow_; // the same behind the effects graph (see paintBackdrop())
     std::array<float, kNodes> nodeGlow_{};               // what the routing graph shows of each node's halo, following it
     std::vector<std::pair<int, float>> wireAmounts_;     // and of each wire's amount, by route
     float nodeGlowTarget(int node) const;
@@ -538,106 +409,23 @@ private:
     static float sentOutLevel(const Telemetry &t);
     bool routingGraphShown() const;
     static Point nodeDeleteAt(int node, Point center);
-    static Point fxDeleteAt(int node, Point center);
-    static Point fxPowerAt(int node, Point center);
-    // The graph's widgets: its nodes and +s, and the inspector's split or join card.
-    void fxGraphWidgets(std::vector<Widget> &list) const;
-    // A split's controls on a card's place (`card`): in its container in the row (`row`, where its title drags it and
-    // it folds), or as the card of its split or join node picked in the graph. Its title, the band tabs, the
-    // crossover's display, the slope, the bands' solos, and the knobs for the low band's level, the crossover and the
-    // high band's.
-    void splitControlWidgets(std::vector<Widget> &list, int split, Rect card, bool row) const;
-    void paintSplitControls(Canvas &c, int split, Rect card, bool row);
-    std::optional<Rect> splitCardOf(int split) const; // where a split's controls show now, if they do
-    // The row (the chain view): the line's items left to right, each an effect's card or a split's container (its
-    // controls a card place wide, the cards of the band it shows, then a narrow dashed card adding to that band), in
-    // card places from the row's start, as fxCard() takes them less the scroll.
-    struct FxRowCard {
-        int slot;
-        float place, span;
-        FxSlotAt at;         // where it is in the line: the main line's item (lane 0), or a place on a band
-        bool faint = false; // carried, where it would land (see fxRowShown())
-    };
-    struct FxRowBox {
-        int split, item;
-        int lane;          // the band it shows (see FxGraphModel::splitLane())
-        float place, span; // the whole container, or its strip folded
-        bool folded;
-        float add;         // its dashed card's place
-        bool faint = false;
-    };
-    struct FxRow {
-        std::vector<FxRowCard> cards;
-        std::vector<FxRowBox> boxes;
-        std::vector<float> items; // each main-line item's place, then where the line ends
-    };
-    // Where a container's controls start: past the room it keeps before it (see kFxBoxEdge), a folded strip at once.
-    static float boxColumn(const FxRowBox &box);
-    FxRow fxRow(const FxLine &line) const;
-    // With a card or container being dragged where it would land, and the cards and containers gliding there (see
-    // fxRowGlide_). The one carried goes where it would land at once, and shows faint there until it is let go of.
-    FxRow fxRowShown() const;
-    FxRow fxRowShownOf(const FxLine &line) const; // the same for `line`, worked out
-    // fxRowShown(), kept while a DerivedScope goes on, as fxDerived_ is: every card's display asks for it.
-    mutable std::optional<FxRow> fxRowDerived_;
-    // The widgets of the effect card being carried in the row, laid out at the place it was picked up from, only for
-    // its faint image under the mouse (painted, never hit): it may land on a band its container doesn't show.
-    mutable std::vector<Widget> carriedWidgets_;
-    // The row's cards (by slot) and containers (by split node) as shown, in card places, and where the line ends: once a
-    // card or container is dragged, each glides a step of the way to where it goes every poll(), until they settle after
-    // it is let go. A node not shown at the last step shows where it goes at once.
-    struct FxRowGlide {
-        bool on = false;
-        std::array<float, kFxNodes> place{};
-        std::array<bool, kFxNodes> known{};
-        float end = 0.0f;
-        int carried = -1; // the node carried: an effect's slot, or a split's node with what it holds
-    };
-    void startFxRowGlide(); // from where everything shows now
-    bool glideFxRow();      // a step of the glide, in poll(): whether anything moved
-    float fxBoxSpan(const FxLineItem &item) const;
-    void revealFxRow(int node); // scrolls the row to show the card that holds `node`, else its container
-    // Dragging a card or container along the row (DragKind::FxMove): taken out of the line, then where it would land
-    // for the mouse at `mouse` (an effect onto the band a container shows too, or another band by its tab), then let
-    // go.
-    void startRowDrag(int node);
-    void retargetRowDrag(Point mouse);
-    void dropRowDrag();
-    // The mouse on the graph's widgets: a press (true if it was one of them), and a drag going on.
-    bool fxGraphPress(const Widget &w, Point p);
-    void fxGraphDrag(Point p);
-    void paintFxGraph(Canvas &c);
-    void paintFxCard(Canvas &c, int slot, Rect card, bool dragged);
-    // A split's display on its controls' card (shorter in three bands, to leave room for the crossovers' knobs under
-    // it), and a crossover's handle there (`which` 0 the low one, 1 the high one, which only three bands have).
-    static Rect splitDisplay(Rect card, bool three);
-    Point splitHandle(int split, Rect display, int which = 0) const;
-    // How far a band's level at its join lowers its curve: its knob's position, 0 silent .. 1 at 0 dB (by its port's
-    // band: 0 low, 1 middle, 2 high).
-    double splitBandGain(int split, int band) const;
     // Ctrl+drag in the routing graph: where a node dragged to `want` goes on its grid, the nearest point it fits at
     // clear of the other nodes; and whether the grid's points show now.
     Point routingGridPoint(int node, Point want) const;
     bool routingGridShown() const;
-    // Measured in card places (the parametric EQ's card takes more than one): how far the row is scrolled,
-    // where the card at `index` of `chain` starts in the row, and so its screen place, 0..6 on screen and
-    // fractions while it scrolls partly out.
-    float fxScroll() const;
     // Cards folded to a strip, which take fewer places: kFoldedFx or kFoldedSource of one.
     bool fxFolded(int slot) const;
     bool sourceFolded(int source) const;
-    float fxCardSpan(int slot) const;
     float sourceSpan(int source) const;
     float sourceOffset(const std::vector<int> &shown, size_t index) const;
     void setFolded(bool fx, int index, bool folded); // see PatchEdits::setFolded(), and wideLfo()
-    void paintDownward(Canvas &c, Rect r, std::string_view name, Color color);
     // What scrolls sideways with a scrollbar: the effects chain and the modulation sources, by card places, and the
     // effects graph, by pixels. How long each is, how much of it shows, where it is scrolled to and its thumb.
     enum class ScrollArea { Fx, Sources, FxGraph };
-    // What the middle button drags along: those rows, the INPUTS tab's, a pill's list's, or a panel's own part
-    // (drag_.panel, drag_.widget.b its part): the preset browser's list or sidebar, the SEQ view's roll or the MODS
-    // view's rows, say.
-    enum class PanArea { Fx, Sources, Panel, Inputs, ModList };
+    // What the middle button drags along: the source cards, the INPUTS tab's rows, a pill's list's, or a panel's own
+    // part (drag_.panel, drag_.widget.b its part): the preset browser's list or sidebar, the SEQ view's roll, the MODS
+    // view's rows or the FX view's row and graph, say.
+    enum class PanArea { Sources, Panel, Inputs, ModList };
     void applyPan(Point p);
     // What the middle button (or a finger) would pan at `p`, and where it is scrolled to now; none over a dialog, an
     // open list or menu that doesn't scroll, or while a drag goes on.
@@ -658,9 +446,8 @@ private:
     // What a finger moving on it drags rather than pans past: knobs, handles, cards' titles, nodes and the like.
     bool dragsOnTouch(const Widget &w) const;
     float scrollLength(ScrollArea area) const;
-    // While there is room for more, a dashed card after the last effect (a card place wide) and two after the last
-    // source (LFO above ENV, square) add one.
-    bool fxShadow() const;
+    // While there is room for more, two dashed cards after the last source (LFO above ENV, square) add one (and one
+    // after the last effect, see FxPanel).
     bool sourceShadow() const;
     // That dashed card while it is on screen: the list of source types it opens shuts once the card isn't on screen
     // (see poll()).
@@ -923,9 +710,6 @@ private:
     void paintWheel(Canvas &c, const Widget &w, bool hovered, bool active);
     void paintRouting(Canvas &c);
     void paintMatrixLabels(Canvas &c);
-    // The FX panel; with `only`, just the row's cards, containers and arrows across from it (a carried container's
-    // image), without the panel's header.
-    void paintFx(Canvas &c, std::optional<Rect> only = std::nullopt);
     void paintShapeEditor(Canvas &c, int shape);
     void paintClipCurveEditor(Canvas &c, int shape);
     void paintNoteCurveEditor(Canvas &c);
@@ -1055,7 +839,6 @@ private:
     // Whether the pill the open list belongs to still shows; if not, the list closes.
     bool modListPillShown() const;
     void openModList(const Widget &pill, bool sprung);
-    void closeGoneLists();
     void paintModPill(Canvas &c, const Widget &w, bool hovered);
     void paintModList(Canvas &c, const Widget &w);
     void paintModListRow(Canvas &c, const Widget &w);
@@ -1106,6 +889,23 @@ private:
     void startDrag(Panel &from, const Widget &w, Point p, bool step) override;
     void dragValue(const Widget &w, Point p, Modifiers mods) override;
     bool sendKey(Key key, bool shift) override { return seqKey(key, shift); }
+    bool dragging() const override { return drag_.kind != DragKind::None; }
+    void beginCopyDrag() override;
+    void cancelCopyDrag() override;
+    std::optional<Widget> widgetAt(Point p) const override { return hitTest(p); }
+    void closeGoneLists() override;
+    void shapeGone(int shape) override {
+        if (shapeEditor_ == shape)
+            shapeEditor_ = -1;
+    }
+    void noteCard(int id, Rect card, Rect shown) override;
+    void paintCardFace(Canvas &c, Rect card, Color color, bool on, int id, bool dragged, float edge,
+                       Rect shown) override;
+    void cardWidgets(std::vector<Widget> &list, int card, Rect r) const override {
+        effectCardWidgets(list, card - kMaxSources, r);
+    }
+    void paintCard(Canvas &c, int card, Rect r, bool dragged) override { paintFxCard(c, card - kMaxSources, r, dragged); }
+    void paintBackdrop(Canvas &c, Rect area, Point out) override { paintFxBackdrop(c, area, out); }
     bool scoped() const override { return derivedDepth_ > 0; }
     const Telemetry &telemetry() const override { return telemetry_; }
     Point mouse() const override { return hoverPoint_; }
@@ -1117,11 +917,12 @@ private:
     Controller &controller_;
     // The preset library and the patch as a file (see Controller::presetStore()).
     PresetStore &presetStore() const { return controller_.presetStore(); }
-    // The panels: the preset browser, the SEQ view, the MODS view, and all of them, in the order they are handed what
-    // goes on.
+    // The panels: the preset browser, the SEQ view, the MODS view, the FX view, and all of them, in the order they are
+    // handed what goes on.
     PresetBrowser presets_;
     SeqPanel seq_;
     ModsPanel modsPanel_;
+    FxPanel fxPanel_;
     std::vector<Panel *> panels_;
     // The one showing over the editor (see Panel::modal()), if any.
     Panel *modalPanel() const;
@@ -1142,7 +943,6 @@ private:
     // outline outlines that one alone.
     std::vector<std::pair<int, Rect>> cardRects_;
     int hoverCard_ = -1;
-    void noteCard(int id, Rect card, Rect shown);
     int cardAt(Point p) const;
     bool cardOutlined(int id, bool dragged) const;
     Color cardFaceUnder(const Widget &w) const;
@@ -1158,7 +958,6 @@ private:
     std::vector<DimArea> dimmedAreas() const;
     bool knobIdle(const Widget &w) const;
     bool widgetDimmed(const Widget &w, const std::vector<DimArea> &areas) const;
-    void paintCardFace(Canvas &c, Rect card, Color color, bool on, int id, bool dragged, float edge, Rect shown);
     Drag drag_;
     // An envelope's zoom, held from when one of its handles or one of its times' knobs is grabbed: while the drag goes
     // on, and after it while the mouse stays over its display, so the handles stay where they were put. Once the mouse
@@ -1179,7 +978,6 @@ private:
     // demo's menu stays open while those reach the editor.
     bool menuLive_ = false;
     int menuParam_ = -1;
-    int menuFx_ = -1;                        // the effect slot of the open context menu
     int menuSource_ = -1;                    // the source of the open context menu
     std::optional<Widget> menuAuxDepth_;     // what the open context menu's "Edit aux depth" types into
     std::optional<Widget> menuValue_;        // what the open context menu's "Edit value" types into
@@ -1190,14 +988,6 @@ private:
     int partialEditor_ = -1;                 // the operator whose Custom wave's partials it shows, or -1
     std::mt19937 random_{std::random_device{}()}; // the partial editor's dice
     float sourceScroll_ = 0.0f;              // how many source cards are scrolled past, before clamping
-    float fxScroll_ = 0.0f;                  // how many effect cards are scrolled past, before clamping
-    bool fxMenuOpen_ = false;                // the ADD EFFECT list
-    Point fxMenuAt_{-1.0f, -1.0f};           // its top left: at the mouse, or (x < 0) under ADD EFFECT
-    FxSlotAt fxSlot_;                        // where in the line the list was opened, if there
-    std::optional<FxDrag> fxDrag_;           // a node of the graph, or a card or container of the row, being dragged
-    FxGlide fxGlide_;
-    FxRowGlide fxRowGlide_;
-    float fxGraphScroll_ = 0.0f;             // how far the effects graph is scrolled sideways, before clamping
     int listMenu_ = -1;                      // the param whose list (ListButton) is open, or -1
     int peqMenu_ = -1;                       // the band type param whose list of shapes is open, or -1
     int waveMenu_ = -1;                      // the operator whose list of more waves is open, or -1
@@ -1208,7 +998,6 @@ private:
     Point sourceMenuAt_{0.0f, 0.0f};         // its top left: where the mouse clicked that card; x < 0 under + SOURCE
     float inputsScroll_ = 0.0f;              // rows the INPUTS tab is scrolled to, before clamping
     float modListScroll_ = 0.0f;             // rows a pill's open list is scrolled to, before clamping
-    std::array<int, kFxSlots> fxBand_{};     // the band each three-band dynamics' or parametric EQ's card shows
     int octave_ = 0;                         // the keyboard's shift, -2..2 octaves from C1
     bool settingsOpen_ = false;
     int theme_ = 0;                          // the theme painted last
@@ -1265,7 +1054,7 @@ private:
     float opScopeLevel_ = 0.0f;
     float glow_ = 0.0f;                      // how strongly the curves glowed when painted last
     float glowDragged_ = -1.0f;              // the glow slider's amount while it is dragged, else -1
-    float shownGlow() const {
+    float shownGlow() const override {
         return glowDragged_ >= 0.0f ? glowDragged_ : static_cast<float>(controller_.editorSettings().glow);
     }
     float links_ = 0.0f;                     // how strongly the source's dashed lines were drawn when painted last
@@ -1290,18 +1079,14 @@ private:
                                                          : glowDragged_;
     }
     bool ctrlHeld_ = false; // see setCtrl()
-    // The PresetAction the confirm dialog asks about, kConfirmFxClear and on, a panel's kind, or -1. The panels'
-    // kinds are numbered apart from the View's: the preset browser's 1, 8 and 9 (PresetBrowser::kConfirmLoad and on),
-    // the SEQ view's 7 (SeqPanel::kConfirmClear).
+    // The PresetAction the confirm dialog asks about, a panel's kind, or -1. The panels' kinds are numbered apart from
+    // the View's: the preset browser's 1, 8 and 9 (PresetBrowser::kConfirmLoad and on), the FX view's 4 to 6
+    // (FxPanel::kConfirmFxClear and on), the SEQ view's 7 (SeqPanel::kConfirmClear).
     int confirm_ = -1;
     Panel *confirmFrom_ = nullptr; // the panel that asked (see askConfirm()), or none for the View's own questions
-    static constexpr int kConfirmFxClear = 4; // asking before every effect goes
-    static constexpr int kConfirmMidBand = 5; // asking where a split's middle band's effects go, back in two bands
-    static constexpr int kConfirmSplitRemove = 6; // asking whether a split's bands' effects stay, as it is removed
-    static_assert(SeqPanel::kConfirmClear > kConfirmSplitRemove &&
+    static_assert(FxPanel::kConfirmFxClear > static_cast<int>(PresetAction::SaveAs) &&
+                  SeqPanel::kConfirmClear > FxPanel::kConfirmSplitRemove &&
                   SeqPanel::kConfirmClear < PresetBrowser::kConfirmCategoryRemove);
-    int confirmSplit_ = -1; // the split kConfirmMidBand or kConfirmSplitRemove asks about
-    size_t confirmEffects_ = 0; // how many effects it asks about, counted as it opens
     std::string flash_;
     int flashTicks_ = 0;
     std::optional<Typing> typing_;

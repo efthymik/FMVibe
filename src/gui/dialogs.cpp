@@ -165,20 +165,12 @@ void View::runPreset(PresetAction action) {
 }
 
 // What a panel's question says is the panel's (the preset browser's: the preset picked from the library that replaces
-// the patch, a folder or a category that goes; the SEQ view's: its pattern's notes). Of the View's own: what replaces
-// the patch, Init (a file still to be picked in the dialog goes unsaid), or, for Save, what overwriting the preset's
-// file does.
+// the patch, a folder or a category that goes; the SEQ view's: its pattern's notes; the FX view's: the effects that
+// go). Of the View's own: what replaces the patch, Init (a file still to be picked in the dialog goes unsaid), or, for
+// Save, what overwriting the preset's file does.
 std::string View::confirmWhat() const {
     if (confirmFrom_)
         return confirmFrom_->confirmWords(confirm_).what;
-    if (confirm_ == kConfirmFxClear)
-        return tr(Str::ConfirmFxClear);
-    if (confirm_ == kConfirmMidBand)
-        return confirmEffects_ == 1 ? std::string(tr(Str::ConfirmMidBandOne))
-                                    : trf(Str::ConfirmMidBand, {std::to_string(confirmEffects_)});
-    if (confirm_ == kConfirmSplitRemove)
-        return confirmEffects_ == 1 ? std::string(tr(Str::ConfirmSplitRemoveOne))
-                                    : trf(Str::ConfirmSplitRemove, {std::to_string(confirmEffects_)});
     if (confirm_ == static_cast<int>(PresetAction::Init))
         return tr(Str::ConfirmInit);
     if (confirm_ == static_cast<int>(PresetAction::Save))
@@ -188,27 +180,14 @@ std::string View::confirmWhat() const {
 
 void View::answerConfirm(int button) {
     const auto action = static_cast<PresetAction>(confirm_);
-    const bool clear = confirm_ == kConfirmFxClear;
-    const bool bands = confirm_ == kConfirmMidBand;
-    const bool split = confirm_ == kConfirmSplitRemove;
     const int kind = confirm_;
     Panel *const from = confirmFrom_;
     confirm_ = -1;
     confirmFrom_ = nullptr;
     hover_.reset();
     if (from) { // a panel's question (the preset browser's: a preset loaded, a folder or a category removed; the SEQ
-                // view's: its pattern cleared)
+                // view's: its pattern cleared; the FX view's: its effects removed, a split removed or in two bands)
         from->confirmed(kind, button);
-    } else if (split) { // the split removed, its bands' effects kept on the main line (1) or with it (4)
-        if (button == 1 || button == 4)
-            removeFxNode(fxSplitNode(confirmSplit_), button == 4 ? 1 : 0);
-        confirmSplit_ = -1;
-    } else if (bands) { // back in two bands: the middle band's effects removed (1), onto the low band (2), the high one (3)
-        if (button > 0)
-            setSplitBands(confirmSplit_, 2, button == 1 ? 0 : button == 2 ? 2 : 1);
-        confirmSplit_ = -1;
-    } else if (button == 1 && clear) {
-        clearFx();
     } else if (button == 1) {
         runPreset(action);
     }
@@ -233,22 +212,26 @@ bool View::dialogKey(Key key) {
         hover_.reset();
         return true;
     }
-    // Enter presses the button lit in the accent; the middle band's dialog lights none, as no way ahead is more
-    // likely than the others, and Enter leaves it open. Escape cancels, as a click around the dialog does.
+    // Enter presses the button lit in the accent; a dialog that lights none (a split's middle band's, as no way ahead is
+    // more likely than the others) leaves it open. Escape cancels, as a click around the dialog does.
     if (key == Key::Escape)
         answerConfirm(0);
-    else if (confirm_ != kConfirmMidBand)
+    else if (!confirmFrom_ || confirmFrom_->confirmWords(confirm_).lit)
         answerConfirm(1);
     return true;
 }
 
-// A line shorter with one line to show: before a file still to be picked loads, or before Save overwrites a preset.
+// A line shorter with one line to show: before a file still to be picked loads, before Save overwrites a preset, or
+// as a panel's question says (a split's removal).
 bool View::confirmShorter() const {
-    return confirmWhat().empty() || confirm_ == static_cast<int>(PresetAction::Save) || confirm_ == kConfirmSplitRemove;
+    return confirmWhat().empty() || confirm_ == static_cast<int>(PresetAction::Save) ||
+           (confirmFrom_ && confirmFrom_->confirmWords(confirm_).shorter);
 }
 
 std::vector<View::Widget> View::confirmWidgets() const {
-    const bool bands = confirm_ == kConfirmMidBand;
+    const std::optional<Panel::ConfirmWords> words =
+        confirmFrom_ ? std::optional(confirmFrom_->confirmWords(confirm_)) : std::nullopt;
+    const bool bands = words && !words->choices.empty(); // a split's middle band's: its choices over the others
     const Rect panel = bands ? confirmBandsPanel(height()) : confirmPanel(height(), confirmShorter());
     std::vector<Widget> list;
     auto add = [&](Kind kind, Rect r, int a) {
@@ -261,9 +244,9 @@ std::vector<View::Widget> View::confirmWidgets() const {
     add(Kind::ConfirmBackdrop, {0.0f, 0.0f, View::kWidth, height()}, 0);
     add(Kind::ConfirmBackdrop, panel, 1);
     if (bands)
-        for (int choice : {2, 3})
+        for (int choice = 2; choice < 2 + static_cast<int>(words->choices.size()); ++choice)
             add(Kind::ConfirmButton, confirmBandButton(panel, choice), choice);
-    if (confirm_ == kConfirmSplitRemove) // the split with its bands' effects
+    if (words && !words->third.empty()) // a third way (a split with its bands' effects)
         add(Kind::ConfirmButton, confirmThirdButton(panel), 4);
     add(Kind::ConfirmButton, confirmButton(panel, 0), 0);
     add(Kind::ConfirmButton, confirmButton(panel, 1), 1);
@@ -490,23 +473,20 @@ void View::stepPreset(int direction) {
 void View::paintConfirm(Canvas &c) {
     c.fillRect({0.0f, 0.0f, View::kWidth, height()}, kBackground.alpha(0.7f));
     const std::string what = confirmWhat();
-    const bool bands = confirm_ == kConfirmMidBand; // where a middle band's effects go (undo brings it back too)
+    // A panel's question (the preset browser's, the SEQ view's, the FX view's), which says whether to save the patch
+    // first, and whether it has choices of its own over the others (where a split's middle band's effects go).
+    const std::optional<Panel::ConfirmWords> words =
+        confirmFrom_ ? std::optional(confirmFrom_->confirmWords(confirm_)) : std::nullopt;
+    const bool bands = words && !words->choices.empty();
     const Rect panel = bands ? confirmBandsPanel(height()) : confirmPanel(height(), confirmShorter());
     paintDialogPanel(c, panel);
     const bool overwrite = confirm_ == static_cast<int>(PresetAction::Save);
-    const bool split = confirm_ == kConfirmSplitRemove;
-    // A panel's question (the preset browser's, the SEQ view's), which says whether to save the patch first.
-    const std::optional<Panel::ConfirmWords> words =
-        confirmFrom_ ? std::optional(confirmFrom_->confirmWords(confirm_)) : std::nullopt;
     // What goes, undo brings back; or a category or folder, which nothing of the patch's needs.
-    const bool clear = confirm_ == kConfirmFxClear || bands || split || (words && !words->saveFirst);
+    const bool clear = words && !words->saveFirst;
     c.text({panel.x + 24.0f, panel.y + 18.0f, panel.w - 48.0f, 22.0f},
            words       ? words->title
            : overwrite ? trf(Str::ConfirmOverwriteTitle, {presetStore().presetName()})
-                       : std::string(tr(bands   ? Str::ConfirmMidBandTitle
-                                       : split ? Str::ConfirmSplitRemoveTitle
-                                       : clear ? Str::ConfirmFxClearTitle
-                                               : Str::ConfirmTitle)),
+                       : std::string(tr(Str::ConfirmTitle)),
            kTextHeading, kText, Align::Left, true);
     float y = panel.y + 48.0f;
     if (!what.empty()) {
