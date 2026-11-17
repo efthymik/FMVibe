@@ -465,11 +465,6 @@ void paintAddPlus(Canvas &c, Point left, Color color) {
     c.line({m.x, m.y - kAddPlusArm}, {m.x, m.y + kAddPlusArm}, color, 1.5f);
 }
 
-// A flat theme's add button: a filled pill, round at its ends, tinted with the accent while `lit`.
-void paintPill(Canvas &c, Rect r, bool lit) {
-    c.fillRect(r, lit ? kAccent.alpha(0.24f) : kTrack, std::min(kRadiusPanel, r.h * 0.5f));
-}
-
 // + EFFECT and + SOURCE: a plus and the name, then a chevron for the list it opens. Neutral at rest, in the theme's
 // accent under the mouse and while its list is open; dimmed while every place is taken (`full`). In a theme with pill
 // buttons, a filled pill without an outline, its plus and name in full text at rest and its chevron dim.
@@ -606,7 +601,8 @@ float View::heightFor(const UiLayout &layout) {
 }
 
 View::View(Controller &controller)
-    : controller_(controller), presets_(*this), seq_(*this), panels_{&presets_, &seq_}, table_(paramTable()),
+    : controller_(controller), presets_(*this), seq_(*this), modsPanel_(*this), panels_{&presets_, &seq_, &modsPanel_},
+      table_(paramTable()),
       mods_(controller, [this](std::string m) { flash(std::move(m)); }),
       routing_(controller, [this](std::string m) { flash(std::move(m)); }),
       fx_(controller, [this](std::string m) { flash(std::move(m)); }) {
@@ -668,6 +664,8 @@ View::DerivedScope::DerivedScope(const View &view) : view_(view) {
         view_.derived_ = Derived{};
         view_.fxDerived_ = FxDerived{};
         view_.fxRowDerived_.reset();
+        for (Panel *panel : view_.panels_) // and what the panels keep (see ScopeCache)
+            panel->forgetScoped();
     }
 }
 
@@ -676,6 +674,8 @@ View::DerivedScope::~DerivedScope() {
         view_.derived_ = Derived{};
         view_.fxDerived_ = FxDerived{};
         view_.fxRowDerived_.reset();
+        for (Panel *panel : view_.panels_)
+            panel->forgetScoped();
     }
 }
 
@@ -813,7 +813,23 @@ Color View::clipColor(int unit) const {
 
 bool View::inspectorCovered() const {
     const int shape = shapeEditing();
-    return fxWide() || modsWide() || seq_.wide() || (shape >= 0 && !isStripCurve(shape) && !isShaperCurve(shape));
+    return fxWide() || modsPanel_.wide() || seq_.wide() ||
+           (shape >= 0 && !isStripCurve(shape) && !isShaperCurve(shape));
+}
+
+void View::showView(RoutingView view) {
+    controller_.layout().view = view;
+    for (Panel *panel : panels_) // their menus (the MODS view's), opened on what showed before
+        panel->closePopups();
+    shapeEditor_ = -1;
+    partialEditor_ = -1;
+    fxMenuOpen_ = false;
+    listMenu_ = -1;
+}
+
+void View::showSourceMods(int source) {
+    showView(RoutingView::Mods);
+    modsPanel_.showSource(source);
 }
 
 bool View::fxWide() const {
@@ -1558,7 +1574,7 @@ bool View::poll() {
             retargetRowDrag(drag_.now);
     }
     // What moves by itself in the panels: the SEQ view's roll scrolling under a drag held at its edge, or fitted to a
-    // patch loaded.
+    // patch loaded; the MODS view's rows gliding where the wheel sent them.
     for (Panel *panel : panels_)
         if (panel->step())
             everywhere = true;
@@ -1572,8 +1588,6 @@ bool View::poll() {
         else
             inCard(env - kOps);
     }
-    if (glideMods())
-        everywhere = true;
     if (glideFxGraph()) // the effects graph's nodes making room for one dragged, or settling after
         everywhere = true;
     if (glideFxRow()) // the row's cards and containers likewise
@@ -1890,66 +1904,7 @@ std::vector<View::Widget> View::widgets() const {
         add(Kind::PartialArea, kPartialLevels, -1, partials, 0);
         add(Kind::PartialArea, kPartialPhases, -1, partials, 1);
     } else if (view == RoutingView::Mods) {
-        // A row per modulation, cut off at the list's ends while it scrolls, then one that adds an empty modulation.
-        // The first of a source's rows names it, with its polarity switch after the name (an empty modulation among
-        // them too); an empty modulation's row has only its source, its target and its remove.
-        const std::vector<Assignment> rows = modsRows();
-        const float first = modsFirst();
-        const int top = static_cast<int>(std::floor(first));
-        const size_t rowsStart = list.size();
-        const int end = std::min(top + static_cast<int>(kModsList.h / kModsRowStep) + 2, static_cast<int>(rows.size()));
-        for (int row = top; row < end; ++row) {
-            const Assignment &m = rows[row];
-            const Rect r = modsRow(static_cast<float>(row) - first);
-            const bool empty = m.slot < 0;
-            if (!empty)
-                add(Kind::SlotBypass, modsCell(r, kModsBypass), slotBypassIndex(m.source, m.slot), m.source, m.slot);
-            add(Kind::ModsSource, modsCell(r, kModsSource), -1, m.source, m.slot);
-            const bool named = m.source < 0 || row == 0 || rows[row - 1].source != m.source;
-            list.back().compact = named;
-            if (named && m.source >= 0)
-                add(Kind::SourcePolarity, modsCell(r, kModsPolarity), -1, m.source, m.slot);
-            add(Kind::ModsTarget, modsCell(r, kModsTarget), -1, m.source, m.slot);
-            if (empty) {
-                add(Kind::SlotRemove, modsCell(r, kModsRemove), -1, m.source, m.slot);
-                continue;
-            }
-            const Rect depth = modsCell(r, kModsDepth);
-            add(Kind::SlotBar, {depth.x, depth.y, depth.w - 46.0f, depth.h}, slotAmountIndex(m.source, m.slot),
-                m.source, m.slot);
-            add(Kind::ValueText, {depth.right() - 44.0f, depth.y, 42.0f, depth.h}, slotAmountIndex(m.source, m.slot),
-                m.source, m.slot);
-            const Rect curve = modsCell(r, kModsCurve);
-            add(Kind::ModsCurve, {curve.x, curve.y + 3.0f, curve.w, curve.h - 6.0f}, slotCurveIndex(m.source, m.slot),
-                m.source, m.slot);
-            const Rect scale = modsCell(r, kModsScale);
-            add(Kind::ModsScale, {scale.x, scale.y, scale.w - 44.0f, scale.h}, slotScaleIndex(m.source, m.slot),
-                m.source, m.slot);
-            const Rect aux = modsCell(r, kModsAux);
-            if (m.aux >= 0) {
-                // The chip: its name opens the menu of auxes, its aux depth drags, its x takes the aux away.
-                add(Kind::ModsAux, {aux.x, aux.y + 3.0f, aux.w - 24.0f - kAuxDepthW, aux.h - 6.0f}, -1, m.source,
-                    m.slot);
-                add(Kind::ModsAuxDepth, {aux.right() - 22.0f - kAuxDepthW, aux.y + 3.0f, kAuxDepthW, aux.h - 6.0f},
-                    slotAuxDepthIndex(m.source, m.slot), m.source, m.slot);
-                add(Kind::ModsAuxClear, {aux.right() - 22.0f, aux.y + 3.0f, 20.0f, aux.h - 6.0f}, -1, m.source, m.slot);
-            } else {
-                add(Kind::ModsAux, {aux.x, aux.y + 3.0f, 64.0f, aux.h - 6.0f}, -1, m.source, m.slot);
-            }
-            add(Kind::SlotRemove, modsCell(r, kModsRemove), -1, m.source, m.slot);
-        }
-        if (const Rect r = modsRow(static_cast<float>(rows.size()) - first); r.y < kModsList.bottom()) {
-            const Rect cell = modsCell(r, kModsAdd);
-            add(Kind::ModsAdd, {cell.x, cell.y + 3.0f, cell.w, cell.h - 6.0f});
-        }
-        for (size_t i = rowsStart; i < list.size(); ++i)
-            list[i].clip = kModsList;
-        if (modsEnd() > 0.0f)
-            add(Kind::ModsScroll, modsScrollTrack().inset(-3.0f));
-        const Rect filter = modsFilterRect();
-        add(Kind::SearchField, filter, -1, static_cast<int>(Field::ModsFilter));
-        if (!modsFilter_.text.empty())
-            add(Kind::SearchClear, fieldClear(filter), -1, static_cast<int>(Field::ModsFilter));
+        modsPanel_.widgets(list);
     } else if (view == RoutingView::Seq) {
         seq_.widgets(list);
     } else if (view == RoutingView::Fx) {
@@ -3152,7 +3107,7 @@ std::vector<View::Widget> View::widgets() const {
                 add(Kind::ListItem, listMenuItem(button, items, item), listMenu_, -1, listItemValue(listMenu_, item));
         }
     }
-    for (const Panel *panel : panels_) // theirs: the SEQ view's scale and snap lists
+    for (const Panel *panel : panels_) // theirs: the SEQ view's scale and snap lists, the MODS view's open menu
         panel->popups(list);
     // An LFO's list of shapes, under its button on its card, cut off at the row's ends like the card, though
     // reaching past its bottom.
@@ -3222,27 +3177,6 @@ std::vector<View::Widget> View::widgets() const {
         add(Kind::WaveMenu, waveMenu(), -1, 1);
         for (size_t i = 0; i < std::size(kMoreWaves); ++i)
             add(Kind::WaveMenuItem, waveMenuItem(static_cast<int>(i)), -1, waveMenu_, static_cast<int>(kMoreWaves[i]));
-    }
-    // A MODS row's cascading menu, over everything: around it, a click closes it.
-    if (cascade_ && modsWide()) {
-        const std::shared_ptr<const MenuNode> tree = cascadeTree();
-        const MenuNode &root = *tree;
-        const std::vector<const MenuNode *> levels = cascadeLevels(root);
-        const std::vector<Rect> rects = cascadeRects(root);
-        add(Kind::CascadeMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
-        for (size_t k = 0; k < levels.size(); ++k) {
-            add(Kind::CascadeMenu, rects[k], -1, 1, static_cast<int>(k));
-            for (size_t i = 0; i < levels[k]->children.size(); ++i)
-                if (!levels[k]->children[i].heading)
-                    add(Kind::CascadeItem, cascadeItemRect(*levels[k], rects[k], static_cast<int>(i), k), -1,
-                        static_cast<int>(k), static_cast<int>(i));
-            if (k == 0 && cascadeSearches()) { // the search atop the first level
-                const Rect search = cascadeSearchRect(rects[k]);
-                add(Kind::SearchField, search, -1, static_cast<int>(Field::CascadeSearch));
-                if (!cascadeSearch_.text.empty())
-                    add(Kind::SearchClear, fieldClear(search), -1, static_cast<int>(Field::CascadeSearch));
-            }
-        }
     }
     // A pill's open list, over everything: its rows' bypass dots, depth bars, aux's x and removes work as in the MODS
     // view.
@@ -3410,7 +3344,7 @@ void View::paint(Canvas &c, Rect area) {
         paintFx(c);
         break;
     case RoutingView::Mods:
-        paintMods(c);
+        modsPanel_.paintBack(c);
         break;
     case RoutingView::Seq:
         seq_.paintBack(c);
@@ -3648,12 +3582,10 @@ void View::paint(Canvas &c, Rect area) {
             paintAuxLinks(c, list, aux, hover_->a, hover_->b);
     }
     paintHoverTags(c, list);
-    if (cascade_ && modsWide())
-        paintCascade(c);
     if (typing_)
         paintTyping(c);
-    for (Panel *panel : panels_) // what they show over the editor: the preset browser's info card, browser and dialogs
-        panel->paint(c);
+    for (Panel *panel : panels_) // what they show over the editor: the preset browser's info card, browser and dialogs,
+        panel->paint(c);         // the MODS view's open menu
     if (settingsOpen_) {
         paintSettings(c);
         paintTooltip(c); // its sliders'
@@ -8442,19 +8374,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::ConfirmBackdrop:
     case Kind::BrowserBackdrop:
         break;
-    case Kind::SearchField: // the browser's and the target menu's drawn with them
-        if (w.a == static_cast<int>(Field::ModsFilter)) {
-            if (modsFilterOpen()) {
-                paintField(c, Field::ModsFilter, w.rect, fieldTyped(w.rect), tr(Str::ModsFilterHint),
-                           modsFilter_.text.empty() ? std::string() : modsFilterCount());
-            } else { // a magnifier, to open it
-                if (hovered)
-                    c.fillRect(w.rect, kTrack, kRadiusControl);
-                const Point lens{w.rect.center().x - 1.5f, w.rect.center().y - 1.5f};
-                c.strokeCircle(lens, 4.5f, hovered ? kText : kDim, 1.3f);
-                c.line({lens.x + 3.3f, lens.y + 3.3f}, {lens.x + 7.0f, lens.y + 7.0f}, hovered ? kText : kDim, 1.5f);
-            }
-        }
+    case Kind::SearchField: // the panels' own: the browser's and the MODS view's drawn by them
         break;
     case Kind::TempoBox: {
         // A metronome, then the tempo and its unit, centered in the room right of it.
@@ -8489,9 +8409,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         c.polyline(chevron, 3, hovered ? kText : kDim, 1.5f);
         break;
     }
-    case Kind::SearchClear: {
-        if (w.a == static_cast<int>(Field::CascadeSearch))
-            break; // drawn with its menu
+    case Kind::SearchClear: { // the target menu's drawn with its menu (see ModsPanel)
         const Point m = w.rect.center();
         const Color color = hovered ? kText : kDim;
         c.line({m.x - 3.5f, m.y - 3.5f}, {m.x + 3.5f, m.y + 3.5f}, color, 1.3f);
@@ -8585,130 +8503,6 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::ModListRow:
         paintModListRow(c, w);
         break;
-    case Kind::ModsSource: {
-        // The first of a source's rows has its handle's look and its name, the others a line in its color; under the
-        // mouse, or while its menu is open, a chevron says it opens one. An empty modulation without a source has a
-        // dashed handle and asks for one.
-        const bool open = cascade_ && cascade_->kind == CascadeKind::Source && cascade_->source == w.a &&
-                          cascade_->slot == w.b;
-        if (w.a < 0) {
-            const Point handle{w.rect.x + 7.0f, w.rect.center().y};
-            c.strokeCircle(handle, 6.5f, hovered || open ? kDim : kFaint, 1.2f);
-            const std::string ask = tr(Str::ModsPickSource);
-            c.text({w.rect.x + 20.0f, w.rect.y, w.rect.w - 34.0f, w.rect.h}, ask, kTextBody, hovered || open ? kText : kDim,
-                   Align::Left);
-            const float x = w.rect.x + 24.0f + std::min(c.textWidth(ask, kTextBody), w.rect.w - 40.0f);
-            const Point m{x + 4.0f, w.rect.center().y};
-            const Point chevron[] = {{m.x - 3.5f, m.y - 1.5f}, {m.x, m.y + 2.0f}, {m.x + 3.5f, m.y - 1.5f}};
-            c.polyline(chevron, 3, kDim, 1.3f);
-            break;
-        }
-        const Color color = kSourceColors[w.a];
-        const bool bypassed = w.b >= 0 && mods_.slotBypassed(w.a, w.b);
-        if (w.compact) {
-            const Point handle{w.rect.x + 7.0f, w.rect.center().y};
-            c.fillCircle(handle, 7.0f, color);
-            c.fillCircle(handle, 2.5f, kPanel);
-            const std::string name = mods_.sourceName(w.a);
-            c.text({w.rect.x + 20.0f, w.rect.y, w.rect.w - 34.0f, w.rect.h}, name, kTextBody, bypassed ? kDim : kText,
-                   Align::Left, true);
-            if (hovered || open) {
-                const float x = w.rect.x + 24.0f + std::min(c.textWidth(name, kTextBody, true), w.rect.w - 40.0f);
-                const Point m{x + 4.0f, w.rect.center().y};
-                const Point chevron[] = {{m.x - 3.5f, m.y - 1.5f}, {m.x, m.y + 2.0f}, {m.x + 3.5f, m.y - 1.5f}};
-                c.polyline(chevron, 3, kDim, 1.3f);
-            }
-        } else {
-            c.line({w.rect.x + 7.0f, w.rect.y - 2.0f}, {w.rect.x + 7.0f, w.rect.bottom() + 2.0f}, color.alpha(0.35f),
-                   2.0f);
-            if (hovered || open)
-                c.text({w.rect.x + 20.0f, w.rect.y, w.rect.w - 20.0f, w.rect.h}, mods_.sourceName(w.a), kTextBody, kDim,
-                       Align::Left);
-        }
-        break;
-    }
-    case Kind::ModsTarget: {
-        // An empty modulation without a target asks for one.
-        const int target = mods_.modsRowTarget(w.a, w.b);
-        const bool open = cascade_ && cascade_->kind == CascadeKind::Target && cascade_->source == w.a &&
-                          cascade_->slot == w.b;
-        if (hovered || open)
-            c.fillRect(w.rect.inset(1.0f), kTrack, kRadiusMark);
-        const std::string name = target >= 0 ? mods_.paramName(target) : std::string(tr(Str::ModsPickTarget));
-        c.text({w.rect.x + 6.0f, w.rect.y, w.rect.w - 24.0f, w.rect.h}, name, kTextBody,
-               target < 0 || (w.b >= 0 && mods_.slotBypassed(w.a, w.b)) ? kDim : kText, Align::Left);
-        if (hovered || open || target < 0) {
-            const Point m{w.rect.right() - 10.0f, w.rect.center().y};
-            const Point chevron[] = {{m.x - 3.5f, m.y - 1.5f}, {m.x, m.y + 2.0f}, {m.x + 3.5f, m.y - 1.5f}};
-            c.polyline(chevron, 3, kDim, 1.3f);
-        }
-        break;
-    }
-    case Kind::ModsScale: {
-        // All of the depth at the right end, none at the left; its share in numbers after it.
-        const double amount = value(w.param);
-        const float cy = w.rect.center().y;
-        const Color color = mods_.slotBypassed(w.a, w.b) ? kFaint : kDim;
-        c.fillRect({w.rect.x, cy - 1.5f, w.rect.w, 3.0f}, kTrack, kRadiusMark);
-        c.fillRect({w.rect.x, cy - 1.5f, static_cast<float>(amount) * w.rect.w, 3.0f}, hovered || active ? kText : color,
-                   kRadiusMark);
-        c.fillCircle({w.rect.x + static_cast<float>(amount) * w.rect.w, cy}, hovered || active ? 4.5f : 3.5f,
-                     hovered || active ? kText : color);
-        char text[16];
-        std::snprintf(text, sizeof(text), "%.0f%%", amount * 100.0);
-        c.text({w.rect.right() + 4.0f, w.rect.y, 38.0f, w.rect.h}, text, kTextLabel, kDim, Align::Right);
-        break;
-    }
-    case Kind::ModsCurve: {
-        // What the modulation takes from its source, along the source's swing (from the middle out for a bipolar
-        // one): a straight line, faint, until the curve bends it.
-        const double curve = value(w.param);
-        const bool bipolar = mods_.sourceBipolar(w.a);
-        const bool lit = hovered || active;
-        c.fillRect(w.rect, lit ? kTrack : kRaised, kRadiusMark);
-        const Rect box = w.rect.inset(5.0f);
-        constexpr int kPoints = 24;
-        Point points[kPoints];
-        for (int k = 0; k < kPoints; ++k) {
-            const double t = static_cast<double>(k) / (kPoints - 1);
-            const double y = bipolar ? slotCurveValue(t - 0.5, curve, true) + 0.5 : slotCurveValue(t, curve, false);
-            points[k] = {box.x + static_cast<float>(t) * box.w, box.bottom() - static_cast<float>(y) * box.h};
-        }
-        const Color color = mods_.slotBypassed(w.a, w.b) ? kFaint
-                            : curve == 0.0       ? (lit ? kDim : kFaint)
-                                                 : kSourceColors[w.a];
-        c.polyline(points, kPoints, color, 1.4f);
-        break;
-    }
-    case Kind::ModsAux: {
-        // A chip in the aux's color, or a dashed one to add an aux.
-        const int aux = slotAux([this](int index) { return value(index); }, w.a, w.b);
-        const bool open = cascade_ && cascade_->kind == CascadeKind::Aux && cascade_->source == w.a &&
-                          cascade_->slot == w.b;
-        const float radius = w.rect.h * 0.5f;
-        if (aux < 0) {
-            if (look.flat) { // a filled pill, as + SOURCE
-                paintPill(c, w.rect, hovered || open);
-                c.text(w.rect, tr(Str::ModsAddAux), kTextLabel, kText, Align::Center, true);
-                break;
-            }
-            c.strokeRect(w.rect, hovered || open ? kDim : kTrack, 1.0f, radius, true);
-            c.text(w.rect, tr(Str::ModsAddAux), kTextLabel, hovered || open ? kText : kDim);
-            break;
-        }
-        const Rect chip{w.rect.x, w.rect.y, w.rect.w + kAuxDepthW + 22.0f, w.rect.h};
-        if (look.flat) { // tinted with its source's color, without an outline, more strongly than + Aux is filled
-            c.fillRect(chip, kSourceColors[aux].alpha(hovered || open ? 0.32f : 0.22f), radius);
-        } else {
-            c.fillRect(chip, hovered || open ? kTrack : kRaised, radius);
-            c.strokeRect(chip, kSourceColors[aux].alpha(0.5f), 1.0f, radius);
-        }
-        paintAuxDepthBar(c, chip, aux, value(slotAuxDepthIndex(w.a, w.b)));
-        c.fillCircle({w.rect.x + 11.0f, w.rect.center().y}, 4.0f, kSourceColors[aux]);
-        c.text({w.rect.x + 20.0f, w.rect.y, w.rect.w - 22.0f, w.rect.h}, mods_.sourceName(aux), kTextLabel, kText,
-               Align::Left, true);
-        break;
-    }
     case Kind::ModsAuxDepth: {
         // The aux depth's number, lit under the mouse and while dragged (the chip and its bar are its aux's).
         char text[16];
@@ -8716,30 +8510,11 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         c.text(w.rect, text, kTextLabel, hovered || active ? kText : kDim, Align::Right);
         break;
     }
-    case Kind::ModsAdd: {
-        // A dashed button, as + Aux: lit under the mouse.
-        const float radius = w.rect.h * 0.5f;
-        if (look.flat) { // a filled pill, as + SOURCE
-            paintPill(c, w.rect, hovered);
-            c.text(w.rect, tr(Str::ModsAddModulation), kTextLabel, kText, Align::Center, true);
-            break;
-        }
-        c.strokeRect(w.rect, hovered ? kDim : kTrack, 1.0f, radius, true);
-        c.text(w.rect, tr(Str::ModsAddModulation), kTextLabel, hovered ? kText : kDim);
-        break;
-    }
     case Kind::ModsAuxClear: {
         const Point m = w.rect.center();
         const Color color = hovered ? kText : kDim;
         c.line({m.x - 3.0f, m.y - 3.0f}, {m.x + 3.0f, m.y + 3.0f}, color, 1.3f);
         c.line({m.x - 3.0f, m.y + 3.0f}, {m.x + 3.0f, m.y - 3.0f}, color, 1.3f);
-        break;
-    }
-    case Kind::ModsScroll: {
-        const Rect track = modsScrollTrack();
-        const bool lit = hovered || active;
-        c.fillRect(track, kTrack.alpha(0.5f), kRadiusMark);
-        c.fillRect(modsThumb(), lit ? kDim : kFaint, kRadiusMark);
         break;
     }
     case Kind::InputsScroll: {
@@ -8755,9 +8530,6 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         c.fillRect(modListThumb(track), lit ? kDim : kFaint, kRadiusMark);
         break;
     }
-    case Kind::CascadeMenu:
-    case Kind::CascadeItem:
-        break; // drawn with their menu, over everything (see paintCascade())
     case Kind::SlotBypass: {
         // The row's dot in the source's color: filled while it modulates, hollow while bypassed.
         const Point center = w.rect.center();
@@ -9213,7 +8985,7 @@ void View::paintTooltip(Canvas &c) {
             c.text(tip, own, kTextBody, kText);
             return;
         }
-    if (!hover_ || drag_.kind != DragKind::None || (cascade_ && modsWide()) ||
+    if (!hover_ || drag_.kind != DragKind::None ||
         (hover_->kind != Kind::Choice && hover_->kind != Kind::Toggle && hover_->kind != Kind::NodeTab &&
          hover_->kind != Kind::FxRemove && hover_->kind != Kind::SourceRemove &&
          hover_->kind != Kind::PresetButton &&
@@ -9232,11 +9004,9 @@ void View::paintTooltip(Canvas &c) {
          !(hover_->kind == Kind::ShapeArea && hover_->a == wideLfo() && shapeEditing() != hover_->a) &&
          hover_->kind != Kind::SlotBypass && hover_->kind != Kind::MacroName &&
          hover_->kind != Kind::ModPill &&
-         hover_->kind != Kind::SourcePolarity && hover_->kind != Kind::Wire && hover_->kind != Kind::ModsSource &&
+         hover_->kind != Kind::SourcePolarity && hover_->kind != Kind::Wire &&
          !(hover_->kind == Kind::LabelMode && listMenu_ != hover_->param) && hover_->kind != Kind::LabelRemove &&
-         hover_->kind != Kind::ModsTarget && hover_->kind != Kind::ModsAux && hover_->kind != Kind::ModsAuxClear &&
-         hover_->kind != Kind::ModsAuxDepth &&
-         hover_->kind != Kind::ModsScale && hover_->kind != Kind::ModsCurve && hover_->kind != Kind::SearchField &&
+         hover_->kind != Kind::ModsAuxClear && hover_->kind != Kind::ModsAuxDepth &&
          hover_->kind != Kind::MacroHandle && hover_->kind != Kind::SourceHandle &&
          hover_->kind != Kind::MatrixLabel && hover_->kind != Kind::FxPower && hover_->kind != Kind::FxNodePower &&
          hover_->kind != Kind::NoteDisplay && hover_->kind != Kind::WireEnd && hover_->kind != Kind::Port &&
@@ -9256,11 +9026,7 @@ void View::paintTooltip(Canvas &c) {
     const int param = hover_->param;
     const FxParam field = fxFieldOf(param);
     std::string text;
-    if (hover_->kind == Kind::SearchField) {
-        if (hover_->a != static_cast<int>(Field::ModsFilter) || modsFilterOpen())
-            return; // a field says what it is for in its hint
-        text = tr(Str::TipModsFilter);
-    } else if (hover_->kind == Kind::MacroName) {
+    if (hover_->kind == Kind::MacroName) {
         text = tr(Str::TipRenameMacro);
     } else if (hover_->kind == Kind::AlgorithmButton) {
         text = tr(Str::TipAlgorithm);
@@ -9393,25 +9159,12 @@ void View::paintTooltip(Canvas &c) {
                    {mods_.sourceName(hover_->a)});
     else if (hover_->kind == Kind::Wire)
         text = tr(Str::TipWire);
-    else if (hover_->kind == Kind::ModsSource) // an empty modulation's picks one
-        text = tr(hover_->b < 0 ? Str::TipModsPickSource : Str::TipModsSource);
-    else if (hover_->kind == Kind::ModsTarget)
-        text = tr(hover_->b < 0 ? Str::TipModsPickTarget : Str::TipModsTarget);
-    else if (hover_->kind == Kind::ModsAux)
-        text = tr(Str::TipModsAux);
     else if (hover_->kind == Kind::ModsAuxClear)
         text = tr(Str::TipModsAuxClear);
     else if (hover_->kind == Kind::ModsAuxDepth) {
         char amount[32];
         formatParam(hover_->param, value(hover_->param), amount, sizeof(amount));
         text = trf(Str::TipModsAuxDepth, {amount});
-    }
-    else if (hover_->kind == Kind::ModsScale)
-        text = tr(Str::TipModsScale);
-    else if (hover_->kind == Kind::ModsCurve) {
-        char amount[32];
-        formatParam(hover_->param, value(hover_->param), amount, sizeof(amount));
-        text = trf(Str::TipModsCurve, {amount});
     }
     else if (hover_->kind == Kind::UndoButton)
         text = undoText(hover_->a == 1);
@@ -9592,7 +9345,8 @@ void View::openModList(const Widget &pill, bool sprung) {
     modListScroll_ = 0.0f;
     listMenu_ = -1; // one open list at a time
     fxMenuOpen_ = false;
-    cascade_.reset();
+    for (Panel *panel : panels_)
+        panel->closePopups();
 }
 
 bool View::modListPillShown() const {
@@ -9677,15 +9431,6 @@ void View::paintAuxRing(Canvas &c, Point center, float radius, int aux, double d
         c.arc(center, radius, 0.0f, static_cast<float>(depth) * 2.0f * kPi, color, 1.3f);
 }
 
-// Along the chip's foot, inside its rounded ends: a faint track, filled in the aux's color as far as the aux depth.
-void View::paintAuxDepthBar(Canvas &c, Rect chip, int aux, double depth) const {
-    const float inset = chip.h * 0.5f;
-    const Rect track{chip.x + inset, chip.bottom() - 3.0f, chip.w - 2.0f * inset, 2.0f};
-    c.fillRect(track, kSourceColors[aux].alpha(0.25f), kRadiusMark);
-    c.fillRect({track.x, track.y, track.w * static_cast<float>(std::clamp(depth, 0.0, 1.0)), track.h},
-               kSourceColors[aux], kRadiusMark);
-}
-
 void View::paintModListRow(Canvas &c, const Widget &w) {
     const bool lit = hover_ && hover_->popup && hover_->a == w.a && hover_->b == w.b && drag_.kind == DragKind::None;
     c.fillRect(w.rect, lit ? kTrack : kRaised, kRadiusControl);
@@ -9743,11 +9488,11 @@ void View::paintModOverlay(Canvas &c, const std::vector<Widget> &list) {
                            over ? 2.0f : 1.0f);
             continue;
         }
-        if (w.kind == Kind::ModsAux && w.a != source) { // a MODS row's aux cell takes it as the aux too
-            if (w.clip.w > 0.0f && (w.rect.y < w.clip.y || w.rect.bottom() > w.clip.bottom()))
-                continue;
-            const bool over = target && target->same(w);
-            c.strokeRect(w.rect.inset(-2.0f), color.alpha(over ? 1.0f : 0.35f), over ? 2.0f : 1.0f, kRadiusCard);
+        // A panel's own that takes it (a MODS row's aux cell, as the aux too).
+        if (const auto panel = std::find_if(panels_.begin(), panels_.end(),
+                                            [&](const Panel *candidate) { return candidate->takesSource(w, source); });
+            panel != panels_.end()) {
+            (*panel)->paintSourceRing(c, w, target && target->same(w), color);
             continue;
         }
         if (!droppable(w, source))
@@ -10243,12 +9988,6 @@ void View::applyDrag(Point p) {
     case DragKind::Pan:
         applyPan(p);
         break;
-    case DragKind::ModsScroll: { // the rows follow the thumb
-        const float room = modsScrollTrack().h - modsThumb().h;
-        if (room > 0.0f)
-            scrollMods(static_cast<float>(drag_.startValue) + (p.y - drag_.start.y) / room * modsEnd(), false);
-        break;
-    }
     case DragKind::Panel: // a panel's own (the preset browser's sidebar's thumb, the SEQ view's roll, say)
         if (drag_.panel)
             drag_.panel->drag(drag_);
@@ -10337,23 +10076,10 @@ bool View::mouseMove(Point p, Modifiers mods) {
                        (hit && isRatioDisplay(*hit) && ratioDigit(p.x) != ratioDigit(before.x)) || // its lit digit
                        (hit && stepperButton(*hit, p) != stepperButton(*hit, before)); // its lit - or +
         hover_ = std::move(hit);
-        // In a cascading menu, the mouse over a category opens it beside it, and over an entry closes what is open
-        // past its level.
-        if (changed && cascade_ && hover_ && hover_->kind == Kind::CascadeItem) {
-            const std::shared_ptr<const MenuNode> tree = cascadeTree();
-            const MenuNode &root = *tree;
-            const std::vector<const MenuNode *> levels = cascadeLevels(root);
-            const auto level = static_cast<size_t>(hover_->a);
-            if (level < levels.size() && hover_->b < static_cast<int>(levels[level]->children.size())) {
-                std::vector<int> &open = cascade_->open;
-                if (!levels[level]->children[hover_->b].children.empty()) {
-                    open.resize(level);
-                    open.push_back(hover_->b);
-                } else if (open.size() > level) {
-                    open.resize(level);
-                }
-            }
-        }
+        // What the panels open as the mouse goes over it (a category of the MODS view's cascading menu).
+        if (changed)
+            for (Panel *panel : panels_)
+                panel->hoverChanged(hover_);
         return changed;
     }
     if ((drag_.kind == DragKind::Value || drag_.kind == DragKind::ModWheel || drag_.kind == DragKind::Glow) &&
@@ -10403,12 +10129,8 @@ void View::mouseDown(Point p, Modifiers mods) {
                                            hit->kind == Kind::ShapeCurve) &&
                                    hit->a == shapePick_.shape))
         clearShapePick();
-    // The MODS view's filter lets the keyboard go at a click anywhere else.
-    if (!(hit && (hit->kind == Kind::SearchField || hit->kind == Kind::SearchClear) &&
-          hit->a == static_cast<int>(Field::ModsFilter)))
-        modsFiltering_ = false;
-    // So does the preset browser's search, and the points picked on the SEQ view's lane's curve let go at a click off
-    // the lane (see Panel::pressing()).
+    // The MODS view's filter and the preset browser's search let the keyboard go at a click anywhere else, and the
+    // points picked on the SEQ view's lane's curve let go at a click off the lane (see Panel::pressing()).
     for (Panel *panel : panels_)
         panel->pressing(hit ? &*hit : nullptr);
     // A pill's open list closes at a click anywhere else, which does nothing more; but not at a source's handle,
@@ -10464,7 +10186,9 @@ void View::mouseDown(Point p, Modifiers mods) {
     UiLayout &layout = controller_.layout();
     if (fxGraphPress(w, p)) // the effects graph's own
         return;
-    for (Panel *panel : panels_) // the panels' own (the presets', see presetbrowser.cpp, and the SEQ view's)
+    if (w.kind == Kind::SearchField) // a field pressed (a panel's own, which it may take): its caret shows at once
+        caretTicks_ = 0;
+    for (Panel *panel : panels_) // the panels' own (the presets', see presetbrowser.cpp, the SEQ and MODS views')
         if (panel->press(w, p, mods))
             return;
 
@@ -10499,38 +10223,9 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::ModList:
     case Kind::ModListRow:
         break; // the list stays open
-    case Kind::ModsSource:
-        openCascade(CascadeKind::Source, w.a, w.b, w.rect);
-        break;
-    case Kind::ModsTarget:
-        openCascade(CascadeKind::Target, w.a, w.b, w.rect);
-        break;
-    case Kind::ModsAux:
-        openCascade(CascadeKind::Aux, w.a, w.b, w.rect);
-        break;
-    case Kind::ModsAdd:
-        addEmptyMod();
-        break;
     case Kind::ModsAuxClear:
         mods_.setAux(w.a, w.b, -1);
         break;
-    case Kind::CascadeMenu:
-        if (w.a == 0) // a click anywhere else closes the menu
-            cascade_.reset();
-        break;
-    case Kind::CascadeItem:
-        pickCascade(w.a, w.b);
-        break;
-    case Kind::ModsScroll: {
-        // On the thumb, drag it; elsewhere on the track, the thumb jumps to center on the click and can be dragged on.
-        const Rect track = modsScrollTrack();
-        const Rect thumb = modsThumb();
-        if (p.y < thumb.y || p.y >= thumb.bottom())
-            scrollMods((p.y - thumb.h * 0.5f - track.y) / std::max(track.h - thumb.h, 1.0f) * modsEnd(), false);
-        drag_.kind = DragKind::ModsScroll;
-        drag_.startValue = modsFirst();
-        break;
-    }
     case Kind::InputsScroll: { // as the MODS view's
         const int op = layout.selectedNode;
         const Rect track = inputsScrollTrack();
@@ -10936,20 +10631,13 @@ void View::mouseDown(Point p, Modifiers mods) {
         drag_.kind = DragKind::Tempo;
         drag_.startValue = controller_.tempo();
         break;
-    case Kind::SearchClear: // the field keeps the keyboard, for what is typed next (the browser's: see PresetBrowser)
+    case Kind::SearchClear: // the field keeps the keyboard, for what is typed next (see the panels' press())
         clearField(static_cast<Field>(w.a));
-        modsFiltering_ = w.a == static_cast<int>(Field::ModsFilter);
         hover_.reset();
         break;
-    case Kind::SearchField: { // the caret where it is clicked, and a drag selects; with Shift, from where it was
+    case Kind::SearchField: { // the caret where it is clicked, and a drag selects; with Shift, from where it was. The
+                              // field takes the keyboard (see the panels' press()).
         TextField &t = field(static_cast<Field>(w.a));
-        caretTicks_ = 0;
-        if (w.a == static_cast<int>(Field::ModsFilter) && !modsFilterOpen()) { // the magnifier opens it
-            modsFiltering_ = true;
-            t.caret = t.anchor = t.text.size();
-            break;
-        }
-        modsFiltering_ = w.a == static_cast<int>(Field::ModsFilter); // the browser's search: see PresetBrowser::press()
         t.caret = t.stopAt(p.x);
         if (!mods.shift)
             t.anchor = t.caret;
@@ -11208,12 +10896,17 @@ void View::mouseUp(Point p, Modifiers) {
     }
     case DragKind::ModSource: {
         const auto target = hitTest(p);
-        // On a depth handle, a row of a pill's list or a MODS row's aux cell: it becomes that modulation's aux.
+        // On a depth handle or a row of a pill's list: it becomes that modulation's aux; on a panel's own that takes it
+        // (a MODS row's aux cell, as the aux too), what that panel makes of it.
         const bool row = target && target->popup && target->kind != Kind::ModList;
-        if (target && (target->kind == Kind::ModDot || target->kind == Kind::ModsAux || row) && target->a != w.a)
+        if (target && (target->kind == Kind::ModDot || row) && target->a != w.a)
             mods_.setAux(target->a, target->b, w.a);
         else if (target && droppable(*target, w.a)) // only where the overlay rings a target
             mods_.assign(w.a, target->param);
+        else if (target)
+            for (Panel *panel : panels_)
+                if (panel->dropSource(*target, w.a))
+                    break;
         // A list that opened under the handle stays open only when the handle went onto one of its rows.
         if (modList_ && modList_->sprung) {
             if (row)
@@ -11283,7 +10976,6 @@ void View::mouseUp(Point p, Modifiers) {
     case DragKind::Scroll:
     case DragKind::TextSelect:
     case DragKind::Bend: // each move set it already
-    case DragKind::ModsScroll:
     case DragKind::InputsScroll:
     case DragKind::ModListScroll:
     case DragKind::Pan: // the left button let go of mid-pan ends it too
@@ -11426,7 +11118,6 @@ void View::finishDrag() {
     case DragKind::ShapeBox:
     case DragKind::Node:
     case DragKind::Bend:
-    case DragKind::ModsScroll:
     case DragKind::InputsScroll:
     case DragKind::ModListScroll:
     case DragKind::Connect:
@@ -11577,16 +11268,14 @@ std::optional<View::PanStart> View::panAt(Point p) const {
         const Kind k = hit->kind;
         if (hit->popup || k == Kind::ModList || k == Kind::ModListRow || k == Kind::FxAdd || k == Kind::FxAddNode ||
             k == Kind::SourceMenuItem || k == Kind::ListItem || k == Kind::PeqTypeItem || k == Kind::WaveMenuItem ||
-            k == Kind::CascadeItem ||
             ((k == Kind::FxMenu || k == Kind::SourceMenu || k == Kind::ListMenu || k == Kind::PeqTypeMenu ||
-              k == Kind::WaveMenu || k == Kind::CascadeMenu || k == Kind::AlgorithmMenu) &&
-             hit->a != 0))
+              k == Kind::WaveMenu || k == Kind::AlgorithmMenu) &&
+             hit->a != 0) ||
+            std::any_of(panels_.begin(), panels_.end(), [&](const Panel *panel) { return panel->blocksPan(*hit); }))
             return std::nullopt;
     }
     if (!controller_.layout().sourcesCollapsed && modPanel(false).contains(p))
         return PanStart{PanArea::Sources, sourceScroll()};
-    if (modsWide() && kFxPanel.contains(p))
-        return PanStart{PanArea::Mods, modsFirst()};
     if (const int op = controller_.layout().selectedNode;
         op >= 0 && op < kOps && !inspectorCovered() && opTabShown(op) == InspectorTab::Inputs &&
         kInputsList.contains(p) && inputsEnd(op) > 0.0f)
@@ -11595,7 +11284,7 @@ std::optional<View::PanStart> View::panAt(Point p) const {
         return PanStart{PanArea::Fx, fxGraphScroll(fxGridLayout(fxLine()))};
     if (fxWide() && !fxGraph() && kFxPanel.contains(p))
         return PanStart{PanArea::Fx, fxScroll()};
-    for (Panel *panel : panels_) // what the panels shown in their places pan (the SEQ view's roll)
+    for (Panel *panel : panels_) // what the panels shown in their places pan (the SEQ view's roll, the MODS rows)
         if (const auto pan = panel->panAt(p))
             return PanStart{PanArea::Panel, pan->second, panel, pan->first};
     return std::nullopt;
@@ -11611,7 +11300,8 @@ void View::middleDown(Point p) {
     // not a pill's list that is being scrolled, nor what a panel's popup pans (the preset browser's list).
     if (!(area == PanArea::Panel && pan->panel->modal()) && area != PanArea::ModList) {
         modList_.reset();
-        cascade_.reset();
+        for (Panel *panel : panels_)
+            panel->closePopups();
         fxMenuOpen_ = false;
         sourceMenuOpen_ = false;
         algorithmMenuOpen_ = false;
@@ -11621,8 +11311,6 @@ void View::middleDown(Point p) {
     }
     menuLive_ = false;
     endTyping(true);
-    if (area == PanArea::Mods)
-        scrollMods(first, false); // a glide the wheel started stops where it shows
     drag_ = Drag{};
     drag_.kind = DragKind::Pan;
     drag_.widget.a = static_cast<int>(area);
@@ -11663,7 +11351,6 @@ bool View::dragsOnTouch(const Widget &w) const {
     case Kind::ModsScale:
     case Kind::ModsCurve:
     case Kind::ModsAuxDepth:
-    case Kind::ModsScroll:
     case Kind::InputsScroll:
     case Kind::ModListScroll:
     case Kind::Scrollbar:
@@ -11702,8 +11389,9 @@ bool View::dragsOnTouch(const Widget &w) const {
     case Kind::ShapeCurve:
     case Kind::PartialArea:
         return true;
-    default:
-        return drawsStep(w, {});
+    default: // and the panels' own
+        return drawsStep(w, {}) || std::any_of(panels_.begin(), panels_.end(),
+                                               [&](const Panel *panel) { return panel->dragsOnTouch(w); });
     }
 }
 
@@ -11825,9 +11513,6 @@ void View::applyPan(Point p) {
     case PanArea::Sources:
         setScroll(ScrollArea::Sources,
                   hold(first - across / (kCardW + kCardGap), scrollLength(ScrollArea::Sources) - kVisibleCards));
-        break;
-    case PanArea::Mods:
-        scrollMods(hold(first - down / kModsRowStep, modsEnd()), false);
         break;
     case PanArea::Inputs: {
         const int op = controller_.layout().selectedNode;
@@ -12094,11 +11779,10 @@ void View::wheel(Point p, float steps, Modifiers mods) {
         inputsScroll_ = std::clamp(inputsFirst(op) - steps, 0.0f, inputsEnd(op));
         return;
     }
-    // Over the MODS view's rows (but not on a bar), a notch scrolls them a row, gliding there.
-    if ((!hit || hit->param < 0) && modsWide() && kModsList.contains(p) && steps != 0.0f) {
-        scrollMods(std::clamp(modsScroll_, 0.0f, modsEnd()) - steps, true);
+    // Over a panel's area, where what is under the mouse doesn't take it: the MODS view's rows (but not on a bar).
+    if ((!hit || hit->param < 0) &&
+        std::any_of(panels_.begin(), panels_.end(), [&](Panel *panel) { return panel->wheelBehind(p, steps); }))
         return;
-    }
     if ((!hit || hit->param < 0) && fxWide() && kFxPanel.contains(p) && steps != 0.0f && fxGraph()) {
         if (fxGraphArea().contains(p) || (hit && hit->kind == Kind::Scrollbar)) {
             // The graph sideways, half a column a notch, closing a +'s list.
@@ -12522,7 +12206,8 @@ void View::menuCommand(int command) {
 
 void View::undo() {
     if (drag_.kind == DragKind::None && !typing_) {
-        cascade_.reset(); // what its menu was opened on may change, or go
+        for (Panel *panel : panels_) // what their menus were opened on may change, or go
+            panel->closePopups();
         listMenu_ = -1;
         peqMenu_ = -1;
         fxMenuOpen_ = false; // so is the place in the line the list of effects was opened at
@@ -12534,7 +12219,8 @@ void View::undo() {
 
 void View::redo() {
     if (drag_.kind == DragKind::None && !typing_) {
-        cascade_.reset(); // what its menu was opened on may change, or go
+        for (Panel *panel : panels_) // what their menus were opened on may change, or go
+            panel->closePopups();
         listMenu_ = -1;
         peqMenu_ = -1;
         fxMenuOpen_ = false; // so is the place in the line the list of effects was opened at
@@ -12592,18 +12278,8 @@ void View::typeKey(Key key, bool shift) {
         caretTicks_ = 0;
         if (field(*f).key(key, shift))
             fieldChanged(*f);
-        switch (*f) {
-        case Field::ModsFilter:
-            modsFilterKey(key);
-            break;
-        case Field::CascadeSearch:
-            cascadeKey(key);
-            break;
-        default: // a panel's own (the preset browser's search, the Save dialog's and the name form's fields)
-            for (Panel *panel : panels_)
-                panel->fieldKey(*f, key);
-            break;
-        }
+        for (Panel *panel : panels_) // its panel's (the preset browser's search, the Save dialog's and the name form's
+            panel->fieldKey(*f, key); // fields, the MODS view's filter and its target menu's search)
         return;
     }
     Typing &t = *typing_;
@@ -12817,26 +12493,13 @@ CursorKind View::cursor() const {
     case Kind::FxMenu:
     case Kind::ListMenu:
     case Kind::PeqTypeMenu:
-    case Kind::CascadeMenu:
     case Kind::ModList:
     case Kind::ModListRow:
         return CursorKind::Arrow;
     case Kind::ListItem: // a band-pass's 6 and 18 dB slopes can't be picked
         return listItemFits(w->param, w->b) ? CursorKind::Hand : CursorKind::Arrow;
-    case Kind::CascadeItem: { // a category opens; an entry that can't be picked does nothing
-        const std::shared_ptr<const MenuNode> tree = cascade_ ? cascadeTree() : nullptr;
-        if (!tree)
-            return CursorKind::Arrow;
-        const std::vector<const MenuNode *> levels = cascadeLevels(*tree);
-        if (w->a < 0 || w->a >= static_cast<int>(levels.size()) || w->b < 0 ||
-            w->b >= static_cast<int>(levels[w->a]->children.size()))
-            return CursorKind::Arrow;
-        const MenuNode &item = levels[w->a]->children[w->b];
-        return !item.children.empty() || (!item.heading && item.enabled) ? CursorKind::Hand : CursorKind::Arrow;
-    }
-    case Kind::SearchField: // the MODS view's filter a button until it opens
-        return w->a == static_cast<int>(Field::ModsFilter) && !modsFilterOpen() ? CursorKind::Hand
-                                                                                       : CursorKind::Text;
+    case Kind::SearchField: // the MODS view's filter a button until it opens (see ModsPanel)
+        return CursorKind::Text;
     case Kind::SlotBar:
     case Kind::ModsScale:
     case Kind::ModsAuxDepth:

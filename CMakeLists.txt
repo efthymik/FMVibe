@@ -149,7 +149,8 @@ add_library(fmvibe-core STATIC
     src/gui/icons.h
     src/gui/modulationmodel.cpp
     src/gui/modulationmodel.h
-    src/gui/mods.cpp
+    src/gui/modspanel.cpp
+    src/gui/modspanel.h
     src/gui/panel.h
     src/gui/seqpanel.cpp
     src/gui/seqpanel.h

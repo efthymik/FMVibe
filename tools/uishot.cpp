@@ -8647,7 +8647,7 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     for (int i = 0; i < 40; ++i)
         view.poll();
     // The rows are 30 px apart, 28 high, in a list 326 high whose first row's middle is at y 154: the fourteen (the
-    // add row too) scroll as far as the first shown is row 3.1 (see View::modsEnd()).
+    // add row too) scroll as far as the first shown is row 3.1 (see ModsPanel::modsEnd()).
     const float lastFirst = (14.0f * 30.0f - 2.0f - 326.0f) / 30.0f;
     const Point macroDot{41.0f, 182.0f + (12.0f - lastFirst) * 30.0f};
     click(view, macroDot);

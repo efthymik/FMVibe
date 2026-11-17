@@ -4,7 +4,8 @@
 // (the widgets it owns, pressed, dragged, scrolled, typed into, painted), and which reaches what the View keeps for
 // every area (the controller, what is under the mouse, the text fields, the confirm dialog, the messages) through a
 // PanelHost. A panel knows nothing else of the View. So far the preset browser is one (presetbrowser.h), which shows
-// over the editor (modal), and the SEQ view (seqpanel.h), which shows in its place among the editor's areas.
+// over the editor (modal), and the SEQ view (seqpanel.h) and the MODS view (modspanel.h), which show in their places
+// among the editor's areas.
 
 #include "widget.h"
 
@@ -69,6 +70,10 @@ public:
     // a key does sends. Whether something took it.
     virtual bool sendKey(Key key, bool shift) = 0;
 
+    // Whether a paint or a hit test goes on, in which nothing a panel reads changes: what it works out from the patch,
+    // the layout and its own state it may keep until then (see ScopeCache, and Panel::forgetScoped()).
+    virtual bool scoped() const = 0;
+
     // The newest telemetry the View took in (see View::poll()).
     virtual const Telemetry &telemetry() const = 0;
     // Where the mouse is, and the widget under it as the last move found it.
@@ -93,6 +98,27 @@ public:
 
 protected:
     ~PanelHost() = default;
+};
+
+// What a panel works out for a paint or a hit test (its rows, a menu's entries), kept while the host's scope goes on
+// (see PanelHost::scoped()) and let go of as one begins and ends (Panel::forgetScoped()); outside one, worked out
+// afresh each time.
+template <class T>
+class ScopeCache {
+public:
+    template <class Make>
+    T get(const PanelHost &host, Make &&make) const {
+        if (value_)
+            return *value_;
+        T made = make();
+        if (host.scoped())
+            value_ = made;
+        return made;
+    }
+    void forget() const { value_.reset(); }
+
+private:
+    mutable std::optional<T> value_;
 };
 
 // An area of the editor. What it doesn't own, it leaves: each call says whether it took what it was handed (false, or
@@ -122,6 +148,8 @@ public:
     // The cursor over a widget of its own, or holding one in a drag of its own; nothing to leave it to the View.
     virtual std::optional<CursorKind> cursor(const Widget &) const { return std::nullopt; }
 
+    // What it keeps while the host's scope goes on (see ScopeCache), let go of as one begins and ends.
+    virtual void forgetScoped() {}
     // At each poll of the View's: the newest telemetry taken in, before the View keeps it (PanelHost::telemetry() is
     // still the poll before's), and whether what it shows of it moved, which repaints the band of the editor it shows
     // in. Then a step of what moves by itself (a glide, a scroll while a drag is held at an edge, the patch loaded):
@@ -129,6 +157,12 @@ public:
     virtual bool poll(const Telemetry &) { return false; }
     virtual bool step() { return false; }
 
+    // The mouse moving onto something else (`hit`, or nothing) while no drag goes on: a menu of its own opening what
+    // it is over, say.
+    virtual void hoverChanged(const std::optional<Widget> & /*hit*/) {}
+    // Its popups (a menu or list open) closing: as another opens, or as what they were opened on may change or scroll
+    // away (an undo, a pan, another view shown).
+    virtual void closePopups() {}
     // A press anywhere, before it goes to what it hit (`hit`, or nothing): what lets go at a click elsewhere (a field
     // taking the keyboard, say) lets go here.
     virtual void pressing(const Widget * /*hit*/) {}
@@ -140,11 +174,24 @@ public:
     virtual void drag(const DragState &) {}
     virtual void drop(const DragState &) {}
     virtual void release() {}
+    // What a finger moving on a widget of its own drags rather than pans past (see View::touchMove()).
+    virtual bool dragsOnTouch(const Widget &) const { return false; }
+    // A source's handle dragged over the editor (see View's ModSource drag): whether a widget of its own takes it
+    // (beside the knobs, labels and depth handles the View's take), its ring there as the drag's overlay draws it
+    // (`over` while the handle is on it, in `color`), and the handle let go of on it.
+    virtual bool takesSource(const Widget &, int /*source*/) const { return false; }
+    virtual void paintSourceRing(Canvas &, const Widget &, bool /*over*/, Color) {}
+    virtual bool dropSource(const Widget &, int /*source*/) { return false; }
     // The wheel: first over what it takes whole, before anything is hit (its popups, a list); then over a widget of
     // its own that isn't a popup's, with the modifiers held; and turned sideways (see View::wheelAcross()).
     virtual bool wheel(Point, float /*steps*/) { return false; }
     virtual bool wheelOn(const Widget &, Point, float /*steps*/, Modifiers) { return false; }
     virtual bool wheelAcross(Point, float /*steps*/) { return false; }
+    // Then over its area where what is under the mouse doesn't take the wheel (nothing, or what sets no param), once
+    // the View's own have passed it by: its rows scrolling, say.
+    virtual bool wheelBehind(Point, float /*steps*/) { return false; }
+    // Whether a widget of its own is part of an open menu that doesn't scroll, where nothing pans (see below).
+    virtual bool blocksPan(const Widget &) const { return false; }
     // What the middle button or two fingers would pan at a point: one of its parts (its own number) and where that is
     // scrolled to now, in its own units. A pan of it moves `across` and `down` pixels from where that part was at
     // `first`: it scrolls there, held at its ends, and says where it was held to when it went past one (from where the

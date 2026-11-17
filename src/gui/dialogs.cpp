@@ -393,61 +393,29 @@ bool TextField::holds(std::string_view text, const std::vector<std::string> &wor
                        [&](const std::string &word) { return in.find(word) != std::string::npos; });
 }
 
+// A panel's form, while it decides (the preset browser's), under a confirm dialog; a field of a panel shown in its
+// place (the MODS view's filter and its target menu's search), under the settings too.
 std::optional<View::Field> View::fieldTyping() const {
-    for (const Panel *panel : panels_) // a panel's form, while it decides (the preset browser's), under a confirm dialog
+    for (const Panel *panel : panels_)
         if (std::optional<Field> focus; panel->fieldFocus(focus))
-            return confirm_ < 0 ? focus : std::nullopt;
-    if (settingsOpen_ || confirm_ >= 0)
-        return std::nullopt;
-    if (cascadeSearches() && modsWide())
-        return Field::CascadeSearch;
-    if (modsFiltering_ && modsWide())
-        return Field::ModsFilter;
+            return confirm_ < 0 && (panel->modal() || !settingsOpen_) ? focus : std::nullopt;
     return std::nullopt;
 }
 
 View::TextField &View::field(Field f) {
-    switch (f) {
-    case Field::ModsFilter:
-        return modsFilter_;
-    case Field::CascadeSearch:
-        return cascadeSearch_;
-    default: // a panel's own
-        break;
-    }
-    for (Panel *panel : panels_)
+    for (Panel *panel : panels_) // each field's owner
         if (TextField *t = panel->field(f))
             return *t;
-    return modsFilter_; // every field has its owner
+    static TextField none; // every field has its owner: never reached
+    return none;
 }
 
-// After what is typed changes: the MODS view's rows from their top; the target menu's matches from the first that can
-// be picked, nothing opened beside them; a panel's field as its panel has it (see PresetBrowser::fieldChanged()).
+// After what is typed changes: a panel's field as its panel has it (see PresetBrowser::fieldChanged() and
+// ModsPanel::fieldChanged()).
 void View::fieldChanged(Field f) {
     caretTicks_ = 0;
-    switch (f) {
-    case Field::ModsFilter:
-        scrollMods(0.0f, false);
-        break;
-    case Field::CascadeSearch:
-        if (cascade_) {
-            cascade_->open.clear();
-            cascade_->picked = 0;
-            // The first match that can be picked: one the row's source modulates already is passed over, as Up and
-            // Down pass it (see cascadeKey()). Worked out afresh, for the words typed now.
-            const MenuNode root = cascadeTreeNow();
-            for (size_t i = 0; i < root.children.size(); ++i)
-                if (root.children[i].enabled) {
-                    cascade_->picked = static_cast<int>(i);
-                    break;
-                }
-        }
-        break;
-    default: // a panel's own
-        for (Panel *panel : panels_)
-            panel->fieldChanged(f);
-        break;
-    }
+    for (Panel *panel : panels_)
+        panel->fieldChanged(f);
 }
 
 void View::clearField(Field f) {

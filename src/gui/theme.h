@@ -287,6 +287,13 @@ void paintMenuPanel(Canvas &c, Rect r, float radius = kRadiusCard);
 // row's icon alone taking a color.
 void paintMenuRow(Canvas &c, Rect r, bool hovered, bool selected);
 
+// A flat theme's add button: a filled pill, round at its ends, tinted with the accent while `lit`.
+void paintPill(Canvas &c, Rect r, bool lit);
+
+// The bar along the foot of an aux's chip (a MODS row's, a pill's list's row's): as far as the aux depth (0..1), in the
+// aux's color.
+void paintAuxDepthBar(Canvas &c, Rect chip, int aux, double depth);
+
 // A glow feathering out, as strong as `color`'s alpha where it starts and fading to nothing `spread` further out: round a
 // circle of radius `inner`, round a rounded box, and along a line `width` wide. As the glow setting (`glowing`) is at
 // 75 %; stronger and wider above it, fainter and narrower below, and none when it is off.

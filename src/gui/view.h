@@ -3,6 +3,7 @@
 #include "canvas.h"
 #include "controller.h"
 #include "fxgraphmodel.h"
+#include "modspanel.h"
 #include "modulationmodel.h"
 #include "panel.h"
 #include "presetbrowser.h"
@@ -212,7 +213,6 @@ private:
         Glow,
         TextSelect, // across a text field (drag_.widget.a: its Field)
         Bend,       // a wire, sideways: how far it bows
-        ModsScroll, // the MODS view's thumb
         InputsScroll, // the INPUTS tab's thumb
         Panel,      // a panel's own (drag_.panel): its moves go to it
         ModListScroll, // a pill's open list's thumb
@@ -285,11 +285,8 @@ private:
         std::vector<Assignment> all;
         std::vector<int> byTarget; // indices into `all`, by target and then in their order there
     };
-    struct MenuNode;
     struct Derived {
         std::optional<std::vector<int>> chain, sources, sourcesShown;
-        std::optional<std::vector<Assignment>> modsRows;
-        std::shared_ptr<const MenuNode> cascade; // the open menu's entries (see cascadeTree())
         std::optional<float> fxLength, sourcesLength;
         std::array<std::optional<std::vector<int>>, kAllSources> slots{};
         std::array<std::optional<float>, kMaxSources> cards{};
@@ -325,88 +322,11 @@ private:
     // Whether a source does something: it modulates a target, or scales another source's modulation as its aux.
     bool sourceUsed(int source) const;
     Point routePoint(int node) const; // a node's center, or OUT's (kNodes)
-    // The MODS view: every modulation as a row, the sources in the order of assignments(), then the empty ones
-    // (UiLayout::emptyMods; one from a source that has rows goes after them instead) and a row that adds one, over the routing panel and the inspector. Its rows scroll: how
-    // many are scrolled past as shown (gliding), the most that can be, and scrolling them, gliding or at once; the
-    // thumb of its bar.
-    bool modsWide() const;
-    // An empty modulation's row stands in for a slot as emptyModSlot(its place in the list) (see modulationmodel.h).
-    std::vector<Assignment> modsRows() const;
-    std::vector<Assignment> modsRowsNow() const; // modsRows() worked out
-    float modsFirst() const;
-    float modsEnd() const;
-    void scrollMods(float first, bool glide);
-    // Scrolls the rows at once to `slot`'s row of `source` (an empty modulation's too), with as many of its source's
-    // rows above it as fit, and says where it is shown.
-    Rect revealModsRow(int source, int slot);
-    bool glideMods();
-    Rect modsThumb() const;
-    void paintMods(Canvas &c);
-    // Adds an empty modulation from `source` (-1 for none yet), at the end of the list or after its source's rows,
-    // scrolls to it and opens the menu of what it lacks; refused past kMaxEmptyMods.
-    void addEmptyMod(int source = -1);
     // Shows a routing view (the tabs' click), taking the panels back from the shape and partial editors.
     void showView(RoutingView view);
     // The MODS view, its rows scrolled to the source's first; with none there yet, a new empty modulation from it
-    // (see a card's SourceMods button).
+    // (see a card's SourceMods button, and ModsPanel::showSource()).
     void showSourceMods(int source);
-    // Picks an empty modulation's source, or its target, as ModulationModel::fillEmptyMod() does; either way the rows
-    // scroll to where it is now, among its source's.
-    void fillEmptyMod(int row, int source, int target);
-    // The cascading menus of a MODS row: its sources by category (LFOs, envelopes, macros, the keyboard's), the same
-    // with None for its aux, and every target by category, only the effects in the chain among them. Each entry is a
-    // category (with entries of its own), a heading, or a pick: a source (-1 for None) or a target param.
-    enum class CascadeKind { Source, Target, Aux };
-    struct MenuNode {
-        std::string label;
-        std::optional<Color> color; // a dot before the label
-        bool heading = false;
-        bool enabled = true;
-        bool checked = false;  // what the row has now
-        bool holds = false;    // a category that has what the row has now somewhere in it
-        int pick = -2;         // a source or target; -2 for a category or heading
-        std::string note;      // after the label, faint: why it can't be picked
-        std::string path;      // before the label, dim: the categories a search found it in
-        bool newColumn = false; // starts a column of its own level beside the one before (an operator's ENVELOPE)
-        std::vector<MenuNode> children;
-    };
-    struct Cascade {
-        CascadeKind kind = CascadeKind::Source;
-        int source = -1, slot = -1; // the row
-        Point at;                   // the first level's top left
-        std::vector<int> open;      // the entry opened at each level so far
-        int picked = 0;             // while its search finds targets: the match Up and Down picked, which Enter takes
-    };
-    // A target menu has a search atop its first level: while something is typed in it, that level lists the targets
-    // whose path (categories, then name) holds every word of it, flat, each with its path, as many as
-    // kCascadeMatches, then how many more there are.
-    bool cascadeSearches() const { return cascade_ && cascade_->kind == CascadeKind::Target; }
-    // Where the search goes in the first level, and so where that level's entries start.
-    Rect cascadeSearchRect(Rect level) const;
-    std::shared_ptr<const MenuNode> cascadeTree() const;
-    MenuNode cascadeTreeNow() const; // cascadeTree() worked out
-    MenuNode cascadeCategories() const; // cascadeTree() before its search narrows it
-    // The open menu's levels, from the first: their entries, and where they show.
-    std::vector<const MenuNode *> cascadeLevels(const MenuNode &root) const;
-    std::vector<Rect> cascadeRects(const MenuNode &root) const;
-    // An entry of a level (`depth` of them from the first), in the level's place `at`: down its column, the level's
-    // columns side by side, each as wide.
-    Rect cascadeItemRect(const MenuNode &level, Rect at, int index, size_t depth) const;
-    static int cascadeColumns(const MenuNode &level);
-    void openCascade(CascadeKind kind, int source, int slot, Rect from);
-    void pickCascade(int level, int index);
-    // The keyboard in the target menu's search: Up and Down pick a match, Enter takes it, Escape empties the search,
-    // or then closes the menu.
-    void cascadeKey(Key key);
-    // The MODS view's filter: in its title row, at the right, a magnifier until it is clicked or holds something.
-    // While it holds something, only the rows whose source and target names hold every word of it show (and the
-    // empty modulations, which have yet to get theirs). Escape empties it, or then lets the keyboard go, as Enter and
-    // a click elsewhere do.
-    Rect modsFilterRect() const;
-    bool modsFilterOpen() const { return modsFiltering_ || !modsFilter_.text.empty(); }
-    std::string modsFilterCount() const; // "3 of 13": the modulations it shows, of all
-    void modsFilterKey(Key key);
-    void paintCascade(Canvas &c);
     // "Bypass LFO 1 modulation", or "Resume ..." for one that is bypassed.
     std::string bypassLabel(int source, int slot) const;
     // The route whose arrowhead or start is being dragged elsewhere, which the graph then draws following the mouse;
@@ -714,10 +634,10 @@ private:
     // What scrolls sideways with a scrollbar: the effects chain and the modulation sources, by card places, and the
     // effects graph, by pixels. How long each is, how much of it shows, where it is scrolled to and its thumb.
     enum class ScrollArea { Fx, Sources, FxGraph };
-    // What the middle button drags along: those rows, the MODS view's rows or the preset browser's list.
-    // A panel's own part (drag_.panel, drag_.widget.b its part): the preset browser's list or sidebar, or the SEQ view's
-    // roll, say.
-    enum class PanArea { Fx, Sources, Mods, Panel, Inputs, ModList };
+    // What the middle button drags along: those rows, the INPUTS tab's, a pill's list's, or a panel's own part
+    // (drag_.panel, drag_.widget.b its part): the preset browser's list or sidebar, the SEQ view's roll or the MODS
+    // view's rows, say.
+    enum class PanArea { Fx, Sources, Panel, Inputs, ModList };
     void applyPan(Point p);
     // What the middle button (or a finger) would pan at `p`, and where it is scrolled to now; none over a dialog, an
     // open list or menu that doesn't scroll, or while a drag goes on.
@@ -1139,9 +1059,9 @@ private:
     void paintModPill(Canvas &c, const Widget &w, bool hovered);
     void paintModList(Canvas &c, const Widget &w);
     void paintModListRow(Canvas &c, const Widget &w);
-    // An aux's ring round a depth handle, as much of it as `depth` (0..1), and the bar along an aux's chip's foot.
+    // An aux's ring round a depth handle, as much of it as `depth` (0..1) (the bar along an aux's chip's foot is
+    // paintAuxDepthBar(), theme.h).
     void paintAuxRing(Canvas &c, Point center, float radius, int aux, double depth) const;
-    void paintAuxDepthBar(Canvas &c, Rect chip, int aux, double depth) const;
     // Lines from a hovered source handle to whatever it modulates that is on screen; with a `slot`, from the handle
     // (when it is on screen) to that modulation's alone, as when its depth handle is hovered.
     void paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int source, int slot = -1);
@@ -1186,6 +1106,7 @@ private:
     void startDrag(Panel &from, const Widget &w, Point p, bool step) override;
     void dragValue(const Widget &w, Point p, Modifiers mods) override;
     bool sendKey(Key key, bool shift) override { return seqKey(key, shift); }
+    bool scoped() const override { return derivedDepth_ > 0; }
     const Telemetry &telemetry() const override { return telemetry_; }
     Point mouse() const override { return hoverPoint_; }
     const std::optional<Widget> &hovered() const override { return hover_; }
@@ -1196,9 +1117,11 @@ private:
     Controller &controller_;
     // The preset library and the patch as a file (see Controller::presetStore()).
     PresetStore &presetStore() const { return controller_.presetStore(); }
-    // The panels: the preset browser, the SEQ view, and all of them, in the order they are handed what goes on.
+    // The panels: the preset browser, the SEQ view, the MODS view, and all of them, in the order they are handed what
+    // goes on.
     PresetBrowser presets_;
     SeqPanel seq_;
+    ModsPanel modsPanel_;
     std::vector<Panel *> panels_;
     // The one showing over the editor (see Panel::modal()), if any.
     Panel *modalPanel() const;
@@ -1283,11 +1206,8 @@ private:
     bool algorithmsShown() const;    // ALGORITHM is there: with ROUTING or MATRIX, no editor over the panels
     bool sourceMenuOpen_ = false;            // the list of source types, opened from the dashed card after the sources
     Point sourceMenuAt_{0.0f, 0.0f};         // its top left: where the mouse clicked that card; x < 0 under + SOURCE
-    std::optional<Cascade> cascade_;         // a MODS row's cascading menu, while it is open
-    float modsScroll_ = 0.0f;                // rows the MODS view is scrolled to, before clamping
     float inputsScroll_ = 0.0f;              // rows the INPUTS tab is scrolled to, before clamping
     float modListScroll_ = 0.0f;             // rows a pill's open list is scrolled to, before clamping
-    float modsGlide_ = 0.0f;                 // and where it shows, gliding after it
     std::array<int, kFxSlots> fxBand_{};     // the band each three-band dynamics' or parametric EQ's card shows
     int octave_ = 0;                         // the keyboard's shift, -2..2 octaves from C1
     bool settingsOpen_ = false;
@@ -1382,9 +1302,6 @@ private:
                   SeqPanel::kConfirmClear < PresetBrowser::kConfirmCategoryRemove);
     int confirmSplit_ = -1; // the split kConfirmMidBand or kConfirmSplitRemove asks about
     size_t confirmEffects_ = 0; // how many effects it asks about, counted as it opens
-    TextField modsFilter_;                   // the MODS view's filter
-    bool modsFiltering_ = false;             // and whether it has the keyboard
-    TextField cascadeSearch_;                // the search atop the open target menu
     std::string flash_;
     int flashTicks_ = 0;
     std::optional<Typing> typing_;

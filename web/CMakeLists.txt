@@ -37,7 +37,7 @@ add_executable(fmvibe-ui
     ${PROJECT_SOURCE_DIR}/src/gui/fxgraphmodel.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/icons.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/modulationmodel.cpp
-    ${PROJECT_SOURCE_DIR}/src/gui/mods.cpp
+    ${PROJECT_SOURCE_DIR}/src/gui/modspanel.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/patchedits.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/presetbrowser.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/seqpanel.cpp

@@ -206,6 +206,19 @@ void paintMenuRow(Canvas &c, Rect r, bool hovered, bool selected) {
         c.fillRect(r, hovered ? kTrack : kTrack.alpha(0.5f), kRadiusControl);
 }
 
+void paintPill(Canvas &c, Rect r, bool lit) {
+    c.fillRect(r, lit ? kAccent.alpha(0.24f) : kTrack, std::min(kRadiusPanel, r.h * 0.5f));
+}
+
+// Along the chip's foot, inside its rounded ends: a faint track, filled in the aux's color as far as the aux depth.
+void paintAuxDepthBar(Canvas &c, Rect chip, int aux, double depth) {
+    const float inset = chip.h * 0.5f;
+    const Rect track{chip.x + inset, chip.bottom() - 3.0f, chip.w - 2.0f * inset, 2.0f};
+    c.fillRect(track, kSourceColors[aux].alpha(0.25f), kRadiusMark);
+    c.fillRect({track.x, track.y, track.w * static_cast<float>(std::clamp(depth, 0.0, 1.0)), track.h},
+               kSourceColors[aux], kRadiusMark);
+}
+
 void plotLine(Canvas &c, const Point *points, size_t count, Color color, float width) {
     if (glowing > 0.0f) {
         const float strength = 2.0f * glowing, radius = 0.5f + glowing;
