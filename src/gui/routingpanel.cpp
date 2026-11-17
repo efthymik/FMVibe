@@ -1432,7 +1432,8 @@ bool RoutingPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
     }
     case Kind::AlgorithmItem: {
         // A cell a little darker than the panel, the algorithm the operators form lit in the accent; its number at
-        // the top left, the algorithm under it.
+        // the top right, above where the carriers' lines run into OUT, which no operator reaches (at the top left
+        // the operators furthest from OUT, and their feedback loops, would run into it).
         const Algorithm &a = kAlgorithms[w.a];
         const bool current = routing_.currentAlgorithm() == w.a;
         const Color dark{0.0f, 0.0f, 0.0f, 1.0f};
@@ -1442,8 +1443,8 @@ bool RoutingPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         c.fillRect(w.rect, ground, kRadiusControl);
         if (current)
             c.strokeRect(w.rect.inset(0.75f), kAccent, 1.5f, kRadiusControl);
-        c.text({w.rect.x + 6.0f, w.rect.y + 3.0f, 30.0f, 12.0f}, std::to_string(a.number), kTextSmall,
-               current ? kAccent : hovered ? kDim : kFaint, Align::Left, true);
+        c.text({w.rect.right() - 36.0f, w.rect.y + 3.0f, 30.0f, 12.0f}, std::to_string(a.number), kTextSmall,
+               current ? kAccent : hovered ? kDim : kFaint, Align::Right, true);
         paintAlgorithm(c, {w.rect.x + 3.0f, w.rect.y + 9.0f, w.rect.w - 6.0f, w.rect.h - 12.0f}, a, 4.0f, ground);
         break;
     }

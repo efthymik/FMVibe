@@ -564,7 +564,7 @@ enum class FxParam {
     FilterMix,
     FilterSlope,
     // Compressor: stereo-linked and peak-sensing, with a soft knee Knee dB wide;
-    // Makeup is gain after it. See compressorCurve().
+    // Gain is the makeup gain after it. See compressorCurve().
     CompThreshold,
     CompRatio,
     CompKnee,
@@ -594,7 +594,7 @@ enum class FxParam {
     DelayLink,
     McOutput, // the three-band compressor's level after the mix
     // Reverb: a feedback delay network. Size scales its delay lines, Decay is the time it
-    // takes to fall 60 dB, Damping darkens the tail, Pre-Delay holds it back from the dry sound.
+    // takes to fall 60 dB, Damping darkens the tail, Pre (the pre-delay) holds it back from the dry sound.
     ReverbSize,
     ReverbDecay,
     ReverbDamping,
@@ -821,7 +821,7 @@ inline double chorusOffset(int voice, int voices) {
     return static_cast<double>(voice) / voices;
 }
 constexpr int kMaxDisperserStages = 64;
-constexpr double kMaxWidenerHighPass = 2000.0; // Hz, the top of the widener's High Pass knob
+constexpr double kMaxWidenerHighPass = 2000.0; // Hz, the top of the widener's Cutoff knob
 constexpr double kMaxUtilityWidth = 2.0;       // the utility's Width at its top: the sides twice as loud
 constexpr double kMaxUtilityMonoBass = 500.0;  // Hz, the top of the utility's Mono Bass knob
 // The utility's Gain knob (0..1) as a gain: its cube, scaled so the top is kMaxUtilityGainDb, so 0 is silence, the

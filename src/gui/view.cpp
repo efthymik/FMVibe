@@ -2341,8 +2341,12 @@ void View::paint(Canvas &c, Rect area) {
                 c.pushClip(w.clip);
             // A list open over a dimmed card is not dimmed with it.
             const bool dim = lists ? (w.disabled || w.faint) : widgetDimmed(w, dimmed);
+            // An idle knob alone is fainter than a dimmed one, but readable (see kIdleOpacity).
+            auto inDimmedArea = [&](const DimArea &a) { return a.area.contains(w.rect.center()); };
+            const bool idleOnly = dim && !lists && knobIdle(w) && !w.disabled && !w.faint &&
+                                  std::none_of(dimmed.begin(), dimmed.end(), inDimmedArea);
             if (dim)
-                c.pushLayer({0.0f, 0.0f}, kDimOpacity, w.rect.inset(-kWidgetReach));
+                c.pushLayer({0.0f, 0.0f}, idleOnly ? kIdleOpacity : kDimOpacity, w.rect.inset(-kWidgetReach));
             paintWidget(c, w);
             if (dim)
                 c.popLayer();
@@ -2712,7 +2716,7 @@ void View::paintFxCard(Canvas &c, int slot, Rect card, bool dragged) {
     paintCardFace(c, card, fx, on, kMaxSources + slot, dragged, 0.45f, kFxPanel);
     // Title row: the effect's icon (a widget of its own, which also switches it) and its name, up to the fold button.
     const float titleRight = fxGraph() ? cardPowerInGraph(card).x - 3.0f : cardTitleRight(card);
-    const Rect titleRect{card.x + 33.0f, card.y + 6.0f, titleRight - card.x - 33.0f, 20.0f};
+    const Rect titleRect{card.x + 33.0f, card.y + kCardTitleY, titleRight - card.x - 33.0f, 20.0f};
     const char *title = fxTitle(type);
     float titleSize = kTextBody; // smaller for a long name, so it fits beside the icon
     while (titleSize > kTextSmall && c.textWidth(title, titleSize, true) > titleRect.w)
@@ -3018,8 +3022,11 @@ void View::paintCompressor(Canvas &c, Rect r, int slot) {
                    liveValue(paramIndex(slot, FxParam::CompKnee)), fx, 2.0f);
     const float reduction = telemetry_.fxReduction[slot][0];
     reductionMeter(c, {r.right() - 18.0f, plot.y, 8.0f, plot.h}, reduction, fx);
-    c.text({plot.x + 4.0f, plot.y + 2.0f, plot.w, 14.0f}, trf(Str::CaptionReduction, {number("%.1f", reduction)}),
-           kTextLabel, reduction > 0.05f ? kText : kFaint, Align::Left);
+    // Resting, the compressor reports its reduction as -0, which would read "-0.0".
+    const bool reducing = reduction > 0.05f;
+    c.text({plot.x + 4.0f, plot.y + 2.0f, plot.w, 14.0f},
+           trf(Str::CaptionReduction, {number("%.1f", reducing ? reduction : 0.0f)}), kTextLabel,
+           reducing ? kText : kFaint, Align::Left);
 }
 
 // The three-band dynamics: a bar a band, the high band on top, levels across. Left of the Below threshold, where the
@@ -4204,7 +4211,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // A switched-off source's is faint, like its rings on knobs, and so is any source's while it modulates
         // nothing; either can still be dragged onto a target.
         const Point center = w.rect.center();
-        const Color color = kSourceColors[w.a].alpha(sourceLive(w.a) ? 1.0f : 0.3f);
+        const Color color = kSourceColors[w.a].alpha(sourceLive(w.a) ? 1.0f : kIdleHandleOpacity);
         if (hovered || active)
             c.fillCircle(center, 13.0f, color.alpha(0.25f));
         c.fillCircle(center, 8.5f, color);
@@ -4214,21 +4221,22 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::SlotBar: {
         const Color color = kSourceColors[w.a].alpha(mods_.slotBypassed(w.a, w.b) ? 0.4f : 1.0f);
         const double amount = value(w.param);
-        const float cy = w.rect.center().y;
-        const float mid = w.rect.center().x;
-        const float x = mid + static_cast<float>(amount) * w.rect.w * 0.5f;
-        c.fillRect({w.rect.x, cy - 2.0f, w.rect.w, 4.0f}, kTrack, kRadiusMark);
+        const Rect track = slotBarTrack(w.rect);
+        const float cy = track.center().y;
+        const float mid = track.center().x;
+        const float x = mid + static_cast<float>(amount) * track.w * 0.5f;
+        c.fillRect({track.x, cy - 2.0f, track.w, 4.0f}, kTrack, kRadiusMark);
         c.fillRect({std::min(mid, x), cy - 2.0f, std::abs(x - mid), 4.0f}, color, kRadiusMark);
         c.line({mid, cy - 4.0f}, {mid, cy + 4.0f}, kFaint, 1.0f);
         c.fillCircle({x, cy}, hovered || active ? 5.0f : 4.0f, color);
         // Where the modulation takes its target now, on the bar's scale: a tick that swings with its source.
         if (const std::optional<double> now = liveSlotOffset(w.a, w.b)) {
-            const float at = mid + static_cast<float>(std::clamp(*now, -1.0, 1.0)) * w.rect.w * 0.5f;
+            const float at = mid + static_cast<float>(std::clamp(*now, -1.0, 1.0)) * track.w * 0.5f;
             c.line({at, cy - 4.5f}, {at, cy + 4.5f}, kBackground, 3.0f);
             c.line({at, cy - 4.0f}, {at, cy + 4.0f}, kText, 1.5f);
         }
         // Another source modulating this depth shows how far it takes it, under the bar.
-        paintModRange(c, {w.rect.x, cy + 6.0f, w.rect.w, 1.5f}, w.param);
+        paintModRange(c, {track.x, cy + 6.0f, track.w, 1.5f}, w.param);
         char text[16];
         std::snprintf(text, sizeof(text), "%+.0f%%", amount * 100.0);
         c.text({w.rect.right() + 2.0f, w.rect.y, 38.0f, w.rect.h}, text, kTextLabel, kDim, Align::Right);
@@ -5967,10 +5975,11 @@ void View::applyDrag(Point p) {
             const long steps = std::lround((drag_.start.y - p.y) / (drag_.fine ? 24.0f : 6.0f));
             set(w.param, steps != 0 ? ratioNorm(ratioHundredths(drag_.startValue) + steps * kRatioPlaces[w.b])
                                     : drag_.startValue);
-        } else if (w.kind == Kind::SlotBar)
-            set(w.param, drag_.fine ? drag_.startValue + (p.x - drag_.start.x) / (w.rect.w * 0.5f) * 0.01
-                                    : (p.x - w.rect.center().x) / (w.rect.w * 0.5f));
-        else if (w.kind == Kind::ModsAuxDepth) // from where it is, across: all of it every 100 px (10000 with Shift)
+        } else if (w.kind == Kind::SlotBar) {
+            const Rect track = slotBarTrack(w.rect);
+            set(w.param, drag_.fine ? drag_.startValue + (p.x - drag_.start.x) / (track.w * 0.5f) * 0.01
+                                    : (p.x - track.center().x) / (track.w * 0.5f));
+        } else if (w.kind == Kind::ModsAuxDepth) // from where it is, across: all of it every 100 px (10000 with Shift)
             set(w.param, drag_.startValue + (p.x - drag_.start.x) / (drag_.fine ? 10000.0 : 100.0));
         else if (w.kind == Kind::ModDot && w.a >= 0 && w.b >= 0 && w.param == slotAuxDepthIndex(w.a, w.b))
             set(w.param, drag_.startValue + (drag_.start.y - p.y) / (drag_.fine ? 10000.0 : 100.0)); // Alt-dragged, up

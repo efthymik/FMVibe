@@ -282,11 +282,12 @@ constexpr float kViewTabFlare = 6.0f;  // the shown one's curves into the panel'
 // classic algorithms (kAlgorithms) under it, right-aligned with the routing panel and over the graph or matrix, the
 // inspector left in view. The panel has a title row with a switch between the sets at its right (6 | 4 | 3 | 2, how
 // many operators they use, "Operators" before it), a thumbnail a cell, kAlgorithmCols to a row, and a foot under a
-// line, which names the thumbnail under the mouse.
+// line, which names the thumbnail under the mouse. Six operators' four rows of them end clear of the ghosts the graph
+// docks at its bottom right (see RoutingPanel::widgets()).
 constexpr Rect kAlgorithmButton{kRouting.x + kRouting.w - 190.0f, kTopRowY + 4.0f, 190.0f, 24.0f}; // "4-OP 8" fits on it
 constexpr int kAlgorithmCols = 8;
 constexpr float kAlgorithmCellW = 72.0f, kAlgorithmCellH = 58.0f, kAlgorithmGap = 6.0f, kAlgorithmPad = 14.0f;
-constexpr float kAlgorithmTitleH = 36.0f, kAlgorithmFootH = 40.0f;
+constexpr float kAlgorithmTitleH = 32.0f, kAlgorithmFootH = 34.0f;
 constexpr float kAlgorithmPanelW = 2.0f * kAlgorithmPad + kAlgorithmCols * kAlgorithmCellW + (kAlgorithmCols - 1) * kAlgorithmGap;
 inline Rect algorithmPanel(int count) {
     const int rows = (count + kAlgorithmCols - 1) / kAlgorithmCols;
@@ -372,6 +373,9 @@ constexpr ModsColumn kModsBypass{4.0f, 18.0f}, kModsSource{26.0f, 130.0f}, kMods
     kModsScale{736.0f, 100.0f},
     kModsAux{890.0f, 196.0f}, kModsRemove{1104.0f, 24.0f}, kModsAdd{4.0f, 178.0f};
 inline Rect modsCell(Rect row, ModsColumn column) { return {row.x + column.x, row.y, column.w, row.h}; }
+// A depth bar's track (a MODS row's, a pill's list's): in from its ends by its handle's radius, so the handle at
+// either end stays clear of the depth after it.
+inline Rect slotBarTrack(Rect bar) { return {bar.x + 5.0f, bar.y, bar.w - 10.0f, bar.h}; }
 // A text field's x at its right end, centered on its height, which empties it, and where its text goes: after the
 // magnifier, short of the x.
 inline Rect fieldClear(Rect field) {
@@ -479,6 +483,9 @@ inline Rect sourcesToggle() {
 // Every card's title row, an effect's, a source's or a split's: its mark (the effect's icon or the source's handle) and
 // its name at the left; at the right the fold button, the power switch (a split has none) and the cross. Its name
 // stops short of the fold button (cardTitleRight()).
+// An effect card's (or a split container's) title: its box, 20 px tall, this far down the card, which centers its
+// capitals on the title row's icon and buttons (cardFold(), cardPower(), cardClose()).
+constexpr float kCardTitleY = 7.5f;
 inline Rect cardClose(Rect card) {
     return {card.right() - 22.0f, card.y + 8.0f, 14.0f, 21.0f};
 }
@@ -936,9 +943,10 @@ inline Rect fxCard(float position, float span = 1.0f) {
             kFxPanel.bottom() - 20.0f - kFxTop};
 }
 
-// The effect's icon, at the left of its card's title row, folded or not.
+// The effect's icon, at the left of its card's title row, folded or not: centered with the title (kCardTitleY) and the
+// buttons, as a source card's handle is.
 inline Rect fxIconRect(Rect card) {
-    return {card.x + kFxIconX, card.y + 10.0f, kFxIconW, 14.0f};
+    return {card.x + kFxIconX, card.y + 11.0f, kFxIconW, 14.0f};
 }
 
 // Displays sit under a card's buttons, if it has any, and above its knobs: one
@@ -1388,26 +1396,31 @@ inline Rect settingsTheme(Rect panel, int i) {
     const float w = (panel.w - 48.0f + 6.0f) / kThemeCount;
     return {panel.x + 24.0f + i * w, panel.y + kSettingsLookY + 30.0f, w - 6.0f, 30.0f};
 }
+// The sliders' and HANDLES' names, before them: wide enough for HANDLES in any of the fonts the editor draws in.
+constexpr float kSettingsLabelW = 64.0f;
+constexpr float kSettingsTrackX = 24.0f + kSettingsLabelW; // from the panel's left
+constexpr float kSettingsTrackW = 276.0f - kSettingsTrackX; // ending where they always have
 // Under the themes, the hue slider's track, with room above and below to grab it: the theme's main color. HUE before
 // it, its hue after.
 inline Rect settingsHue(Rect panel) {
-    return {panel.x + 76.0f, panel.y + kSettingsLookY + 72.0f, 200.0f, 26.0f};
+    return {panel.x + kSettingsTrackX, panel.y + kSettingsLookY + 72.0f, kSettingsTrackW, 26.0f};
 }
 // The glow slider, like it; GLOW before it, its amount after.
 inline Rect settingsGlow(Rect panel) {
-    return {panel.x + 76.0f, panel.y + kSettingsLookY + 104.0f, 200.0f, 26.0f};
+    return {panel.x + kSettingsTrackX, panel.y + kSettingsLookY + 104.0f, kSettingsTrackW, 26.0f};
 }
 // Under it, the LINES slider, like it: how strongly a source's dashed lines are drawn.
 inline Rect settingsLinks(Rect panel) {
-    return {panel.x + 76.0f, panel.y + kSettingsLookY + 136.0f, 200.0f, 26.0f};
+    return {panel.x + kSettingsTrackX, panel.y + kSettingsLookY + 136.0f, kSettingsTrackW, 26.0f};
 }
 // Under it, the GRID slider, like it: how strongly the SEQ view's roll draws its grid.
 inline Rect settingsGrid(Rect panel) {
-    return {panel.x + 76.0f, panel.y + kSettingsLookY + 168.0f, 200.0f, 26.0f};
+    return {panel.x + kSettingsTrackX, panel.y + kSettingsLookY + 168.0f, kSettingsTrackW, 26.0f};
 }
 // Under that, HANDLES and the depth handles' sizes: small, medium and large.
 inline Rect settingsHandles(Rect panel, int size) {
-    return {panel.x + 76.0f + size * 68.0f, panel.y + kSettingsLookY + 202.0f, 64.0f, 28.0f};
+    constexpr float kStep = (kSettingsTrackW + 4.0f) / 3.0f;
+    return {panel.x + kSettingsTrackX + size * kStep, panel.y + kSettingsLookY + 202.0f, kStep - 4.0f, 28.0f};
 }
 inline Rect settingsClose(Rect panel) {
     return {panel.right() - 38.0f, panel.y + 14.0f, 24.0f, 24.0f};

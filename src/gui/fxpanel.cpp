@@ -1843,7 +1843,7 @@ void FxPanel::paintSplitControls(Canvas &c, int split, Rect card, bool row) {
                          (hover() && hover()->kind == Kind::FxBoxGrip && hover()->a == fxSplitNode(split) &&
                           !host_.dragging());
     splitIcon(c, fxIconRect(card), grabbed ? kText : kDim, fx_.splitThree(split) ? 3 : 2);
-    c.text({card.x + 36.0f, card.y + 6.0f, kSplitTitleW - 4.0f, 20.0f}, trf(Str::NodeSplit, {std::to_string(split + 1)}),
+    c.text({card.x + 36.0f, card.y + kCardTitleY, kSplitTitleW - 4.0f, 20.0f}, trf(Str::NodeSplit, {std::to_string(split + 1)}),
            kTextBody, kText, Align::Left, true);
     // The bands' responses on the cutoff grid, each in its color and lowered by its level, the one shown filled, a
     // handle on each crossover where they cut.

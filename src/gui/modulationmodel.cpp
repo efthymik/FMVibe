@@ -1,5 +1,6 @@
 #include "modulationmodel.h"
 
+#include "fxgraphmodel.h"
 #include "routing.h"
 
 #include <algorithm>
@@ -30,6 +31,74 @@ std::string ModulationModel::sourceName(int source) const {
     return fmvibe::gui::sourceName(controller_.layout(), [this](int index) { return value(index); }, source);
 }
 
+namespace {
+
+// The words every field of an effect type begins with past its slot's "FX n" ("Chorus" for "Chorus Rate", "3-Band Dyn"
+// for "3-Band Dyn Low Gain"), where the number of a repeated effect goes; empty for a type whose fields share none.
+const std::array<std::string, static_cast<size_t>(FxType::Count)> &fxFieldPrefixes(const ParamTable &table) {
+    static const auto prefixes = [&table] {
+        std::array<std::string, static_cast<size_t>(FxType::Count)> out{};
+        std::array<std::vector<std::string>, static_cast<size_t>(FxType::Count)> shared{};
+        std::array<bool, static_cast<size_t>(FxType::Count)> seen{};
+        const size_t slotName = trf(Str::ParamFx, {"1"}).size() + 1;
+        for (int f = 0; f < kFxParamCount; ++f) {
+            const auto type = static_cast<size_t>(fxTypeOfField(static_cast<FxParam>(f)));
+            const std::string &name = table[paramIndex(0, static_cast<FxParam>(f))].name;
+            std::vector<std::string> words;
+            for (size_t at = slotName; at < name.size();) {
+                const size_t end = std::min(name.find(' ', at), name.size());
+                words.push_back(name.substr(at, end - at));
+                at = end + 1;
+            }
+            if (!words.empty())
+                words.pop_back(); // the field's own word
+            if (!seen[type]) {
+                shared[type] = words;
+                seen[type] = true;
+            } else {
+                size_t n = 0;
+                while (n < shared[type].size() && n < words.size() && shared[type][n] == words[n])
+                    ++n;
+                shared[type].resize(n);
+            }
+        }
+        for (size_t type = 0; type < out.size(); ++type)
+            for (const std::string &word : shared[type])
+                out[type] += (out[type].empty() ? "" : " ") + word;
+        return out;
+    }();
+    return prefixes;
+}
+
+} // namespace
+
+std::string ModulationModel::fxParamName(int index) const {
+    const int slot = fxSlotOf(index);
+    const std::string &name = table_[index].name;
+    const std::string slotName = trf(Str::ParamFx, {std::to_string(slot + 1)});
+    const FxType type = fxType(value(paramIndex(slot, FxParam::Type)));
+    if (type == FxType::None || name.compare(0, slotName.size() + 1, slotName + " ") != 0)
+        return name;
+    const std::string field = name.substr(slotName.size() + 1);
+    // Numbered in the line's order among the effects of its type, where there are more than one.
+    int number = 0, count = 0;
+    for (int other : FxGraphModel(controller_).chain())
+        if (fxType(value(paramIndex(other, FxParam::Type))) == type) {
+            ++count;
+            if (other == slot)
+                number = count;
+        }
+    const std::string n = count > 1 && number > 0 ? std::to_string(number) : std::string();
+    if (fxTypeOfField(fxFieldOf(index)) == FxType::None) // a field every effect has: by the effect's name
+        return std::string(fxName(type)) + (n.empty() ? "" : " " + n) + " " + field;
+    if (n.empty())
+        return field;
+    const std::string &prefix = fxFieldPrefixes(table_)[static_cast<size_t>(type)];
+    if (!prefix.empty() && field.compare(0, prefix.size() + 1, prefix + " ") == 0)
+        return prefix + " " + n + field.substr(prefix.size());
+    return field + " " + n;
+}
+
 std::string ModulationModel::paramName(int index) const {
     if (index < 0 || index >= kParamCount)
         return std::string();
@@ -40,6 +109,8 @@ std::string ModulationModel::paramName(int index) const {
     }
     if (isMacroKnob(index)) // by the name it is given
         return sourceName(kMaxSources + macroOf(index));
+    if (fxSlotOf(index) >= 0)
+        return fxParamName(index);
     const int source = sourceOf(index);
     const std::string &name = table_[index].name;
     if (source < 0)

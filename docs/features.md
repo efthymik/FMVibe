@@ -532,7 +532,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     twice the host rate, as the voice filters run oversampled, so the analog types' saturation and Drive alias far
     less and Drive keeps the top.
   - **Compressor**: stereo-linked and peak-sensing, with Threshold (−60–0 dB), Ratio (1:1–20:1), a soft Knee
-    (0–24 dB), Attack (1–500 ms), Release (1 ms–2 s), Makeup (0–24 dB) and Mix for parallel compression.
+    (0–24 dB), Attack (1–500 ms), Release (1 ms–2 s), Gain (makeup gain, 0–24 dB) and Mix for parallel compression.
   - **3-Band Dynamics**: upward and downward compression in three bands, which Linkwitz-Riley crossovers (Low X,
     High X) split the mix into; at 0 % mix the bands just sum back up, so nothing combs. Each band is pulled down above its **Above** threshold (−80–0 dB, as Below) by its **Down** ratio, as a compressor does, and
     lifted below its **Below** threshold by its **Up** ratio: the gap under the threshold shrinks by the ratio, so
@@ -593,7 +593,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     note. Size (the
     lines from a quarter of their length to all of it, gliding when turned, also when the algorithm changes),
     Decay (0.2–20 s to fall 60 dB), Damp (Damping in the host; the corner, from 20 kHz down to 1 kHz, above which the tail falls five
-    times as fast, by as much in every line), Pre-Delay (off to 250 ms), Width and Mix (like the delay's: the dry
+    times as fast, by as much in every line), Pre (the pre-delay, off to 250 ms), Width and Mix (like the delay's: the dry
     sound stays at full level up to 50 %). The plugin keeps processing until the tail has died away, the
     pre-delay's wait included.
   - **Phaser**: 2–12 first-order all-passes (Stages) whose corner an LFO (Rate, 0–20 Hz; at 0 the sweep stands
@@ -633,7 +633,7 @@ What the plugin does and how its editor works, in full. Building and installing 
   - **Phase Disp** (phase disperser): 1–64 second-order all-passes in a row (Stages) at Freq, each as narrow as
     Pinch sets (Q 0.3 to 6): the sound around Freq comes out later than the rest, smeared in time into a chirp,
     but at full level; Mix blends it with the dry sound.
-  - **Widener** (a dimension expander): the sound above **High Pass** (20 Hz–2 kHz, 150 Hz to begin with, 12 dB
+  - **Widener** (a dimension expander): the sound above **Cutoff** (a high-pass, 20 Hz–2 kHz, 150 Hz to begin with, 12 dB
     per octave), summed to mono, goes through four short delays, each swept slowly by an LFO of its own
     (0.29–0.53 Hz, 12 % of its delay either way). **Size** sets how long they are: 2–5 ms at 0, a tight doubling,
     up to 10–23 ms, a wide chorus. At full **Width** what the left taps have and the right ones lack is added as
@@ -1044,7 +1044,7 @@ one may have changed since it last did.
     operators sits on the top one (D, C or B). Each is a
     thumbnail drawn the way the graph runs, modulators on the left, carriers in a column and their lines into OUT on
     the right, each operator in its color and its feedback a small loop on its top (or, for six operators' 4 and 6,
-    a dashed curve back up the stack). The panel's foot names the one under the mouse (its number, how many carriers
+    a dashed curve back up the stack), its number at its top right. The panel's foot names the one under the mouse (its number, how many carriers
     it has and where its feedback is). The algorithm the operators form now is lit, and its number shows on the
     button (with "4-OP", "3-OP" or "2-OP" before it for fewer operators); the panel opens on its set. A click on a thumbnail sets the
     operators to it, as one undo step, and closes the panel; Escape or a click around it closes it too. Picking one:
@@ -1341,6 +1341,9 @@ one may have changed since it last did.
     in the order their cards show, then the macros, the note source, the mod wheel, velocity and the pitch bend), the
     first of a
     source's rows naming it with its handle's look and the others a line in its color down the source's column.
+    A row names an effect's param by the effect, not by its slot's number as hosts do ("Chorus Rate" for "FX 7
+    Chorus Rate"), numbered along the line only where it holds more than one effect of that type ("Chorus 2 Rate"); so
+    do undo's tooltips and the editor's messages.
     Modulations at 0 % are listed too, and after them the empty ones (see below). Over the rows, the columns' names,
     shown with no modulations too (with a hint under the button that adds one), and at the right of their row the
     count (how many are bypassed, at 0 % and empty with it, as much of that as fits), then the **filter**'s
@@ -1883,8 +1886,8 @@ one may have changed since it last did.
   knob takes modulation like any other knob (a source's handle dropped on it, its depth handles under it), but not
   its own macro's handle nor one that would loop, which says why as it is let go of; its dot then shows where the
   newest voice's modulation takes it, or with no note playing where the other macros and the mod wheel take it. Until a
-  macro modulates something or scales a modulation as its aux, its handle, its knob's arc and its name are faint,
-  and hovering the handle shows a "Drag to assign" tooltip (so do the note source's, the wheels' and
+  macro modulates something or scales a modulation as its aux, its handle, its knob's arc and its name are faint
+  (less so than a switched-off control, so they can still be found and read in every theme), and hovering the handle shows a "Drag to assign" tooltip (so do the note source's, the wheels' and
   velocity's). The right-click menu of its knob,
   handle or name makes it **Unipolar** or **Bipolar** (and the handle's or name's clears its targets); a bipolar
   macro's arc starts from the knob's middle, where it moves nothing, and a double-click on its

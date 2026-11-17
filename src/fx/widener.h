@@ -12,7 +12,7 @@ inline constexpr double kWidenerRates[kWidenerTaps] = {0.29, 0.37, 0.43, 0.53};
 // Tap `tap`'s delay (seconds) with its sweep at `lfo` (-1..1), from the Size knob (0..1): from a fifth of its
 // length, a tight doubling, to all of it, swept 12 % either way.
 double widenerTap(int tap, double size, double lfo);
-// How much of the sound at `hz` the widener widens, from its High Pass knob (0..1 on the cutoff curve): the
+// How much of the sound at `hz` the widener widens, from its Cutoff knob (0..1 on the cutoff curve): the
 // response of its high-pass, 12 dB per octave.
 double widenerSpread(double hz, double highPassNorm);
 

@@ -237,7 +237,7 @@ function resize() {
   viewWidth = ui._ui_width();
   viewHeight = ui._ui_height();
   const room = stage.clientWidth - 32;
-  const below = document.querySelector('footer').offsetHeight + 34;
+  const below = document.querySelector('footer').offsetHeight + 20; // and its margins (style.css)
   const roomHeight = window.innerHeight - editorFrame.getBoundingClientRect().top - window.scrollY - below;
   const width = Math.max(300, Math.min(room, Math.max(roomHeight, 400) * viewWidth / viewHeight, 1800));
   const height = width * viewHeight / viewWidth;

@@ -946,7 +946,8 @@ Point portOf(const UiLayout &layout, int node) {
 }
 
 // How bright a handle's ring is, in what was saved last: the brightest channel of any pixel down `span` px from `from`,
-// a little right of the handle's middle. On the dark theme a faint handle is much darker.
+// a little right of the handle's middle. On the dark theme a faint handle is much darker (under 10/16 as bright, drawn
+// at kIdleHandleOpacity).
 int ringLevel(const Renderer &renderer, Point from, float span) {
     int most = 0;
     for (float y = from.y; y <= from.y + span; y += 1.0f) {
@@ -3316,7 +3317,7 @@ void renderNewEffects(const std::filesystem::path &dir, Renderer &renderer) {
     }
     view.poll();
     click(view, kFxTab);
-    // The widener's knobs: Size, Width, High Pass and Mix.
+    // The widener's knobs: Size, Width, Cutoff and Mix.
     const int highPass = paramIndex(4, FxParam::WidenerHighPass);
     const double before = model.value(highPass);
     drag(view, fxKnob(model, 4, 2, 4), {fxKnob(model, 4, 2, 4).x, fxKnob(model, 4, 2, 4).y - 20.0f});
@@ -7137,7 +7138,7 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     const int noteLive = ringLevel(renderer, noteRing, 20.0f);
     std::printf("      handles' brightness: macro %d idle, %d mapped; note %d idle, %d mapped\n", macroIdle, macroLive,
                 noteIdle, noteLive);
-    check(idleShot && macroIdle * 18 < macroLive * 10 && noteIdle * 18 < noteLive * 10,
+    check(idleShot && macroIdle * 16 < macroLive * 10 && noteIdle * 16 < noteLive * 10,
           "a macro's and the note source's handles are faint until they modulate something");
     std::string removal;
     for (const MenuItem &item : view.contextMenu(ins(918.0f, 242.0f)))
@@ -7164,7 +7165,7 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
         for (const MenuItem &item : view.contextMenu(kFmAmountKnob))
             if (item.label.find(tr(Str::SourceNameWheel)) != std::string::npos)
                 wheelRemoval = item.label;
-        check(wheelMapped && wheelShot && idle * 18 < live * 10 &&
+        check(wheelMapped && wheelShot && idle * 16 < live * 10 &&
                   wheelRemoval == trf(Str::MenuRemoveModulation, {tr(Str::SourceNameWheel)}),
               "the mod wheel's handle maps it like a macro's, upward, and is faint until it does");
     }
@@ -7189,7 +7190,7 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
             if (item.label.find(tr(Str::SourceNameBend)) != std::string::npos)
                 bendRemoval = item.label;
         std::printf("      bend handle's brightness: %d idle, %d mapped\n", idle, live);
-        check(tip && bendMapped && bendShot && idle * 18 < live * 10 &&
+        check(tip && bendMapped && bendShot && idle * 16 < live * 10 &&
                   bendRemoval == trf(Str::MenuRemoveModulation, {tr(Str::SourceNameBend)}),
               "the pitch bend's handle, over its wheel, maps it like a macro's, bipolar, and is faint until it does");
     }
@@ -7852,7 +7853,7 @@ void testVelocity(const std::filesystem::path &dir, Renderer &renderer) {
         if (item.label.find(tr(Str::SourceNameVelocity)) != std::string::npos)
             removal = item.label;
     std::printf("      velocity's handle: brightness %d idle, %d mapped\n", idle, live);
-    check(mapped && shot && idle * 18 < live * 10 &&
+    check(mapped && shot && idle * 16 < live * 10 &&
               removal == trf(Str::MenuRemoveModulation, {tr(Str::SourceNameVelocity)}),
           "velocity's handle maps it like the note source's, and is faint until it does");
     // Its display's menu makes it bipolar, and back.
@@ -9474,7 +9475,8 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     const bool listShot = renderer.save(view, dir / "40c-pill-list.png");
     const uint32_t open = renderer.pixel(row(5, 60.0f));
     const bool sixShown = renderer.pixel(row(6, 60.0f)) == seventhAway; // no seventh row under the sixth
-    drag(view, row(0, 116.0f + 38.0f), row(0, 116.0f + 57.0f)); // LFO 1's depth bar, to half way right: +50 %
+    // LFO 1's depth bar (76 px from 116, its track 66 px from 121), from its middle half way right: +50 %
+    drag(view, row(0, 121.0f + 33.0f), row(0, 121.0f + 33.0f + 16.5f));
     const bool deep = std::abs(model.value(slotAmountIndex(0, 0)) - 0.5) < 1e-6;
     // Two notches down over the names: LFO 7 and 8 are the fifth and sixth rows shown.
     view.wheel(row(3, 60.0f), -2.0f, {});
@@ -9592,6 +9594,54 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
           "the depth handles and pills are drawn in the size picked, Small as before");
 }
 
+// The editor names an effect's params by the effect, not its slot's number: "Chorus Rate", numbered along the line
+// only where it holds more than one chorus, "Chorus 1 On" for a field every effect has, and the numbers following the
+// line as it is reordered.
+void testFxParamNames(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    click(view, kFxTab);
+    addFx(view, FxType::Chorus);
+    ModulationModel names(model);
+    const int lone = fxChain(model).front();
+    const bool alone = names.paramName(paramIndex(lone, FxParam::ChorusRate)) == tr(Str::ParamChorusRate);
+    addFx(view, FxType::Compressor);
+    addFx(view, FxType::Chorus);
+    const std::vector<int> chain = fxChain(model); // chorus, compressor, chorus
+    const int first = chain[0], comp = chain[1], second = chain[2];
+    const std::string rate = tr(Str::ParamChorusRate); // "Chorus Rate"
+    const std::string numbered1 = "Chorus 1" + rate.substr(rate.find(' ')),
+                      numbered2 = "Chorus 2" + rate.substr(rate.find(' '));
+    const bool numbered = names.paramName(paramIndex(first, FxParam::ChorusRate)) == numbered1 &&
+                          names.paramName(paramIndex(second, FxParam::ChorusRate)) == numbered2 &&
+                          names.paramName(paramIndex(comp, FxParam::CompMakeup)) == tr(Str::ParamCompMakeup) &&
+                          names.paramName(paramIndex(first, FxParam::Enabled)) ==
+                              std::string(fxName(FxType::Chorus)) + " 1 " + tr(Str::ParamOn);
+    // The first chorus moved to the line's end: it is the second now.
+    {
+        FxGraphModel fx(model);
+        FxLine line = fx.line();
+        std::rotate(line.begin(), line.begin() + 1, line.end());
+        UndoScope step(model);
+        fx.writeLine(line);
+    }
+    const bool reordered = names.paramName(paramIndex(first, FxParam::ChorusRate)) == numbered2 &&
+                           names.paramName(paramIndex(second, FxParam::ChorusRate)) == numbered1;
+    // In the MODS view, an LFO on both choruses' rates and the compressor's gain.
+    model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
+    const int targets[] = {paramIndex(second, FxParam::ChorusRate), paramIndex(first, FxParam::ChorusRate),
+                           paramIndex(comp, FxParam::CompMakeup)};
+    for (int s = 0; s < 3; ++s) {
+        model.set(slotTargetIndex(0, s), slotTargetValue(targets[s]));
+        model.set(slotAmountIndex(0, s), 0.3);
+    }
+    view.poll();
+    click(view, {382.0f, 116.0f});
+    const bool shot = renderer.save(view, dir / "35u-mods-fx-names.png");
+    check(alone && numbered && reordered && shot,
+          "the editor names an effect's params by the effect, numbered along the line where it holds more of its type");
+}
+
 // LFO 2 modulating LFO 1's depth on operator A's Ratio: hovering LFO 2's handle draws a dashed line to that
 // depth bar in the MODS view, which has a dot for the modulation, like a matrix cell's.
 void renderLfoOnLfo(const std::filesystem::path &dir, Renderer &renderer) {
@@ -9605,12 +9655,12 @@ void renderLfoOnLfo(const std::filesystem::path &dir, Renderer &renderer) {
     model.values[slotAmountIndex(1, 0)] = 0.5;
     view.poll();
     // In the MODS view, LFO 1's row the top one: with Shift a depth bar moves from where it is, a hundredth as fast; half
-    // its width (164 px from x 474) is 1 % then.
+    // its track's width (154 px from x 479, the bar's 164 from x 474 less its handle's radius at each end) is 1 % then.
     click(view, {382.0f, 116.0f});
-    const Point bar{474.0f + 82.0f, 182.0f};
+    const Point bar{479.0f + 77.0f, 182.0f};
     view.mouseDown(bar, {true, false});
-    view.mouseMove({bar.x + 82.0f, bar.y}, {true, false});
-    view.mouseUp({bar.x + 82.0f, bar.y}, {true, false});
+    view.mouseMove({bar.x + 77.0f, bar.y}, {true, false});
+    view.mouseUp({bar.x + 77.0f, bar.y}, {true, false});
     check(std::abs(model.value(slotAmountIndex(0, 0)) - 0.41) < 1e-6, "Shift drags a depth bar finely, from where it is");
     view.mouseMove(sourceHandle(1), {});
     const bool shot = renderer.save(view, dir / "18c-lfo-on-lfo.png");
@@ -10188,9 +10238,9 @@ void run(const std::filesystem::path &dir, float scale) {
         model.set(slotTargetIndex(1, 0), 0.0);
         std::printf("      LFO 1's handle: brightness %d idle, %d on, %d off; Env 1's %d idle, %d on\n", idle, on, off,
                     envIdle, envOn);
-        check(idleShot && on > 200 && idle * 18 < on * 10 && envOn > 200 && envIdle * 18 < envOn * 10,
+        check(idleShot && on > 200 && idle * 16 < on * 10 && envOn > 200 && envIdle * 16 < envOn * 10,
               "an LFO's and an envelope's handles are faint until they modulate something");
-        check(onShot && offShot && model.value(sourceEnabledIndex(0)) == 1.0 && off * 18 < on * 10,
+        check(onShot && offShot && model.value(sourceEnabledIndex(0)) == 1.0 && off * 16 < on * 10,
               "a switched-off source's handle looks switched off");
     }
 
@@ -12721,7 +12771,10 @@ void run(const std::filesystem::path &dir, float scale) {
     check(themed && model.themeName == "Midnight",
           "the settings dialog lists Spectrum (the default) and Porcelain first, and picks the theme");
     // The GLOW slider sets how strongly the graphs' curves glow, on both pages, once it is let go.
-    auto glowAt = [&](float amount) { return Point{dialog.x + 76.0f + 200.0f * amount, dialog.y + 429.0f}; };
+    auto glowAt = [&](float amount) {
+        const Rect track = detail::settingsGlow(dialog);
+        return Point{track.x + track.w * amount, dialog.y + 429.0f};
+    };
     view.mouseDown(glowAt(0.2f), {});
     view.mouseMove(glowAt(0.75f), {});
     const bool kept = model.glowLevel == 0.0; // only once it is let go
@@ -12744,7 +12797,10 @@ void run(const std::filesystem::path &dir, float scale) {
     check(model.glowLevel == 0.0, "the GLOW slider's left end turns it off");
     // HANDLES picks the depth handles' size, Small to begin with, leaving the patch alone.
     // LINES, under GLOW, sets how strongly a source's dashed lines are drawn, 75 % to begin with, once it is let go.
-    auto linesAt = [&](float amount) { return Point{dialog.x + 76.0f + 200.0f * amount, dialog.y + 312.0f + 149.0f}; };
+    auto linesAt = [&](float amount) {
+        const Rect track = detail::settingsLinks(dialog);
+        return Point{track.x + track.w * amount, dialog.y + 312.0f + 149.0f};
+    };
     const bool linesStart = model.links == 0.75;
     view.mouseDown(linesAt(0.75f), {});
     view.mouseMove(linesAt(0.4f), {});
@@ -12758,7 +12814,10 @@ void run(const std::filesystem::path &dir, float scale) {
     check(linesStart && linesKept && linesShot && linesSet && model.links == 1.0 && model.glowLevel == 0.0,
           "the settings dialog's LINES slider sets how strongly the sources' lines are drawn, and only that");
     // GRID, under LINES: at 50 % to begin with, dragged to its end, double-clicked back to 50 %.
-    auto gridAt = [&](float amount) { return Point{dialog.x + 76.0f + 200.0f * amount, dialog.y + 312.0f + 181.0f}; };
+    auto gridAt = [&](float amount) {
+        const Rect track = detail::settingsGrid(dialog);
+        return Point{track.x + track.w * amount, dialog.y + 312.0f + 181.0f};
+    };
     const bool gridStart = model.grid == EditorSettings::kDefaultGridIntensity;
     view.mouseDown(gridAt(0.5f), {});
     view.mouseMove({gridAt(1.0f).x + 40.0f, gridAt(1.0f).y}, {});
@@ -12770,7 +12829,10 @@ void run(const std::filesystem::path &dir, float scale) {
           "the settings dialog's GRID slider sets how strongly the roll's grid is drawn, a double-click putting it back");
     // HUE, under the themes, turns the theme's main color round the color wheel once it is let go, the theme's own to
     // begin with; the accent then takes it (read off the rendered pixels: the slider's knob, in the accent).
-    auto hueAt = [&](float hue) { return Point{dialog.x + 76.0f + 200.0f * hue, dialog.y + 312.0f + 85.0f}; };
+    auto hueAt = [&](float hue) {
+        const Rect track = detail::settingsHue(dialog);
+        return Point{track.x + track.w * hue, dialog.y + 312.0f + 85.0f};
+    };
     const bool hueStarts = model.hue < 0.0;
     view.mouseDown(hueAt(0.2f), {});
     view.mouseMove(hueAt(0.6f), {});
@@ -12818,7 +12880,9 @@ void run(const std::filesystem::path &dir, float scale) {
     model.glowLevel = 0.0;
     model.links = 0.75;
     // HANDLES picks the depth handles' size, Small to begin with, leaving the patch alone.
-    auto handlesButton = [&](int size) { return Point{dialog.x + 76.0f + size * 68.0f + 32.0f, dialog.y + 312.0f + 216.0f}; };
+    auto handlesButton = [&](int size) {
+        return Point{detail::settingsHandles(dialog, size).center().x, dialog.y + 312.0f + 216.0f};
+    };
     const ParamValues handlesBefore = model.values;
     const bool startsSmall = model.handles == 0;
     click(view, handlesButton(2));
@@ -12859,6 +12923,7 @@ void run(const std::filesystem::path &dir, float scale) {
     checkAlgorithmMenu(dir, renderer);
     checkLensDisplays(dir, renderer);
     renderLfoOnLfo(dir, renderer);
+    testFxParamNames(dir, renderer);
     testMacros(dir, renderer);
     testMacroTargets(dir, renderer);
     testVelocity(dir, renderer);

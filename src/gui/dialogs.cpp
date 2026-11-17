@@ -96,7 +96,7 @@ void View::paintSettings(Canvas &c) {
     c.text({panel.x + 24.0f, lookY + 8.0f, 200.0f, 16.0f}, tr(Str::SettingsLook), kTextLabel, kFaint, Align::Left, true);
     // A slider's name before it, and its amount after (Off at 0).
     auto slider = [&](Rect track, Str name, float amount) {
-        c.text({panel.x + 24.0f, track.y, 52.0f, track.h}, tr(name), kTextLabel, kDim, Align::Left, true);
+        c.text({panel.x + 24.0f, track.y, kSettingsLabelW, track.h}, tr(name), kTextLabel, kDim, Align::Left, true);
         char text[16];
         std::snprintf(text, sizeof(text), "%.0f %%", amount * 100.0f);
         c.text({track.right() + 14.0f, track.y, panel.right() - 24.0f - track.right() - 14.0f, track.h},
@@ -104,7 +104,8 @@ void View::paintSettings(Canvas &c) {
     };
     { // HUE, and its hue in degrees after it, or Default while it is the theme's own
         const Rect track = settingsHue(panel);
-        c.text({panel.x + 24.0f, track.y, 52.0f, track.h}, tr(Str::SettingsHue), kTextLabel, kDim, Align::Left, true);
+        c.text({panel.x + 24.0f, track.y, kSettingsLabelW, track.h}, tr(Str::SettingsHue), kTextLabel, kDim, Align::Left,
+               true);
         const double hue = shownHue();
         char text[16];
         std::snprintf(text, sizeof(text), "%.0f\xC2\xB0", hue * 360.0);
@@ -115,7 +116,8 @@ void View::paintSettings(Canvas &c) {
     slider(settingsLinks(panel), Str::SettingsLinks, shownLinks());
     slider(settingsGrid(panel), Str::SettingsGrid, shownGrid());
     const Rect handles = settingsHandles(panel, 0);
-    c.text({panel.x + 24.0f, handles.y, 52.0f, handles.h}, tr(Str::SettingsHandles), kTextLabel, kDim, Align::Left, true);
+    c.text({panel.x + 24.0f, handles.y, kSettingsLabelW, handles.h}, tr(Str::SettingsHandles), kTextLabel, kDim,
+           Align::Left, true);
     c.text({panel.x + 24.0f, lookY + 244.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsLookSaved), kTextLabel, kFaint,
            Align::Left);
     // The version and the license, at the bottom.

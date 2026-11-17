@@ -26,6 +26,11 @@ constexpr float kRadiusPanel = 12.0f;  // the panels and the dialogs
 // How a dimmed control, or a switched-off card's or page's contents, is drawn: at this opacity over what is under it,
 // the same wherever something is dimmed.
 constexpr float kDimOpacity = 0.4f;
+// A control that works but does nothing for now (a macro's knob and name, and a source's handle, while it modulates
+// nothing; an LFO's Phase while notes don't start the LFO there) is drawn fainter, but less so: still to be found and
+// read in every theme.
+constexpr float kIdleOpacity = 0.65f;
+constexpr float kIdleHandleOpacity = 0.45f;
 
 constexpr float kTextSmall = 9.0f;     // axis ticks, units, readouts on displays, graph nodes' names
 constexpr float kTextLabel = 10.5f;    // knob labels, switches, buttons, hints
