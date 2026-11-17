@@ -10,7 +10,7 @@ namespace fmvibe {
 // The coefficients of a half-band's first-order allpasses, `count` of them, for a transition band `transition` wide
 // as a fraction of the rate (the elliptic design, after Laurent de Soras' HIIR), from the smallest up: they alternate
 // between the two chains. The same pair of chains, run on every other sample, keeps two signals 90 degrees apart
-// from `transition` of the rate up to as far short of half of it (see Effects::Hilbert).
+// from `transition` of the rate up to as far short of half of it (see fx::Hilbert).
 inline void halfBandCoefs(int count, double transition, double *coefs) {
     // Elliptic modulus and nome of the transition band.
     double k = std::tan((1.0 - 2.0 * transition) * std::numbers::pi / 4.0);

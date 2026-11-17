@@ -2893,7 +2893,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                     for (int c = 0; c < 2; ++c)
                         toShaper[sh][c] += v.shaperLast[from][c] * level.shaperShaper[from][sh];
             std::array<double, 2> y{};
-            for (int c = 0; c < channels; ++c) // as the shaper effect runs (see Effects::runShaper())
+            for (int c = 0; c < channels; ++c) // as the shaper effect runs (see fx::Shaper::run())
                 y[c] = v.shapers[sh][c].run(curve[sh], toShaper[sh][c], level.shaperDrive[sh], level.shaperOutput[sh],
                                             level.shaperMix[sh], block[sh], pole, level.shaperBetween[sh]);
             if (!stereo)

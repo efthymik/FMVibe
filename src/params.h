@@ -739,7 +739,7 @@ enum class FxParam {
     // shorter or longer) swept by Depth (up to half of it either way) at Rate, the voices' sweeps a share of a cycle
     // apart, so their pitches waver against each other. Spread pans the voices across the sides (0 all in the middle,
     // 1 from one side to the other); Feedback sends what the voices put out on each side back into its line. Mix takes
-    // the dry sound over to the voices alone (see Effects::runChorus()).
+    // the dry sound over to the voices alone (see fx::Chorus::run()).
     ChorusRate,
     ChorusDepth,
     ChorusDelay,
