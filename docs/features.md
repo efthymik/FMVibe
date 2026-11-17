@@ -1923,12 +1923,12 @@ one may have changed since it last did.
   low-pass, the shaper also growling back onto the modulator, over a clean sub); Comb String (a noise burst
   ringing a comb tuned to the note, on through a 6 dB low-pass; the mod wheel damps it); Chip Pluck (alternating,
   half and abs sines like the classic FM chips, the note source easing the FM off up the keyboard, a hard clipper
-  going out beside it, and a Bite macro on FM Amount, playing a video-game arpeggio in sixteenths while a key is
-  held, bouncing through C major's octaves and then A minor's, its accents as velocities louder and brighter); Step Filter (an organ wave and a pulse through a resonant
+  going out beside it, and a Bite macro on FM Amount, playing a video-game arpeggio, mostly in eighths, while a key is
+  held, bouncing through C minor's chord and then A-flat major's, its accents as velocities louder and brighter); Step Filter (an organ wave and a pulse through a resonant
   18 dB low-pass that a drawn LFO shape opens on every eighth note, each its own height, into a cubic shaper; its
   Cutoff and Accent macros, the latter deepening the pattern); Glass Steps (a custom wave from 64 partials, the
-  Fibonacci ones, playing a leaping Lydian arpeggio in sixteenths while a key is held, two degrees lower in its
-  second bar, its accents louder, through a notch that jumps at random every sixteenth note); Vowel Lead (a vowel wave with a
+  Fibonacci ones, playing a sparse, leaping Lydian arpeggio while a key is held, two degrees lower in its second
+  bar, its accents louder, through a notch that jumps at random every sixteenth note); Vowel Lead (a vowel wave with a
   held bite and breath noise modulating it through a band-pass, gliding into every note, a bipolar envelope scooping
   into pitch and the mod wheel bringing in vibrato, a frequency shifter detuning the sides); Laser Zap (a
   one-shot LFO throwing the pitch down four octaves in a quarter second, a phase disperser and a staircase-curve
@@ -1966,8 +1966,8 @@ one may have changed since it last did.
   carrier knocked by a 4:1 modulator, struck in sixteenths by the sequencer while a key is held, through octaves,
   fifths and sevenths, each note's velocity its accent, louder and harder) and Hammer Gate
   (a fed-back pair growled by a sub-octave linear FM through a driven, resonant low-pass into a hard clipper, in
-  mono, playing a two-bar Phrygian riff in sixteenths while a key is held, two octaves down, its rests chopping it
-  and octave jumps in it, its accents as velocities brightening it and an envelope snapping the cutoff open on each
+  mono, playing a two-bar Phrygian riff while a key is held, two octaves down, its rests chopping it and octave
+  jumps in it, its accents as velocities brightening it and an envelope snapping the cutoff open on each
   note; its Cutoff, Drive and Snap macros); and Future Plucks (a
   carrier knocked by a saw modulator through a low-pass an envelope plucks open, velocity brightening it and two
   Random sources wandering the indexes, playing the sequencer's Phrygian riff while a key is held, an octave down,
