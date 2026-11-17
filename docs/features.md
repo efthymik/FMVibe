@@ -506,7 +506,9 @@ What the plugin does and how its editor works, in full. Building and installing 
     tempo for each (up to 4 s); Feedback (up to 95 %); Tone, a low-pass below the middle (20 kHz down to 200 Hz)
     and a high-pass above it (20 Hz up to 4 kHz), applied to every repeat; Width, from the echoes' full stereo
     down to mono; Ping-Pong, which starts the echoes on the left and bounces them across, each after its side's
-    time; and Mix, where the dry signal stays at full level up to 50 % and the echoes reach full level there. Time
+    time; and Mix, where the dry signal stays at full level up to 50 % and the echoes reach full level there. On the
+    card the time knobs read Time L and Time R, synced Rate L and Rate R, and linked (the left one setting both
+    sides) Time or Rate alone, their values showing under the mouse as other knobs' do. Time
     changes glide like tape rather than click, read between samples on a cubic as they do, and the times land on whole
     samples, so the repeats lose nothing of their top to the reads (only Tone darkens them). The plugin keeps
     processing until the echoes have died away.

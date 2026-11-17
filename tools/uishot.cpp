@@ -9594,6 +9594,47 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
           "the depth handles and pills are drawn in the size picked, Small as before");
 }
 
+// A delay's time knobs are named under them whether they set times or, synced, note values (Time L and Time R, Rate L
+// and Rate R; Time or Rate alone while linked), and show their value only under the mouse (read off the rendered
+// pixels: a name and a value under the knob differ, as do Rate L and Rate).
+void testDelayTimeLabels(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    click(view, kFxTab);
+    addFx(view, FxType::Delay);
+    const int slot = fxChain(model).front();
+    const Point left = fxKnob(model, 0, 0, 3, 206.0f), right = fxKnob(model, 0, 1, 3, 206.0f);
+    const Point away{600.0f, 700.0f};
+    auto label = [&](Point knob) { // the name or value under a knob, 30 px across
+        std::vector<uint32_t> pixels;
+        for (float y = knob.y + 18.0f; y <= knob.y + 32.0f; y += 1.0f)
+            for (float x = knob.x - 28.0f; x <= knob.x + 28.0f; x += 1.0f)
+                pixels.push_back(renderer.pixel({x, y}));
+        return pixels;
+    };
+    auto shown = [&](Point mouse, Point knob, const char *name) {
+        view.mouseMove(mouse, {});
+        view.poll();
+        renderer.save(view, dir / name);
+        return label(knob);
+    };
+    model.set(paramIndex(slot, FxParam::DelaySync), 1.0);
+    model.set(paramIndex(slot, FxParam::DelayLink), 0.0);
+    const auto rateL = shown(away, left, "27f-delay-rate-labels.png");
+    const auto rateR = label(right);
+    const auto rateLValue = shown(left, left, "27f-delay-rate-hover.png");
+    const auto rateRValue = shown(right, right, "27f-delay-rate-hover-r.png");
+    model.set(paramIndex(slot, FxParam::DelayLink), 1.0);
+    const auto rate = shown(away, left, "27f-delay-rate-linked.png");
+    model.set(paramIndex(slot, FxParam::DelaySync), 0.0);
+    model.set(paramIndex(slot, FxParam::DelayLink), 0.0);
+    const auto timeL = shown(away, left, "27f-delay-time-labels.png");
+    const auto timeLValue = shown(left, left, "27f-delay-time-hover.png");
+    check(rateL != rateLValue && rateR != rateRValue && rateL != rate && rateL != timeL && timeL != timeLValue,
+          "a delay's time knobs read Rate L and Rate R synced (Rate linked), Time L and Time R not, their values "
+          "under the mouse");
+}
+
 // The editor names an effect's params by the effect, not its slot's number: "Chorus Rate", numbered along the line
 // only where it holds more than one chorus, "Chorus 1 On" for a field every effect has, and the numbers following the
 // line as it is reordered.
@@ -12924,6 +12965,7 @@ void run(const std::filesystem::path &dir, float scale) {
     checkLensDisplays(dir, renderer);
     renderLfoOnLfo(dir, renderer);
     testFxParamNames(dir, renderer);
+    testDelayTimeLabels(dir, renderer);
     testMacros(dir, renderer);
     testMacroTargets(dir, renderer);
     testVelocity(dir, renderer);

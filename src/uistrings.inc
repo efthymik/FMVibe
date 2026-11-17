@@ -689,6 +689,8 @@ STR(LabelPreDelay, "Pre") // the reverb's pre-delay
 STR(LabelDamp, "Damp")
 STR(LabelShimmer, "Shimmer")
 STR(LabelRate, "Rate")
+STR(LabelRateL, "Rate L") // a synced delay's left note value; Rate alone when linked
+STR(LabelRateR, "Rate R")
 STR(LabelDepth, "Depth")
 STR(LabelCenter, "Center")
 STR(LabelStages, "Stages")

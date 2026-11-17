@@ -1942,16 +1942,16 @@ void View::effectCardWidgets(std::vector<Widget> &list, int slot, Rect card) con
         for (int i = 0; i < 3; ++i)
             add(Kind::Toggle, {card.x + 14.0f + i * w, under, w - 4.0f, 18.0f}, at(switches[i]));
         merge(first);
-        // Synced, the time knobs pick note values and show them as their labels. Linked, the
-        // left one sets both sides.
+        // The time knobs: Time L and Time R, or synced, note values, Rate L and Rate R; their values show under the
+        // mouse, as other knobs' do. Linked, the left one sets both sides, named Time or Rate alone.
         const bool synced = value(at(FxParam::DelaySync)) >= 0.5;
         const int timeL = synced ? at(FxParam::DelayDivisionL) : at(FxParam::DelayTimeL);
         const int timeR = synced ? at(FxParam::DelayDivisionR) : at(FxParam::DelayTimeR);
         const bool linked = value(at(FxParam::DelayLink)) >= 0.5;
+        const Str left = synced ? (linked ? Str::LabelRate : Str::LabelRateL)
+                                : (linked ? Str::LabelTime : Str::LabelTimeL);
         knobs({timeL, linked ? -1 : timeR, at(FxParam::DelayFeedback)},
-              {synced ? nullptr : tr(linked ? Str::LabelTime : Str::LabelTimeL),
-               synced ? nullptr : tr(Str::LabelTimeR), tr(Str::LabelFeedback)},
-              206.0f);
+              {tr(left), tr(synced ? Str::LabelRateR : Str::LabelTimeR), tr(Str::LabelFeedback)}, 206.0f);
         knobs({at(FxParam::DelayTone), at(FxParam::DelayWidth), at(FxParam::DelayMix)},
               {tr(Str::LabelTone), tr(Str::LabelWidth), tr(Str::LabelMix)}, 266.0f);
         break;
