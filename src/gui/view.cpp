@@ -5983,8 +5983,8 @@ void View::applyDrag(Point p) {
             const Rect track = slotBarTrack(w.rect);
             set(w.param, drag_.fine ? drag_.startValue + (p.x - drag_.start.x) / (track.w * 0.5f) * 0.01
                                     : (p.x - track.center().x) / (track.w * 0.5f));
-        } else if (w.kind == Kind::ModsAuxDepth) // from where it is, across: all of it every 100 px (10000 with Shift)
-            set(w.param, drag_.startValue + (p.x - drag_.start.x) / (drag_.fine ? 10000.0 : 100.0));
+        } else if (w.kind == Kind::ModsAuxDepth) // from where it is, up: all of it every 100 px (10000 with Shift)
+            set(w.param, drag_.startValue + (drag_.start.y - p.y) / (drag_.fine ? 10000.0 : 100.0));
         else if (w.kind == Kind::ModDot && w.a >= 0 && w.b >= 0 && w.param == slotAuxDepthIndex(w.a, w.b))
             set(w.param, drag_.startValue + (drag_.start.y - p.y) / (drag_.fine ? 10000.0 : 100.0)); // Alt-dragged, up
         else if (w.kind == Kind::ModsScale) // 0 at its left end, all of it at its right
@@ -7907,10 +7907,10 @@ CursorKind View::cursor() const {
         return CursorKind::Text;
     case Kind::SlotBar:
     case Kind::ModsScale:
-    case Kind::ModsAuxDepth:
     case Kind::DynGrip:
         return CursorKind::Horizontal;
     case Kind::ModsCurve:
+    case Kind::ModsAuxDepth:
         return CursorKind::Vertical;
     case Kind::EnvPoint:
     case Kind::FilterPoint:

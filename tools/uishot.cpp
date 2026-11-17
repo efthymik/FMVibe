@@ -8577,7 +8577,7 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     const bool auxShot = renderer.save(view, dir / "35e-mods-aux-menu.png");
     click(view, {1080.0f, 239.0f + 4.0f + 11.0f});
     check(auxShot && slotAuxSource(model.value(slotAuxIndex(0, 0))) == 1, "+ Aux's menu picks an aux from its category");
-    // The chip's aux depth, the number before its x (34 px from x 1056): dragged 30 px left it goes from 100 % to 70 %,
+    // The chip's aux depth, the number before its x (34 px from x 1056): dragged 30 px down it goes from 100 % to 70 %,
     // one undo step, the bar along the chip's foot (from x 927 to 1099) filled that far in Env 1's color (read off the
     // rendered pixels); a double-click puts it back to 100 %. The x then taking the aux away puts it back to 100 % too,
     // and undo brings both back.
@@ -8585,6 +8585,8 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
         const Point number{1073.0f, y};
         const int index = slotAuxDepthIndex(0, 0);
         drag(view, number, {number.x - 30.0f, y});
+        const double across = model.value(index);
+        drag(view, number, {number.x, y + 30.0f});
         const double dragged = model.value(index);
         view.mouseMove({600.0f, 468.0f}, {});
         const bool depthShot = renderer.save(view, dir / "35e3-mods-aux-depth.png");
@@ -8598,15 +8600,15 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
         view.redo();
         doubleClick(view, number);
         const double reset = model.value(index);
-        drag(view, number, {number.x - 30.0f, y});
+        drag(view, number, {number.x, y + 30.0f});
         click(view, {1102.0f, y});
         const double cleared = model.value(index);
         view.undo();
-        check(std::abs(dragged - 0.7) < 0.01 && undone == 1.0 && reset == 1.0 && depthShot && filled &&
-                  cleared == 1.0 && std::abs(model.value(index) - 0.7) < 0.01 &&
+        check(across == 1.0 && std::abs(dragged - 0.7) < 0.01 && undone == 1.0 && reset == 1.0 && depthShot &&
+                  filled && cleared == 1.0 && std::abs(model.value(index) - 0.7) < 0.01 &&
                   slotAuxSource(model.value(slotAuxIndex(0, 0))) == 1,
-              "an aux chip's depth drags across, undoably, its bar filling as far, a double-click putting it back to "
-              "100 %, and taking the aux away putting it back too");
+              "an aux chip's depth drags up and down (not across), undoably, its bar filling as far, a double-click "
+              "putting it back to 100 %, and taking the aux away putting it back too");
     }
     // The target opens every target by category, under its search (30 px, the level 240 px wide from x 234):
     // Operators, then B, then (under PITCH, after Ratio and Pitch) Detune, three levels deep.

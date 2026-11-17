@@ -1390,7 +1390,7 @@ one may have changed since it last did.
     - the **Amount**, a bar from none at its left to all of it at its right, dragged or clicked, with its value;
     - the **aux**: a chip in its color with its name, its depth and an × that takes it away, or a dashed **+ Aux**; a
       click on the name or + Aux opens the menu of sources, None first, the row's own source faint. The depth, a
-      number before the ×, drags left and right (100 % in 100 px, finer with Shift); a double-click puts it back to
+      number before the ×, drags up and down (100 % in 100 px, finer with Shift); a double-click puts it back to
       100 %, and Ctrl+Click types one. A bar along the chip's foot, in the aux's color, fills as far as the depth;
     - the × that removes the modulation. Removing a modulation, here or anywhere else, removes whatever modulates
       its depth with it, in the same undo step.

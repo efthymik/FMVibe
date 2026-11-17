@@ -91,7 +91,7 @@ enum class WidgetKind {
     ModsCurve,    // param = the slot's curve, a = source, b = slot: a MODS row's curve, dragged up or down
     ModsAux,      // a = source, b = slot: a MODS row's aux, or + Aux; a click opens the menu of auxes
     ModsAuxClear, // a = source, b = slot: the x on a MODS row's aux
-    ModsAuxDepth, // a = source, b = slot: the aux depth on an aux's chip, dragged across
+    ModsAuxDepth, // a = source, b = slot: the aux depth on an aux's chip, dragged up and down
     ModsScroll,   // the MODS view's scrollbar: drag the thumb, or click the track to jump there
     InputsScroll, // the operator page's INPUTS tab's scrollbar, as the MODS view's
     ModListScroll, // a pill's open list's scrollbar, as the MODS view's
