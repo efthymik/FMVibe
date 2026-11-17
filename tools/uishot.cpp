@@ -9644,9 +9644,10 @@ void testDelayTimeLabels(const std::filesystem::path &dir, Renderer &renderer) {
           "under the mouse");
 }
 
-// The editor names an effect's params by the effect, not its slot's number: "Chorus Rate", numbered along the line
-// only where it holds more than one chorus, "Chorus 1 On" for a field every effect has, and the numbers following the
-// line as it is reordered.
+// The editor names an effect's params by the effect, not its slot's number, after FX (apart from a voice's shaper or
+// filter): "FX Chorus Rate", numbered along the line only where it holds more than one chorus, "FX Chorus 1 On" for a
+// field every effect has, and the numbers following the line as it is reordered; a voice shaper's and a shaper
+// effect's Drive named apart.
 void testFxParamNames(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -9654,19 +9655,20 @@ void testFxParamNames(const std::filesystem::path &dir, Renderer &renderer) {
     addFx(view, FxType::Chorus);
     ModulationModel names(model);
     const int lone = fxChain(model).front();
-    const bool alone = names.paramName(paramIndex(lone, FxParam::ChorusRate)) == tr(Str::ParamChorusRate);
+    auto fx = [](const std::string &named) { return trf(Str::ParamFxNamed, {named}); };
+    const bool alone = names.paramName(paramIndex(lone, FxParam::ChorusRate)) == fx(tr(Str::ParamChorusRate));
     addFx(view, FxType::Compressor);
     addFx(view, FxType::Chorus);
     const std::vector<int> chain = fxChain(model); // chorus, compressor, chorus
     const int first = chain[0], comp = chain[1], second = chain[2];
     const std::string rate = tr(Str::ParamChorusRate); // "Chorus Rate"
-    const std::string numbered1 = "Chorus 1" + rate.substr(rate.find(' ')),
-                      numbered2 = "Chorus 2" + rate.substr(rate.find(' '));
+    const std::string numbered1 = fx("Chorus 1" + rate.substr(rate.find(' '))),
+                      numbered2 = fx("Chorus 2" + rate.substr(rate.find(' ')));
     const bool numbered = names.paramName(paramIndex(first, FxParam::ChorusRate)) == numbered1 &&
                           names.paramName(paramIndex(second, FxParam::ChorusRate)) == numbered2 &&
-                          names.paramName(paramIndex(comp, FxParam::CompMakeup)) == tr(Str::ParamCompMakeup) &&
+                          names.paramName(paramIndex(comp, FxParam::CompMakeup)) == fx(tr(Str::ParamCompMakeup)) &&
                           names.paramName(paramIndex(first, FxParam::Enabled)) ==
-                              std::string(fxName(FxType::Chorus)) + " 1 " + tr(Str::ParamOn);
+                              fx(std::string(fxName(FxType::Chorus)) + " 1 " + tr(Str::ParamOn));
     // The first chorus moved to the line's end: it is the second now.
     {
         FxGraphModel fx(model);
@@ -9688,8 +9690,23 @@ void testFxParamNames(const std::filesystem::path &dir, Renderer &renderer) {
     view.poll();
     click(view, {382.0f, 116.0f});
     const bool shot = renderer.save(view, dir / "35u-mods-fx-names.png");
-    check(alone && numbered && reordered && shot,
-          "the editor names an effect's params by the effect, numbered along the line where it holds more of its type");
+    // Two shaper effects, numbered 1 and 2 as the voices' shapers are: the first's Drive isn't named as Shaper 1's.
+    click(view, kFxTab);
+    addFx(view, FxType::Shaper);
+    addFx(view, FxType::Shaper);
+    int shaperFx = -1;
+    for (int s : fxChain(model))
+        if (shaperFx < 0 && fxType(model.value(paramIndex(s, FxParam::Type))) == FxType::Shaper)
+            shaperFx = s;
+    const std::string voiceDrive = names.paramName(paramIndex(0, ShaperParam::Drive));
+    const std::string fxDrive = names.paramName(paramIndex(shaperFx, FxParam::ShaperDrive));
+    const std::string drive = tr(Str::ParamShaperDrive); // "Shaper Drive"
+    const bool apart =
+        shaperFx >= 0 && voiceDrive != fxDrive && fxDrive == fx("Shaper 1" + drive.substr(drive.find(' ')));
+    std::printf("      a voice shaper's Drive \"%s\", a shaper effect's \"%s\"\n", voiceDrive.c_str(), fxDrive.c_str());
+    check(alone && numbered && reordered && shot && apart,
+          "the editor names an effect's params by the effect after FX, apart from a voice's shaper, numbered along the "
+          "line where it holds more of its type");
 }
 
 // LFO 2 modulating LFO 1's depth on operator A's Ratio: hovering LFO 2's handle draws a dashed line to that

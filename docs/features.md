@@ -1343,9 +1343,10 @@ one may have changed since it last did.
     in the order their cards show, then the macros, the note source, the mod wheel, velocity and the pitch bend), the
     first of a
     source's rows naming it with its handle's look and the others a line in its color down the source's column.
-    A row names an effect's param by the effect, not by its slot's number as hosts do ("Chorus Rate" for "FX 7
-    Chorus Rate"), numbered along the line only where it holds more than one effect of that type ("Chorus 2 Rate"); so
-    do undo's tooltips and the editor's messages.
+    A row names an effect's param by the effect after FX, not by its slot's number as hosts do ("FX Chorus Rate" for
+    "FX 7 Chorus Rate"), numbered along the line only where it holds more than one effect of that type ("FX Chorus 2
+    Rate"), so a shaper or filter effect stands apart from a voice's ("FX Shaper 1 Drive", "Shaper 1 Drive"); so do
+    undo's tooltips and the editor's messages.
     Modulations at 0 % are listed too, and after them the empty ones (see below). Over the rows, the columns' names,
     shown with no modulations too (with a hint under the button that adds one), and at the right of their row the
     count (how many are bypassed, at 0 % and empty with it, as much of that as fits), then the **filter**'s

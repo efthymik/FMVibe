@@ -89,14 +89,17 @@ std::string ModulationModel::fxParamName(int index) const {
                 number = count;
         }
     const std::string n = count > 1 && number > 0 ? std::to_string(number) : std::string();
+    // FX before it all, so an effect stands apart from a voice's shaper or filter of the same name ("FX Shaper 1 Drive",
+    // "Shaper 1 Drive").
+    auto fx = [](const std::string &named) { return trf(Str::ParamFxNamed, {named}); };
     if (fxTypeOfField(fxFieldOf(index)) == FxType::None) // a field every effect has: by the effect's name
-        return std::string(fxName(type)) + (n.empty() ? "" : " " + n) + " " + field;
+        return fx(std::string(fxName(type)) + (n.empty() ? "" : " " + n) + " " + field);
     if (n.empty())
-        return field;
+        return fx(field);
     const std::string &prefix = fxFieldPrefixes(table_)[static_cast<size_t>(type)];
     if (!prefix.empty() && field.compare(0, prefix.size() + 1, prefix + " ") == 0)
-        return prefix + " " + n + field.substr(prefix.size());
-    return field + " " + n;
+        return fx(prefix + " " + n + field.substr(prefix.size()));
+    return fx(field + " " + n);
 }
 
 std::string ModulationModel::paramName(int index) const {

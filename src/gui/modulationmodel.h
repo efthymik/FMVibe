@@ -57,8 +57,8 @@ public:
     // A param's name as the editor shows it: a source's fields go by the source's name, not their place's, and an
     // effect's by its type, not its slot's number (see fxParamName()).
     std::string paramName(int index) const;
-    // An effect's field by the effect's name: "Chorus Rate" for a slot's "FX 7 Chorus Rate", "Chorus 2 Rate" for the
-    // second chorus along the line where there are more, "Chorus On" for a field every effect has.
+    // An effect's field by the effect's name: "FX Chorus Rate" for a slot's "FX 7 Chorus Rate", "FX Chorus 2 Rate" for
+    // the second chorus along the line where there are more, "FX Chorus On" for a field every effect has.
     std::string fxParamName(int index) const;
     bool sourceOn(int source) const;
     // Whether a source swings its targets both ways (see fmvibe::sourceBipolar()).

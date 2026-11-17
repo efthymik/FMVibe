@@ -245,6 +245,7 @@ STR(ParamFilter, "Filter {1}")
 STR(ParamShaper, "Shaper {1}")
 STR(ParamMacro, "Macro {1}")
 STR(ParamFx, "FX {1}")
+STR(ParamFxNamed, "FX {1}") // an effect's param as the editor names it, by the effect rather than its slot ("FX Chorus Rate")
 STR(ParamMod, "Mod {1}")
 
 // Operators' fields, and fields that others share.
