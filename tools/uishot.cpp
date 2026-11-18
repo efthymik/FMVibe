@@ -10283,6 +10283,58 @@ void testPresetLibrary(const std::filesystem::path &dir, Renderer &renderer) {
               !view.saveShown(),
           "Save As saves the patch as a new preset in its preset's folder, with its info");
     check(model.presetName() == "Opener Two" && !model.patchEdited(), "the preset saved is the patch's preset");
+    {
+        // Tab steps through the Save dialog's text fields, Name, Author and Description, round from the last to the
+        // first, and Shift+Tab back, each field entered all selected to type over and the one left showing no selection
+        // (read off the rendered pixels). Editing a preset's info, it passes over the name, which isn't a field there.
+        FakeController tabbing;
+        tabbing.library = {{"Grain", "", false, {}}};
+        tabbing.loadPresetAt(0);
+        View tabView(tabbing);
+        click(tabView, detail::toolbarButton(3).center());
+        const float saveX =
+            std::clamp(std::round(detail::kPresetName.center().x - 400.0f), 12.0f, View::kWidth - 812.0f);
+        const Point nameText{saveX + 24.0f + 14.0f, detail::kTitleBarH + 6.0f + 88.0f + 6.0f}; // over the letters
+        auto nameFace = [&] {
+            tabView.mouseMove(away, {});
+            renderer.save(tabView, dir / "23k-save-tab.png");
+            return renderer.pixel(nameText);
+        };
+        const uint32_t selected = nameFace();
+        tabView.typeKey(View::Key::Tab);
+        const uint32_t left = nameFace();
+        type(tabView, "Ann"); // the author
+        tabView.typeKey(View::Key::Tab);
+        type(tabView, "Line"); // the description
+        tabView.typeKey(View::Key::Tab);
+        type(tabView, "Seed"); // round to the name
+        tabView.typeKey(View::Key::BackTab);
+        type(tabView, "Back"); // round back to the description, over its line
+        tabView.typeKey(View::Key::BackTab);
+        type(tabView, "Bo"); // the author, over Ann
+        tabView.typeKey(View::Key::BackTab);
+        type(tabView, "Tabbed"); // the name, over Seed
+        tabView.typeKey(View::Key::Enter);
+        const int saved = tabbing.presetIndex();
+        check(selected != left && saved >= 0 && tabbing.library[saved].name == "Tabbed" &&
+                  tabbing.library[saved].info.author == "Bo" && tabbing.library[saved].info.description == "Back",
+              "Tab steps through the Save dialog's text fields and Shift+Tab back, round their ends, each entered all "
+              "selected and the one left showing no selection (read off the rendered pixels)");
+        click(tabView, infoButton);
+        click(tabView, {card.right() - 66.0f, card.y + 125.0f}); // Edit Info, on the description
+        const bool infoForm = tabView.saveShown();
+        tabView.typeKey(View::Key::Tab);
+        type(tabView, "Cy"); // the author
+        tabView.typeKey(View::Key::Tab);
+        type(tabView, "Two"); // the description, the name passed over
+        tabView.typeKey(View::Key::BackTab);
+        tabView.typeKey(View::Key::BackTab);
+        type(tabView, " more"); // the description again, all selected: over Two
+        tabView.typeKey(View::Key::Enter);
+        check(infoForm && tabbing.library[saved].name == "Tabbed" && tabbing.library[saved].info.author == "Cy" &&
+                  tabbing.library[saved].info.description == "more",
+              "Tab and Shift+Tab in Edit Info step between the author and the description alone");
+    }
 
     // The Save dialog's folder tree's right-click menu: Open in Explorer showing the folder clicked, and New Folder
     // making one in it.

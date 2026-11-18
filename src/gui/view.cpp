@@ -7757,6 +7757,8 @@ void View::typeKey(Key key, bool shift) {
         break;
     case Key::Up:
     case Key::Down:
+    case Key::Tab:
+    case Key::BackTab:
         return;
     }
     t.selected = false;

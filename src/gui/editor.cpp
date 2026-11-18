@@ -728,6 +728,9 @@ bool Editor::key(WPARAM key, LPARAM flags) {
         case VK_DOWN:
             view_.typeKey(View::Key::Down);
             return true;
+        case VK_TAB:
+            view_.typeKey(shift ? View::Key::BackTab : View::Key::Tab);
+            return true;
         default: {
             // The character the key makes with the current layout and modifiers, if any. Flag 4
             // leaves the keyboard state alone, so dead keys still work for the host afterwards.

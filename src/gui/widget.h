@@ -30,7 +30,7 @@ struct MenuItem {
 };
 
 // The keys the window sends while typing goes on or a dialog is open (see View::typing() and View::dialogKey()).
-enum class Key { Enter, Escape, Backspace, Delete, Left, Right, Home, End, SelectAll, Up, Down, Copy, Cut, Paste };
+enum class Key { Enter, Escape, Backspace, Delete, Left, Right, Home, End, SelectAll, Up, Down, Copy, Cut, Paste, Tab, BackTab };
 
 // What a widget is, which says what its param, a and b mean.
 enum class WidgetKind {

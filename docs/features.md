@@ -2085,7 +2085,8 @@ one may have changed since it last did.
     **New Folder** (one in it) and **Open in Explorer**, and on a subfolder **Rename…** (a form holding its name; a
     name another folder there has is refused, and the presets in it, the favorites and recent presets among them, go
     with it) and **Delete…** (asking first, with how many presets go with it, then moving it to the Recycle Bin). A name the folder already has says
-    so, and the button reads **Replace**. Enter or **Save** saves it there, with its info, and it is the patch's preset
+    so, and the button reads **Replace**. Tab moves on to the next text field (Name, Author, Description, then round to
+    Name) and Shift+Tab back to the one before, the field's text all selected to type over. Enter or **Save** saves it there, with its info, and it is the patch's preset
     then; Escape, Cancel or the × close it. **Save to File…** saves it anywhere through the standard file dialog
     instead. Editing a preset's info (Edit Info… on the info card) opens the same dialog without the name and folder to change: Save
     writes the author, category and description into the preset's file and leaves its sound alone (and the patch, if

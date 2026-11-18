@@ -701,7 +701,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     name, category, author and description; its + by FOLDERS making a folder and the Save dialog's + New a category;
     the x on one of the user's categories removing it after asking, its presets keeping it, listed in grey;
     Edit Info writing a preset's author and line into its file; a Save dialog's folder's right-click menu opening it in
-    Explorer, making a folder in it, renaming it (a name taken refused) and deleting it after asking, and the browser's tree's the same (none on Factory); underscores typed into the Save dialog's name showing (read off
+    Explorer, making a folder in it, renaming it (a name taken refused) and deleting it after asking, and the browser's tree's the same (none on Factory); Tab and Shift+Tab stepping through the Save dialog's text fields, round their ends, each entered all selected (in Edit Info passing over the name); underscores typed into the Save dialog's name showing (read off
     the rendered pixels); a text field given UTF-8 (a preset's author from its file) cut, stepped through, erased and
     placed by the mouse between whole characters; Save As saving the patch as a new preset in its preset's
     folder with its info, as the patch's preset; the browser's Save Here beside Close, only on a folder of the user's and
