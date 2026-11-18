@@ -993,7 +993,9 @@ one may have changed since it last did.
       that removes the route with its modulation (one undo step, as Disconnect), and on its left, for a route into
       an operator (its feedback aside), its mode's glyph (φ for Phase, a straight line for Linear FM, a steepening
       curve for Exp FM, a ringed cross for Ring) and a chevron. A click there opens the list of modes, and the wheel
-      steps through them. The pill stays open while the mouse is on it, its list is open or its depth is dragged.
+      steps through them. The pill stays open while the mouse is on it, its list is open or its depth is dragged. A
+      label, resting or open, lies over everything around it: it takes the mouse over a node, a wire's end or a depth
+      handle, and an open pill over the labels beside it too.
       Resting, a label shows a mode other than Phase inside it, at its left. The right-click menus of the wire, its
       label and its arrowhead list the modes too, the one in force checked. A route moved onto another operator
       keeps its mode; moved elsewhere or removed, it is Phase again when it comes back.

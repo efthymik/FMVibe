@@ -707,7 +707,7 @@ void RoutingPanel::widgets(std::vector<Widget> &list) const {
         return;
     }
     // The wires between the nodes, under everything else: dragged sideways, they bend. Then the nodes, each with
-    // its edge, then depth labels and arrowheads on top of them.
+    // its edge, then depth labels and arrowheads on top of them (popups() lifts the labels over all of it).
     const int rerouted = rerouting();
     for (int from : on) {
         for (int to : on) {
@@ -759,7 +759,7 @@ void RoutingPanel::widgets(std::vector<Widget> &list) const {
     for (int node : on)
         if (routing_.goesOut(node) && outParam(node) != moving)
             labelWidgets(Kind::OutLabel, outParam(node), -1, labelOf(outParam(node)), node, kNodes);
-    // The arrowheads, over the labels: dragged onto another node or the bus, they move their routes there.
+    // The arrowheads: dragged onto another node or the bus, they move their routes there.
     for (int from : on) {
         for (int to : on) {
             const int param = routeParam(from, to);
@@ -814,6 +814,17 @@ void RoutingPanel::widgets(std::vector<Widget> &list) const {
 }
 
 void RoutingPanel::popups(std::vector<Widget> &list) const {
+    // The graph's labels go over every widget listed so far, an open pill over the labels at rest, and all of them under
+    // the lists that follow: they take the mouse over a node, a wire's end or a depth handle. (The INPUTS tab's depths,
+    // labels too, stay on the inspector's page.)
+    if (graphShown()) {
+        auto isLabel = [](const Widget &w) {
+            return w.kind == Kind::LabelMode || w.kind == Kind::LabelRemove ||
+                   ((w.kind == Kind::WireLabel || w.kind == Kind::OutLabel) && kRouting.contains(w.rect.center()));
+        };
+        const auto labels = std::stable_partition(list.begin(), list.end(), [&](const Widget &w) { return !isLabel(w); });
+        std::stable_partition(labels, list.end(), [](const Widget &w) { return w.group.w <= 0.0f; });
+    }
     auto add = [&list](Kind kind, Rect rect, int param = -1, int a = -1, int b = -1) {
         Widget w;
         w.kind = kind;

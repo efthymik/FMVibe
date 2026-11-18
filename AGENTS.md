@@ -518,7 +518,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     from it;
   - a wire label under the mouse opening into a pill (read off the rendered pixels): its mode part's list picking
     the route's mode and the wheel stepping it, undoably, its × removing the route (and an OUT label's its node's
-    output); resting, a label showing a mode other than Phase (read off the rendered pixels); the mode also picked
+    output), the open pill taking clicks and the wheel over the wire ends under it, which take them beside the label
+    once it closes, and a resting label taking a drag over a wire's start under it;
+    resting, a label showing a mode other than Phase (read off the rendered pixels); the mode also picked
     from its label's and its matrix cell's
     right-click menus (the cell's corner showing the glyph, read off the rendered pixels) and from the operator
     page's INPUTS tab, whose label sets the depth, each an undo step; a route moved onto another operator keeping

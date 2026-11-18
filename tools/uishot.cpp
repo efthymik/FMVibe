@@ -8319,6 +8319,95 @@ void testRouteModes(const std::filesystem::path &dir, Renderer &renderer) {
           "OUT label's its node's output");
 }
 
+// A label's open pill takes the mouse over what it opens onto: B -> A's mode part lies over where D -> E leaves D, and
+// its x over the arrowhead of F -> C. Closed again, what lies there takes the mouse as ever.
+void testPillOnTop(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    for (int op = 1; op < kOps; ++op)
+        model.set(paramIndex(op, OpParam::Enabled), 1.0);
+    model.set(matrixIndex(1, 0), 0.5);
+    model.set(matrixIndex(3, 4), 0.5);
+    model.set(matrixIndex(5, 2), 0.5);
+    const Rect g = detail::kGraph;
+    auto place = [&](int node, Point p) {
+        model.ui.nodeX[node] = (p.x - g.x) / g.w;
+        model.ui.nodeY[node] = (p.y - g.y) / g.h;
+    };
+    const Point a{g.x + 0.9f * g.w, g.y + 0.45f * g.h}, b{g.x + 0.1f * g.w, a.y};
+    place(0, a);
+    place(1, b);
+    const Point label = detail::wireBetween(1, b, 0, a, kDefaultWireBend).label;
+    // The pill's parts around the label (see testRouteModes()), a node over each, its wire running down past the pill.
+    const Rect modeRect{label.x - 19.0f - 28.0f, label.y - 9.0f, 28.0f, 18.0f};
+    const Rect removeRect{label.x + 19.0f, label.y - 9.0f, 20.0f, 18.0f};
+    const Point d{modeRect.center().x, label.y - 43.0f}, e{d.x, label.y + 120.0f};
+    const Point c{removeRect.center().x, d.y}, f{c.x, e.y};
+    place(3, d);
+    place(4, e);
+    place(2, c);
+    place(5, f);
+    view.poll();
+    const detail::Wire leaving = detail::wireBetween(3, d, 4, e, kDefaultWireBend);
+    const detail::Wire arriving = detail::wireBetween(5, f, 2, c, kDefaultWireBend);
+    const Rect startGrip = detail::wireStartGrip(
+        leaving.start, detail::normalize({leaving.control.x - leaving.start.x, leaving.control.y - leaving.start.y}));
+    const Rect endGrip = detail::wireEndGrip(arriving.end, arriving.tangent);
+    auto overlap = [](Rect p, Rect q) {
+        const float left = std::max(p.x, q.x), top = std::max(p.y, q.y);
+        return Rect{left, top, std::min(p.right(), q.right()) - left, std::min(p.bottom(), q.bottom()) - top};
+    };
+    const Rect modeOver = overlap(modeRect, startGrip), removeOver = overlap(removeRect, endGrip);
+    check(modeOver.w > 2.0f && modeOver.h > 2.0f && removeOver.w > 2.0f && removeOver.h > 2.0f,
+          "the pill's mode part lies over a wire's start and its x over an arrowhead");
+    const Point onMode = modeOver.center(), onRemove = removeOver.center();
+    const int mode = routeModeIndex(1, 0);
+
+    // Its mode part opens its list there, and the wheel steps the modes.
+    view.mouseMove(label, {});
+    view.mouseMove(onMode, {});
+    const bool shot = renderer.save(view, dir / "2n2-route-pill-on-top.png");
+    click(view, onMode);
+    view.mouseMove({modeRect.x + 56.0f, label.y + 9.0f + 4.0f + 4.0f + 3 * 22.0f + 11.0f}, {});
+    click(view, {modeRect.x + 56.0f, label.y + 9.0f + 4.0f + 4.0f + 3 * 22.0f + 11.0f});
+    const bool picked = model.value(mode) == static_cast<double>(RouteMode::Ring);
+    view.undo();
+    view.mouseMove(label, {});
+    view.mouseMove(onMode, {});
+    view.wheel(onMode, 1.0f, {});
+    const bool stepped = model.value(mode) == static_cast<double>(RouteMode::LinearFm);
+    view.undo();
+    // Its x removes its route, and not the one under it.
+    view.mouseMove(label, {});
+    view.mouseMove(onRemove, {});
+    click(view, onRemove);
+    const bool removed = model.value(matrixIndex(1, 0)) == 0.0 && model.value(matrixIndex(5, 2)) == 0.5;
+    view.undo();
+    // The pill closed, the wire's start under where it was drags as ever: D -> E comes from B.
+    view.mouseMove({label.x, label.y + 60.0f}, {});
+    view.mouseMove(onMode, {});
+    drag(view, onMode, b);
+    const bool moved = model.value(matrixIndex(3, 4)) == 0.0 && model.value(matrixIndex(1, 4)) == 0.5;
+    view.undo();
+    check(shot && picked && stepped && removed && moved,
+          "a label's open pill takes clicks and the wheel over the wire ends under it, which take them beside the label "
+          "once it closes");
+
+    // Resting too, a label takes the mouse: D moved along, where D -> E leaves it reaches under B -> A's label, and a
+    // drag there sets B -> A's depth.
+    const Point nearer{label.x - 14.0f, d.y};
+    place(3, nearer);
+    view.mouseMove({label.x, label.y + 60.0f}, {});
+    view.poll();
+    const detail::Wire under = detail::wireBetween(3, nearer, 4, e, kDefaultWireBend);
+    const Rect labelOver = overlap(detail::chip(label), detail::wireStartGrip(under.start, detail::normalize({under.control.x - under.start.x, under.control.y - under.start.y})));
+    const Point onLabel = labelOver.center();
+    drag(view, onLabel, {onLabel.x, onLabel.y - 20.0f});
+    check(labelOver.w > 2.0f && labelOver.h > 2.0f && model.value(matrixIndex(1, 0)) > 0.5 &&
+              model.value(matrixIndex(3, 4)) == 0.5 && model.value(matrixIndex(1, 4)) == 0.0,
+          "a resting label takes a drag over the wire's start under it");
+}
+
 // The node the inspector shows is filled with its color and ringed in it in the graph, and picking another node moves
 // both there (read off the rendered pixels); a switched-off node's ghost is filled while it is the one shown.
 // A node's line to OUT bends as a wire does: straight to begin with, dragged sideways from a third of the way along
@@ -13104,6 +13193,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testRouteFrom(dir, renderer);
     testNodeGrid(dir, renderer);
     testRouteModes(dir, renderer);
+    testPillOnTop(dir, renderer);
     testInputsScroll(dir, renderer);
     testSelectedNode(dir, renderer);
     testRadarGlow(dir, renderer);
