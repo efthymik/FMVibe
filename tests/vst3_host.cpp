@@ -865,6 +865,34 @@ int main(int argc, char **argv) {
     const uint32 latency = plugin.processor->getLatencySamples();
     std::printf("      latency: %u samples\n", static_cast<unsigned>(latency));
     check(latency >= 1 && latency <= 4, "the latency reported is the voices' decimator's");
+    // Asked between setActive(false) and setActive(true), as a host may after kLatencyChanged, it is already what the
+    // activation will make it: here with a shaper effect, which runs at twice the rate, put in the line.
+    {
+        const int wires[] = {paramIndex(0, FxParam::Type), fxInputIndex(0, 0, FxInputField::From),
+                             fxInputIndex(kFxOutNode, 0, FxInputField::From)};
+        const double plain[] = {static_cast<double>(FxType::Shaper), fxPortValue(kFxPortIn), fxPortValue(fxSlotPort(0))};
+        double kept[3];
+        plugin.processor->setProcessing(false);
+        plugin.component->setActive(false);
+        for (int i = 0; i < 3; ++i) {
+            kept[i] = plugin.normalized(wires[i]);
+            plugin.controller->setParamNormalized(
+                idOfIndex(wires[i]), plugin.controller->plainParamToNormalized(idOfIndex(wires[i]), plain[i]));
+        }
+        const uint32 inactive = plugin.processor->getLatencySamples();
+        plugin.component->setActive(true);
+        const uint32 active = plugin.processor->getLatencySamples();
+        plugin.component->setActive(false);
+        for (int i = 0; i < 3; ++i)
+            plugin.controller->setParamNormalized(idOfIndex(wires[i]), kept[i]);
+        const uint32 restored = plugin.processor->getLatencySamples();
+        plugin.component->setActive(true);
+        plugin.processor->setProcessing(true);
+        std::printf("      latency with a shaper effect: %u samples while inactive, %u once active\n",
+                    static_cast<unsigned>(inactive), static_cast<unsigned>(active));
+        check(inactive == active && inactive >= latency + 4 && restored == latency,
+              "the latency asked for while inactive is what the next activation makes it");
+    }
 
     // --- State: the same bytes the CLAP plugin saves, through a stream that moves 5 bytes at a time.
     plugin.processor->setProcessing(false);

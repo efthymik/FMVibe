@@ -2018,7 +2018,8 @@ one may have changed since it last did.
   Save As does. Versions before 0.12 wrote them out into the folder's `Factory` subfolder: the library leaves the
   files there named as a factory preset out (they stay on disk, for the user to keep or delete), and the subfolder
   too unless the user saved presets of their own into it, which it lists there; a project that named a factory preset
-  in it loads the built-in one of that name. Their routing graphs are laid out with no node on another, and no wire, line to OUT or
+  in it loads the built-in one of that name. So no preset is saved there under a factory preset's name, and no folder
+  is made or renamed `Factory` at the top of the preset folder. Their routing graphs are laid out with no node on another, and no wire, line to OUT or
   label running over a node it doesn't join. They hold only the params that differ from Init, so they are small, and
   load like any other preset.
   - **Preset info**: a preset says who made it (**Author**), what kind of sound it is (**Category**) and what it
@@ -2096,7 +2097,8 @@ one may have changed since it last did.
     folder picked to begin with and **New Folder** making one in the folder picked; a folder's right-click menu offers
     **New Folder** (one in it) and **Open in Explorer**, and on a subfolder **Rename…** (a form holding its name; a
     name another folder there has is refused, and the presets in it, the favorites and recent presets among them, go
-    with it) and **Delete…** (asking first, with how many presets go with it, then moving it to the Recycle Bin). A name the folder already has says
+    with it) and **Delete…** (asking first, with how many presets go with it, then moving it to the Recycle Bin; they leave the
+    favorites and recent presets, and a patch that was one of them stays as it sounds, as an edited patch with no preset). A name the folder already has says
     so, and the button reads **Replace**. Tab moves on to the next text field (Name, Author, Description, then round to
     Name) and Shift+Tab back to the one before, the field's text all selected to type over. Enter or **Save** saves it there, with its info, and it is the patch's preset
     then; Escape, Cancel or the × close it. **Save to File…** saves it anywhere through the standard file dialog
@@ -2195,8 +2197,10 @@ as two different plugins, though, so a project made with one doesn't switch to t
 
 Both report their **latency** (CLAP's latency extension, VST3's `getLatencySamples()`): the voices' decimator's delay
 at the oversampling (about 2 samples at 2x, none at 1x) and the effects' latest path's (see Latency, under the effects),
-rounded to whole samples, as the plugin was last activated. An edit or a state that moves it asks the host for a
-restart, whose activate reports the new one (a CLAP host is told through its latency extension's `changed()`).
+rounded to whole samples, as the plugin was last activated (a VST3 host asking while it is inactive hears what the next
+activation will make it). An edit, once it is whole, or a state that moves it asks the host for a restart, whose activate
+reports the new one (a CLAP host is told through its latency extension's `changed()`); an edit that leaves it as it was,
+an effect moved along the line say, asks for none.
 
 Hosts are given 1,317 of FMVibe's 25,378 parameters: the globals, the operators, the matrix and the routes' modes,
 the filters, the shapers, the macros' knobs, the note source's, the mod wheel's, velocity's and the pitch bend's own,

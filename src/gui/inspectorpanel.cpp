@@ -98,22 +98,7 @@ void InspectorPanel::showNode(int node) {
 // --- Widgets.
 
 void InspectorPanel::widgets(std::vector<Widget> &list) const {
-    auto add = [&list](Kind kind, Rect rect, int param = -1, int a = -1, int b = -1) {
-        Widget w;
-        w.kind = kind;
-        w.rect = rect;
-        w.param = param;
-        w.a = a;
-        w.b = b;
-        list.push_back(w);
-        if (kind == Kind::ListButton && isSteppableList(param)) // its arrows, over it
-            for (int dir : {-1, 1}) {
-                w.kind = Kind::ListStep;
-                w.rect = listStepButton(rect, dir);
-                w.b = dir;
-                list.push_back(w);
-            }
-    };
+    const WidgetAdder add{list};
     auto merge = [&list](size_t from) { mergeButtons(list, from); };
     auto knob = [&](int param, Point center, float diameter, const char *label) {
         add(Kind::Knob, knobRect(center, diameter), param);
@@ -346,15 +331,7 @@ void InspectorPanel::widgets(std::vector<Widget> &list) const {
 void InspectorPanel::popups(std::vector<Widget> &list) const {
     if (covered())
         return;
-    auto add = [&list](Kind kind, Rect rect, int param = -1, int a = -1, int b = -1) {
-        Widget w;
-        w.kind = kind;
-        w.rect = rect;
-        w.param = param;
-        w.a = a;
-        w.b = b;
-        list.push_back(w);
-    };
+    const WidgetAdder add{list};
     const int open = host_.openList();
     // A shaper's list of curves or a filter's types or slopes, under its button on its page.
     const int pageNode = controller().layout().selectedNode;

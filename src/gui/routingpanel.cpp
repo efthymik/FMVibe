@@ -5,6 +5,7 @@
 // routes is RoutingModel's (routingmodel.cpp); the geometry they are drawn with is routing.h's.
 
 #include "routingpanel.h"
+#include "lists.h"
 
 #include "algorithms.h"
 #include "fxgraph.h"
@@ -660,15 +661,7 @@ RoutingPanel::RadarLook RoutingPanel::radarLook() const {
 // --- Widgets.
 
 void RoutingPanel::widgets(std::vector<Widget> &list) const {
-    auto add = [&list](Kind kind, Rect rect, int param = -1, int a = -1, int b = -1) {
-        Widget w;
-        w.kind = kind;
-        w.rect = rect;
-        w.param = param;
-        w.a = a;
-        w.b = b;
-        list.push_back(w);
-    };
+    const WidgetAdder add{list};
     // A wire's or OUT label in the graph: the label, then, while it is a pill (see labelPill()), its mode's part and its
     // x, all three drawn as one.
     auto labelWidgets = [&](Kind kind, int param, int mode, Rect idle, int from, int to) {
@@ -825,15 +818,7 @@ void RoutingPanel::popups(std::vector<Widget> &list) const {
         const auto labels = std::stable_partition(list.begin(), list.end(), [&](const Widget &w) { return !isLabel(w); });
         std::stable_partition(labels, list.end(), [](const Widget &w) { return w.group.w <= 0.0f; });
     }
-    auto add = [&list](Kind kind, Rect rect, int param = -1, int a = -1, int b = -1) {
-        Widget w;
-        w.kind = kind;
-        w.rect = rect;
-        w.param = param;
-        w.a = a;
-        w.b = b;
-        list.push_back(w);
-    };
+    const WidgetAdder add{list};
     // The panel of algorithms, under ALGORITHM: the set of its switch, by how many operators they use.
     if (algorithmMenuOpen_ && shown()) {
         static_assert(std::size(kAlgorithmSets) == kAlgorithmSetCount);
@@ -1488,6 +1473,8 @@ std::string RoutingPanel::tooltip(const Widget &w) const {
         return tr(Str::TipRemoveRoute);
     case Kind::Wire:
         return tr(Str::TipWire);
+    case Kind::NodeGhost:
+        return trf(Str::TipNodeGhost, {nodeTitle(w.a)});
     default:
         return {};
     }

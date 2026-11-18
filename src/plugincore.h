@@ -110,7 +110,7 @@ public:
     std::vector<std::string> presetFolders() const override { return presets_.folders(); }
     bool makePresetFolder(const std::string &folder) override { return presets_.makeFolder(folder); }
     bool renamePresetFolder(const std::string &from, const std::string &to) override;
-    bool deletePresetFolder(const std::string &folder) override { return presets_.deleteFolder(folder); }
+    bool deletePresetFolder(const std::string &folder) override;
     bool savePresetIn(const std::string &folder, const std::string &name, const gui::PresetInfo &info) override;
     bool presetExists(const std::string &folder, const std::string &name) const override;
     bool setPresetInfo(int index, const gui::PresetInfo &info) override;
@@ -161,6 +161,9 @@ public:
     // effects' latest path's (see fxlag.h), rounded. An edit that moves it asks the host for a restart, which takes the
     // new one. Any thread.
     int latency() const { return latency_.load(); }
+    // How late the output would be from an activate() at `sampleRate` with the params as they are now, for a host that
+    // asks while the plugin is inactive. Main thread.
+    int latencyAt(double sampleRate) const;
     void deactivate() { telemetry_.store(*noTelemetry_); } // from one made ahead, not a 45 KB one on the stack
     // Main thread, while not processing (or the audio thread, between blocks).
     void resetVoices() {
@@ -199,7 +202,7 @@ public:
     bool loadState(const clap_istream_t *stream, bool settings = true);
 
     // Main thread: what hostRequestCallback() asks for.
-    void onMainThread() { sectionsChanged(); }
+    void onMainThread();
 
     // The editor window, while the host shows it. Main thread.
     gui::Editor *editor() const { return editor_.get(); }
@@ -262,8 +265,6 @@ protected:
 
     // The host was told param `index`'s value just now (see setHostValue()).
     void told(int index, int64_t now) { toldAt_[index].store(now, std::memory_order_relaxed); }
-    // Main thread: whether a restart was asked for and not yet done (activate() clears it).
-    bool restartPending() const { return restartAskedFor_.load() != 0; }
 
     // Main thread: tells the host when the remote pages differ.
     void sectionsChanged();
@@ -288,6 +289,8 @@ private:
     void keepEditorLayout(const gui::UiLayout &from);
     // Loads a preset's bytes, which came from `path` (a file, or a factory preset's), as the patch's preset.
     bool loadPresetFrom(const clap_istream_t *stream, const std::wstring &path);
+    // What follows a preset folder renamed to `to`, or deleted (an empty `to`).
+    void presetFolderMoved(const std::wstring &from, const std::wstring &to);
     // Puts the preset loaded from `path` first among the recent ones, in the user's settings.
     void rememberRecent(const std::wstring &path);
     void openPresetFolder(const std::string &folder) override { presets_.openFolder(folder); }
@@ -311,6 +314,8 @@ private:
     double voicesDelay_ = 0.0;
     // Main thread: an undo or redo step being applied, and whether an edit in it marks the project changed.
     bool applyingStep_ = false;
+    // Main thread: an effect or wire was edited, and onMainThread() has yet to see whether the latency moved.
+    bool latencyEdited_ = false;
     bool dirtyAfterStep_ = false;
     std::atomic<int> oversampling_{kDefaultOversampling};
     // MPE over MIDI and its member channels' bend range: settings, set on the main thread, read by the audio thread.

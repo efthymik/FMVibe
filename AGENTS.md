@@ -178,7 +178,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   It opens the editor inside a hidden host window, where the preset bar's next arrow loads a preset with no param
   events, the host asked to rescan the values and marking the project changed, and drags the Volume knob with mouse
   messages. It checks that the param changes and that the host receives gesture-begin, value and gesture-end events, and that an older
-  value the host hands back right after isn't taken; that on the SEQ tab a wheel message with Ctrl in its keys zooms
+  value the host hands back right after isn't taken; that a shaper effect dragged along the line, and that undone, ask
+  the host for no restart while one taken out of the line asks for one, from the main-thread callback; that on the SEQ tab a wheel message with Ctrl in its keys zooms
   the roll, though the thread's own idea of Ctrl is up (as while the host has the keyboard); that with nothing
   sounding processing sleeps, but not while the
   editor shows a free LFO running (the plugin asking the host to process again as one comes on); and that an editor
@@ -466,6 +467,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     offering Move to High only (Move to nothing on the main line's cards), which puts it at the high band's end,
     undone; and an arrow before the first card, and the arrows along a band in its color (read off the rendered
     pixels), the first's list putting an effect at the line's start;
+  - a split's solo and band count buttons and a switched-off node's ghost showing their tooltips (read off the rendered
+    pixels);
   - the effects graph's box taking the room the inspector's card leaves, more beside a narrow card than a wide one
     (read off the rendered pixels);
   - the FX panel's bin, in the chain and in the graph: asking first (read off the rendered pixels), a click around
@@ -851,7 +854,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     silent, an anchored LFO standing where the process context's position puts it, more changes than a block sorts
     (a note's end past them still ending it, a param's last point winning), a flush without audio taken, the
     controller's copy of a value from the host left alone while processing, and a voice limit past the voices
-    allocated asking the host for a restart, the latency the CLAP plugin reports (the voices' decimator's), and
+    allocated asking the host for a restart, the latency the CLAP plugin reports (the voices' decimator's), asked for
+    while inactive what the next activation makes it, and
     `setActive()` out of memory answering `kOutOfMemory` and going through once there is room;
   - the state: the CLAP plugin's bytes, through a stream that moves 5 bytes at a time, the controller's own state
     empty, a value from the host taken while not processing, loading bringing the saved value back and having the

@@ -4718,6 +4718,78 @@ int main(int argc, char **argv) {
         }
         Sleep(600); // and once that moment has passed, the host's values are taken again (checked below)
 
+        // A shaper effect dragged along the line leaves it for a moment as its wires change one by one: no restart is
+        // asked for, since the latency ends as it was. One taken out of the line does ask for one, once the edit is
+        // whole, from the main-thread callback. (Coordinates in view units, scaled by 0.75.)
+        if (editor) {
+            auto at = [](float x, float y) { return MAKELPARAM(std::lround(x * 0.75f), std::lround(y * 0.75f)); };
+            auto click = [&](float x, float y) {
+                SendMessageW(editor, WM_MOUSEMOVE, 0, at(x, y));
+                SendMessageW(editor, WM_LBUTTONDOWN, MK_LBUTTON, at(x, y));
+                SendMessageW(editor, WM_LBUTTONUP, 0, at(x, y));
+            };
+            auto from = [&](int node) {
+                double v = 0.0;
+                params->get_value(plugin, idOfIndex(fxInputIndex(node, 0, FxInputField::From)), &v);
+                return v;
+            };
+            MemoryStream fxKept;
+            const bool fxSaved = state->save(plugin, &fxKept.out);
+            const auto typesKept = fxTypes;
+            std::vector<std::pair<int, double>> line;
+            for (int slot = 0; slot < kFxSlots; ++slot)
+                line.push_back({paramIndex(slot, FxParam::Type),
+                                static_cast<double>(slot == 0 ? FxType::Shaper : slot == 1 ? FxType::Delay : FxType::None)});
+            setParams(line);
+            setParams({{fxInputIndex(0, 0, FxInputField::From), fxPortValue(kFxPortIn)},
+                       {fxInputIndex(1, 0, FxInputField::From), fxPortValue(fxSlotPort(0))},
+                       {fxInputIndex(kFxOutNode, 0, FxInputField::From), fxPortValue(fxSlotPort(1))}});
+            plugin->stop_processing(plugin);
+            plugin->deactivate(plugin);
+            plugin->activate(plugin, kSampleRate, 1, kBlock);
+            plugin->start_processing(plugin);
+            plugin->on_main_thread(plugin);
+            restartRequests = 0;
+
+            click(240.0f, 116.0f); // the FX tab
+            SendMessageW(editor, WM_LBUTTONDOWN, MK_LBUTTON, at(86.0f, 197.0f)); // the shaper's title, past the delay
+            SendMessageW(editor, WM_MOUSEMOVE, MK_LBUTTON, at(400.0f, 197.0f));
+            SendMessageW(editor, WM_MOUSEMOVE, MK_LBUTTON, at(900.0f, 197.0f));
+            SendMessageW(editor, WM_LBUTTONUP, 0, at(900.0f, 197.0f));
+            plugin->on_main_thread(plugin);
+            const bool moved = from(1) == fxPortValue(kFxPortIn) && from(0) == fxPortValue(fxSlotPort(1)) &&
+                               from(kFxOutNode) == fxPortValue(fxSlotPort(0));
+            const int askedMoving = restartRequests;
+
+            click(952.0f, 18.0f); // undo: the shaper first again
+            plugin->on_main_thread(plugin);
+            const bool undone = from(0) == fxPortValue(kFxPortIn) && from(kFxOutNode) == fxPortValue(fxSlotPort(1));
+            const int askedUndoing = restartRequests;
+
+            const float cardWidth = (1168.0f - 30.0f - 16.0f - 5.0f * 22.0f) / 6.0f;
+            click(46.0f + cardWidth - 15.0f, 198.0f); // the shaper's x
+            const int askedAtOnce = restartRequests;
+            plugin->on_main_thread(plugin);
+            double typeLeft = -1.0;
+            params->get_value(plugin, idOfIndex(paramIndex(0, FxParam::Type)), &typeLeft);
+            const int askedRemoving = restartRequests;
+
+            click(64.0f, 116.0f); // back to ROUTING
+            std::printf("      restarts asked for: moving a shaper %d, undoing it %d, taking it out %d (at once %d)\n",
+                        askedMoving, askedUndoing, askedRemoving, askedAtOnce);
+            check(fxSaved && moved && undone && askedMoving == 0 && askedUndoing == 0,
+                  "an effect moved along the line asks for no restart while its wires change");
+            check(typeLeft == static_cast<double>(FxType::None) && askedAtOnce == 0 && askedRemoving == 1,
+                  "an effect taken out of the line asks for a restart once the edit is whole");
+            state->load(plugin, &fxKept.in);
+            fxTypes = typesKept;
+            plugin->stop_processing(plugin);
+            plugin->deactivate(plugin);
+            plugin->activate(plugin, kSampleRate, 1, kBlock);
+            plugin->start_processing(plugin);
+            Sleep(600); // the edits' values, told to the host, are taken from it again
+        }
+
         // With nothing sounding, processing sleeps; but not while the editor shows a free LFO running on its own,
         // whose clock and card move on: switched on, the plugin asks the host to process again and keeps it going,
         // and switched back to retrigger, it sleeps. The sources' clocks are put back as they were after.

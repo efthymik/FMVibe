@@ -290,8 +290,11 @@ public:
     tresult PLUGIN_API canProcessSampleSize(int32 size) override {
         return size == kSample32 ? kResultTrue : kResultFalse;
     }
-    // As setActive() worked it out (see PluginCore::latency()); an edit that moves it asks for a restart.
-    uint32 PLUGIN_API getLatencySamples() override { return static_cast<uint32>(latency()); }
+    // As setActive() worked it out (see PluginCore::latency()); an edit that moves it asks for a restart. A host may
+    // ask between its setActive(false) and setActive(true): what the next activation will make it, then.
+    uint32 PLUGIN_API getLatencySamples() override {
+        return static_cast<uint32>(active_ ? latency() : latencyAt(sampleRate_));
+    }
     tresult PLUGIN_API setupProcessing(ProcessSetup &setup) override;
     tresult PLUGIN_API setProcessing(TBool state) override;
     tresult PLUGIN_API process(ProcessData &data) override;
@@ -430,6 +433,7 @@ private:
     std::atomic<bool> callbackPending_{false};
     std::atomic<int32> restartFlags_{0};
     double sampleRate_ = 48000.0;
+    bool active_ = false; // main thread: since a setActive(true) that went through
     std::atomic<bool> processing_{false};
     UnitID selectedUnit_ = kRootUnitId; // the host's, for its own use
     std::vector<Change> changes_; // reserved up front: the audio thread never allocates
@@ -634,9 +638,11 @@ tresult PLUGIN_API Plugin::getBusInfo(MediaType type, BusDirection dir, int32 in
 
 tresult PLUGIN_API Plugin::setActive(TBool state) {
     if (state) {
-        if (!activate(sampleRate_)) // voices are allocated here, on the main thread
+        active_ = activate(sampleRate_); // voices are allocated here, on the main thread
+        if (!active_)
             return kOutOfMemory;
     } else {
+        active_ = false;
         processing_.store(false);
         deactivate();
     }

@@ -4221,6 +4221,25 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
                   "the graph's main line is grey, each band's wires and half of the split's and join's nodes in its "
                   "color, fading in across a split and out across a join");
         }
+        // A split's controls say what they do, under them (read off the rendered pixels along the tooltip's row).
+        {
+            auto rowUnder = [&](Rect control, const char *name) {
+                renderer.save(view, dir / name);
+                std::vector<uint32_t> row;
+                for (float x = control.center().x - 30.0f; x <= control.center().x + 30.0f; x += 1.0f)
+                    row.push_back(renderer.pixel({x, control.bottom() + 6.0f + 11.0f}));
+                return row;
+            };
+            auto tipped = [&](Rect control, const char *bare, const char *shown) {
+                view.mouseMove({600.0f, 428.0f}, {});
+                const std::vector<uint32_t> away = rowUnder(control, bare);
+                view.mouseMove(centerOf(control), {});
+                return rowUnder(control, shown) != away;
+            };
+            const bool soloTip = tipped(detail::splitSoloButton(card, 2), "40e1a-split-no-tip.png", "40e1b-split-solo-tip.png");
+            const bool bandsTip = tipped(detail::splitBandsButton(card, 3), "40e1c-split-no-tip.png", "40e1d-split-bands-tip.png");
+            check(soloTip && bandsTip, "a split's solo and band count buttons show their tooltips");
+        }
         click(view, centerOf(detail::splitSoloButton(card, 2)));
         const bool soloed = model.value(paramIndex(0, SumParam::SoloHigh)) == 1.0 &&
                             model.value(paramIndex(0, SumParam::SoloLow)) == 0.0;
@@ -8836,6 +8855,23 @@ void testSelectedNode(const std::filesystem::path &dir, Renderer &renderer) {
     const bool ghostShot = renderer.save(view, dir / "1j-selected-ghost.png");
     check(plainShot && ghostShot && layout.selectedNode == 2 && ghost(0) != cPlain && ghost(1) == dPlain,
           "a switched-off node's ghost is filled while the inspector shows it (read off the rendered pixels)");
+    // Under the mouse it says that a click turns it on; its tooltip goes up from the panel's bottom edge over what is
+    // below (read off the rendered pixels along the tooltip's row).
+    {
+        const Point at = ghostOf(model, 3);
+        auto tipRow = [&](const char *name) {
+            renderer.save(view, dir / name);
+            std::vector<uint32_t> row;
+            for (float x = at.x - 40.0f; x <= at.x + 10.0f; x += 1.0f)
+                row.push_back(renderer.pixel({x, detail::kRouting.bottom() - 10.0f + 6.0f + 11.0f}));
+            return row;
+        };
+        const std::vector<uint32_t> away = tipRow("1k-ghost-no-tip.png");
+        view.mouseMove(at, {});
+        const bool tip = tipRow("1k-ghost-tip.png") != away;
+        view.mouseMove({600.0f, 468.0f}, {});
+        check(tip, "a switched-off node's ghost shows its tooltip");
+    }
 }
 
 // The MODS tab: every modulation as a row (LFO 1's eleven, Env 1's and Macro 1's, more than fit, so a bar scrolls

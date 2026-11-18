@@ -317,6 +317,29 @@ Panel *View::modalPanel() const {
     return nullptr;
 }
 
+void View::paintCardLanding(Canvas &c, Rect landing, Rect row, float radius, Color color) {
+    c.pushClip(row);
+    c.fillRect(landing.inset(-1.0f), kPanel, radius + 1.0f);
+    c.strokeRect(landing, color.alpha(0.6f), 1.0f, radius);
+    c.popClip();
+}
+
+void View::paintCarriedCard(Canvas &c, Rect landing, Rect start, Rect row, float radius, Color color,
+                            const std::function<void()> &paintCard, const std::vector<Widget> &widgets) {
+    paintCardLanding(c, landing, row, radius, color);
+    const Point offset{start.x + drag_.now.x - drag_.start.x - landing.x,
+                       start.y + drag_.now.y - drag_.start.y - landing.y};
+    c.pushLayer(offset, 0.5f, landing.inset(-1.0f));
+    c.pushClip(landing);
+    paintCard();
+    for (const Widget &w : widgets)
+        if (!w.popup && w.kind != Kind::FxShadow && w.rect.x < landing.right() && w.rect.right() > landing.x &&
+            w.rect.y < landing.bottom() && w.rect.bottom() > landing.y)
+            paintWidget(c, w);
+    c.popClip();
+    c.popLayer();
+}
+
 std::string View::panelTip(const Widget &w) const {
     for (const Panel *panel : panels_)
         if (std::string tip = panel->tooltip(w); !tip.empty())
@@ -1319,15 +1342,7 @@ bool View::envZoomStep() {
 }
 
 void View::envelopeWidgets(std::vector<Widget> &list, int env) const {
-    auto add = [&list](Kind kind, Rect rect, int param, int a, int b) {
-        Widget w;
-        w.kind = kind;
-        w.rect = rect;
-        w.param = param;
-        w.a = a;
-        w.b = b;
-        list.push_back(w);
-    };
+    const WidgetAdder add{list};
     const EnvIndices e = envIndices(env);
     const EnvShape s = envShape(envRect(env), e, [this](int index) { return value(index); }, envScale(env));
     // Curve handles halfway along each segment, under the points so those win where they overlap.
@@ -1347,22 +1362,7 @@ std::vector<View::Widget> View::widgets() const {
     const DerivedScope scope(*this);
     std::vector<Widget> list;
     list.reserve(400);
-    auto add = [&list](Kind kind, Rect rect, int param = -1, int a = -1, int b = -1) {
-        Widget w;
-        w.kind = kind;
-        w.rect = rect;
-        w.param = param;
-        w.a = a;
-        w.b = b;
-        list.push_back(w);
-        if (kind == Kind::ListButton && isSteppableList(param)) // its arrows, over it
-            for (int dir : {-1, 1}) {
-                w.kind = Kind::ListStep;
-                w.rect = listStepButton(rect, dir);
-                w.b = dir;
-                list.push_back(w);
-            }
-    };
+    const WidgetAdder add{list};
     auto merge = [&list](size_t from) { mergeButtons(list, from); };
     auto knob = [&](int param, Point center, float diameter, const char *label) {
         add(Kind::Knob, knobRect(center, diameter), param);
@@ -1884,22 +1884,7 @@ std::vector<View::Widget> View::widgets() const {
 // What an effect's card holds below its title row (see FxPanel::cardWidgets(), whose title row it is): its knobs,
 // switches and lists, and the handles on its display.
 void View::effectCardWidgets(std::vector<Widget> &list, int slot, Rect card) const {
-    auto add = [&list](Kind kind, Rect rect, int param = -1, int a = -1, int b = -1) {
-        Widget w;
-        w.kind = kind;
-        w.rect = rect;
-        w.param = param;
-        w.a = a;
-        w.b = b;
-        list.push_back(w);
-        if (kind == Kind::ListButton && isSteppableList(param)) // its arrows, over it
-            for (int dir : {-1, 1}) {
-                w.kind = Kind::ListStep;
-                w.rect = listStepButton(rect, dir);
-                w.b = dir;
-                list.push_back(w);
-            }
-    };
+    const WidgetAdder add{list};
     auto merge = [&list](size_t from) { mergeButtons(list, from); };
     auto knob = [&](int param, Point center, float diameter, const char *label) {
         add(Kind::Knob, knobRect(center, diameter), param);
@@ -2377,30 +2362,6 @@ void View::paint(Canvas &c, Rect area) {
     for (Panel *panel : panels_) // what veils some of their widgets (the FX view's cards a card carried lands among)
         panel->paintOverWidgets(c);
     paintWidgets(true);
-    // The card being dragged: where it would land only its outline, and a faint image of it under the mouse wherever
-    // it goes (over every panel, held to none), before it snaps into place: an effect card or a split's container, or
-    // a source's card. The image is the card painted at its landing place, moved, with the widgets on it (not the
-    // row's dashed card, which may glide through there).
-    auto outlined = [&](Rect landing, Rect row, float radius, Color color) {
-        c.pushClip(row);
-        c.fillRect(landing.inset(-1.0f), kPanel, radius + 1.0f);
-        c.strokeRect(landing, color.alpha(0.6f), 1.0f, radius);
-        c.popClip();
-    };
-    auto carried = [&](Rect landing, Rect start, Rect row, float radius, Color color, auto paintCard) {
-        outlined(landing, row, radius, color);
-        const Point offset{start.x + drag_.now.x - drag_.start.x - landing.x,
-                           start.y + drag_.now.y - drag_.start.y - landing.y};
-        c.pushLayer(offset, 0.5f, landing.inset(-1.0f));
-        c.pushClip(landing);
-        paintCard();
-        for (const Widget &w : list)
-            if (!w.popup && w.kind != Kind::FxShadow && w.rect.x < landing.right() && w.rect.right() > landing.x && w.rect.y < landing.bottom() &&
-                w.rect.bottom() > landing.y)
-                paintWidget(c, w);
-        c.popClip();
-        c.popLayer();
-    };
     for (Panel *panel : panels_) // what a drag of theirs carries (an effect's card or a split's container, a route)
         panel->paintDrag(c);
     if (drag_.kind == DragKind::SourceMove && drag_.moved) {
@@ -2409,9 +2370,10 @@ void View::paint(Canvas &c, Rect area) {
         const auto at = std::find(shown.begin(), shown.end(), source);
         if (at != shown.end()) {
             const float place = sourceOffset(shown, static_cast<size_t>(at - shown.begin())) - sourceScroll();
-            carried(sourceCard(place, sourceSpan(source)),
-                    sourceCard(sourceOffset(sources(), drag_.widget.b) - drag_.scrollStart, sourceSpan(source)),
-                    sourceCardClip(), kRadiusCard, kSourceColors[source], [&] { paintSource(c, place, source); });
+            paintCarriedCard(c, sourceCard(place, sourceSpan(source)),
+                             sourceCard(sourceOffset(sources(), drag_.widget.b) - drag_.scrollStart, sourceSpan(source)),
+                             sourceCardClip(), kRadiusCard, kSourceColors[source], [&] { paintSource(c, place, source); },
+                             list);
         }
     }
     if (drag_.kind == DragKind::ModSource)

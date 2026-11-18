@@ -1,6 +1,7 @@
 // The SEQ view: the sequencer's settings on a card in the inspector's place, and the piano roll of the pattern picked,
 // with its tools, its ruler and loop, its keys and a lane of one value a note.
 #include "seqpanel.h"
+#include "lists.h"
 
 #include "icons.h"
 #include "layout.h"
@@ -430,15 +431,7 @@ std::vector<int> SeqPanel::seqPicked() const {
 // --- Widgets.
 
 void SeqPanel::widgets(std::vector<Widget> &list) const {
-    auto add = [&list](Kind kind, Rect rect, int param = -1, int a = -1, int b = -1) {
-        Widget w;
-        w.kind = kind;
-        w.rect = rect;
-        w.param = param;
-        w.a = a;
-        w.b = b;
-        list.push_back(w);
-    };
+    const WidgetAdder add{list};
     const int pattern = seqPattern();
     // The card: its switch, the patterns and copying one, when it plays, the knobs, the order and root, the scale.
     add(Kind::Toggle, {kSeqCard.x + kSeqCard.w - 12.0f - 26.0f, kSeqTitleY, 26.0f, 22.0f}, paramIndex(SeqParam::Enabled));
@@ -512,15 +505,7 @@ void SeqPanel::popups(std::vector<Widget> &list) const {
     if (!wide())
         return;
     auto item = [](Rect menu, int i) { return Rect{menu.x + 4.0f, menu.y + 4.0f + i * 22.0f, menu.w - 8.0f, 22.0f}; };
-    auto add = [&list](Kind kind, Rect rect, int param = -1, int a = -1, int b = -1) {
-        Widget w;
-        w.kind = kind;
-        w.rect = rect;
-        w.param = param;
-        w.a = a;
-        w.b = b;
-        list.push_back(w);
-    };
+    const WidgetAdder add{list};
     // The scale's list, under its button.
     if (host_.openList() == paramIndex(SeqParam::Scale)) {
         const int items = static_cast<int>(SeqScale::Count);

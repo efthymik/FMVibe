@@ -974,7 +974,6 @@ constexpr int seqCurveIndex(int pattern, SeqCurve curve, int point, PointField f
            static_cast<int>(field);
 }
 constexpr bool isSeqParam(int index) { return index >= kSeqBase && index < kParamCount; }
-constexpr bool isSeqNote(int index) { return index >= kSeqNoteBase && index < kSeqCurveBase; }
 constexpr int paramIndex(int op, OpParam p) { return kOpBase + op * kOpParamCount + static_cast<int>(p); }
 // Amount by which operator `from` modulates operator `to`; from == to is feedback.
 constexpr int matrixIndex(int from, int to) { return kMatrixBase + from * kOps + to; }
@@ -1419,12 +1418,6 @@ constexpr int routeModeFrom(int index) {
 }
 constexpr int routeModeTo(int index) {
     return index >= kRouteModeBase && index < kFxPositionBase ? (index - kRouteModeBase) % kOps : -1;
-}
-// The source an aux or Amount param belongs to; -1 for other params.
-constexpr int auxSourceOf(int index) {
-    return index >= kSlotAuxBase && index < kSlotAuxBase + kAllSources * kSlots * kSlotAuxFields
-               ? (index - kSlotAuxBase) / (kSlots * kSlotAuxFields)
-               : -1;
 }
 // The source an Aux param's value names, or -1 for none.
 inline int slotAuxSource(double value) {
@@ -2802,13 +2795,6 @@ void runMacroGraph(const MacroGraph &g, const Get &get, MacroKnobs &knobs, const
         knobs[m] = std::clamp(value, 0.0, 1.0);
     }
 }
-// The knobs as every voice shares them: as set, with the macros' and the mod wheel's links on them.
-template <class Get>
-MacroKnobs sharedMacroKnobs(const Get &get, const MacroGraph &g) {
-    MacroKnobs knobs = macroKnobsSet(get);
-    runMacroGraph(g, get, knobs, nullptr, [](int) { return -1.0; }, [](int, int, double) {});
-    return knobs;
-}
 
 // Whether macro `from`'s knob reaches macro `to`'s through the macros' slots on one another's knobs, bypassed or not
 // (`from == to` does): a slot of macro `to` on `from`'s knob would close a loop.
@@ -2830,7 +2816,7 @@ bool macroReaches(const Get &get, int from, int to) {
 
 // What the macros and the mod wheel add to their targets, the same for every voice and the effects, notes playing or
 // not: calls `add(target, offset, source, slot)` for each slot in use, the offset in plain units, with the knobs as
-// `knobs` has them (see sharedMacroKnobs()). `get(index)` returns a param value. A slot whose aux runs per voice (an
+// `knobs` has them (see runMacroGraph()). `get(index)` returns a param value. A slot whose aux runs per voice (an
 // LFO, say) is left to the voices, which add it with their aux's value (see Synth::renderBlock()); one scaled by a
 // macro or the mod wheel takes that knob's value here. The slots on the macros' knobs are the graph's (see
 // runMacroGraph()), not listed here.

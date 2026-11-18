@@ -616,6 +616,9 @@ private:
         effectCardWidgets(list, card - kMaxSources, r);
     }
     void paintCard(Canvas &c, int card, Rect r, bool dragged) override { paintFxCard(c, card - kMaxSources, r, dragged); }
+    void paintCardLanding(Canvas &c, Rect landing, Rect row, float radius, Color color) override;
+    void paintCarriedCard(Canvas &c, Rect landing, Rect start, Rect row, float radius, Color color,
+                          const std::function<void()> &paintCard, const std::vector<Widget> &widgets) override;
     void paintBackdrop(Canvas &c, Rect area, Point out) override { routingPanel_.paintFxBackdrop(c, area, out); }
     bool scoped() const override { return derivedDepth_ > 0; }
     const Telemetry &telemetry() const override { return telemetry_; }

@@ -68,8 +68,11 @@ void PluginCore::performSetValue(int index, double value) {
     if (index == paramIndex(GlobalParam::Voices)) {
         voiceLimitChanged();
         hostVoicesChanged();
-    } else if (fxLagParam(index)) { // an effect or wire that makes the output later or sooner
-        askRestart();
+    } else if (fxLagParam(index) && !latencyEdited_) { // an effect or wire that may make the output later or sooner
+        // Looked at from the main-thread callback, once the edit is whole: an effect moved along the line leaves it for
+        // a moment as its wires change one by one, and a restart asked for then would cut the notes off for nothing.
+        latencyEdited_ = true;
+        hostRequestCallback();
     }
 }
 
@@ -89,6 +92,22 @@ bool PluginCore::activate(double sampleRate) {
     latency_.store(latencyNow());
     restartAskedFor_.store(0);
     return true;
+}
+
+void PluginCore::onMainThread() {
+    sectionsChanged();
+    if (latencyEdited_) {
+        latencyEdited_ = false;
+        askRestart();
+    }
+}
+
+int PluginCore::latencyAt(double sampleRate) const {
+    std::array<double, FxLag::kKinds> paths{};
+    for (int kind = 0; kind < FxLag::kKinds; ++kind)
+        paths[kind] = upDownDelay(sampleRate, FxLag::factorOf(kind));
+    const FxLag lag = fxOutputLag([this](int i) { return values_[i].load(std::memory_order_relaxed); });
+    return static_cast<int>(std::lround(decimatorDelay(sampleRate, oversampling_.load()) + fxLagSamples(lag, paths)));
 }
 
 // The voices' decimator, then the effects' latest path (see fxlag.h), at the rate and oversampling activate() took.
@@ -444,26 +463,51 @@ void PluginCore::notifyParams(const ParamValues &before) {
     hostMarkDirty();
 }
 
-// The files in it are elsewhere now: the preset the patch is, and the favorite and recent presets, follow them.
+// The files in the folder `from` are in `to` now, or gone for an empty `to`: the preset the patch is, and the favorite
+// and recent presets, follow them. A patch whose file went stays as it sounds, an edited patch with no preset.
+void PluginCore::presetFolderMoved(const std::wstring &from, const std::wstring &to) {
+    const std::wstring prefix = from + L"\\";
+    const std::wstring &file = presetFile();
+    if (file.size() > prefix.size() && _wcsnicmp(file.c_str(), prefix.c_str(), prefix.size()) == 0) {
+        if (to.empty())
+            setPreset(L"", true);
+        else
+            setPreset(to + file.substr(from.size()), patchEdited());
+    }
+    const std::string from8 = utf8(std::filesystem::path(from)) + "\\", to8 = utf8(std::filesystem::path(to)) + "\\";
+    auto inFolder = [&](const std::string &kept) {
+        return kept.size() > from8.size() && _strnicmp(kept.c_str(), from8.c_str(), from8.size()) == 0;
+    };
+    readUserSettings(); // those another instance marked in it follow too
+    bool moved = false;
+    for (std::vector<std::string> *list : {&userSettings.favorites, &userSettings.recent}) {
+        if (to.empty()) {
+            moved = std::erase_if(*list, inFolder) > 0 || moved;
+            continue;
+        }
+        for (std::string &kept : *list)
+            if (inFolder(kept)) {
+                kept = to8 + kept.substr(from8.size());
+                moved = true;
+            }
+    }
+    if (moved)
+        writeUserSettings();
+}
+
 bool PluginCore::renamePresetFolder(const std::string &from, const std::string &to) {
     const std::wstring a = PresetLibrary::subfolderPath(from), b = PresetLibrary::subfolderPath(to);
     if (!presets_.renameFolder(from, to))
         return false;
-    const std::wstring prefix = a + L"\\";
-    const std::wstring &file = presetFile();
-    if (file.size() > prefix.size() && _wcsnicmp(file.c_str(), prefix.c_str(), prefix.size()) == 0)
-        setPreset(b + file.substr(a.size()), patchEdited());
-    const std::string from8 = utf8(std::filesystem::path(a)) + "\\", to8 = utf8(std::filesystem::path(b)) + "\\";
-    readUserSettings(); // those another instance marked in it follow too
-    bool moved = false;
-    for (std::vector<std::string> *list : {&userSettings.favorites, &userSettings.recent})
-        for (std::string &kept : *list)
-            if (kept.size() > from8.size() && _strnicmp(kept.c_str(), from8.c_str(), from8.size()) == 0) {
-                kept = to8 + kept.substr(from8.size());
-                moved = true;
-            }
-    if (moved)
-        writeUserSettings();
+    presetFolderMoved(a, b);
+    return true;
+}
+
+bool PluginCore::deletePresetFolder(const std::string &folder) {
+    const std::wstring path = PresetLibrary::subfolderPath(folder);
+    if (!presets_.deleteFolder(folder))
+        return false;
+    presetFolderMoved(path, L"");
     return true;
 }
 
@@ -529,7 +573,9 @@ bool PluginCore::savePreset(const std::wstring &path) {
     // Written beside the file first and put in its place once whole, so a write that fails (a full disk, a file
     // another program holds) leaves the preset it would replace as it was. The scan lists only .fmv files.
     namespace fs = std::filesystem;
-    if (path.starts_with(PresetLibrary::kFactoryPrefix)) // a factory preset is built in: Save As saves it anew
+    // A factory preset is built in: Save As saves it anew. A file in the old Factory subfolder named as one would never
+    // be listed, and would load as the built-in one (see PresetLibrary::resolve()).
+    if (path.starts_with(PresetLibrary::kFactoryPrefix) || PresetLibrary::factoryPreset(PresetLibrary::resolve(path)))
         return false;
     const fs::path target(path), part(path + L".part");
     FILE *file = nullptr;
@@ -551,8 +597,6 @@ bool PluginCore::savePreset(const std::wstring &path) {
         return false;
     }
     if (!replaceFile(part.wstring(), target.wstring())) {
-        std::error_code ignored;
-        fs::remove(part, ignored);
         layout_.savedTempo = tempoBefore;
         return false;
     }

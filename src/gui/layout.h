@@ -1271,10 +1271,6 @@ inline Rect velocityDisplay(float keyboardTop) {
 inline Rect velocityHandle(float keyboardTop) {
     return {1082.0f, keyboardTop + kStripRow - 10.0f, 20.0f, 20.0f};
 }
-// The display of the note source or velocity, and its handle.
-inline Rect stripDisplay(float keyboardTop, bool velocity) {
-    return velocity ? velocityDisplay(keyboardTop) : noteDisplay(keyboardTop);
-}
 inline Rect bendWheel(float top) {
     return {34.0f, top + kKeys.y, 26.0f, 90.0f};
 }

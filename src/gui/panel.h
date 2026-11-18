@@ -12,6 +12,7 @@
 #include "widget.h"
 
 #include <algorithm>
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -151,6 +152,12 @@ public:
                                Rect shown) = 0;
     virtual void cardWidgets(std::vector<Widget> &list, int card, Rect r) const = 0;
     virtual void paintCard(Canvas &c, int card, Rect r, bool dragged) = 0;
+    // A card a drag carries: only its outline where it would land, within its row, and for the second also a faint image
+    // of it under the mouse, wherever it goes (over every panel, held to none): `paintCard` painting it at its landing
+    // place, moved from `start`, with those of `widgets` on it (not the row's dashed card, which may glide through there).
+    virtual void paintCardLanding(Canvas &c, Rect landing, Rect row, float radius, Color color) = 0;
+    virtual void paintCarriedCard(Canvas &c, Rect landing, Rect start, Rect row, float radius, Color color,
+                                  const std::function<void()> &paintCard, const std::vector<Widget> &widgets) = 0;
     // A graph's backdrop, under its nodes and wires in `area`: the routing graph's glow and orbit rings, spreading from
     // its OUT at `out`.
     virtual void paintBackdrop(Canvas &c, Rect area, Point out) = 0;
