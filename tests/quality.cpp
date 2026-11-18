@@ -4066,6 +4066,55 @@ void sequencerChecks() {
                   rms(quiet) < 0.01 * rms(plain),
               "the bend curve bends what the sequencer plays, and the mod wheel curve moves the mod wheel");
     }
+    // The telemetry tells the wheels where the curves take them as they play: the bend curve on top of the Pitch Bend
+    // param as set, and what the mod wheel curve adds. Nothing before they play, or once they stop, by the key let go or
+    // the sequencer switched off.
+    {
+        auto t = std::make_unique<Telemetry>();
+        Engine e(1);
+        e.p[paramIndex(SeqParam::Enabled)] = 1.0;
+        e.p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Key);
+        e.p[paramIndex(GlobalParam::PitchBend)] = 0.25;
+        note(e.p, 0, 0.0, 16.0, 69);
+        for (const auto &[curve, v] : {std::pair{SeqCurve::Bend, 0.5}, std::pair{SeqCurve::ModWheel, 0.75}}) {
+            e.p[seqCurveCountIndex(0, curve)] = 1.0;
+            e.p[seqCurveIndex(0, curve, 0, PointField::Y)] = v;
+        }
+        e.synth().setTempo(120.0);
+        struct Shown {
+            float bend, bendSet, wheel;
+            bool applied;
+        };
+        auto shown = [&] {
+            e.synth().telemetry(*t);
+            return Shown{t->bend, t->bendSet, t->seqWheel, e.synth().seqCurvesApplied()};
+        };
+        auto rests = [](const Shown &s) {
+            return std::abs(s.bend - 0.25f) < 1e-4f && s.bendSet == 0.25f && s.wheel == 0.0f && !s.applied;
+        };
+        auto plays = [](const Shown &s) {
+            return std::abs(s.bend - 0.75f) < 1e-4f && s.bendSet == 0.25f && std::abs(s.wheel - 0.75f) < 1e-6f && s.applied;
+        };
+        e.render(256); // the sequencer on, taking keys, no key down
+        const Shown before = shown();
+        e.synth().noteOn({1, 0, 0, 60}, 1.0);
+        e.render(4800);
+        const Shown playing = shown();
+        e.synth().noteOff({1, 0, 0, 60});
+        e.render(4800);
+        const Shown letGo = shown();
+        e.synth().noteOn({2, 0, 0, 60}, 1.0);
+        e.render(4800);
+        const Shown again = shown();
+        e.p[paramIndex(SeqParam::Enabled)] = 0.0;
+        e.render(256);
+        const Shown off = shown();
+        std::printf("      the wheels' telemetry: bend %.3f and mod wheel +%.3f playing; bend %.3f and +%.3f let go, %.3f and "
+                    "+%.3f switched off\n",
+                    playing.bend, playing.wheel, letGo.bend, letGo.wheel, off.bend, off.wheel);
+        check(rests(before) && plays(playing) && rests(letGo) && plays(again) && rests(off),
+              "the telemetry shows the wheels the sequencer's curves as they play, and nothing once they stop");
+    }
     // Muted or at no chance, a note doesn't play; at half, it plays some passes and not others, alike each time.
     {
         ParamValues p = blank();

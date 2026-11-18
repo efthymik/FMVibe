@@ -5428,6 +5428,69 @@ void testPartialRepaint(const std::filesystem::path &dir, Renderer &renderer) {
     model.live.bend = model.live.bendSet = 0.0f;
     model.set(paramIndex(GlobalParam::PitchBend), 0.0);
 
+    // The sequencer's curves move the wheels as they play, through the telemetry alone: its bend curve on top of the
+    // Pitch Bend param, its mod wheel curve on top of the Mod Wheel param. Only the keyboard's panel repaints, no param
+    // moves and nothing is edited, and stopped, each wheel is back where its param stands (read off the rendered pixels).
+    {
+        const int pitchBend = paramIndex(GlobalParam::PitchBend), modWheel = paramIndex(GlobalParam::ModWheel);
+        const float keysTop = detail::keyboardTop(model.ui.sourcesCollapsed);
+        const Rect keysPanel = detail::keyboardPanel(keysTop, model.ui.keysCollapsed);
+        const Rect bendRect = detail::bendWheel(keysTop), modRect = detail::modWheel(keysTop);
+        // Where a wheel's level line is: the brightest row down its middle.
+        auto lineY = [&](Rect wheel) {
+            float found = wheel.y;
+            uint32_t brightest = 0;
+            for (float y = wheel.y + 2.0f; y < wheel.bottom() - 2.0f; y += 1.0f) {
+                const uint32_t c = renderer.pixel({wheel.center().x, y + 0.5f});
+                const uint32_t level = (c >> 16 & 0xFF) + (c >> 8 & 0xFF) + (c & 0xFF);
+                if (level > brightest) {
+                    brightest = level;
+                    found = y;
+                }
+            }
+            return found;
+        };
+        auto bendShows = [&](float bend) {
+            return std::abs(lineY(bendRect) - (bendRect.center().y - bend * (bendRect.h * 0.5f - 4.0f))) <= 1.5f;
+        };
+        auto wheelShows = [&](float level) {
+            return std::abs(lineY(modRect) - (modRect.bottom() - 4.0f - level * (modRect.h - 8.0f))) <= 1.5f;
+        };
+        auto keysAlone = [&](const char *name) { return view.poll() && only(keysPanel) && samePixels(name); };
+        model.set(pitchBend, 0.25);
+        model.set(modWheel, 0.25);
+        model.live.bend = model.live.bendSet = 0.25f;
+        // The output silent, or its meter would repaint the header at every poll; and the key held done easing.
+        const std::array<float, 2> peakWas = model.live.outPeak;
+        const auto scopeWas = model.live.outScope;
+        model.live.outPeak = {0.0f, 0.0f};
+        model.live.outScope.fill(0.0f);
+        for (int i = 0; i < 600 && view.poll(); ++i) {}
+        renderer.save(view, dir / "99e4-wheels-rest.png");
+        const bool rest = bendShows(0.25f) && wheelShows(0.25f);
+        const size_t setsWere = model.sets.size(), begunWere = model.begun.size();
+
+        model.live.bend = 0.75f; // the bend curve adds 0.5
+        const bool bent = keysAlone("99e5-wheels-seq-bend.png") && bendShows(0.75f) && wheelShows(0.25f);
+        model.live.seqWheel = 0.5f;
+        const bool wheeled = keysAlone("99e6-wheels-seq-mod.png") && bendShows(0.75f) && wheelShows(0.75f);
+        model.live.seqWheel = 0.9f; // past the wheel's top: held there
+        const bool held = keysAlone("99e7-wheels-seq-mod-top.png") && wheelShows(1.0f);
+        model.live.bend = 0.25f;
+        model.live.seqWheel = 0.0f;
+        const bool back = keysAlone("99e8-wheels-seq-stopped.png") && bendShows(0.25f) && wheelShows(0.25f);
+        const bool untouched = model.value(pitchBend) == 0.25 && model.value(modWheel) == 0.25 &&
+                               model.sets.size() == setsWere && model.begun.size() == begunWere;
+        check(rest && bent, "the sequencer's bend curve moves the bend wheel, repainting the keyboard's panel alone");
+        check(wheeled && held, "the sequencer's mod wheel curve moves the mod wheel, repainting the keyboard's panel alone");
+        check(back && untouched, "the wheels go back to their params as the curves stop, no param edited");
+        model.live.bend = model.live.bendSet = 0.0f;
+        model.live.outPeak = peakWas;
+        model.live.outScope = scopeWas;
+        model.set(pitchBend, 0.0);
+        model.set(modWheel, 0.0);
+    }
+
     // Operator A's scope shown: its trace moving repaints the inspector (and the header apart, its meter showing).
     model.ui.selectedNode = 0;
     model.ui.opTab = InspectorTab::Scope;
@@ -5877,6 +5940,29 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         model.live.seqPosition = 6.0f;
         view.poll();
         check(glowShot && glowing != plain, "a note the playhead reaches glows, as the glow setting says");
+    }
+    // A slight line parts the roll from the lane under it in every theme: it stands off the ground on either side, and
+    // by far less than text does (read off the rendered pixels, halfway along a step, clear of the grid's lines).
+    {
+        const std::string themeWas = model.themeName;
+        const float x = at(6.5, 48).x, y = detail::kSeqLaneArea.y;
+        auto apart = [](uint32_t a, uint32_t b) {
+            int sum = 0;
+            for (int shift : {16, 8, 0})
+                sum += std::abs(static_cast<int>(a >> shift & 0xFF) - static_cast<int>(b >> shift & 0xFF));
+            return sum;
+        };
+        bool parted = true;
+        for (const detail::Palette &theme : detail::kThemes) {
+            model.themeName = theme.name;
+            parted = renderer.save(view, dir / ("36a-seq-divider-" + std::string(theme.name) + ".png")) && parted;
+            const uint32_t line = renderer.pixel({x, y + 0.5f});
+            const int above = apart(line, renderer.pixel({x, y - 3.0f})), below = apart(line, renderer.pixel({x, y + 3.0f}));
+            std::printf("      %s: the roll's divider %d off the roll, %d off the lane\n", theme.name, above, below);
+            parted = parted && above >= 40 && above <= 240 && below >= 40 && below <= 240;
+        }
+        model.themeName = themeWas;
+        check(parted, "a slight line parts the roll from the lane under it, in every theme");
     }
 
     // A note dragged onto another's start and pitch takes its place: the one there goes, in the same undo step; and so

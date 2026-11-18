@@ -373,7 +373,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     its notes out, and through the synth a note sounding from its sample however the blocks are split; its curves
     standing where the playhead is (back through a step played reversed, a bent segment off the straight line, held
     before the first point), doing nothing without points or while it doesn't play, and through the synth a bend curve
-    bending what it plays by Bend Range and a mod wheel curve moving the mod wheel's slot;
+    bending what it plays by Bend Range and a mod wheel curve moving the mod wheel's slot, the telemetry telling the
+    wheels what both add as they play and nothing once the key is let go or the sequencer is switched off;
   - the effects' latency, on an impulse through effects that run oversampled and leave the sound as it is (a filter
     and an amp at Mix 0): the input straight out beside a filter, the filter on and off, a split with an amp at 4x on
     one band and a filter on the other, two filters beside an amp at 8x, and nine filters in a row beside the input
@@ -423,7 +424,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     the row changing nothing, the split showing there as its container;
   - a macro's name that isn't valid UTF-8 leaving the rest of the editor drawn (read off the rendered pixels);
   - the output meter and scope moving repainting the header alone, a key, the Pitch Bend param and the host's bend
-    on top of it (its wheel) the keyboard alone and an operator's scope
+    on top of it (its wheel) the keyboard alone, the sequencer's bend and mod wheel curves moving their wheels the
+    keyboard's panel alone, editing no param and each wheel back at its param as they stop (read off the rendered
+    pixels), and an operator's scope
     the inspector alone, each painted over the frame before coming out as a whole paint does, pixel for pixel, and
     as notes play, likewise: an LFO modulating nothing moving repainting its card alone, on an operator's param its
     card and the panels' row, on the header's Pan its card and the header, on another LFO's Rate the two cards,
@@ -789,7 +792,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     ones (a tenth with Shift), held to 20-999, and typed after a double-click or Ctrl+Click (`BPM` after it taken,
     text that isn't a tempo and Escape leaving it), none of it touching the patch or its undo history;
   - the SEQ tab, between FX and MODS (a note put down by a double-click and held dragged across lengthening it, to the right its end, to the left its start): its card and an empty roll, and a dot on the tab while the sequencer is on (read
-    off the rendered pixels), as on FX's while an effect in the line is switched on; a double-click putting a note down on its step (a
+    off the rendered pixels), as on FX's while an effect in the line is switched on; a slight line parting the roll from the lane in every theme (read off the rendered pixels); a double-click putting a note down on its step (a
     step long at 1/16) and on the note deleting it; the notes and the playhead where the telemetry puts it (read off
     the rendered pixels); a note the playhead reaches glowing, and not with the glow setting off (read off the rendered
     pixels); a note landing on another's start and pitch (dragged, or by the arrows) taking its place,

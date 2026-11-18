@@ -758,7 +758,9 @@ What the plugin does and how its editor works, in full. Building and installing 
     of Bend Range) adds to the pitch bend, on top of the bend wheel's and the host's, and the mod wheel curve (0–1) to
     the Mod Wheel param, as the host's modulation of it would, moving what the mod wheel modulates. Before its first
     point a curve holds that point's value, and after its last that one's; played backward, it runs back with the
-    playhead. A curve without points does nothing, nor does either while the sequencer doesn't play.
+    playhead. A curve without points does nothing, nor does either while the sequencer doesn't play. The wheels in the
+    keyboard strip show what the curves add as they play and go back to their params as they stop; the curves edit no
+    param, so nothing of theirs reaches the host or the undo history.
   - Its notes start and end at their sample, however the host splits its blocks, and go to the voices as notes do
     (stealing, mono, legato and glide alike); the host is never told of their ends, and the keyboard strip lights only
     the keys played (by the host, its own keys and the computer's), not the sequencer's notes. A jump of the transport, or a
@@ -867,7 +869,7 @@ one may have changed since it last did.
     down (the cursor a pen), and held, the mouse up or down sets its velocity, a step a pixel from 100; with Shift, a
     drag paints a note in each grid step it crosses that has none; a note clicked is moved or stretched as in Select
     (the cursor saying which over it). Each edit is one undo step.
-  - **The lane** under the roll: a stem for each note at its start, as high as its velocity or its chance, as the
+  - **The lane** under the roll, a slight line parting the two: a stem for each note at its start, as high as its velocity or its chance, as the
     **VELOCITY | CHANCE | BEND | MOD WHEEL** tabs under it pick, a note picked ringed there too. With **Draw**, dragged
     across, the notes there take the height of the mouse (the cursor a pen, and up and down over a dot and while one is
     dragged); with more than one note picked, a drag from one of their dots moves them all up or down together, each
@@ -1879,9 +1881,10 @@ one may have changed since it last did.
   preset leaves it as it is. Drag across the keys to glide between notes. Keys light up while they are held, whether clicked here or
   played by the host, rising and fading a moment as the roll's keys do rather than switching. The **Bend** wheel is the Pitch Bend param: it bends the pitch by the Bend Range and springs
   back to center on release, in one edit the host follows. It shows where the bend stands: the param, with what the
-  host adds on top (its MIDI pitch bend, and its modulation of the param, the newest note's own while notes play),
-  filled in the pitch bend source's color, and its handle drags the pitch bend source onto what it should move. The
-  **Mod** wheel is the Mod Wheel param, and its handle drags onto what it should move (not the wheel itself). Both
+  host adds on top (its MIDI pitch bend, and its modulation of the param, the newest note's own while notes play) and
+  the sequencer's bend curve as it plays, filled in the pitch bend source's color, and its handle drags the pitch bend
+  source onto what it should move. The **Mod** wheel is the Mod Wheel param, showing what the sequencer's mod wheel
+  curve adds as it plays, and its handle drags onto what it should move (not the wheel itself). Both
   handles work like a macro's (faint, like theirs, until they move something). The mod wheel's and either handle's
   right-click menus make that wheel unipolar or bipolar; a bipolar mod wheel fills from its middle, where it moves
   nothing.

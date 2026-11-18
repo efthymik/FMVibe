@@ -953,7 +953,8 @@ bool View::poll() {
     controller_.setScope(inspector_.scopeShown(), controller_.layout().scopeCycles);
     Telemetry t;
     controller_.telemetry(t);
-    if (t.bend != telemetry_.bend || t.bendSet != telemetry_.bendSet) // where the bend stands: the bend wheel
+    // Where the bend stands, and what the sequencer's curve adds to the mod wheel: the wheels.
+    if (t.bend != telemetry_.bend || t.bendSet != telemetry_.bendSet || t.seqWheel != telemetry_.seqWheel)
         in(keyboardPanel(keyboardTop(controller_.layout().sourcesCollapsed), controller_.layout().keysCollapsed));
     everywhere = everywhere || changed; // a param: it may show anywhere
     const Rect header{0.0f, 0.0f, kWidth, kHeaderH};
@@ -2594,8 +2595,9 @@ void View::paintWheel(Canvas &c, const Widget &w, bool hovered, bool active) {
         c.fillRect(r, kTrack.alpha(0.5f), kRadiusCard);
     if (w.kind == Kind::ModWheel) {
         // Fills up from the bottom with the wheel's value, in the color of its handle; bipolar, from the middle, where
-        // it moves nothing.
-        const float y = bottom - (bottom - top) * static_cast<float>(value(w.param));
+        // it moves nothing. Where it stands: the param as the editor has it, with what the sequencer's curve adds as it
+        // plays.
+        const float y = bottom - (bottom - top) * static_cast<float>(std::clamp(value(w.param) + telemetry_.seqWheel, 0.0, 1.0));
         const float from = mods_.sourceBipolar(kWheelSource) ? 0.5f * (top + bottom) : bottom;
         c.fillRect({r.x + inset, std::min(y, from), r.w - 2.0f * inset, std::abs(from - y)},
                    kSourceColors[kWheelSource].alpha(0.6f), kRadiusMark);
@@ -2604,8 +2606,8 @@ void View::paintWheel(Canvas &c, const Widget &w, bool hovered, bool active) {
         c.line({r.x + 3.0f, y}, {r.right() - 3.0f, y}, kText, 2.0f);
     } else {
         // Springs back to the middle: fills up or down from the center. Where the bend stands: the Pitch Bend param as
-        // the editor has it (so a drag moves it at once), with what the host adds on top (see Telemetry::bend): its
-        // MIDI bend and its modulation of the param.
+        // the editor has it (so a drag moves it at once), with what is added on top (see Telemetry::bend): the host's
+        // MIDI bend and modulation of the param, and the sequencer's bend curve.
         const float mid = r.y + r.h * 0.5f;
         const double bend =
             std::clamp(value(paramIndex(GlobalParam::PitchBend)) + telemetry_.bend - telemetry_.bendSet, -1.0, 1.0);

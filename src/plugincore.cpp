@@ -200,9 +200,12 @@ void PluginCore::render(float *left, float *right, uint32_t frames) {
 void PluginCore::endBlock() {
     synth_.clearEndedNotes();
     // The editor paints about 60 times a second: a snapshot every kTelemetrySeconds of audio is plenty, however short
-    // the host's blocks, and the first one as soon as the editor opens.
+    // the host's blocks, and the first one as soon as the editor opens. One too as the sequencer's curves stop: the host
+    // may let the plugin sleep right after, which would leave the wheels showing where the curves last took them.
     const bool open = editorOpen_.load(std::memory_order_relaxed);
-    if (open && (!telemetryOpen_ || telemetryFrames_ >= kTelemetrySeconds * sampleRate_)) {
+    const bool curves = synth_.seqCurvesApplied(), curvesStopped = telemetryCurves_ && !curves;
+    telemetryCurves_ = curves;
+    if (open && (!telemetryOpen_ || curvesStopped || telemetryFrames_ >= kTelemetrySeconds * sampleRate_)) {
         telemetryFrames_ = 0.0;
         Telemetry &t = *telemetryScratch_;
         synth_.telemetry(t);

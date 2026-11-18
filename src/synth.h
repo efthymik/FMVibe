@@ -149,6 +149,9 @@ struct Telemetry {
     float seqPosition = -1.0f;
     int seqPattern = 0;
     std::array<uint32_t, 4> seqKeys{}; // the pitches the notes the sequencer holds on are written at, as `keys` has keys
+    // What the sequencer's mod wheel curve adds to the Mod Wheel param as it plays, 0 while it doesn't: the mod wheel
+    // shows the param as the editor has it with this on top. (What its bend curve adds is in `bend`.)
+    float seqWheel = 0.0f;
 
     bool keyDown(int key) const { return key >= 0 && key < 128 && (keys[key / 32] >> (key % 32) & 1u) != 0; }
 };
@@ -268,6 +271,8 @@ public:
     int activeVoiceCount() const;
     // Whether the sequencer may start notes of its own (see Sequencer::wantsProcessing()), or holds some on.
     bool sequencerAwake() const { return seq_.wantsProcessing() || seq_.sounding(); }
+    // Whether the sequencer's curves take the pitch bend or the mod wheel anywhere now.
+    bool seqCurvesApplied() const { return seqBend_ != 0.0 || seqWheel_ != 0.0; }
     // Effects still sounding after the voices ended (delay echoes).
     bool effectsRinging() const { return effects_.ringing(); }
     // Whether the voice filters, parametric EQs and filter effects measure their output for the editor, as do the effects

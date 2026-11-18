@@ -351,6 +351,7 @@ private:
     double sampleRate_ = 48000.0;
     double telemetryFrames_ = 0.0;
     bool telemetryOpen_ = false;
+    bool telemetryCurves_ = false; // whether the sequencer's curves took the wheels anywhere as the last block ended
     std::unique_ptr<Telemetry> telemetryScratch_ = std::make_unique<Telemetry>();
     const std::unique_ptr<const Telemetry> noTelemetry_ = std::make_unique<const Telemetry>(); // what nothing playing shows
     std::atomic<bool> editorOpen_{false};

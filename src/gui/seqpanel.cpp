@@ -2350,7 +2350,9 @@ void SeqPanel::paintBack(Canvas &c) {
 
     // The lane: a stem for each note at its start, as high as its velocity or chance.
     const bool velocityLane = controller().layout().seqLane == SeqLane::Velocity;
-    c.line({kSeqBox.x, kSeqLaneArea.y}, {kSeqBox.x + kSeqBox.w, kSeqLaneArea.y}, kBorder, 1.0f);
+    // A slight line parting it from the roll, a pixel high: the faint text's color stands off the wells in every theme,
+    // where the borders' all but melts into them.
+    c.fillRect({kSeqBox.x, kSeqLaneArea.y, kSeqBox.w, 1.0f}, kFaint.alpha(0.55f));
     const Color stem = velocityLane ? kAccent : look.sources[1];
     c.pushClip(kSeqLaneArea);
     std::vector<SeqNote> stems = notes; // the picked ones last, over the others
