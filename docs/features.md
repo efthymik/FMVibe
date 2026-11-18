@@ -651,7 +651,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     way, Feedback sends the shifted sound round again for spiraling sweeps, and Mix. A pair of all-pass chains makes
     the 90-degree copy it needs, which keeps the mirror image (as far below the old frequency as the shift moves it
     above) 65 dB down or more from 50 Hz up; its chains are worked out for the sample rate, longer at higher ones,
-    so it holds at 96 and 192 kHz too.
+    so it holds at 96 and 192 kHz too. A partial shifted past 0 Hz or past half the sample rate is gone rather than
+    reflected back the other way, so a spiral of Feedback runs out at either end.
   - **Utility**: the level and the stereo image, in the order the sound goes through them. **Mono Bass** high-passes
     the sides (left minus right) at 12 dB an octave, so the sound below it comes out in the middle: Off at the
     knob's bottom (where a new utility starts), then 20–500 Hz; switched on or off, it fades between the sides as

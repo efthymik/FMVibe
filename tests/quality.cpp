@@ -1000,6 +1000,76 @@ void effectsChainChecks() {
             worst = std::min(worst, rateWorst);
         }
         check(worst > 60.0, "a frequency shifter's mirror image stays 60 dB down from 50 Hz up, at 44.1 to 192 kHz");
+
+        // What a shift takes past 0 Hz or past half the rate is gone, rather than coming back the other way, and what
+        // it leaves between them plays at the level it went in.
+        auto shifted = [&](double rate, double hz, double shift, double feedback) { // a settled second of a sine at 0.5
+            Effects fx;
+            fx.prepare(rate);
+            ParamValues p = defaults();
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::FreqShifter);
+            p[paramIndex(0, FxParam::ShiftRange)] = normFromShiftRange(kMaxShiftRange);
+            p[paramIndex(0, FxParam::ShiftAmount)] = shift / kMaxShiftRange;
+            p[paramIndex(0, FxParam::ShiftFeedback)] = feedback;
+            p[paramIndex(0, FxParam::ShiftMix)] = 1.0;
+            chain(p, {0});
+            constexpr uint32_t kPiece = 32;
+            float left[kPiece], right[kPiece];
+            std::vector<float> out;
+            for (size_t t = 0; t < static_cast<size_t>(1.5 * rate); t += kPiece) {
+                for (uint32_t s = 0; s < kPiece; ++s)
+                    left[s] = right[s] = static_cast<float>(
+                        0.5 * std::sin(2.0 * std::numbers::pi * hz * static_cast<double>(t + s) / rate));
+                fx.process(left, right, kPiece, p, 120.0, 60.0);
+                if (t >= static_cast<size_t>(0.5 * rate))
+                    out.insert(out.end(), left, left + kPiece);
+            }
+            return out;
+        };
+        double reflected = -1e9, keptOff = 0.0;
+        for (double rate : {44100.0, 48000.0, 96000.0, 192000.0}) {
+            const double nyquist = 0.5 * rate;
+            struct Move {
+                double hz, shift, back; // the sine, the shift and where the shift would bring it back
+            };
+            const Move moves[] = {{300.0, -500.0, 200.0},
+                                  {440.0, -540.0, 100.0},
+                                  {1000.0, -3000.0, 2000.0},
+                                  {nyquist - 1000.0, 3000.0, nyquist - 2000.0},
+                                  {nyquist - 200.0, 500.0, nyquist - 300.0}};
+            for (const Move &m : moves) {
+                const std::vector<float> out = shifted(rate, m.hz, m.shift, 0.0);
+                // What `level` reads of a sine at 0.5: half its amplitude times the Hann window's sum.
+                const double full = 0.5 * 0.5 * 0.5 * static_cast<double>(out.size());
+                reflected = std::max(reflected, 20.0 * std::log10(std::max(level(out, m.back, rate), 1e-30) / full));
+            }
+            const Move kept[] = {{1000.0, -300.0, 700.0}, {300.0, -200.0, 100.0}, {5000.0, 3000.0, 8000.0}};
+            for (const Move &m : kept) {
+                const std::vector<float> out = shifted(rate, m.hz, m.shift, 0.0);
+                const double full = 0.5 * 0.5 * 0.5 * static_cast<double>(out.size());
+                keptOff = std::max(keptOff, std::abs(20.0 * std::log10(level(out, m.back, rate) / full)));
+            }
+        }
+        std::printf("      a frequency shifter: what a shift takes past either end comes back at %.1f dB at most, what "
+                    "stays between them within %.2f dB\n",
+                    reflected, keptOff);
+        check(reflected < -60.0, "a frequency shifter brings nothing back from past 0 Hz or half the rate");
+        check(keptOff < 0.5, "a frequency shifter keeps the level of what it moves between 0 Hz and half the rate");
+        // Just past 0 Hz, under where its Hilbert pair keeps 90 degrees, some comes back (the figures printed).
+        for (double past : {80.0, 40.0, 20.0, 10.0}) {
+            const std::vector<float> out = shifted(48000.0, 300.0, -300.0 - past, 0.0);
+            std::printf("      a partial shifted %.0f Hz past 0 Hz comes back at %.1f dB\n", past,
+                        20.0 * std::log10(std::max(level(out, past, 48000.0), 1e-30) /
+                                          (0.5 * 0.5 * 0.5 * static_cast<double>(out.size()))));
+        }
+
+        // Fed back, a spiral down runs out at 0 Hz: 1030 Hz down by 100 Hz a time round passes 230 Hz and 130 Hz on its
+        // way to 30 Hz, from where it would come back at 70 Hz.
+        const std::vector<float> spiral = shifted(48000.0, 1030.0, -100.0, 0.9);
+        const double spiralBack = 20.0 * std::log10(std::max(level(spiral, 70.0, 48000.0), 1e-30) /
+                                                    level(spiral, 230.0, 48000.0));
+        std::printf("      a frequency shifter's spiral down: 70 Hz %.1f dB under the 230 Hz it passes\n", -spiralBack);
+        check(spiralBack < -40.0, "a frequency shifter's spiral runs out at 0 Hz rather than coming back up");
     }
     {
         // The effects keep the top of what goes through them where their knobs don't take it away: a quiet sine at

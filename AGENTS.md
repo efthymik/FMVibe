@@ -291,7 +291,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the phaser's and flanger's polarity: negative moving their notches to where the positive peaks were, and
     turned over mid-sine fading through nothing rather than clicking;
   - a frequency shifter's mirror image 60 dB under the shifted note from 50 Hz to 10 kHz, at 44.1, 48, 96 and
-    192 kHz;
+    192 kHz; what it takes past 0 Hz or half the rate 60 dB down rather than reflected back, what stays between them
+    at its level, and a spiral of its feedback running out at 0 Hz;
   - the effects keeping the top where their knobs don't take it: a quiet 15 kHz sine through a soft shaper and a
     driven high-pass filter effect within 1.5 dB of a 1 kHz one, the parametric EQ's bands up high (a bell, a dip, a
     high shelf, a low cut and a high cut) sounding within 1.25 dB of their drawn curves from 3 to 15 kHz, and a
