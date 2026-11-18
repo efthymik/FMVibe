@@ -9750,6 +9750,89 @@ void testModsOpSource(const std::filesystem::path &dir, Renderer &renderer) {
           "an operator's row switches it between bipolar and unipolar, undoably");
 }
 
+// An operator's letter on its page is its output's handle, lit under the mouse (read off the rendered pixels); and a
+// source's handle held over a view's tab shows that view, as let go of there it modulates nothing.
+void testOpNameHandle(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    view.poll();
+    const Point name = detail::kOpNameHandle.center();
+    const Rect handle = detail::kOpNameHandle;
+    const Point beside{handle.x + 2.0f, handle.center().y}; // left of the letter
+    // The letter's ink at rest, then how far the light goes along a row above it, for A and for a wider D.
+    bool lit = true, centered = true;
+    for (const int op : {3, 0}) {
+        model.ui.selectedNode = op;
+        view.poll();
+        view.mouseMove({600.0f, 468.0f}, {});
+        (void)renderer.save(view, dir / "35r-op-name-rest.png");
+        const auto rest = renderer.pixel(beside);
+        float inkLeft = 1e9f, inkRight = -1e9f;
+        for (float x = detail::kTitleRow.x - 1.0f; x < detail::kTitleRow.x + detail::kTitleLetterW; x += 1.0f)
+            for (float y = handle.y; y < handle.bottom(); y += 1.0f)
+                if (renderer.pixel({x, y}) != rest) {
+                    inkLeft = std::min(inkLeft, x);
+                    inkRight = std::max(inkRight, x + 1.0f);
+                }
+        std::vector<bool> restRow;
+        const float row = handle.y + 3.0f;
+        for (float x = handle.x - 4.0f; x < handle.right() + 4.0f; x += 1.0f)
+            restRow.push_back(renderer.pixel({x, row}) == rest);
+        view.mouseMove(name, {});
+        (void)renderer.save(view, dir / (op == 3 ? "35s-op-name-hover-d.png" : "35s-op-name-hover.png"));
+        lit = lit && renderer.pixel(beside) != rest;
+        float lightLeft = 1e9f, lightRight = -1e9f;
+        size_t k = 0;
+        for (float x = handle.x - 4.0f; x < handle.right() + 4.0f; x += 1.0f, ++k)
+            if (restRow[k] && renderer.pixel({x, row}) != rest) {
+                lightLeft = std::min(lightLeft, x);
+                lightRight = std::max(lightRight, x + 1.0f);
+            }
+        const float off = 0.5f * (lightLeft + lightRight) - 0.5f * (inkLeft + inkRight);
+        std::printf("      %c's light runs %.0f to %.0f, its ink %.0f to %.0f: %.1f px off center\n", 'A' + op, lightLeft,
+                    lightRight, inkLeft, inkRight, off);
+        centered = centered && std::abs(off) <= 1.5f;
+    }
+    check(lit, "an operator's letter on its page lights under the mouse");
+    check(centered, "the light under an operator's letter is centered on it");
+
+    drag(view, name, kOpPhaseKnob);
+    check(slotTarget(model.value(slotTargetIndex(kOpSource, 0))) == paramIndex(0, OpParam::Phase),
+          "an operator's letter dragged onto a knob makes its output modulate that knob");
+    view.undo();
+    check(slotTarget(model.value(slotTargetIndex(kOpSource, 0))) < 0, "undo takes that modulation away");
+
+    auto tab = [](RoutingView shown) { return detail::kViewTabs[static_cast<int>(shown)].center(); };
+    auto held = [&](Point from) {
+        view.mouseDown(from, {});
+        view.mouseMove(tab(RoutingView::Fx), {});
+        const bool fx = model.ui.view == RoutingView::Fx;
+        view.mouseMove(tab(RoutingView::Mods), {});
+        const bool mods = model.ui.view == RoutingView::Mods;
+        view.mouseMove(tab(RoutingView::Matrix), {});
+        const bool matrix = model.ui.view == RoutingView::Matrix;
+        view.mouseMove(tab(RoutingView::Graph), {});
+        const bool graph = model.ui.view == RoutingView::Graph;
+        view.mouseUp(tab(RoutingView::Graph), {});
+        return fx && mods && matrix && graph;
+    };
+    check(held(name) && slotTarget(model.value(slotTargetIndex(kOpSource, 0))) < 0,
+          "an operator's handle held over a view's tab shows that view, and let go of there modulates nothing");
+    model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
+    view.poll();
+    check(held(detail::sourceHandleRect(detail::sourceCard(0.0f)).center()),
+          "an LFO's handle held over a view's tab shows that view");
+
+    // Carried over another view's tab and back, it still lands on the operator's knob.
+    view.mouseDown(name, {});
+    view.mouseMove(tab(RoutingView::Matrix), {});
+    const bool matrixShot = renderer.save(view, dir / "35t-op-name-held-over-tab.png");
+    view.mouseMove(tab(RoutingView::Graph), {});
+    view.mouseUp(kOpPhaseKnob, {});
+    check(matrixShot && slotTarget(model.value(slotTargetIndex(kOpSource, 0))) == paramIndex(0, OpParam::Phase),
+          "a handle carried over the tabs and back still lands on a knob");
+}
+
 // The MODS view's filter and the target menu's search. LFO 1 modulates Op A's Ratio and Detune, Env 1 FM Amount and
 // Macro 1 Filter 1's Resonance: four rows, their middles from y 154, 30 px apart, each one's x at x 1144. The filter's
 // magnifier is at the right end of the columns' names (x 1156, y 126); open, its x is at x 1155.
@@ -13633,6 +13716,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testOutBend(dir, renderer);
     testModsEmpty(dir, renderer);
     testModsOpSource(dir, renderer);
+    testOpNameHandle(dir, renderer);
     testNewSources(dir, renderer);
     testMods(dir, renderer);
     testSeq(dir, renderer);

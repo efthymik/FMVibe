@@ -113,7 +113,9 @@ void InspectorPanel::widgets(std::vector<Widget> &list) const {
     for (int i = 0; i < kNodes; ++i) // the operators', the filters' and the shapers', in three groups
         add(Kind::NodeTab, nodeTabRect(i), -1, i);
     add(Kind::Toggle, {kInspector.right() - 16.0f - 26.0f, kInspector.y + 37.0f, 26.0f, 19.0f}, enabledParam(node));
-    auto knobRow = [&](const int (&params)[5], const char *const (&labels)[5]) {
+    if (node < kOps) // its letter, the handle of its output as a modulation source
+        add(Kind::MacroHandle, kOpNameHandle, -1, kOpSource + node);
+    auto knobRow =[&](const int (&params)[5], const char *const (&labels)[5]) {
         for (int i = 0; i < 5; ++i)
             if (params[i] >= 0)
                 knob(params[i], {kInspector.x + 34.0f + i * 58.0f, kInspector.y + 110.0f}, 34.0f, labels[i]);
@@ -902,6 +904,20 @@ bool InspectorPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         host_.paintButtonFace(c, w, selected, hovered, kAccent, 0.22f, kRadiusControl);
         c.text(w.rect, std::to_string(w.b), kTextLabel, selected ? litInk(kText) : (hovered ? kText : kDim),
                Align::Center, selected);
+        break;
+    }
+    case Kind::MacroHandle: { // an operator's letter (see paintPageTitle()), lit under the mouse and while dragged
+        if (!isOpSource(w.a))
+            return false;
+        if (hovered || active) {
+            const int op = w.a - kOpSource;
+            // As far either side of the letter, however wide it is.
+            const float pad = kTitleRow.x - w.rect.x;
+            const float width = c.textWidth(kNodeNames[op], kTextHeading, true);
+            c.fillRect({w.rect.x, w.rect.y, width + 2.0f * pad, w.rect.h}, nodeColor(op).alpha(0.25f), kRadiusControl);
+            c.text({kTitleRow.x, w.rect.y, kTitleLetterW, w.rect.h}, kNodeNames[op], kTextHeading, nodeColor(op), Align::Left,
+                   true);
+        }
         break;
     }
     case Kind::NodeTab: {

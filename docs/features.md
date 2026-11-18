@@ -349,7 +349,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     targets both ways as the wheel goes up and down; unipolar, it moves them half its depth at rest and all of it fully
     up. The pitch still bends by Bend Range too, whatever the source modulates.
   - **Operators**: each operator's output (**Op A** to **Op F**) is a source too, picked in the MODS view's source and
-    aux menus. Like velocity each has 16 slots and no switch of its own, runs per voice and reaches the effects through
+    aux menus, or dragged from the operator's letter at the top of its page in the inspector, which is its handle and
+    lights under the mouse. Like velocity each has 16 slots and no switch of its own, runs per voice and reaches the effects through
     the newest voice. It puts out what the operator plays, after its envelope and whatever its Out says, so an operator
     heard by nothing can modulate; one switched off modulates nothing. Modulation runs at the control rate, once every
     32 samples, so a source takes the operator's output averaged over the last such block: a slow operator (a fixed
@@ -1798,7 +1799,8 @@ one may have changed since it last did.
     "…"). It shows six rows at most; past that, it is 8 px wider for a scrollbar at its right, and the rows scroll by
     the wheel over them (off the depth bars, which the wheel turns), by dragging with the middle button held, or by
     the bar. A click anywhere else closes it, but not
-    on a source's handle, so a handle can be dragged onto one of its rows. A source's handle held over a pill opens
+    on a source's handle, so a handle can be dragged onto one of its rows. A source's handle held over a view's tab
+    (ROUTING, MATRIX, FX, SEQ or MODS) shows that view, so it can be carried to what is there. Held over a pill, it opens
     its list too; let go of on a row, the source becomes that modulation's aux (see below), and anywhere else the
     list closes again. The list closes with its pill, when the modulations come down to what fits. While every
     modulation the pill holds is bypassed or its source switched off, the pill is hollow.

@@ -5393,6 +5393,8 @@ void View::paintTooltip(Canvas &c) {
         text = tr(hover_->b % 2 == 1 ? Str::TipUpZone : Str::TipDownZone);
     } else if (hover_->kind == Kind::Knob) {
         text = tr(dynKnobTip(param));
+    } else if (hover_->kind == Kind::MacroHandle && isOpSource(hover_->a)) {
+        text = trf(Str::TipSourceHandle, {mods_.sourceName(hover_->a)});
     } else if (hover_->kind == Kind::MacroHandle && isWheel(hover_->a)) {
         text = tr(Str::TipWheelHandle);
     } else if (hover_->kind == Kind::MacroHandle && isNote(hover_->a)) {
@@ -6125,9 +6127,13 @@ void View::applyDrag(Point p) {
         break;
     }
     case DragKind::ModSource: {
-        // Over an operator's tab, a dragged handle opens it, so its knobs can take the drop; over a pill, its list, so
-        // one of its rows can take the handle as that modulation's aux.
+        // Over a view's tab or an operator's tab, a dragged handle opens it, so what it shows can take the drop; over a
+        // pill, its list, so one of its rows can take the handle as that modulation's aux.
         const auto at = hitTest(p);
+        if (at && at->kind == Kind::ViewTab && controller_.layout().view != static_cast<RoutingView>(at->a)) {
+            modList_.reset(); // a pill's, of the view it leaves
+            showView(static_cast<RoutingView>(at->a));
+        }
         if (at && at->kind == Kind::OpTab)
             controller_.layout().opTab = static_cast<InspectorTab>(at->a);
         if (at && at->kind == Kind::ModPill && !modListOn(*at))
