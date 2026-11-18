@@ -87,7 +87,7 @@ constexpr Rect kFixedSwitch{kInspector.x + kInspector.w - 16.0f - 26.0f - 30.0f,
 // An operator's sound in one block under the title: at its left, its pitch (the Ratio readout, Freq and Mult when
 // fixed, or a noise operator's Slope and Spread), as tall as two rows; at its right, the waves and under them the
 // Pitch, Detune, Phase and Pan knobs. Their labels, and the Ratio readout's, share one line.
-constexpr float kOpHeroY = kInspector.y + 64.0f;
+constexpr float kOpHeroY = kInspector.y + 69.0f; // centered between the title row and the tabs
 constexpr float kOpPitchW = 88.0f; // the left column
 constexpr float kOpRightX = kInspector.x + 16.0f + kOpPitchW + 12.0f;
 constexpr float kOpRightW = kInspector.x + kInspector.w - 16.0f - kOpRightX;
