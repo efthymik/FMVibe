@@ -2202,7 +2202,7 @@ activation will make it). An edit, once it is whole, or a state that moves it as
 reports the new one (a CLAP host is told through its latency extension's `changed()`); an edit that leaves it as it was,
 an effect moved along the line say, asks for none.
 
-Hosts are given 1,317 of FMVibe's 25,378 parameters: the globals, the operators, the matrix and the routes' modes,
+Hosts are given 1,317 of FMVibe's 31,554 parameters: the globals, the operators, the matrix and the routes' modes,
 the filters, the shapers, the macros' knobs, the note source's, the mod wheel's, velocity's and the pitch bend's own,
 and every modulation's depth and Amount (16 slots for each of the 28 sources, used or not). The rest are set in the editor only:
 the effects, the LFOs', envelopes' and other sources' own knobs, what each modulation targets and its aux, curve and
