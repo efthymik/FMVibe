@@ -1695,9 +1695,12 @@ one may have changed since it last did.
     its middle level and ± in its corner. While notes play, an envelope's display has a dashed line across at the
     newest voice's level, and a dot on the curve as far along the stage the envelope is in as it has come: along
     the attack, decay or release, across the hold, and at the sustain level's point through the sustain. While the
-    envelope follows its knobs, the dot sits where the line meets the curve. Where it doesn't (a note let go
-    during the decay releases from above the sustain; modulation moves the sustain), the dot keeps to the curve
-    and the line shows the level.
+    envelope follows its curve, the dot sits where the line meets it. Where it doesn't (a note let go during the
+    decay releases from above the sustain), the dot keeps to the curve and the line shows the level. An envelope's
+    display (on a mod envelope's card and an operator's ENVELOPE tab alike) draws its curve as modulation of its
+    attack, hold, decay, sustain, release and bends takes it for the newest voice, or with no note playing as the
+    macros take it, a faint line staying where the knobs set it, with the handles on it. Its time axis leaves room for
+    the times at their longest under that modulation, so it stands still as the curve moves.
   - A card's title row is laid out as an effect card's: the handle and the name in capitals ("LFO 2", "ENV 1") at
     the left, then the fold chevron, the power switch and the × at the right.
   - The power switch turns a source on and off; one that is off has its card dimmed, its name grey (as an effect's is), and its handle and its rings

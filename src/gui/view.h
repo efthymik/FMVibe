@@ -452,6 +452,9 @@ private:
     // Pixels per unit of normalized time: what fills the display, or while its zoom is held (see envZoom_), the held
     // zoom, as long as the envelope still fits.
     float envScale(int env) const;
+    // What fills the display with the envelope's times as long as modulation can take them, so that its curve stays
+    // inside as it moves, on a time axis that stands still.
+    float envFit(int env) const;
     // The envelope whose attack, hold, decay or release param `index` is, or -1.
     static int envOfTime(int index);
     // A drag holding an envelope's zoom: one of its handles, or one of its times' knobs.
