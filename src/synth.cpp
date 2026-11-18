@@ -195,8 +195,8 @@ void Synth::prepare(double sampleRate, int capacity, int oversampling) {
     seqStale_ = true;
     changedCount_ = 0;
     capacity_ = std::clamp(capacity, 1, kMaxVoices);
+    active_.clear(); // first: the voices it points at go, even if there is no memory for the new ones
     voices_.assign(static_cast<size_t>(capacity_ + std::clamp(capacity_, kFadeSlots, kMaxFadeSlots)), Voice{});
-    active_.clear();
     active_.reserve(voices_.size()); // never grows past this on the audio thread
     combSize_ = combLength(rate_);
     combs_.assign(voices_.size() * kFilters * 2 * combSize_, 0.0f);

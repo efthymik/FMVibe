@@ -349,10 +349,10 @@ int settingsProcess(int argc, char **argv) {
     return 0;
 }
 
-HANDLE startSettingsProcess(const std::string &arguments) {
+HANDLE startSelf(const std::string &arguments) {
     char self[MAX_PATH];
     GetModuleFileNameA(nullptr, self, MAX_PATH);
-    std::string line = "\"" + std::string(self) + "\" --settings " + arguments;
+    std::string line = "\"" + std::string(self) + "\" " + arguments;
     STARTUPINFOA startup{};
     startup.cb = sizeof(startup);
     PROCESS_INFORMATION process{};
@@ -360,6 +360,10 @@ HANDLE startSettingsProcess(const std::string &arguments) {
         return nullptr;
     CloseHandle(process.hThread);
     return process.hProcess;
+}
+
+HANDLE startSettingsProcess(const std::string &arguments) {
+    return startSelf("--settings " + arguments);
 }
 
 void runSettingsProcess(const std::string &arguments) {
@@ -478,11 +482,134 @@ void checkSharedSettings(const std::wstring &dir) {
     check(savedEditorZoom() == 1.5, "settings: a new instance reads the editor's size without taking up the rest");
 }
 
+// A noise operator's first note on an instance of its own: the left channel.
+std::vector<float> noiseNote(const clap_plugin_factory_t *factory, const char *id, int key) {
+    const clap_plugin_t *instance = factory->create_plugin(factory, &kHost, id);
+    instance->init(instance);
+    instance->activate(instance, 48000.0, 256, 256);
+    instance->start_processing(instance);
+    InputEvents in;
+    OutputEvents out;
+    std::vector<float> left(256), right(256), played;
+    float *channels[] = {left.data(), right.data()};
+    clap_audio_buffer_t buffer{};
+    buffer.data32 = channels;
+    buffer.channel_count = 2;
+    clap_process_t process{};
+    process.steady_time = -1;
+    process.frames_count = 256;
+    process.audio_outputs = &buffer;
+    process.audio_outputs_count = 1;
+    process.in_events = &in.list;
+    process.out_events = &out.list;
+    const clap_event_param_value_t wave = paramEvent(paramIndex(0, OpParam::Wave), static_cast<double>(OpWave::Noise));
+    in.events = {&wave.header};
+    instance->process(instance, &process);
+    clap_event_note_t note{};
+    note.header = {sizeof(note), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_ON, 0};
+    note.note_id = -1;
+    note.key = static_cast<int16_t>(key);
+    note.velocity = 1.0;
+    in.events = {&note.header};
+    for (int block = 0; block < 100; ++block) {
+        instance->process(instance, &process);
+        in.events.clear();
+        played.insert(played.end(), left.begin(), left.end());
+    }
+    instance->stop_processing(instance);
+    instance->deactivate(instance);
+    instance->destroy(instance);
+    return played;
+}
+
+double correlation(const std::vector<float> &a, const std::vector<float> &b) {
+    double aa = 0.0, bb = 0.0, ab = 0.0;
+    for (size_t i = 4800; i < std::min(a.size(), b.size()); ++i) { // past the attack
+        aa += a[i] * a[i];
+        bb += b[i] * b[i];
+        ab += a[i] * b[i];
+    }
+    return ab / std::sqrt(aa * bb + 1e-30);
+}
+
+// This test run again as a process with little memory: instances made until one finds no room for its voices.
+int outOfMemoryProcess(const char *path) {
+    const HANDLE job = CreateJobObjectW(nullptr, nullptr);
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limit{};
+    limit.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_PROCESS_MEMORY;
+    limit.ProcessMemoryLimit = 320u * 1024u * 1024u;
+    if (!job || !SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limit, sizeof(limit)) ||
+        !AssignProcessToJobObject(job, GetCurrentProcess()))
+        return 10;
+    const HMODULE lib = LoadLibraryA(path);
+    const auto *entry = lib ? reinterpret_cast<const clap_plugin_entry_t *>(GetProcAddress(lib, "clap_entry")) : nullptr;
+    if (!entry || !entry->init(path))
+        return 11;
+    const auto *factory = static_cast<const clap_plugin_factory_t *>(entry->get_factory(CLAP_PLUGIN_FACTORY_ID));
+    const char *id = factory->get_plugin_descriptor(factory, 0)->id;
+    std::array<const clap_plugin_t *, 64> made{};
+    size_t count = 0;
+    const clap_plugin_t *refused = nullptr;
+    while (count < made.size() && !refused) {
+        const clap_plugin_t *instance = factory->create_plugin(factory, &kHost, id);
+        if (!instance)
+            return 0; // told the host, too, a step earlier
+        instance->init(instance);
+        if (instance->activate(instance, 48000.0, 256, 256))
+            made[count++] = instance;
+        else
+            refused = instance;
+    }
+    if (!refused)
+        return 12;
+
+    // A host running it all the same hears silence.
+    InputEvents in;
+    OutputEvents out;
+    float left[64], right[64];
+    std::fill(std::begin(left), std::end(left), 1.0f);
+    std::fill(std::begin(right), std::end(right), 1.0f);
+    float *channels[] = {left, right};
+    clap_audio_buffer_t buffer{};
+    buffer.data32 = channels;
+    buffer.channel_count = 2;
+    clap_process_t process{};
+    process.steady_time = -1;
+    process.frames_count = 64;
+    process.audio_outputs = &buffer;
+    process.audio_outputs_count = 1;
+    process.in_events = &in.list;
+    process.out_events = &out.list;
+    refused->reset(refused);
+    refused->process(refused, &process);
+    if (left[0] != 0.0f || left[63] != 0.0f || right[63] != 0.0f)
+        return 13;
+
+    // With room again, it activates and plays.
+    for (size_t i = 0; i < count; ++i) {
+        made[i]->deactivate(made[i]);
+        made[i]->destroy(made[i]);
+    }
+    if (!refused->activate(refused, 48000.0, 256, 256))
+        return 14;
+    refused->start_processing(refused);
+    refused->process(refused, &process);
+    refused->stop_processing(refused);
+    refused->deactivate(refused);
+    refused->destroy(refused);
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
+    // The checks compare what plays sample for sample: every instance's notes draw the same randomness, but where a
+    // check says otherwise.
+    SetEnvironmentVariableW(L"FMVIBE_FIXED_SEED", L"1");
     if (argc >= 3 && std::strcmp(argv[1], "--settings") == 0)
         return settingsProcess(argc, argv);
+    if (argc == 3 && std::strcmp(argv[1], "--out-of-memory") == 0)
+        return outOfMemoryProcess(argv[2]);
     if (argc != 2) {
         std::fprintf(stderr, "usage: fmvibe-smoke <plugin.clap>\n");
         return 2;
@@ -534,6 +661,28 @@ int main(int argc, char **argv) {
         first.join();
         second.join();
         check(created == 40, "instances created on two threads at once");
+    }
+
+    {
+        SetEnvironmentVariableW(L"FMVIBE_FIXED_SEED", nullptr);
+        const std::vector<float> first = noiseNote(factory, desc->id, 60), second = noiseNote(factory, desc->id, 67);
+        SetEnvironmentVariableW(L"FMVIBE_FIXED_SEED", L"1");
+        const std::vector<float> pinned = noiseNote(factory, desc->id, 60), again = noiseNote(factory, desc->id, 67);
+        std::printf("      noise of two instances: correlation %.3f, with the seed fixed %.3f\n",
+                    correlation(first, second), correlation(pinned, again));
+        check(std::abs(correlation(first, second)) < 0.1, "two instances' noise operators play noise of their own");
+        check(correlation(pinned, again) > 0.999, "with the seed fixed, they play the same");
+    }
+
+    {
+        DWORD code = 99;
+        if (const HANDLE process = startSelf("--out-of-memory \"" + std::string(argv[1]) + "\"")) {
+            WaitForSingleObject(process, 60000);
+            GetExitCodeProcess(process, &code);
+            CloseHandle(process);
+        }
+        std::printf("      out of memory: exit code %lu\n", code);
+        check(code == 0, "an instance out of memory tells the host, plays silence, and activates once there is room");
     }
 
     const clap_plugin_t *plugin = factory->create_plugin(factory, &kHost, desc->id);
@@ -4658,6 +4807,64 @@ int main(int argc, char **argv) {
         gui->destroy(plugin);
         DestroyWindow(unaware);
         SetThreadDpiAwarenessContext(before);
+    }
+
+    // --- Two editors in one host window, as a host showing several plugins in one has them: the first asks whether to
+    // load a preset over its edits, and Enter pressed anywhere else leaves the question open.
+    {
+        const HWND window = CreateWindowExW(0, L"STATIC", L"host", WS_OVERLAPPEDWINDOW, 0, 0, 1900, 800, nullptr, nullptr,
+                                            nullptr, nullptr);
+        struct Shown {
+            const clap_plugin_t *instance;
+            const clap_plugin_gui_t *view;
+            HWND hwnd;
+        };
+        auto open = [&](int x) {
+            const HWND holder = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, x, 0, 900, 760, window, nullptr,
+                                                nullptr, nullptr);
+            const clap_plugin_t *instance = factory->create_plugin(factory, &kHost, desc->id);
+            instance->init(instance);
+            const auto *view = static_cast<const clap_plugin_gui_t *>(instance->get_extension(instance, CLAP_EXT_GUI));
+            clap_window_t parent{};
+            parent.api = CLAP_WINDOW_API_WIN32;
+            parent.win32 = holder;
+            view->create(instance, CLAP_WINDOW_API_WIN32, false);
+            view->set_parent(instance, &parent);
+            view->set_size(instance, 900, 752);
+            view->show(instance);
+            const HWND hwnd = GetWindow(holder, GW_CHILD);
+            SendMessageW(hwnd, WM_PAINT, 0, 0);
+            pumpMessages(100);
+            return Shown{instance, view, hwnd};
+        };
+        auto enter = [](HWND to) {
+            PostMessageW(to, WM_KEYDOWN, VK_RETURN, 1);
+            PostMessageW(to, WM_KEYUP, VK_RETURN, static_cast<LPARAM>(0xC0000001));
+            pumpMessages(150);
+        };
+        const Shown a = open(0), b = open(950);
+        SendMessageW(a.hwnd, WM_MOUSEMOVE, 0, MAKELPARAM(151, 48)); // the Volume knob dragged: the patch has changed
+        SendMessageW(a.hwnd, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(151, 48));
+        SendMessageW(a.hwnd, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(151, 28));
+        SendMessageW(a.hwnd, WM_LBUTTONUP, 0, MAKELPARAM(151, 28));
+        SendMessageW(a.hwnd, WM_PAINT, 0, 0);
+        pumpMessages(100);
+        SendMessageW(a.hwnd, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(605, 14)); // the preset bar's next arrow
+        SendMessageW(a.hwnd, WM_LBUTTONUP, 0, MAKELPARAM(605, 14));
+        SendMessageW(a.hwnd, WM_PAINT, 0, 0);
+        pumpMessages(100);
+        valueRescans = 0;
+        enter(b.hwnd);
+        check(valueRescans == 0, "Enter in one editor doesn't answer a question open in another in the same window");
+        enter(window);
+        check(valueRescans == 0, "nor does Enter in the host's window, the mouse elsewhere");
+        enter(a.hwnd);
+        check(valueRescans > 0, "Enter in the editor asking answers it");
+        for (const Shown &shown : {a, b}) {
+            shown.view->destroy(shown.instance);
+            shown.instance->destroy(shown.instance);
+        }
+        DestroyWindow(window);
     }
 
     // --- State: save, change a param through flush(), load, expect the saved value back.

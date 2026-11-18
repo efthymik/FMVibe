@@ -345,9 +345,67 @@ double frequency(const std::vector<float> &samples) {
     return crossings > 1 ? (crossings - 1) * kRate / static_cast<double>(last - first) : 0.0;
 }
 
+// This test run again as a process with little memory: instances made until one finds no room for its voices.
+int outOfMemoryProcess(const char *path) {
+    const HANDLE job = CreateJobObjectW(nullptr, nullptr);
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limit{};
+    limit.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_PROCESS_MEMORY;
+    limit.ProcessMemoryLimit = 320u * 1024u * 1024u;
+    if (!job || !SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limit, sizeof(limit)) ||
+        !AssignProcessToJobObject(job, GetCurrentProcess()))
+        return 10;
+    const HMODULE lib = LoadLibraryA(path);
+    using GetFactory = IPluginFactory *(PLUGIN_API *)();
+    const auto getFactory = lib ? reinterpret_cast<GetFactory>(GetProcAddress(lib, "GetPluginFactory")) : nullptr;
+    if (!getFactory)
+        return 11;
+    IPluginFactory *factory = getFactory();
+    PClassInfo info;
+    factory->getClassInfo(0, &info);
+    ProcessSetup setup{kRealtime, kSample32, kBlock, kRate};
+    IComponent *made[64] = {};
+    int count = 0;
+    IComponent *refused = nullptr;
+    while (count < 64 && !refused) {
+        IComponent *component = nullptr;
+        const tresult created = factory->createInstance(info.cid, IComponent::iid, reinterpret_cast<void **>(&component));
+        if (created == kOutOfMemory)
+            return 0; // told the host, too, a step earlier
+        if (created != kResultOk)
+            return 12;
+        component->initialize(nullptr);
+        IAudioProcessor *processor = nullptr;
+        component->queryInterface(IAudioProcessor::iid, reinterpret_cast<void **>(&processor));
+        processor->setupProcessing(setup);
+        processor->release();
+        const tresult active = component->setActive(true);
+        if (active == kOutOfMemory)
+            refused = component;
+        else if (active == kResultOk)
+            made[count++] = component;
+        else
+            return 13;
+    }
+    if (!refused)
+        return 14;
+    for (int i = 0; i < count; ++i) {
+        made[i]->setActive(false);
+        made[i]->terminate();
+        made[i]->release();
+    }
+    const bool activated = refused->setActive(true) == kResultOk; // with room again
+    refused->setActive(false);
+    refused->terminate();
+    refused->release();
+    return activated ? 0 : 15;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
+    SetEnvironmentVariableW(L"FMVIBE_FIXED_SEED", L"1"); // what plays is compared sample for sample
+    if (argc == 3 && std::strcmp(argv[1], "--out-of-memory") == 0)
+        return outOfMemoryProcess(argv[2]);
     if (argc != 2) {
         std::fprintf(stderr, "usage: fmvibe-vst3-smoke <FMVibe.vst3>\n");
         return 2;
@@ -946,6 +1004,24 @@ int main(int argc, char **argv) {
     factory3->release();
     check(exitDll(), "ExitDll");
     FreeLibrary(lib);
+
+    {
+        char self[MAX_PATH];
+        GetModuleFileNameA(nullptr, self, MAX_PATH);
+        std::string line = "\"" + std::string(self) + "\" --out-of-memory \"" + argv[1] + "\"";
+        STARTUPINFOA startup{};
+        startup.cb = sizeof(startup);
+        PROCESS_INFORMATION process{};
+        DWORD code = 99;
+        if (CreateProcessA(nullptr, line.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup, &process)) {
+            WaitForSingleObject(process.hProcess, 60000);
+            GetExitCodeProcess(process.hProcess, &code);
+            CloseHandle(process.hThread);
+            CloseHandle(process.hProcess);
+        }
+        std::printf("      out of memory: exit code %lu\n", code);
+        check(code == 0, "setActive() out of memory says so, and goes through once there is room");
+    }
 
     std::printf("%s (%d failure%s)\n", failures ? "FAILED" : "PASSED", failures, failures == 1 ? "" : "s");
     return failures ? 1 : 0;

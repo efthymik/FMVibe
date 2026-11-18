@@ -166,6 +166,9 @@ public:
     // Allocates `capacity` voices that run at `oversampling` (1, 2, 4 or 8)
     // times the host rate. Main thread, while the plugin is inactive.
     void prepare(double sampleRate, int capacity, int oversampling = 1);
+    // The number the notes count on from, which each note draws its randomness from (its noise, its random phases,
+    // Random LFOs and unison): synths given different ones don't play the same noise. Before the first note.
+    void seedNotes(uint32_t seed) { noteCounter_ = seed; }
     void reset();
     int capacity() const { return capacity_; }
     int oversampling() const { return oversampling_; }

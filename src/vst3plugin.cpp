@@ -28,6 +28,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <map>
+#include <new>
 #include <string>
 #include <vector>
 
@@ -633,7 +634,8 @@ tresult PLUGIN_API Plugin::getBusInfo(MediaType type, BusDirection dir, int32 in
 
 tresult PLUGIN_API Plugin::setActive(TBool state) {
     if (state) {
-        activate(sampleRate_); // voices are allocated here, on the main thread
+        if (!activate(sampleRate_)) // voices are allocated here, on the main thread
+            return kOutOfMemory;
     } else {
         processing_.store(false);
         deactivate();
@@ -645,8 +647,12 @@ tresult Plugin::setComponentBytes(IBStream *state) {
     if (!state)
         return kInvalidArgument;
     const clap_istream_t stream = streamIn(state);
-    if (!loadState(&stream))
-        return kResultFalse;
+    try {
+        if (!loadState(&stream))
+            return kResultFalse;
+    } catch (const std::bad_alloc &) { // an exception must not reach the host, which would end with it
+        return kOutOfMemory;
+    }
     clearHistory();
     return kResultOk;
 }
@@ -655,7 +661,11 @@ tresult Plugin::getComponentBytes(IBStream *state) {
     if (!state)
         return kInvalidArgument;
     const clap_ostream_t stream = streamOut(state);
-    return saveState(&stream) ? kResultOk : kResultFalse;
+    try {
+        return saveState(&stream) ? kResultOk : kResultFalse;
+    } catch (const std::bad_alloc &) {
+        return kOutOfMemory;
+    }
 }
 
 // A stereo output and nothing else.
@@ -688,6 +698,15 @@ tresult PLUGIN_API Plugin::setProcessing(TBool state) {
 }
 
 tresult PLUGIN_API Plugin::process(ProcessData &data) {
+    if (outOfMemory()) { // a host running it though its setActive() failed
+        if (data.numOutputs > 0 && data.outputs && data.symbolicSampleSize == kSample32 &&
+            data.outputs->channelBuffers32) {
+            for (int32 channel = 0; channel < data.outputs->numChannels; ++channel)
+                std::fill_n(data.outputs->channelBuffers32[channel], std::max(data.numSamples, 0), 0.0f);
+            data.outputs->silenceFlags = (uint64{1} << data.outputs->numChannels) - 1;
+        }
+        return kResultOk;
+    }
     if (data.numSamples > 0) // for hosts that process without setProcessing() first
         processing_.store(true, std::memory_order_relaxed);
     if (data.processContext && (data.processContext->state & ProcessContext::kTempoValid))

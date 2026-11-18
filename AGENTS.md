@@ -45,8 +45,12 @@ the plain CMake commands and installing into a host are in the [README](README.m
   which `src/usersettings.cpp` reads in place of the roaming app data, so their editor resizes don't land in your
   settings file.) It first runs itself as other processes sharing a settings file: categories, favorites and recent
   presets edited in two at once all counting, four editing at once losing no edit, and a file another program holds
-  waited for or, held longer, left as it is with the edit written later. It loads the `.clap`, creates instances on two
-  threads at once and checks the parameter
+  waited for or, held longer, left as it is with the edit written later. It sets `FMVIBE_FIXED_SEED`, as the VST3 test
+  and `fmvibe-bench` do, for instances whose notes draw the same randomness each time (the plugin otherwise draws its
+  own for each instance). It loads the `.clap`, creates instances on two threads at once, checks that two instances'
+  noise differs without that variable, that an instance run out of memory (a process of its own, limited by a job
+  object) tells the host, plays silence and activates once there is room, that Enter in one of two editors in one host
+  window leaves a question open in the other, and checks the parameter
   table, text round-trips (at each end and just inside it too, the slowest sweep rate and the shortest time typed
   neither still nor Off), the note source's range (every MIDI note, on to the pitch at 20 kHz) and remote-control pages. It then plays
   notes, checking:
@@ -839,7 +843,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     silent, an anchored LFO standing where the process context's position puts it, more changes than a block sorts
     (a note's end past them still ending it, a param's last point winning), a flush without audio taken, the
     controller's copy of a value from the host left alone while processing, and a voice limit past the voices
-    allocated asking the host for a restart, and the latency the CLAP plugin reports (the voices' decimator's);
+    allocated asking the host for a restart, the latency the CLAP plugin reports (the voices' decimator's), and
+    `setActive()` out of memory answering `kOutOfMemory` and going through once there is room;
   - the state: the CLAP plugin's bytes, through a stream that moves 5 bytes at a time, the controller's own state
     empty, a value from the host taken while not processing, loading bringing the saved value back and having the
     host read the values again, and a foreign blob refused;
@@ -1301,7 +1306,8 @@ itself.
   reports to the host in its place in the block (CLAP's output events, VST3's output param changes), as a hardware mod
   wheel turning the wheel in the editor's keyboard strip.
 - Voices are allocated when the host activates the plugin, for the current Voices value; the audio thread never
-  allocates. Lowering the limit takes effect at once: the voices past it fade out as stolen ones do. Raising it past what is allocated calls
+  allocates. Where there isn't the memory, the activate fails (CLAP's `activate` returns false, VST3's `setActive()`
+  `kOutOfMemory`), and the plugin plays silence until one goes through. Lowering the limit takes effect at once: the voices past it fade out as stolen ones do. Raising it past what is allocated calls
   `host->request_restart()` (in VST3, `restartComponent(kLatencyChanged)`, on the main thread), and the host then
   deactivates and reactivates the plugin (a host that doesn't is asked again once more voices or another
   oversampling factor need one). So does an edit or a state that moves the latency (`PluginCore::latency()`: the

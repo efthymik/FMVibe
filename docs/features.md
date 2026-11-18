@@ -117,7 +117,9 @@ What the plugin does and how its editor works, in full. Building and installing 
     the synced and warped ones a loop of their own;
   - **Rnd Phase** (phase randomization): at 0 % (the default) every note starts the waveform, and each unison copy, at
     Phase, so notes sound alike from the first sample; turned up, each copy starts up to that much of a cycle
-    later, at random. Unison copies at 0 % start in step and drift apart as they detune.
+    later, at random. Unison copies at 0 % start in step and drift apart as they detune. Each instance draws its
+    randomness of its own (here, a noise operator's noise, Random sources and the unison modes'), so instances layered
+    don't play the same noise, and a noise operator comes out a little different from one bounce to the next.
 
   Waves come from band-limited wavetables with one table per octave, so saws and squares stay clean high up the
   keyboard, even when they are modulators.

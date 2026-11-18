@@ -11,7 +11,10 @@
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <new>
+#include <random>
 
+#include <windows.h>
 #include <xmmintrin.h>
 
 namespace fmvibe {
@@ -38,6 +41,10 @@ PluginCore::PluginCore() {
     // A new instance opens at the size the user last gave an editor; a state loaded after it brings its own.
     if (const double zoom = savedEditorZoom(); zoom >= 0.5)
         layout_.zoom = static_cast<float>(zoom);
+    // Randomness of its own, so that instances layered don't play the same noise. The tests and fmvibe-bench, which
+    // compare what plays sample for sample, ask for the same every time.
+    if (GetEnvironmentVariableW(L"FMVIBE_FIXED_SEED", nullptr, 0) == 0)
+        synth_.seedNotes(std::random_device{}());
 }
 
 PluginCore::~PluginCore() = default;
@@ -67,14 +74,21 @@ void PluginCore::performSetValue(int index, double value) {
 }
 
 // Voices are allocated here, on the main thread, for the current voice limit.
-void PluginCore::activate(double sampleRate) {
+bool PluginCore::activate(double sampleRate) {
     sampleRate_ = sampleRate;
-    synth_.prepare(sampleRate, voiceLimit(), oversampling_.load());
+    try {
+        synth_.prepare(sampleRate, voiceLimit(), oversampling_.load());
+    } catch (const std::bad_alloc &) { // an exception must not reach the host, which would end with it
+        outOfMemory_.store(true);
+        return false;
+    }
+    outOfMemory_.store(false);
     for (int kind = 0; kind < FxLag::kKinds; ++kind)
         pathDelays_[kind] = upDownDelay(sampleRate, FxLag::factorOf(kind));
     voicesDelay_ = decimatorDelay(sampleRate, synth_.oversampling());
     latency_.store(latencyNow());
     restartAskedFor_.store(0);
+    return true;
 }
 
 // The voices' decimator, then the effects' latest path (see fxlag.h), at the rate and oversampling activate() took.

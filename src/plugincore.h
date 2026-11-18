@@ -152,15 +152,21 @@ public:
     int voiceLimit() const;
 
     // Main thread, while inactive: allocates the voices, for the current voice limit and oversampling, and takes the
-    // latency the host is told.
-    void activate(double sampleRate);
+    // latency the host is told. False where there isn't the memory for them: the host is told so, and the plugin plays
+    // silence (see outOfMemory()) until an activate goes through.
+    bool activate(double sampleRate);
+    // Whether the last activate() found no memory, which leaves the voices unfit to run. Any thread.
+    bool outOfMemory() const { return outOfMemory_.load(std::memory_order_relaxed); }
     // How many samples late the output is, as activate() worked it out: the voices' decimator's delay and the
     // effects' latest path's (see fxlag.h), rounded. An edit that moves it asks the host for a restart, which takes the
     // new one. Any thread.
     int latency() const { return latency_.load(); }
     void deactivate() { telemetry_.store(*noTelemetry_); } // from one made ahead, not a 45 KB one on the stack
     // Main thread, while not processing (or the audio thread, between blocks).
-    void resetVoices() { synth_.reset(); }
+    void resetVoices() {
+        if (!outOfMemory())
+            synth_.reset();
+    }
 
     // Audio thread. A block starts with beginBlock(), which takes what the editor did since the last one (its keys
     // and scope) and a copy of the params; renders in spans, between which the host's notes and values
@@ -308,6 +314,7 @@ private:
     bool dirtyAfterStep_ = false;
     std::atomic<int> oversampling_{kDefaultOversampling};
     // MPE over MIDI and its member channels' bend range: settings, set on the main thread, read by the audio thread.
+    std::atomic<bool> outOfMemory_{false}; // see outOfMemory()
     std::atomic<bool> mpe_{false};
     std::atomic<int> mpeBendRange_{kDefaultMpeBendRange};
     // Written by the audio thread (param events) and the main thread (editor,

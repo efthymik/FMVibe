@@ -821,9 +821,11 @@ bool Editor::shortcut(WPARAM key, bool up) {
 // While a value is typed, a key for the window around the editor comes here straight off the queue, as
 // WM_KEYDOWN would bring it, and the host's loop never sees it; nor the key going up.
 bool Editor::typedKey(const MSG &msg) {
-    if (!hwnd_ || !msg.hwnd || (msg.hwnd != hwnd_ && GetAncestor(msg.hwnd, GA_ROOT) != GetAncestor(hwnd_, GA_ROOT)))
+    if (!hwnd_ || !msg.hwnd)
         return false;
     const auto code = static_cast<uint8_t>(msg.wParam);
+    if (msg.message != WM_KEYUP && !keysFor(msg.hwnd)) // a key taken here goes up here, wherever the mouse went since
+        return false;
     switch (msg.message) {
     case WM_KEYDOWN:
         if (!(view_.typing() || (view_.dialogOpen() && (msg.wParam == VK_RETURN || msg.wParam == VK_ESCAPE))) ||
@@ -844,6 +846,31 @@ bool Editor::typedKey(const MSG &msg) {
     default:
         return false;
     }
+}
+
+// A key sent to this editor, or to the host's window around it. Where that window shows other editors too (a host may
+// show several plugins in one), a key sent to one of them is that one's, and one sent to the window itself is for the
+// editor being typed in or else the one under the mouse: Enter pressed elsewhere doesn't answer a question open here.
+bool Editor::keysFor(HWND to) const {
+    if (to == hwnd_ || IsChild(hwnd_, to))
+        return true;
+    const HWND root = GetAncestor(hwnd_, GA_ROOT);
+    if (GetAncestor(to, GA_ROOT) != root)
+        return false;
+    bool alone = true;
+    for (const Editor *other : hookedEditors) {
+        if (other == this || !other->hwnd_)
+            continue;
+        if (to == other->hwnd_ || IsChild(other->hwnd_, to))
+            return false;
+        alone = alone && GetAncestor(other->hwnd_, GA_ROOT) != root;
+    }
+    if (alone || view_.typing())
+        return true;
+    POINT p;
+    GetCursorPos(&p);
+    const HWND under = WindowFromPoint(p);
+    return under == hwnd_ || IsChild(hwnd_, under);
 }
 
 void Editor::syncFocus() {
