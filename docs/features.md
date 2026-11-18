@@ -54,10 +54,13 @@ What the plugin does and how its editor works, in full. Building and installing 
     filters and shapers (which are stereo, so a panned operator stays where it is through them), and its unison
     copies' spread with it; what other operators hear of it is the mono sum, so a modulator's Pan changes nothing it
     modulates, and does nothing unless the operator is also heard;
-  - **Phase**: where a note starts the waveform, 0 to 100 % of a cycle (0 % by default; a sine at 25 % starts at
-    its peak). It is read as a note starts, with the host's and the sources' modulation on it then, and holds for the
-    note. A noise operator has none. Operators don't follow velocity themselves: velocity reaches them as a source
-    (see Velocity, under the modulation sources), aimed at Out or wherever else;
+  - **Phase**: where the waveform stands, 0 to 100 % of a cycle (0 % by default; a sine at 25 % starts at its peak).
+    A note starts there, with the host's and the sources' modulation on it then. Turning the knob, automating it or
+    modulating it moves the notes already sounding along with it at once, without a click: a jump goes the short way
+    round the cycle, and modulation carries on past 0 % and 100 % rather than stopping there, so an LFO on Phase is
+    phase modulation at any setting of the knob. A noise operator has none. Operators don't follow velocity
+    themselves: velocity reaches them as a source (see Velocity, under the modulation sources), aimed at Out or
+    wherever else;
   - **Unison**: up to 16 copies of the operator. *Detune* (Unison Detune) spreads them in pitch (the outermost
     copies by up to ±200 cents; patches saved while it stopped at 100, state version 12 and earlier, load a
     modulation's depth on it half as deep, to swing it as far) and *Spread* (Unison Spread) across the stereo field. On a modulator, the copies' sum
