@@ -671,6 +671,10 @@ private:
         double auxDepth = 1.0; // voiceAux's (see auxScale())
         double range = 0.0;
         double depth = 0.0;
+        // An operator's slot on a voice filter's or a filter effect's Cutoff (the filter, the effect's slot), or -1: filter
+        // FM, sample by sample (see CutoffFm).
+        int fmFilter = -1;
+        int fmFx = -1;
     };
     std::array<std::array<SharedSlot, kSlots>, kAllSources> sharedSlots_{};
     std::array<int, kAllSources> sharedSlotCount_{};
@@ -679,8 +683,58 @@ private:
     // The operators whose output modulates something or scales a modulation as its aux, a bit each: the voices keep
     // what those put out (see Voice::opSum), and add their slots' modulation (see runOpSources()).
     uint32_t opSourceMask_ = 0;
-    void runOpSources(Voice &v, const ParamValues &params) const;
-    void finishOpSources(Voice &v, const std::array<bool, kOps> &opOn, uint32_t frames) const;
+    void runOpSources(Voice &v, const ParamValues &params);
+    void finishOpSources(Voice &v, const std::array<bool, kOps> &opOn, uint32_t frames);
+    // Filter FM: an operator on a filter's Cutoff moves it every sample, rather than as of the last control block. A
+    // modulation as the block has it: the filter (a voice's, or the effect's slot), the operator, how many octaves its
+    // full swing takes the cutoff, the slot's curve and the operator's polarity.
+    struct CutoffFm {
+        int place = 0;
+        int op = 0;
+        double octaves = 0.0;
+        double curve = 0.0;
+        bool bipolar = true;
+    };
+    // How many octaves a modulation moves the cutoff, for what its operator puts out now and its envelope's level.
+    static double cutoffFmOctaves(const CutoffFm &fm, double out, double env);
+    // The voice being rendered: its modulations, and each filter it moves as the block set it and as it plays now.
+    std::array<CutoffFm, kOps * kSlots> voiceFm_{};
+    int voiceFmCount_ = 0;
+    std::array<const FilterSettings *, kFilters> voiceFmBase_{};
+    std::array<FilterSettings, kFilters> voiceFmNow_{};
+    CutoffFmRange voiceFmRange_;
+    // Points the filters the voice's modulations move at settings of their own; whether there are any.
+    bool startCutoffFm(std::array<const FilterSettings *, kFilters> &filter);
+    void moveCutoffs(const Voice &v, uint32_t sample);
+    // The filter effects', which follow the newest voice, as all the effects' modulation does: its modulations, the
+    // operators they listen to, a bit each, and what those put out this block at the host's rate. Whether any slot asks
+    // for it, and whether any effect is still being moved.
+    static constexpr uint32_t kFxFmBlock = 32; // a control block
+    static constexpr int kFxFmDelay = 32;      // samples of the voices' decimator's delay held, at most
+    const Voice *fxFmVoice_ = nullptr;
+    std::array<CutoffFm, kOps * kSlots> fxFm_{};
+    int fxFmCount_ = 0;
+    uint32_t fxFmOps_ = 0;
+    std::array<std::array<float, kFxFmBlock>, kOps> fxOpOut_{};
+    std::array<double, kOps> fxOpEnv_{};
+    bool fxFmWanted_ = false;
+    bool fxFmLive_ = false;
+    uint64_t fxFmOrder_ = 0; // the voice followed, its order + 1, 0 for none
+    int fxFmDelay_ = 0;      // the voices' decimator's delay, in samples
+    double fxFmDecay_ = 0.0; // of a jump as the voice followed changes, each sample
+    // What moves each filter effect: its octaves this block, and what takes them there: the jump left of a change of
+    // voice, where the last block ended, and the line that keeps them in step with the voices' sound.
+    struct FxCutoffFm {
+        std::array<float, kFxFmBlock> octaves{};
+        std::array<float, kFxFmDelay> line{};
+        int linePos = 0;
+        double jump = 0.0;
+        double last = 0.0;
+        bool listed = false;
+        bool on = false;
+    };
+    std::vector<FxCutoffFm> fxCutoffFm_ = std::vector<FxCutoffFm>(kFxSlots);
+    void runFxCutoffFm(uint32_t frames);
     std::vector<double> voiceBase_ = std::vector<double>(kVoiceParamCount, 0.0);
     std::vector<double> voiceClamped_ = std::vector<double>(kVoiceParamCount, 0.0);
     bool voiceBaseReady_ = false;

@@ -2519,6 +2519,139 @@ void noteAndVoiceChecks() {
               "a silent operator as an aux scales its modulation to nothing");
     }
     {
+        // Filter FM: A through a filter, a voice's or the filter effect, whose Cutoff B moves, B fixed and heard by
+        // nothing. At 3 kHz, B goes through two whole cycles a control block, so nothing of it would reach a filter
+        // that only took modulation by the block.
+        const int b = 1, source = kOpSource + b;
+        auto setUp = [&](ParamValues &p, bool effect, FilterType type, double hz, double depth, double resonance) {
+            p[paramIndex(b, OpParam::Enabled)] = 1.0;
+            p[paramIndex(b, OpParam::Fixed)] = 1.0;
+            p[paramIndex(b, OpParam::FixedFreq)] = normFromFixedFreq(hz > kMaxFixedFreq ? hz / 10.0 : hz);
+            p[paramIndex(b, OpParam::FixedMult)] = hz > kMaxFixedFreq ? 4.0 : 3.0; // x10, x1
+            p[paramIndex(b, OpParam::Out)] = 0.0;
+            p[slotAmountIndex(source, 0)] = depth;
+            if (effect) {
+                p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Filter);
+                p[paramIndex(0, FxParam::Enabled)] = 1.0;
+                chain(p, {0});
+                p[paramIndex(0, FxParam::FilterType)] = static_cast<double>(type);
+                p[paramIndex(0, FxParam::FilterCutoff)] = normFromCutoff(1000.0);
+                p[paramIndex(0, FxParam::FilterResonance)] = resonance;
+                p[paramIndex(0, FxParam::FilterMix)] = 1.0;
+                p[slotTargetIndex(source, 0)] = slotTargetValue(paramIndex(0, FxParam::FilterCutoff));
+                return;
+            }
+            p[paramIndex(0, OpParam::Out)] = 0.0;
+            p[sendIndex(0, 0)] = 1.0;
+            p[paramIndex(0, FilterParam::Enabled)] = 1.0;
+            p[paramIndex(0, FilterParam::Type)] = static_cast<double>(type);
+            p[paramIndex(0, FilterParam::Cutoff)] = normFromCutoff(1000.0);
+            p[paramIndex(0, FilterParam::Resonance)] = resonance;
+            p[paramIndex(0, FilterParam::Out)] = 1.0;
+            p[slotTargetIndex(source, 0)] = slotTargetValue(paramIndex(0, FilterParam::Cutoff));
+        };
+        // The sidebands of A's 440 Hz around B's 3 kHz, against A's own level, in dB.
+        auto sidebands = [&](bool effect, double depth) {
+            const std::vector<double> power = powerSpectrum(steadyTone(2, 69, [&](ParamValues &p) {
+                setUp(p, effect, FilterType::LowPass, 3000.0, depth, 0.3);
+            }));
+            auto around = [&](double hz) {
+                const long center = std::lround(hz * kFftSize / kSampleRate);
+                double sum = 1e-30;
+                for (long k = center - 6; k <= center + 6; ++k)
+                    sum += power[static_cast<size_t>(k)];
+                return sum;
+            };
+            return 10.0 * std::log10((around(2560.0) + around(3440.0)) / around(440.0));
+        };
+        const double voiceFm = sidebands(false, 0.3), voicePlain = sidebands(false, 0.0);
+        const double fxFm = sidebands(true, 0.3), fxPlain = sidebands(true, 0.0);
+        std::printf("      filter FM's sidebands: a voice's filter %.1f dB (%.1f without), the filter effect %.1f dB "
+                    "(%.1f without)\n", voiceFm, voicePlain, fxFm, fxPlain);
+        check(voiceFm > -50.0 && voicePlain < -90.0, "an operator on a voice filter's Cutoff moves it at audio rate");
+        check(fxFm > -50.0 && fxPlain < -90.0, "an operator on the filter effect's Cutoff moves it at audio rate");
+
+        // Every type, resonance and depth at full, in both places: finite, and a voice's ending with its note.
+        bool finite = true, ended = true;
+        for (int t = 0; t < static_cast<int>(FilterType::Count); ++t)
+            for (const bool effect : {false, true}) {
+                Engine e(2);
+                setUp(e.p, effect, static_cast<FilterType>(t), 3000.0, 1.0, 1.0);
+                e.p[paramIndex(0, OpParam::Release)] = normFromTime(0.01);
+                e.p[paramIndex(b, OpParam::Release)] = normFromTime(0.01);
+                e.noteOn(45);
+                std::vector<float> out = e.render(24000);
+                e.noteOff(45);
+                const std::vector<float> after = e.render(144000);
+                out.insert(out.end(), after.begin(), after.end());
+                for (const float x : out)
+                    finite = finite && std::isfinite(x) && std::abs(x) < 64.0f;
+                if (!effect)
+                    for (size_t s = after.size() - 4800; s < after.size(); ++s)
+                        ended = ended && std::abs(after[s]) < 1e-3f;
+            }
+        check(finite, "filter FM at full depth and resonance stays finite for every filter type, in both places");
+        check(ended, "a voice whose filter an operator moves still ends");
+
+        // B at sixteen times A's pitch, deep into a resonant filter: what it adds are A's harmonics, and anything else
+        // has folded back.
+        for (const int factor : {1, 2, 4, 8}) {
+            const double voice = unexpectedDb(steadyTone(factor, 69, [&](ParamValues &p) {
+                setUp(p, false, FilterType::LowPass, 7040.0, 0.8, 0.7);
+            }), harmonics(440.0));
+            const double effect = unexpectedDb(steadyTone(factor, 69, [&](ParamValues &p) {
+                setUp(p, true, FilterType::LowPass, 7040.0, 0.8, 0.7);
+            }), harmonics(440.0));
+            std::printf("      filter FM's aliasing at %dx: a voice's filter %.1f dB, the filter effect %.1f dB\n", factor,
+                        voice, effect);
+            check(voice < -40.0 && effect < -40.0, "filter FM's aliasing stays far below what it plays");
+        }
+
+        // A slow operator moves the cutoff as far as an LFO of its rate and depth.
+        auto swing = [&](bool lfo) {
+            Engine e(2);
+            setUp(e.p, false, FilterType::LowPass, 5.0, lfo ? 0.0 : 0.3, 0.3);
+            e.p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Saw);
+            if (lfo)
+                lfoOn(e.p, paramIndex(0, FilterParam::Cutoff), 0.3, 5.0);
+            e.noteOn(45);
+            const std::vector<float> out = e.render(static_cast<size_t>(kSampleRate));
+            float low = 1e9f, high = 0.0f;
+            for (size_t at = 12000; at + 1200 <= out.size(); at += 1200) {
+                float peak = 0.0f;
+                for (size_t i = at; i < at + 1200; ++i)
+                    peak = std::max(peak, std::abs(out[i]));
+                low = std::min(low, peak);
+                high = std::max(high, peak);
+            }
+            return high / low;
+        };
+        const float byOperator = swing(false), byLfo = swing(true);
+        std::printf("      a saw's level swings %.2f times under a 5 Hz operator, %.2f under an LFO\n", byOperator, byLfo);
+        check(std::abs(byOperator / byLfo - 1.0f) < 0.15f, "a slow operator moves a cutoff as far as an LFO does");
+
+        // A new note takes the filter effect's FM over from the note before; the effect switched off under it fades.
+        auto steps = [&](bool second, bool switchOff, double depth = 0.5) {
+            Engine e(2);
+            setUp(e.p, true, FilterType::LowPass, 40.0, depth, 0.3);
+            e.p[paramIndex(0, OpParam::Attack)] = normFromTime(0.02);
+            e.noteOn(48);
+            const std::vector<float> before = e.render(12000);
+            if (second)
+                e.noteOn(55);
+            if (switchOff)
+                e.p[paramIndex(0, FxParam::Enabled)] = 0.0;
+            const std::vector<float> after = e.render(2400);
+            return std::pair{roughness(before, 4800, before.size()), roughness(after, 0, after.size())};
+        };
+        const auto [steady, onNote] = steps(true, false);
+        const double onOff = steps(false, true).second, plainOff = steps(false, true, 0.0).second;
+        std::printf("      the filter effect's FM: steps of %.5f steady, %.5f at a new note, %.5f switched off (%.5f "
+                    "without FM)\n", steady, onNote, onOff, plainOff);
+        check(onNote < 3.0 * steady, "a new note takes the filter effect's FM over without a click");
+        check(onOff < 1.5 * plainOff, "the filter effect switched off under filter FM is no rougher than without it");
+    }
+    {
         // A host's automation and modulation splitting blocks into pieces: render() told only which params changed
         // (paramChanged(), sameParams) plays sample for sample as one working out everything again for every piece.
         // The params moved: the operators', a route's, the voice's, a filter's, an LFO's rate, an effect's (one an

@@ -318,6 +318,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - an operator's output as a source: one at 5 Hz swinging its target both ways, one at 12 kHz averaging away, unipolar
     taking its target one way, silent or switched off moving nothing, and silent as an aux scaling its modulation to
     nothing;
+  - filter FM, an operator on the Cutoff of a voice's filter and of the filter effect: sidebands from a modulator at
+    3 kHz (two whole cycles a control block), every filter type finite at full depth and resonance in both places and
+    a voice ending with its note, the aliasing at each oversampling factor, a slow operator moving a cutoff as far as an
+    LFO does, and the filter effect's FM taken over by a new note without a click;
   - a macro's knob modulated: along a chain of macros out of their numbers' order (the telemetry saying where the
     knobs stand), in a loop a state holds, steadily and alike each time, and per voice by velocity, a loud note's
     knob silencing it while a soft one played with it plays as it would alone;

@@ -354,6 +354,13 @@ What the plugin does and how its editor works, in full. Building and installing 
     rather than aliasing. It starts bipolar, swinging its targets both ways of the set value with the output;
     unipolar, it takes them one way, from nothing up to as far as the operator's envelope has risen, so a silent
     operator moves nothing either way.
+    **Filter FM**: on the **Cutoff** of a voice's filter or of a filter effect, an operator doesn't average: it moves the
+    cutoff every sample, at audio rate, by as many octaves as its depth takes the knob (100 % at full swing being the
+    knob's 10 octaves), its Amount, aux and depth read once per 32-sample block. A voice's filter follows that voice's
+    own operator. A filter effect, which hears all the voices together, follows the newest voice's, as the effects' other
+    modulation does, and takes over from one note to the next over about 5 ms, so a new note doesn't click; an operator
+    at a fixed frequency moves it alike whichever note is newest. The Formant type's cutoff stays with the 32-sample
+    blocks.
   - An LFO runs in one of four clock modes, picked one at a time: **Retrigger** (the default), **Free**, **Anchor** or
     **One-Shot**. Retrigger restarts the LFO from its Phase with every note. Each of the other three is a switch
     hosts see; the editor turns the other two off as it picks one. Should a host turn on more than one, One-Shot
