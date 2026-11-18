@@ -5255,6 +5255,61 @@ int main() {
         std::printf("      %-30s %7.1f\n", "LFO on an effects graph wire", wire);
         check(wire < -70.0, "LFO on a wire of the effects graph doesn't zipper");
     }
+    // --- The same for the effects' frequencies, which an effect takes once per control block: an LFO on each, the
+    // effect alone in the chain, puts out a sine's sidebands from its movement alone (all of them the sine's frequency
+    // and the LFO's multiples), and nothing around the control rate's multiples, where steps would put them. At 7 Hz,
+    // the LFO's sidebands keep clear of those.
+    std::printf("zipper in the effects (energy off the sine's sidebands, dB; held still in brackets):\n");
+    {
+        const int key = 57;
+        const double f0 = keyHz(key), lfo = 7.0;
+        std::vector<double> sidebands;
+        for (int k = -60; k <= 60; ++k)
+            sidebands.push_back(f0 + k * lfo);
+        struct Swept {
+            const char *name;
+            FxType type;
+            FxParam param;
+            double amount;
+            std::vector<std::pair<FxParam, double>> set;
+        };
+        const Swept swept[] = {
+            {"phase disperser Freq", FxType::Disperser, FxParam::DisperserFreq, 0.05,
+             {{FxParam::DisperserFreq, normFromCutoff(f0)},
+              {FxParam::DisperserStages, 16.0},
+              {FxParam::DisperserPinch, 0.3},
+              {FxParam::DisperserMix, 1.0}}},
+            {"filter effect cutoff", FxType::Filter, FxParam::FilterCutoff, 0.1,
+             {{FxParam::FilterType, static_cast<double>(FilterType::LowPass)},
+              {FxParam::FilterCutoff, normFromCutoff(2.0 * f0)},
+              {FxParam::FilterResonance, 0.5}}},
+            {"param EQ band frequency", FxType::ParamEq, FxParam::PeqFreq1, 0.1,
+             {{FxParam::PeqFreq1, normFromCutoff(2.0 * f0)}, {FxParam::PeqGain1, 12.0}, {FxParam::PeqQ1, 0.5}}},
+            {"phaser center", FxType::Phaser, FxParam::PhaserCenter, 0.1,
+             {{FxParam::PhaserRate, 0.0}, {FxParam::PhaserCenter, normFromCutoff(2.0 * f0)}}},
+            {"widener cutoff", FxType::Widener, FxParam::WidenerHighPass, 0.2,
+             {{FxParam::WidenerHighPass, normFromCutoff(f0)}, {FxParam::WidenerWidth, 1.0}}},
+        };
+        for (const Swept &sweep : swept) {
+            auto setup = [&](ParamValues &p) {
+                p[paramIndex(0, FxParam::Type)] = static_cast<double>(sweep.type);
+                chain(p, {0});
+                for (const auto &[field, value] : sweep.set)
+                    p[paramIndex(0, field)] = value;
+                lfoOn(p, paramIndex(0, sweep.param), sweep.amount, lfo);
+            };
+            auto still = [&](ParamValues &p) {
+                setup(p);
+                p[slotAmountIndex(0, 0)] = 0.0;
+            };
+            const double db = unexpectedDb(steadyTone(1, key, setup), sidebands);
+            const double held = unexpectedDb(steadyTone(1, key, still), sidebands);
+            std::printf("      %-30s %7.1f  (%.1f)\n", sweep.name, db, held);
+            char what[128];
+            std::snprintf(what, sizeof(what), "an LFO on the %s doesn't zipper", sweep.name);
+            check(db < -90.0, what);
+        }
+    }
 
     // --- The random LFO: how far its steps go with chaos, and how smoothing glides between them.
     std::printf("random LFO:\n");
@@ -5633,6 +5688,51 @@ int main() {
         std::printf("      voices 2, 6, 3, 2: x%.3f   spread 0, 100, 0 %%: x%.3f\n", voices, spread);
         check(voices < 1.15 && spread < 1.15,
               "the chorus's Voices and Spread changed under a sine glide rather than click");
+    }
+
+    // --- The phase disperser's Stages changed under a sine, all wet: the count it played fades out as the new one
+    // fades in (see fx::Disperser), in whole blocks and in single frames alike. A switch from one count to another
+    // would step as far as the two chains' phases differ, a click: its third difference (which passes the sine and
+    // the chains' ringing at Freq at under a thousandth of their level, and a step almost whole) stays small.
+    std::printf("phase disperser stages changed under a sine (largest third difference):\n");
+    {
+        auto roughest = [](uint32_t piece) {
+            Effects fx;
+            fx.prepare(kSampleRate);
+            ParamValues p;
+            for (int i = 0; i < kParamCount; ++i)
+                p[i] = paramTable()[i].def;
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Disperser);
+            p[paramIndex(0, FxParam::DisperserFreq)] = normFromCutoff(600.0);
+            p[paramIndex(0, FxParam::DisperserPinch)] = 0.5;
+            p[paramIndex(0, FxParam::DisperserMix)] = 1.0;
+            chain(p, {0});
+            constexpr double kHz = 220.0;
+            const uint32_t each = static_cast<uint32_t>(kSampleRate / 4);
+            std::vector<float> left(piece), right(piece);
+            double most = 0.0;
+            std::array<double, 3> last{};
+            uint32_t t = 0;
+            for (double stages : {8.0, 9.0, 24.0, 4.0, 16.0, 1.0, 64.0}) {
+                p[paramIndex(0, FxParam::DisperserStages)] = stages;
+                for (uint32_t done = 0; done < each; done += piece, t += piece) {
+                    for (uint32_t s = 0; s < piece; ++s)
+                        left[s] = right[s] = static_cast<float>(
+                            0.5 * std::sin(2.0 * std::numbers::pi * kHz * (t + s) / kSampleRate));
+                    fx.process(left.data(), right.data(), piece, p, 120.0, 60.0);
+                    for (uint32_t s = 0; s < piece; ++s) {
+                        const double third = left[s] - 3.0 * last[0] + 3.0 * last[1] - last[2];
+                        if (t + s > kSampleRate / 10) // past the first chain's own start
+                            most = std::max(most, std::abs(third));
+                        last = {left[s], last[0], last[1]};
+                    }
+                }
+            }
+            return most;
+        };
+        const double blocks = roughest(kBlock), frames = roughest(1);
+        std::printf("      stages 8, 9, 24, 4, 16, 1, 64: %.5f in whole blocks, %.5f in single frames\n", blocks, frames);
+        check(blocks < 0.002 && frames < 0.002, "the phase disperser's Stages changed under a sine fade rather than click");
     }
 
     // --- The chorus's voices, held still (no Depth), all wet and in the middle: an impulse comes out once a voice,

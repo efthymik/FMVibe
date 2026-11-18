@@ -2,6 +2,8 @@
 
 #include "common.h"
 
+#include <limits>
+
 namespace fmvibe {
 
 // The phaser's all-pass corner (Hz) with its LFO at `lfo` (-1..1), from its params.
@@ -24,6 +26,11 @@ struct Phaser {
     // line between (see run()): where it was last worked out, and whether it has been yet.
     std::array<double, 2> coef{};
     bool coefKnown = false;
+    // Center (in octaves, its frequency's log2) and Depth, ramping to the chunk's as a gain does (see rampStep()):
+    // taken as they are once a chunk, modulation would step the sweep's middle every control block. NaN until the
+    // first chunk, which takes them as they are.
+    double centerOctaves = std::numeric_limits<double>::quiet_NaN();
+    double depth = 0.0;
 
     void start(const Context &ctx);
     // Returns the loudest sample it put out or took in, so its feedback keeps it running.

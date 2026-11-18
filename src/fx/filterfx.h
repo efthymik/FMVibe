@@ -20,6 +20,9 @@ struct FilterFx {
     // first chunk, so worked out again only when one moves (see run()).
     FilterSettings settings;
     std::array<double, 10> settingsFor{std::numeric_limits<double>::quiet_NaN()};
+    // Those inputs as they ramp to the chunk's, the continuous ones as a gain does (see rampStep()), so modulation
+    // doesn't step the filter every control block: NaN until the first chunk, which takes them as they are.
+    std::array<double, 10> inputsNow{std::numeric_limits<double>::quiet_NaN()};
 
     // Allocates the comb lines. Main thread, while the plugin is inactive.
     void prepare(double sampleRate);

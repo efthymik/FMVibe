@@ -136,9 +136,9 @@ void ParamEq::run(const Context &ctx, float *const *io, uint32_t n) {
     float dry[2][kChunk];
     std::copy_n(io[0], n, dry[0]);
     std::copy_n(io[1], n, dry[1]);
-    // New coefficients every chunk are smooth enough for knob moves and modulation. A band switched on or off fades
-    // between what it puts out and what it takes in, over 5 ms. One switched off keeps running unheard, so it comes
-    // back without starting from silence.
+    // Each band's coefficients ramp to where its params put them over the chunk (see BiquadRamp), so modulation
+    // doesn't step them every control block. A band switched on or off fades between what it puts out and what it
+    // takes in, over 5 ms. One switched off keeps running unheard, so it comes back without starting from silence.
     const double fade = 1.0 / (0.005 * ctx.sampleRate);
     for (int band = 0; band < kPeqBands; ++band) {
         const double target = p[peqOnIndex(slot, band)] >= 0.5 ? 1.0 : 0.0;
@@ -147,14 +147,17 @@ void ParamEq::run(const Context &ctx, float *const *io, uint32_t n) {
             heardShare = target;
         const PeqType type = peqType(p[peqTypeIndex(slot, band)]);
         const double gain = p[peqGainIndex(slot, band)];
+        BiquadRamp &ramp = coefs[band];
         if (peqHasGain(type) && std::abs(gain) < 1e-3) {
             bands[band] = {}; // flat: leave the band out, and start it clean when it comes back
+            ramp = BiquadRamp{};
             heardShare = target;
             continue;
         }
         const Coefs b = peqCoefs(type, p[peqFreqIndex(slot, band)], gain, p[peqQIndex(slot, band)], ctx.sampleRate);
-        const BiquadCoefs c{b.b0, b.b1, b.b2, b.a1, b.a2};
-        if (heardShare == target) {
+        ramp.begin({b.b0, b.b1, b.b2, b.a1, b.a2}, n, ctx.rampShortest);
+        if (heardShare == target && !ramp.moving) {
+            const BiquadCoefs &c = ramp.now;
             for (int ch = 0; ch < 2; ++ch) {
                 Biquad &f = bands[band][ch];
                 if (heardShare == 1.0)
@@ -166,15 +169,17 @@ void ParamEq::run(const Context &ctx, float *const *io, uint32_t n) {
             }
             continue;
         }
-        // Along a raised cosine, which starts and ends without a kink.
+        // Fading along a raised cosine, which starts and ends without a kink, or with the coefficients ramping.
         for (uint32_t s = 0; s < n; ++s) {
             heardShare = target > heardShare ? std::min(heardShare + fade, target) : std::max(heardShare - fade, target);
             const double heard = 0.5 - 0.5 * std::cos(std::numbers::pi * heardShare);
+            ramp.next();
             for (int ch = 0; ch < 2; ++ch) {
                 const double x = io[ch][s];
-                io[ch][s] = static_cast<float>(x + heard * (bands[band][ch].process(x, c) - x));
+                io[ch][s] = static_cast<float>(x + heard * (bands[band][ch].process(x, ramp.now) - x));
             }
         }
+        ramp.end();
     }
     // Amount mixes what the bands put out with what came in, ramping to a new value over the chunk.
     const double target = ctx.at(FxParam::PeqAmount);

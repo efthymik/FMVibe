@@ -147,6 +147,59 @@ inline double rampStep(double from, double to, uint32_t n, uint32_t shortest) {
     return n > 0 && rampEnds(from, to, n, shortest) ? (to - from) / n : (to - from) / std::max(n, shortest);
 }
 
+// A biquad's coefficients ramping, as a gain does (see rampStep()), to where the chunk's params put them: worked out
+// once a chunk, they would otherwise step every control block as modulation moves them, a buzz at the control rate's
+// multiples. A straight line between two stable filters' coefficients stays stable (the region a second-order
+// denominator is stable in is convex), and between two all-passes stays an all-pass. Held still, the coefficients are
+// the target's exactly, so a filter left alone plays as it did with no ramp.
+struct BiquadRamp {
+    BiquadCoefs now{};
+    BiquadCoefs step{};
+    BiquadCoefs to{};
+    bool known = false;   // whether `now` has been set: the first chunk takes its target at once
+    bool moving = false;  // whether this chunk steps it at all
+    bool arrives = false; // whether it reaches `to` by the chunk's end
+
+    // Sets out for `target` over a chunk of `n` samples, `shortest` the fewest a ramp is spread over.
+    void begin(const BiquadCoefs &target, uint32_t n, uint32_t shortest) {
+        if (!known) {
+            now = target;
+            known = true;
+        }
+        to = target;
+        moving = now.b0 != to.b0 || now.b1 != to.b1 || now.b2 != to.b2 || now.a1 != to.a1 || now.a2 != to.a2;
+        if (!moving)
+            return;
+        step = {rampStep(now.b0, to.b0, n, shortest), rampStep(now.b1, to.b1, n, shortest),
+                rampStep(now.b2, to.b2, n, shortest), rampStep(now.a1, to.a1, n, shortest),
+                rampStep(now.a2, to.a2, n, shortest)};
+        arrives = rampEnds(now.b0, to.b0, n, shortest) && rampEnds(now.b1, to.b1, n, shortest) &&
+                  rampEnds(now.b2, to.b2, n, shortest) && rampEnds(now.a1, to.a1, n, shortest) &&
+                  rampEnds(now.a2, to.a2, n, shortest);
+    }
+    // One sample's step, before the sample is run.
+    void next() {
+        if (!moving)
+            return;
+        now.b0 += step.b0;
+        now.b1 += step.b1;
+        now.b2 += step.b2;
+        now.a1 += step.a1;
+        now.a2 += step.a2;
+    }
+    // After the chunk: there exactly once the ramp has arrived, rather than a rounding away.
+    void end() {
+        if (moving && arrives)
+            now = to;
+    }
+    // Takes `target` at once, as a filter starting from silence does.
+    void jump(const BiquadCoefs &target) {
+        now = to = target;
+        known = true;
+        moving = false;
+    }
+};
+
 // The phaser's and flanger's polarity turns over in this long, its wet sound and feedback fading through nothing
 // rather than jumping, however the host splits the block.
 constexpr double kPolaritySeconds = 0.01;

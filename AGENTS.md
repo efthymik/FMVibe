@@ -207,13 +207,16 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - aliasing (the energy off the harmonics, 20 Hz–20 kHz) of a high saw, bright FM (phase, linear and ring),
     feedback, a driven filter and a driven, resonant ladder, diode and Sallen-Key;
   - zipper noise from an LFO on an operator's level and Pan, a matrix amount, a filter cutoff, a resonant ladder's
-    cutoff, a formant's vowel, a morph's place and a wire of the effects graph;
+    cutoff, a formant's vowel, a morph's place and a wire of the effects graph; and on the effects' frequencies (a
+    phase disperser's Freq, a filter effect's cutoff, a Param EQ band's frequency, a phaser's Center and a widener's
+    Cutoff), nothing but the sine's own sidebands coming out (held still in brackets);
   - clicks when a voice is stolen (and six at once by a chord), when a note joins a held one in poly legato
     (fading in over 5 ms, its Random LFOs carrying on with the held one's step), and when a param (Volume, and an effect's: a compressor's Makeup, a delay's and a
     reverb's Mix, a DJ EQ band, a three-band dynamics' Output, an amp's Output, Mix and Gain, a utility's Gain (0 to
     +12 dB), Pan and Width, a wire's Level) jumps while events split the block into single frames (and a delay's Mix
     and a wire's Level ramping no faster at 96 and 192 kHz than at 48),
-    when a Param EQ band is switched on and off, when a utility's Mono Bass is turned on from Off and off again, and
+    when a Param EQ band is switched on and off, when a utility's Mono Bass is turned on from Off and off again, when
+    a phase disperser's Stages changes under a sine (fading from one count to the other, in single frames too), and
     when a wire of the effects graph is connected and taken away;
   - editing the effects graph as a note plays, neither clicking nor dipping (each period's peak kept within 10 %):
     an effect added at the line's end and one taken out, a split taken out with its join, a split's slope

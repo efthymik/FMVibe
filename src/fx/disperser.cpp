@@ -36,25 +36,52 @@ void Disperser::start(const Context &ctx) {
 double Disperser::run(const Context &ctx, float *const *io, uint32_t n) {
     const std::array<double, 5> b =
         disperserCoefs(ctx.at(FxParam::DisperserFreq), ctx.at(FxParam::DisperserPinch), ctx.sampleRate);
-    const BiquadCoefs c{b[0], b[1], b[2], b[3], b[4]};
+    coefs.begin({b[0], b[1], b[2], b[3], b[4]}, n, ctx.rampShortest);
     const int count =
         std::clamp(static_cast<int>(std::lround(ctx.at(FxParam::DisperserStages))), 1, kMaxDisperserStages);
+    if (playing == 0)
+        playing = count;
+    if (count != playing && fade <= 0.0) {
+        fadingFrom = playing;
+        playing = count;
+        fade = 1.0;
+    }
+    // It runs the longer chain, and takes the shorter one's output on the way.
+    const int running = fade > 0.0 ? std::max(playing, fadingFrom) : playing;
+    const int shorter = fade > 0.0 ? std::min(playing, fadingFrom) : playing;
     for (int ch = 0; ch < 2; ++ch)
-        for (int k = count; k < kMaxDisperserStages; ++k)
+        for (int k = running; k < kMaxDisperserStages; ++k)
             stages[ch][k] = Biquad{};
+    const double fadeStep = 1.0 / (kDisperserFadeSeconds * ctx.sampleRate);
     const double mixStep = rampStep(mix, ctx.at(FxParam::DisperserMix), n, ctx.rampShortest);
     double peak = 0.0;
     for (uint32_t s = 0; s < n; ++s) {
         mix += mixStep;
+        coefs.next();
+        const BiquadCoefs &c = coefs.now;
+        // The count it fades out from, along a raised cosine.
+        double was = 0.0;
+        if (fade > 0.0) {
+            fade = std::max(fade - fadeStep, 0.0);
+            was = 0.5 - 0.5 * std::cos(std::numbers::pi * fade);
+        }
         for (int ch = 0; ch < 2; ++ch) {
+            std::array<Biquad, kMaxDisperserStages> &chain = stages[ch];
             const double x = io[ch][s];
             double y = x;
-            for (int k = 0; k < count; ++k)
-                y = stages[ch][k].process(y, c);
-            io[ch][s] = static_cast<float>(x + (y - x) * mix);
-            peak = std::max({peak, std::abs(x), std::abs(y)});
+            for (int k = 0; k < shorter; ++k)
+                y = chain[k].process(y, c);
+            const double first = y;
+            for (int k = shorter; k < running; ++k)
+                y = chain[k].process(y, c);
+            const double now = playing == shorter ? first : y;
+            const double before = playing == shorter ? y : first;
+            const double wet = was > 0.0 ? now + (before - now) * was : now;
+            io[ch][s] = static_cast<float>(x + (wet - x) * mix);
+            peak = std::max({peak, std::abs(x), std::abs(wet)});
         }
     }
+    coefs.end();
     return peak;
 }
 

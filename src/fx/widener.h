@@ -24,6 +24,7 @@ struct Widener {
     int write = 0;
     uint64_t ran = 0; // samples run since it started: its lines hold nothing past as many from their start
     Biquad highPass;
+    BiquadRamp highPassCoefs; // ramping to Cutoff's (see BiquadRamp)
     std::array<double, kWidenerTaps> phases{}; // the taps' sweeps, in cycles
     double size = 0.5; // gliding toward the knob
     double width = 1.0; // ramped

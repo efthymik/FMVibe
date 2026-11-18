@@ -639,7 +639,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     voice between the sides over 10 ms too. A host or modulation can set 5 voices, which the card doesn't offer.
   - **Phase Disp** (phase disperser): 1–64 second-order all-passes in a row (Stages) at Freq, each as narrow as
     Pinch sets (Q 0.3 to 6): the sound around Freq comes out later than the rest, smeared in time into a chirp,
-    but at full level; Mix blends it with the dry sound.
+    but at full level; Mix blends it with the dry sound. A new Stages fades in from the count before over 10 ms
+    rather than clicking (another change meanwhile waiting for the fade to end), so Stages can be modulated too.
   - **Widener** (a dimension expander): the sound above **Cutoff** (a high-pass, 20 Hz–2 kHz, 150 Hz to begin with, 12 dB
     per octave), summed to mono, goes through four short delays, each swept slowly by an LFO of its own
     (0.29–0.53 Hz, 12 % of its delay either way). **Size** sets how long they are: 2–5 ms at 0, a tight doubling,
@@ -669,7 +670,10 @@ What the plugin does and how its editor works, in full. Building and installing 
 
   The phaser, flanger and chorus keep their feedback from ringing louder: what they send round is scaled so their level
   across the spectrum stays where it was without it. Effect knobs can be modulated like any other. Their levels and
-  mixes ramp to a new setting sample by sample, however the host splits the block. As the effects are shared by all voices, the LFOs and envelopes
+  mixes ramp to a new setting sample by sample, however the host splits the block, and so do the frequencies their
+  filters are set to (the phase disperser's Freq and Pinch, the filter effect's cutoff and its other knobs, the Param
+  EQ's bands, the phaser's Center and Depth, the widener's Cutoff): an LFO sweeping one glides it rather than stepping
+  it every 32 samples, which buzzed at the steps' rate. As the effects are shared by all voices, the LFOs and envelopes
   reach them through the most recently played voice. Each of the 16 places in the chain has the parameters of
   every effect type. Hosts aren't given the effects' parameters: an effect is set and automated from the editor's
   sources only, and has no remote control page.

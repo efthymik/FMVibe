@@ -14,6 +14,7 @@ namespace fx {
 // The parametric EQ: kPeqBands biquads a side, each switched on and off by its own On.
 struct ParamEq {
     std::array<std::array<Biquad, 2>, kPeqBands> bands{}; // per band, per channel
+    std::array<BiquadRamp, kPeqBands> coefs{};             // each band's, ramping to its params' (see BiquadRamp)
     // How much of each band is heard, gliding to its On switch (see run()); NaN until the first chunk,
     // which takes the switch as it is.
     static constexpr double kUnset = std::numeric_limits<double>::quiet_NaN();
