@@ -41,7 +41,7 @@ constexpr bool idsRoundTrip(int from, int to) {
     return true;
 }
 // (MSVC allows an expression 1,048,576 steps, fewer than GCC, so the parts are small.)
-static_assert(kParamCount <= 9 * 3000);
+static_assert(kParamCount == 31554 && kParamCount <= 11 * 3000);
 static_assert(idsRoundTrip(0, 1500), "param id layout overlaps");
 static_assert(idsRoundTrip(1500, 3000), "param id layout overlaps");
 static_assert(idsRoundTrip(3000, 4500), "param id layout overlaps");
@@ -60,6 +60,10 @@ static_assert(idsRoundTrip(21000, 22500), "param id layout overlaps");
 static_assert(idsRoundTrip(22500, 24000), "param id layout overlaps");
 static_assert(idsRoundTrip(24000, 25500), "param id layout overlaps");
 static_assert(idsRoundTrip(25500, 27000), "param id layout overlaps");
+static_assert(idsRoundTrip(27000, 28500), "param id layout overlaps");
+static_assert(idsRoundTrip(28500, 30000), "param id layout overlaps");
+static_assert(idsRoundTrip(30000, 31500), "param id layout overlaps");
+static_assert(idsRoundTrip(31500, 33000), "param id layout overlaps");
 #endif
 
 namespace {
@@ -1053,8 +1057,11 @@ void buildTable(ParamTable &t) {
             // Its curves, empty to begin with.
             for (int c = 0; c < kSeqCurves; ++c) {
                 const SeqCurve curve = static_cast<SeqCurve>(c);
-                const std::string n =
-                    name + " " + tr(curve == SeqCurve::Bend ? Str::ParamSeqBendCurve : Str::ParamSeqWheelCurve) + " ";
+                const std::string label = curve == SeqCurve::Bend       ? std::string(tr(Str::ParamSeqBendCurve))
+                                          : curve == SeqCurve::ModWheel ? std::string(tr(Str::ParamSeqWheelCurve))
+                                                                        : trf(Str::ParamSeqMacroCurve,
+                                                                              {std::to_string(seqCurveMacro(curve) + 1)});
+                const std::string n = name + " " + label + " ";
                 add(seqCurveCountIndex(pattern, curve), n + tr(Str::ParamPoints), module, ParamKind::ShapeCount, 0.0,
                     kSeqCurvePoints, 0.0);
                 for (int point = 0; point < kSeqCurvePoints; ++point) {

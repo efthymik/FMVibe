@@ -152,6 +152,9 @@ struct Telemetry {
     // What the sequencer's mod wheel curve adds to the Mod Wheel param as it plays, 0 while it doesn't: the mod wheel
     // shows the param as the editor has it with this on top. (What its bend curve adds is in `bend`.)
     float seqWheel = 0.0f;
+    // How far the sequencer's macro curves, which take the place of the knobs as they play, move each macro's knob from
+    // where it is set, either way; 0 while they don't. `macroOffset` goes on from there.
+    std::array<float, kMacros> seqMacro{};
 
     bool keyDown(int key) const { return key >= 0 && key < 128 && (keys[key / 32] >> (key % 32) & 1u) != 0; }
 };
@@ -271,8 +274,8 @@ public:
     int activeVoiceCount() const;
     // Whether the sequencer may start notes of its own (see Sequencer::wantsProcessing()), or holds some on.
     bool sequencerAwake() const { return seq_.wantsProcessing() || seq_.sounding(); }
-    // Whether the sequencer's curves take the pitch bend or the mod wheel anywhere now.
-    bool seqCurvesApplied() const { return seqBend_ != 0.0 || seqWheel_ != 0.0; }
+    // Whether the sequencer's curves take the pitch bend, the mod wheel or a macro's knob anywhere now.
+    bool seqCurvesApplied() const { return seqBend_ != 0.0 || seqWheel_ != 0.0 || seqMacroHeld_ != 0; }
     // Effects still sounding after the voices ended (delay echoes).
     bool effectsRinging() const { return effects_.ringing(); }
     // Whether the voice filters, parametric EQs and filter effects measure their output for the editor, as do the effects
@@ -550,10 +553,15 @@ private:
     int capacity_ = 0;      // voices that may play; voices_ has as many more (4 to 32) for stolen ones to fade out in
     double bend_ = 0.0;
     double bendSet_ = 0.0; // the Pitch Bend param as the last render() had it (see Telemetry::bendSet)
-    // What the sequencer's curves add as its pattern plays (see Sequencer::curve()): to the pitch bend, and to the Mod
-    // Wheel param, as the host's modulation of it would; 0 while they don't.
+    // What the sequencer's curves do as its pattern plays (see Sequencer::curve()): what they add to the pitch bend and to
+    // the Mod Wheel param, as the host's modulation of it would, 0 while they don't; the macros whose curves hold their
+    // knobs now (a bit each), where they hold them, in place of the knobs as set, and how far that is from where each is
+    // set (see Telemetry::seqMacro).
     double seqBend_ = 0.0;
     double seqWheel_ = 0.0;
+    uint32_t seqMacroHeld_ = 0;
+    std::array<double, kMacros> seqMacro_{};
+    std::array<double, kMacros> seqMacroAdded_{};
     // Where a curve stands as the last plan()'s stretch starts, 0 where it does nothing; whether either stands elsewhere
     // than the voices hear it; and the voices taking them up.
     double seqCurveValue(SeqCurve c) const;
@@ -619,7 +627,8 @@ private:
     }
     void applyMacros(const ParamValues &params);
     // A param as set with the host's modulation for every voice, in its range: how the macros, the mod wheel and the
-    // note source read their knobs, depths and range.
+    // note source read their knobs, depths and range. (The sequencer's curves take the macros' knobs' places in
+    // applyMacros(), the one place those are read.)
     double hostValue(const ParamValues &params, int index) const {
         const double wheel = index == paramIndex(GlobalParam::ModWheel) ? seqWheel_ : 0.0;
         return std::clamp(params[index] + globalMod_[index] + wheel, table_[index].min, table_[index].max);

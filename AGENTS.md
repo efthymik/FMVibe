@@ -248,7 +248,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     operator's Unison Detune loading half as deep, as its range grew from 100 cents to 200, a version 13 state's as
     saved, and its Unison Pan loading Ramp, as its copies played, where a version 13 state without one loads
     Alternate, the pan a new operator starts with, and its depth on a source's Division loading 26/28 as deep, as it
-    grew two note values slower, a version 13 state's as saved;
+    grew two note values slower, a version 13 state's as saved; and a version 13 state's sequencer curves loading with
+    points that hold their ends as they played, a version 14 state's as saved, wrapping around;
   - the chorus's Voices (2, 6, 3, 2) and Spread (0, 100, 0 %) changed under a sine, all wet, gliding rather than
     clicking: no sample stepping further than the sine's own do; held still, an impulse coming out once a voice, at
     its place along Delay and as loud as 1 / sqrt(voices) (2 and 6); and swept, its voices together playing a sine at
@@ -372,9 +373,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
     reported, the sequencer's notes' never, the playhead in the telemetry, and the keys its notes are written on, not those they play), the keys the telemetry shows held leaving
     its notes out, and through the synth a note sounding from its sample however the blocks are split; its curves
     standing where the playhead is (back through a step played reversed, a bent segment off the straight line, held
-    before the first point), doing nothing without points or while it doesn't play, and through the synth a bend curve
+    wrapping round the pattern's end from the last point to the first, a point past the end left out), doing nothing without points or while it doesn't play, and through the synth a bend curve
     bending what it plays by Bend Range and a mod wheel curve moving the mod wheel's slot, the telemetry telling the
-    wheels what both add as they play and nothing once the key is let go or the sequencer is switched off;
+    wheels what both add as they play and nothing once the key is let go or the sequencer is switched off; and a macro's
+    curve taking the place of its knob wherever the knob is set, moving what the macro modulates and no other macro, the
+    telemetry saying how far it moves the knob from where it is set and nothing once it stops;
   - the effects' latency, on an impulse through effects that run oversampled and leave the sound as it is (a filter
     and an amp at Mix 0): the input straight out beside a filter, the filter on and off, a split with an amp at 4x on
     one band and a filter on the other, two filters beside an amp at 8x, and nine filters in a row beside the input
@@ -822,8 +825,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     click doing nothing (no pen) and a Ctrl+double-click putting a point down on the grid and a Ctrl+drag moving it
     onto the grid (the cursor moving over it), undoably, with Draw a click putting one down where the mouse is (a pen)
     and a double-click there leaving it, a segment's middle dragged up bending it (the cursor up and down) and
-    double-clicked straightening it, with Select a point double-clicked going, and the curve drawn where the lane was
-    bare (read off the rendered pixels); on MOD WHEEL Draw's Shift+drag drawing a point a step; a double-click on the ruler looping the whole pattern; the scale's list picking Minor and FOLD showing
+    double-clicked straightening it, the last segment's too, round the pattern's end, with Select a point double-clicked going, and the curve drawn where the lane was
+    bare (read off the rendered pixels); on MOD WHEEL Draw's Shift+drag drawing a point a step; the MACRO tab looking as the lane's other tabs do, lit only while picked and with no border (read off the rendered pixels), its list of macros picking the one the lane shows, a point drawn on its curve alone, undoably, a macro with a curve showing it small in its row and its dot full where one without has it faint, on the tab and in the list (read off the rendered pixels), a click around the list and Escape closing it, the wheel stepping the tab along the macros, and where the curve holds the macro's knob showing on the knob with no param edited (read off the rendered pixels); a double-click on the ruler looping the whole pattern; the scale's list picking Minor and FOLD showing
     only its rows, and a note off it keeping its row, hatched (read off the rendered pixels); the snap's list, and the roll's lines falling at its length and as strong as the GRID setting
     says (read off the rendered pixels); copying the pattern into the next empty one; and the bin clearing the pattern,
     asking first, undoably.
@@ -1192,8 +1195,8 @@ itself.
   two views of it, the view a layout field (`UiLayout::fxGraphView`). The chain's places (33400 + place) are only
   read when loading a state from before version 9. The sequencer's settings are 40000+, each pattern's length and
   loop 40100 + 10·pattern, each pattern's notes 41000 + 10·(128·pattern + note), and each pattern's curves
-  47000 + 200·(2·pattern + curve), the bend's then the mod wheel's, a point count and 64 (x, y, curve) points each
-  (see `SeqParam`, `SeqCurveParam`).
+  47000 + 200·(2·pattern + curve), the bend's then the mod wheel's, and each macro's 50000 + 200·(8·pattern + macro), a
+  point count and 64 (x, y, curve) points each (see `SeqParam`, `SeqCurveParam`).
   Once released, new fields go at the end of their section's
   enum and fields are never reordered. The same goes for the wave, filter type, effect type, source type, route
   mode, slot aux field, split field, wire field, port, amp model, cabinet, mic, fixed Mult, operator sync (`OpSync`),
@@ -1221,7 +1224,7 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 1,317 of the 25,378 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 1,317 of the 31,554 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 896 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain's retired order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'
@@ -1251,7 +1254,7 @@ itself.
   differently goes into the step already made since the last tag, if there is one (its comment in `src/state.cpp`
   and the checks that load a state from before it), rather than adding another. States saved by a build between two
   tags are not kept loading as they were: only released versions are.
-- The state blob holds `(id, value)` pairs with a version number (currently 13: version 1's Volume loads 12 dB
+- The state blob holds `(id, value)` pairs with a version number (currently 14: version 1's Volume loads 12 dB
   lower, since Volume now gives back the 12 dB the voices go into the effects with; before version 3, a state in
   poly loads Legato off, since it did nothing there then and acts there now; before version 4, a modulation's depth on an
   envelope's attack, decay or release loads scaled by `kMaxEnvNorm / (kMaxEnvNorm - kMinEnvNorm)`, since their
@@ -1273,7 +1276,9 @@ itself.
   since its range now reaches 200 cents rather than 100, and its Unison Pan, Alternate to begin with, loads Ramp, as
   its copies played, and a modulation's depth on a source's Division loads scaled by
   `kRetiredSourceDivisionSteps / kSourceDivisionSteps`, since it now reaches two note values slower, 8/1T and 8/1,
-  numbered -1 and -2 (`kSlowestDivision`) so that its stored values keep their note values), followed by the editor
+  numbered -1 and -2 (`kSlowestDivision`) so that its stored values keep their note values; before version 14, a
+  pattern's bend and mod wheel curves, which held their first and last points' values and now wrap around the pattern's
+  end, load with points at the pattern's start and end that hold them (`holdSeqCurveEnds()`)), followed by the editor
   layout:
   node, filter and shaper positions, selected node, zoom, the routing view, whether the modulation panel is collapsed,
   the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names, which

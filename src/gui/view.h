@@ -747,10 +747,11 @@ private:
     // Where modulation takes param `index` for the newest voice, against its set value, or with no note playing
     // where the macros take it, and the last voice's modulation of the effects as they ring out; nothing for the
     // params that can't be modulated. A macro's knob, as the newest voice has it, or with none, where the macros and
-    // the mod wheel take it.
+    // the mod wheel take it, each from where the sequencer's curve holds it.
     float liveOffset(int index) const {
         if (isMacroKnob(index))
-            return telemetry_.voices > 0 ? telemetry_.macroOffset[macroOf(index)] : macroKnobOffsets_[macroOf(index)];
+            return telemetry_.seqMacro[macroOf(index)] +
+                   (telemetry_.voices > 0 ? telemetry_.macroOffset[macroOf(index)] : macroKnobOffsets_[macroOf(index)]);
         if (index < 0 || index >= kModulatedCount)
             return 0.0f;
         if (telemetry_.voices > 0)

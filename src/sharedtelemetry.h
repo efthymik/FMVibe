@@ -55,6 +55,7 @@ struct SharedTelemetry {
     std::atomic<int> seqPattern{0};
     std::array<std::atomic<uint32_t>, 4> seqKeys{};
     std::atomic<float> seqWheel{0.0f};
+    std::array<std::atomic<float>, kMacros> seqMacro{};
 
     void store(const Telemetry &t) {
         for (size_t i = 0; i < keys.size(); ++i)
@@ -114,6 +115,8 @@ struct SharedTelemetry {
         for (size_t i = 0; i < seqKeys.size(); ++i)
             seqKeys[i].store(t.seqKeys[i], std::memory_order_relaxed);
         seqWheel.store(t.seqWheel, std::memory_order_relaxed);
+        for (size_t i = 0; i < seqMacro.size(); ++i)
+            seqMacro[i].store(t.seqMacro[i], std::memory_order_relaxed);
         stamp.store(std::chrono::steady_clock::now().time_since_epoch().count(), std::memory_order_relaxed);
     }
 
@@ -175,6 +178,8 @@ struct SharedTelemetry {
         for (size_t i = 0; i < seqKeys.size(); ++i)
             t.seqKeys[i] = seqKeys[i].load(std::memory_order_relaxed);
         t.seqWheel = seqWheel.load(std::memory_order_relaxed);
+        for (size_t i = 0; i < seqMacro.size(); ++i)
+            t.seqMacro[i] = seqMacro[i].load(std::memory_order_relaxed);
         const auto elapsed = std::chrono::steady_clock::duration(
             std::chrono::steady_clock::now().time_since_epoch().count() - stamp.load(std::memory_order_relaxed));
         t.age = std::chrono::duration<float>(elapsed).count();

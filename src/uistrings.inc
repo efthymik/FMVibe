@@ -498,6 +498,7 @@ STR(ParamSeqNoteSlide, "Slide")
 STR(ParamSeqNoteMute, "Mute")
 STR(ParamSeqBendCurve, "Bend Curve") // a pattern's pitch bend curve, in its params' names
 STR(ParamSeqWheelCurve, "Mod Wheel Curve")
+STR(ParamSeqMacroCurve, "Macro {1} Curve")
 
 // --- The host's remote control pages, and the plugin's ports
 
@@ -593,6 +594,7 @@ STR(SeqLaneVelocity, "VELOCITY")
 STR(SeqLaneChance, "CHANCE")
 STR(SeqLaneBend, "BEND")
 STR(SeqLaneWheel, "MOD WHEEL")
+STR(SeqLaneMacro, "MACRO {1}") // the lane's tab of the macros' curves, {1} the macro it shows
 STR(ModListCount, "{1} modulations") // in a pill's list, after the name of what they modulate
 STR(ModListCountOne, "1 modulation")
 STR(TabUnison, "UNISON") // an operator's page: what its lower half shows
@@ -1048,6 +1050,7 @@ STR(TipSeqField, "{1}: drag or scroll, double-click resets")
 STR(TipSeqLane, "Drag to set {1}")
 STR(TipSeqLaneBend, "Pattern pitch bend")
 STR(TipSeqLaneWheel, "Pattern mod wheel")
+STR(TipSeqLaneMacro, "Pattern macro curves")
 STR(TipSeqRoot, "Root for Key and Latch")
 STR(TipSeqPower, "Sequencer on/off")
 STR(TipSeqZoomOutX, "Zoom out horizontally (Ctrl+wheel)")

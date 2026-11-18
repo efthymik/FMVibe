@@ -753,13 +753,17 @@ What the plugin does and how its editor works, in full. Building and installing 
     backward, to and fro (the first and last steps play twice at each turn, so a loop of 16 steps takes 32 and stays
     in its meter), or each one at random (the same way each time round), the notes starting in a step at the
     same place in it.
-  - **Curves**: each pattern also has a **bend** curve and a **mod wheel** curve, drawn in the lane under the roll:
+  - **Curves**: each pattern also has a **bend** curve, a **mod wheel** curve and a curve for each of the eight
+    **macros**, drawn in the lane under the roll:
     up to 64 points each, at any step, each segment straight or bent. As the pattern plays, the bend curve (±1, a share
     of Bend Range) adds to the pitch bend, on top of the bend wheel's and the host's, and the mod wheel curve (0–1) to
-    the Mod Wheel param, as the host's modulation of it would, moving what the mod wheel modulates. Before its first
-    point a curve holds that point's value, and after its last that one's; played backward, it runs back with the
-    playhead. A curve without points does nothing, nor does either while the sequencer doesn't play. The wheels in the
-    keyboard strip show what the curves add as they play and go back to their params as they stop; the curves edit no
+    the Mod Wheel param, as the host's modulation of it would, moving what the mod wheel modulates. A macro's curve (0–1)
+    takes the place of its knob's position, wherever the knob is set, what modulates the knob still adding to it. As a Curve source's last
+    segment does, a curve's last segment wraps around: from its last point on past the pattern's end and in from the
+    pattern's start to its first point, so the pattern comes round without a jump (bent by the last point's bend, with
+    its handle at its middle, on whichever side that falls). A point past the pattern's end, left by a pattern made
+    shorter, is left out until the pattern reaches it again. Played backward, a curve runs back with the playhead. A curve without points does nothing, nor does any while the sequencer doesn't play. The wheels in the
+    keyboard strip and the macros' knobs show where the curves take them as they play and go back to their params as they stop; the curves edit no
     param, so nothing of theirs reaches the host or the undo history.
   - Its notes start and end at their sample, however the host splits its blocks, and go to the voices as notes do
     (stealing, mono, legato and glide alike); the host is never told of their ends, and the keyboard strip lights only
@@ -870,7 +874,11 @@ one may have changed since it last did.
     drag paints a note in each grid step it crosses that has none; a note clicked is moved or stretched as in Select
     (the cursor saying which over it). Each edit is one undo step.
   - **The lane** under the roll, a slight line parting the two: a stem for each note at its start, as high as its velocity or its chance, as the
-    **VELOCITY | CHANCE | BEND | MOD WHEEL** tabs under it pick, a note picked ringed there too. With **Draw**, dragged
+    **VELOCITY | CHANCE | BEND | MOD WHEEL** tabs under it pick, a note picked ringed there too. After the tabs,
+    a **MACRO** tab, with a dot in its macro's color (faint while the macro has no curve in this pattern, here and in the
+    list) and that macro's number, shows the macro last shown and opens
+    the list of the eight over it: each with its color, its name and its curve in this pattern drawn small (a faint line
+    without one). A row picked shows that macro's curve in the lane, the tab lit as a tab picked is; a click around the list or Escape closes it, and the wheel over the tab steps along the macros. With **Draw**, dragged
     across, the notes there take the height of the mouse (the cursor a pen, and up and down over a dot and while one is
     dragged); with more than one note picked, a drag from one of their dots moves them all up or down together, each
     from where it was. With **Select**, the dots are picked as their notes are in the roll, picking the notes: a drag
@@ -881,9 +889,9 @@ one may have changed since it last did.
     over a dot, the arrow elsewhere). Either way a double-click puts the notes there back (velocity 100, chance full).
     Where notes start together and any of them is picked, the lane sets the picked ones alone (their dots drawn over
     the others').
-    On **BEND** and **MOD WHEEL**, the lane shows the pattern's curve instead (see Sequencer), across the pattern as
-    the roll is zoomed and scrolled, in the bend's or the mod wheel's color, filled down to where it rests (the bend's
-    middle, the mod wheel's bottom), with its points and, on each segment that rises or falls and has room, a handle
+    On **BEND**, **MOD WHEEL** and **MACRO**, the lane shows the pattern's curve instead (see Sequencer), across the pattern as
+    the roll is zoomed and scrolled, in the bend's, the mod wheel's or the macro's color, filled down to where it rests (the bend's
+    middle, the bottom for the others), with its points and, on each segment that rises or falls and has room, a handle
     at its middle; behind it a grid, the roll's lines running on down through the lane and a line at each quarter of
     the curve's range, as strong as the GRID setting says. As with notes, a point dragged moves between its
     neighbors and a segment's middle dragged up or down bends it, with either tool; with **Select** a double-click

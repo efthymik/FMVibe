@@ -713,7 +713,14 @@ void Synth::applyMacros(const ParamValues &params) {
     // The knobs first, as the macros' and the mod wheel's slots on them take them, then what the knobs move.
     macroGraph_ = macroGraph(get);
     macroSet_ = macroKnobsSet(get);
-    macroKnobs_ = sharedMacroKnobs(get, macroGraph_);
+    for (int m = 0; m < kMacros; ++m) { // a curve playing holds its knob, the host's modulation on top; the editor shows it
+        const double set = macroSet_[m];
+        if (seqMacroHeld_ >> m & 1u)
+            macroSet_[m] = std::clamp(seqMacro_[m] + globalMod_[paramIndex(m, MacroParam::Value)], 0.0, 1.0);
+        seqMacroAdded_[m] = macroSet_[m] - set;
+    }
+    macroKnobs_ = macroSet_;
+    runMacroGraph(macroGraph_, get, macroKnobs_, nullptr, [](int) { return -1.0; }, [](int, int, double) {});
     voiceMovedSlotCount_ = 0;
     forEachMacroMod(get, macroKnobs_, [&](int target, double offset, int source, int slot) {
         macroMod_[target] += offset;
@@ -801,7 +808,15 @@ double Synth::seqCurveValue(SeqCurve c) const {
 }
 
 bool Synth::seqCurvesMoved() const {
-    return seqCurveValue(SeqCurve::Bend) != seqBend_ || seqCurveValue(SeqCurve::ModWheel) != seqWheel_;
+    if (seqCurveValue(SeqCurve::Bend) != seqBend_ || seqCurveValue(SeqCurve::ModWheel) != seqWheel_)
+        return true;
+    for (int m = 0; m < kMacros; ++m) {
+        const double knob = seq_.curve(seqMacroCurve(m));
+        const bool held = std::isfinite(knob);
+        if (held != ((seqMacroHeld_ >> m & 1u) != 0) || (held && knob != seqMacro_[m]))
+            return true;
+    }
+    return false;
 }
 
 void Synth::followSeqCurves() {
@@ -811,6 +826,18 @@ void Synth::followSeqCurves() {
         seqWheel_ = wheel;
         paramChanged(paramIndex(GlobalParam::ModWheel));
     }
+    uint32_t heldNow = 0;
+    for (int m = 0; m < kMacros; ++m) {
+        const double knob = seq_.curve(seqMacroCurve(m));
+        const bool held = std::isfinite(knob);
+        if (held)
+            heldNow |= 1u << m;
+        if (held != ((seqMacroHeld_ >> m & 1u) != 0) || (held && knob != seqMacro_[m])) {
+            seqMacro_[m] = held ? knob : 0.0; // the macro's knob moved, and what it moves with it
+            paramChanged(paramIndex(m, MacroParam::Value));
+        }
+    }
+    seqMacroHeld_ = heldNow;
 }
 
 void Synth::renderSpan(float *left, float *right, uint32_t frames, const ParamValues &params, bool sameParams) {
@@ -1372,6 +1399,8 @@ void Synth::telemetry(Telemetry &out) const {
     out.seqPattern = seq_.pattern();
     out.seqKeys = seq_.soundingPitches();
     out.seqWheel = static_cast<float>(seqWheel_);
+    for (int m = 0; m < kMacros; ++m)
+        out.seqMacro[m] = static_cast<float>(seqMacroAdded_[m]);
     if (scope_.op >= 0 && scope_.live) {
         // A slow span (or the first one, before it is whole) shows as it fills; a quicker one a whole span at a time,
         // blending into the next (see kScopeBlendSpan).

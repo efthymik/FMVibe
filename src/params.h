@@ -342,12 +342,17 @@ enum class SeqPatternParam { Length, LoopStart, LoopEnd, Count };
 // Start and Length in steps, Pitch a MIDI note, Velocity and Chance 0..1, Slide and Mute 0 or 1.
 enum class SeqNoteParam { Start, Length, Pitch, Velocity, Chance, Slide, Mute, Count };
 // Each pattern's curves, which the sequencer plays as it plays the pattern: the pitch bend (-1..1, a share of Bend
-// Range, on top of the bend wheel and the host's) and the mod wheel (0..1, on top of the Mod Wheel param). Stored by
-// number: only append.
-enum class SeqCurve { Bend, ModWheel, Count };
+// Range, on top of the bend wheel and the host's), the mod wheel (0..1, on top of the Mod Wheel param) and each macro's
+// knob (0..1, in place of the knob as set). Stored by number: only append.
+enum class SeqCurve { Bend, ModWheel, Macro1, Count = Macro1 + kMacros };
+constexpr SeqCurve seqMacroCurve(int macro) { return static_cast<SeqCurve>(static_cast<int>(SeqCurve::Macro1) + macro); }
+// The macro a curve moves, -1 for the bend's and the mod wheel's.
+constexpr int seqCurveMacro(SeqCurve curve) {
+    return curve >= SeqCurve::Macro1 ? static_cast<int>(curve) - static_cast<int>(SeqCurve::Macro1) : -1;
+}
 // A curve: PointCount points (0: none, and the curve does nothing), then kSeqCurvePoints (x, y, curve) triples (see
 // PointField), sorted by x: x in steps, y the value, curve the bend of the segment to the next point (see shapeBend()).
-// Before its first point the curve holds that point's value, and after its last that one's.
+// The last point's segment goes on round the pattern's end to the first point, as a drawn LFO shape's does.
 constexpr int kSeqCurvePoints = 64;
 enum class SeqCurveParam { PointCount, Points, Count = Points + 3 * kSeqCurvePoints };
 // When it plays: with the host's transport, from a key held (transposed by it from Root) or from a key until stopped.
@@ -365,6 +370,7 @@ constexpr int kSeqParamCount = static_cast<int>(SeqParam::Count);
 constexpr int kSeqPatternParamCount = static_cast<int>(SeqPatternParam::Count);
 constexpr int kSeqNoteParamCount = static_cast<int>(SeqNoteParam::Count);
 constexpr int kSeqCurves = static_cast<int>(SeqCurve::Count);
+constexpr int kSeqFirstCurves = static_cast<int>(SeqCurve::Macro1); // the curves the patterns had at first
 constexpr int kSeqCurveParamCount = static_cast<int>(SeqCurveParam::Count);
 // Steps a beat (a quarter note) at each rate.
 constexpr double kSeqStepsPerBeat[] = {1.0, 4.0 / 3.0, 2.0, 8.0 / 3.0, 3.0, 4.0, 6.0, 8.0};
@@ -940,7 +946,8 @@ constexpr int kSeqBase = kFxPositionBase + kFxSlots;
 constexpr int kSeqPatternBase = kSeqBase + kSeqParamCount;
 constexpr int kSeqNoteBase = kSeqPatternBase + kSeqPatterns * kSeqPatternParamCount;
 constexpr int kSeqCurveBase = kSeqNoteBase + kSeqPatterns * kSeqNotes * kSeqNoteParamCount;
-constexpr int kParamCount = kSeqCurveBase + kSeqPatterns * kSeqCurves * kSeqCurveParamCount;
+constexpr int kSeqMacroCurveBase = kSeqCurveBase + kSeqPatterns * kSeqFirstCurves * kSeqCurveParamCount;
+constexpr int kParamCount = kSeqMacroCurveBase + kSeqPatterns * kMacros * kSeqCurveParamCount;
 // The params before the shapes: what LFOs, envelopes and hosts can modulate,
 // and what voices read with modulation applied. Shapes are only ever read as set.
 constexpr int kModulatedCount = kShapeBase;
@@ -958,7 +965,9 @@ constexpr int seqNoteIndex(int pattern, int note, SeqNoteParam p) {
 }
 // Pattern `pattern`'s curve `curve`: its point count, and a field of a point.
 constexpr int seqCurveCountIndex(int pattern, SeqCurve curve) {
-    return kSeqCurveBase + (pattern * kSeqCurves + static_cast<int>(curve)) * kSeqCurveParamCount;
+    const int macro = seqCurveMacro(curve);
+    return macro >= 0 ? kSeqMacroCurveBase + (pattern * kMacros + macro) * kSeqCurveParamCount
+                      : kSeqCurveBase + (pattern * kSeqFirstCurves + static_cast<int>(curve)) * kSeqCurveParamCount;
 }
 constexpr int seqCurveIndex(int pattern, SeqCurve curve, int point, PointField field) {
     return seqCurveCountIndex(pattern, curve) + static_cast<int>(SeqCurveParam::Points) + 3 * point +
@@ -1506,7 +1515,9 @@ constexpr Section kSections[] = {
     {kSeqBase, 1, kSeqParamCount, 40000, 100},
     {kSeqPatternBase, kSeqPatterns, kSeqPatternParamCount, 40100, 10},
     {kSeqNoteBase, kSeqPatterns * kSeqNotes, kSeqNoteParamCount, 41000, 10},
-    {kSeqCurveBase, kSeqPatterns * kSeqCurves, kSeqCurveParamCount, 47000, 200},
+    {kSeqCurveBase, kSeqPatterns * kSeqFirstCurves, kSeqCurveParamCount, 47000, 200},
+    // The macros' curves, pattern by pattern.
+    {kSeqMacroCurveBase, kSeqPatterns * kMacros, kSeqCurveParamCount, 50000, 200},
 };
 
 // Sources had kFirstSlots slots at first. Their fields keep the ids they had
@@ -1641,7 +1652,12 @@ static_assert(idOfIndex(paramIndex(SeqParam::Enabled)) == 40000 && idOfIndex(par
                   idOfIndex(seqCurveCountIndex(0, SeqCurve::ModWheel)) == 47200 &&
                   idOfIndex(seqCurveIndex(kSeqPatterns - 1, SeqCurve::ModWheel, kSeqCurvePoints - 1, PointField::Curve)) ==
                       48592 &&
-                  kSeqCurveParamCount <= 200 && static_cast<int>(SeqCurve::ModWheel) == 1,
+                  idOfIndex(seqCurveCountIndex(0, seqMacroCurve(0))) == 50000 &&
+                  idOfIndex(seqCurveCountIndex(1, seqMacroCurve(0))) == 51600 &&
+                  idOfIndex(seqCurveIndex(kSeqPatterns - 1, seqMacroCurve(kMacros - 1), kSeqCurvePoints - 1,
+                                          PointField::Curve)) == 56392 &&
+                  kSeqCurveParamCount <= 200 && static_cast<int>(SeqCurve::ModWheel) == 1 &&
+                  static_cast<int>(SeqCurve::Macro1) == 2,
               "sequencer param ids moved");
 // Projects store params by id: effect fields keep theirs as later ones come (the 80th was the last in the
 // first section),
@@ -2253,17 +2269,27 @@ inline double shapeBend(double t, double curve) {
     return std::expm1(a * t) / std::expm1(a);
 }
 // A point of a sequencer curve (see SeqCurveParam), and where a curve of `count` points, `point(i)` its i-th, stands at
-// `step`: the first point's value before it, the last's after it, and between two the segment bent by the first's
-// curve. NaN for a curve without points, which does nothing.
+// `step` of a pattern `period` steps long: between two points the segment bent by the first's curve, and from the last
+// point on round the pattern's end to the first, bent by the last's. Points past the pattern's end (a pattern made
+// shorter leaves them) are left out. NaN for a curve without points, which does nothing.
 struct SeqCurvePoint {
     double x, y, curve;
 };
-template <class PointAt> double seqCurveAt(int count, const PointAt &point, double step) {
+template <class PointAt> double seqCurveAt(int count, const PointAt &point, double step, double period) {
+    while (count > 0 && point(count - 1).x > period)
+        --count;
     if (count <= 0)
         return std::numeric_limits<double>::quiet_NaN();
-    SeqCurvePoint a = point(0);
-    if (step <= a.x)
-        return a.y;
+    const SeqCurvePoint first = point(0), last = point(count - 1);
+    auto round = [&](double at) { // `at` steps along, counted on past the pattern's end
+        const double span = first.x + period - last.x;
+        if (span <= 1e-9) // a last point at the pattern's end over a first at its start: it counts, not the first
+            return last.y;
+        return last.y + (first.y - last.y) * shapeBend(std::clamp((at - last.x) / span, 0.0, 1.0), last.curve);
+    };
+    if (step < first.x)
+        return round(step + period);
+    SeqCurvePoint a = first;
     for (int i = 1; i < count; ++i) {
         const SeqCurvePoint b = point(i);
         if (step < b.x) {
@@ -2273,7 +2299,7 @@ template <class PointAt> double seqCurveAt(int count, const PointAt &point, doub
         }
         a = b;
     }
-    return a.y;
+    return round(step);
 }
 // The points a pattern's curve has, as stored (0 to kSeqCurvePoints). `get(index)` returns a param value.
 template <class Get> int seqCurvePointCount(const Get &get, int pattern, SeqCurve curve) {

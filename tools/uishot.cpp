@@ -6616,8 +6616,10 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         view.mouseMove({600.0f, 600.0f}, {});
         renderer.save(view, dir / "36h-seq-bend-empty.png");
         const bool grid = renderer.pixel(bendAt(14.5, 0.5)) != renderer.pixel(bendAt(14.5, 0.75));
-        const Point bareAt = bendAt(14.5, 0.75); // between the grid's lines, in what the curve will fill
+        const Point bareAt = bendAt(14.5, 0.25); // between the grid's lines, in what the curve will fill
         const uint32_t bareInk = renderer.pixel(bareAt);
+        const Point overAt = bendAt(14.5, 0.75); // over it, where the curve falls away toward its first point
+        const uint32_t overInk = renderer.pixel(overAt);
         view.mouseMove(bendAt(2.2, 0.4), {});
         const bool noPen = view.cursor() != CursorKind::Pen;
         click(view, bendAt(2.2, 0.4));
@@ -6656,9 +6658,26 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         const double bent = curveField(SeqCurve::Bend, 0, PointField::Curve);
         view.mouseMove({600.0f, 600.0f}, {});
         const bool bentShot = renderer.save(view, dir / "36h-seq-bend.png");
-        const bool curveDrawn = renderer.pixel(bareAt) != bareInk; // held at 1 past its last point, filled down to 0
+        // Past its last point it falls round the pattern's end toward its first, filled down to 0.
+        const bool curveDrawn = renderer.pixel(bareAt) != bareInk && renderer.pixel(overAt) == overInk;
         doubleClick(view, bendAt(middleStep, -0.5 + 1.5 * shapeBend(0.5, bent)));
         const bool straight = curveField(SeqCurve::Bend, 0, PointField::Curve) == 0.0;
+        // The last segment, round the pattern's end to the first point, has a handle at its middle too, here just past the
+        // pattern's start: dragged 20 px up, it bends by the last point's curve, and double-clicked it straightens.
+        const double lastX = curveField(SeqCurve::Bend, 1, PointField::X);
+        const double roundStep = (lastX + 6.0 + 16.0) * 0.5 - 16.0;
+        const Point roundMiddle = bendAt(roundStep, 1.0 - 1.5 * 0.5);
+        view.mouseMove(roundMiddle, {});
+        const bool roundCursor = view.cursor() == CursorKind::Vertical;
+        drag(view, roundMiddle, {roundMiddle.x, roundMiddle.y - 20.0f});
+        const double roundBent = curveField(SeqCurve::Bend, 1, PointField::Curve);
+        view.mouseMove({600.0f, 600.0f}, {});
+        renderer.save(view, dir / "36h-seq-bend-round.png");
+        doubleClick(view, bendAt(roundStep, 1.0 - 1.5 * shapeBend(0.5, roundBent)));
+        const bool roundStraight = curveField(SeqCurve::Bend, 1, PointField::Curve) == 0.0;
+        std::printf("      bend lane round the pattern's end: bent by %.2f\n", roundBent);
+        check(roundCursor && std::abs(roundBent - 0.5) < 0.05 && roundStraight,
+              "the curve's last segment wraps round the pattern's end, bent and straightened by its middle");
         click(view, selectTool);
         doubleClick(view, bendAt(6.0, -0.5));
         const bool gone = count(SeqCurve::Bend) == 1.0 && std::abs(curveField(SeqCurve::Bend, 0, PointField::X) - 10.3) < 0.02;
@@ -6685,6 +6704,93 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         std::printf("      mod wheel lane: %.0f points drawn\n", count(SeqCurve::ModWheel));
         check(wheelShot && level && count(SeqCurve::Bend) == 1.0 && model.ui.seqLane == SeqLane::ModWheel,
               "the MOD WHEEL lane's Shift+drag with Draw draws its curve a point a step");
+        // The MACRO tab: as the tabs beside it, nothing behind it but the panel until it is picked, then the same highlight
+        // as a tab picked, out to its edge, no border of another color (read off the rendered pixels). A click shows the macro last shown and opens the list of macros over it; row 3 picks Macro 3's
+        // curve, and with Draw a click puts a point down on it alone, an undo step. Open again, a macro with a curve shows it
+        // small in its row, unlike one without, and its dot is full where one without a curve has it faint, on the tab and
+        // in its row (read off the rendered pixels); a click around the list and Escape close it; the wheel steps the tab along
+        // the macros. Where the curve holds the macro's knob shows on the knob, no param edited.
+        {
+            const SeqCurve macroCurve = seqMacroCurve(2);
+            auto laneOf = [](int macro) { return static_cast<SeqLane>(static_cast<int>(SeqLane::Macro1) + macro); };
+            const Rect tab = detail::kSeqMacroTab, list = detail::kSeqMacroList;
+            const Point tabCorner{tab.x + 3.0f, tab.y + 3.0f}, tabEdge{tab.center().x, tab.y + 0.5f};
+            const Point listInside{list.x + 60.0f, list.y + 3.0f};
+            auto shotInk = [&](const char *name, Point p) {
+                view.mouseMove({600.0f, 600.0f}, {});
+                renderer.save(view, dir / name);
+                return renderer.pixel(p);
+            };
+            const uint32_t panelInk = renderer.pixel({kSeqGrid.x + 76.0f + 3.0f, detail::kSeqLaneTabs.y + 5.0f}); // CHANCE's corner
+            const uint32_t litTabInk = renderer.pixel({kSeqGrid.x + 3.0f * 76.0f + 3.0f, detail::kSeqLaneTabs.y + 5.0f});
+            const uint32_t restInk = renderer.pixel(tabCorner), noListInk = renderer.pixel(listInside);
+            const bool plainAtRest = restInk == panelInk && renderer.pixel(tabEdge) == panelInk && litTabInk != panelInk;
+
+            click(view, rectCenter(tab));
+            const bool opened = model.ui.seqLane == laneOf(0) &&
+                                shotInk("36h-seq-macro-list.png", listInside) != noListInk;
+            auto brightness = [](uint32_t c) { return (c >> 16 & 0xFF) + (c >> 8 & 0xFF) + (c & 0xFF); };
+            const Point tabDot{tab.x + 10.0f, tab.center().y};
+            const Point rowDot{detail::seqMacroRow(2).x + 11.0f, detail::seqMacroRow(2).center().y};
+            const uint32_t rowDotBare = renderer.pixel(rowDot);
+            click(view, rectCenter(detail::seqMacroRow(2)));
+            const bool picked = model.ui.seqLane == laneOf(2);
+            click(view, {at(4.0, 48).x, middleY});
+            const bool drawn = count(macroCurve) == 1.0 && curveField(macroCurve, 0, PointField::X) == 4.0 &&
+                               std::abs(curveField(macroCurve, 0, PointField::Y) - 0.5) < 0.03 &&
+                               count(SeqCurve::ModWheel) == 5.0 && count(SeqCurve::Bend) == 1.0;
+            view.undo();
+            const bool undoneMacro = count(macroCurve) == 0.0;
+            const uint32_t tabDotBare = shotInk("36h-seq-macro-bare.png", tabDot);
+            view.redo();
+            const bool tabLit = shotInk("36h-seq-macro.png", tabCorner) == litTabInk && renderer.pixel(tabEdge) == litTabInk;
+            const bool tabDotFull = brightness(renderer.pixel(tabDot)) > brightness(tabDotBare) + 60;
+
+            click(view, rectCenter(tab));
+            click(view, rectCenter(detail::seqMacroRow(4)));
+            click(view, rectCenter(tab));
+            auto sparkAt = [&](int macro) {
+                const Rect row = detail::seqMacroRow(macro);
+                return Point{row.right() - 28.0f, row.center().y};
+            };
+            const uint32_t withCurve = shotInk("36h-seq-macro-list-curve.png", sparkAt(2)), without = renderer.pixel(sparkAt(3));
+            const bool sparks = withCurve != without;
+            const bool rowDotFull = brightness(renderer.pixel(rowDot)) > brightness(rowDotBare) + 60;
+            click(view, {600.0f, 600.0f});
+            const bool closedAround = shotInk("36h-seq-macro-closed.png", listInside) == noListInk && model.ui.seqLane == laneOf(4);
+            click(view, rectCenter(tab));
+            view.seqKey(Key::Escape, false);
+            const bool closedByKey = shotInk("36h-seq-macro-escaped.png", listInside) == noListInk;
+            view.wheel(rectCenter(tab), -1.0f, {});
+            const bool stepped = model.ui.seqLane == laneOf(5);
+            view.wheel(rectCenter(tab), 1.0f, {});
+            renderer.save(view, dir / "36h-seq-macro-other.png");
+
+            const float knobY = view.height() - 179.0f;
+            auto knobPixels = [&] {
+                std::vector<uint32_t> pixels;
+                for (float dy = -22.0f; dy <= 22.0f; dy += 1.0f)
+                    for (float dx = -22.0f; dx <= 22.0f; dx += 1.0f)
+                        pixels.push_back(renderer.pixel({188.0f + 96.0f * 2.0f + dx, knobY + dy}));
+                return pixels;
+            };
+            const std::vector<uint32_t> knobRest = knobPixels();
+            const double knobWas = model.value(paramIndex(2, MacroParam::Value));
+            model.live.seqMacro[2] = 0.5f;
+            view.poll();
+            renderer.save(view, dir / "36h-seq-macro-knob.png");
+            const bool knobMoved = knobPixels() != knobRest && model.value(paramIndex(2, MacroParam::Value)) == knobWas;
+            model.live.seqMacro[2] = 0.0f;
+            view.poll();
+            check(plainAtRest && tabLit, "the MACRO tab looks as the lane's other tabs do, lit only while picked, with no border");
+            check(opened && picked && drawn && undoneMacro,
+                  "the MACRO tab's list picks a macro, whose curve the lane shows, drawn alone and undoably");
+            check(tabDotFull && rowDotFull, "a macro's dot is faint without a curve, on the MACRO tab and in its list");
+            check(sparks && closedAround && closedByKey && stepped,
+                  "the list of macros shows which have a curve, closes at a click around it or Escape, and the wheel steps the tab");
+            check(knobMoved, "where a macro's curve holds its knob shows on the knob, no param edited");
+            model.set(seqCurveCountIndex(0, macroCurve), 0.0);
+        }
         // Back as it was: no curves, the select tool, the lane on CHANCE.
         click(view, rectCenter(Rect{detail::kSeqTools.x, detail::kSeqTools.y, 30.0f, detail::kSeqTools.h}));
         for (SeqCurve curve : {SeqCurve::Bend, SeqCurve::ModWheel})

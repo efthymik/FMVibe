@@ -2056,6 +2056,51 @@ void effectsChainChecks() {
         check(std::equal(now.begin(), now.end(), p.begin()), "a version 12 state loads its LFOs as saved");
     }
     {
+        // Before version 14, a pattern's curves held their ends: a version 13 state's load with points at the pattern's
+        // start and end playing as they played, a point past the end shaping the way to it as it did; a version 14 state's
+        // load as saved, wrapping around.
+        ParamValues p = defaults();
+        auto put = [&p](int pattern, SeqCurve curve, std::vector<std::pair<double, double>> points) {
+            p[seqCurveCountIndex(pattern, curve)] = static_cast<double>(points.size());
+            for (size_t i = 0; i < points.size(); ++i) {
+                p[seqCurveIndex(pattern, curve, static_cast<int>(i), PointField::X)] = points[i].first;
+                p[seqCurveIndex(pattern, curve, static_cast<int>(i), PointField::Y)] = points[i].second;
+            }
+        };
+        put(0, SeqCurve::Bend, {{4.0, 0.5}, {12.0, -0.5}});
+        put(1, SeqCurve::ModWheel, {{8.0, 0.25}, {24.0, 0.75}});
+        std::vector<unsigned char> bytes;
+        const clap_ostream_t out = memoryOut(bytes);
+        writePatch(&out, p, gui::UiLayout{}, true);
+        auto load = [&bytes](uint32_t version) {
+            std::vector<unsigned char> saved = bytes;
+            std::memcpy(saved.data() + sizeof(uint32_t), &version, sizeof(version)); // after the magic
+            MemoryReader reader{saved.data(), saved.size(), 0};
+            const clap_istream_t in = memoryIn(reader);
+            ParamValues loaded;
+            readParams(&in, loaded);
+            return loaded;
+        };
+        auto at = [](const ParamValues &v, int pattern, SeqCurve curve, double step) {
+            auto get = [&v](int index) { return v[index]; };
+            return seqCurveAt(seqCurvePointCount(get, pattern, curve), [&](int i) {
+                return SeqCurvePoint{v[seqCurveIndex(pattern, curve, i, PointField::X)],
+                                     v[seqCurveIndex(pattern, curve, i, PointField::Y)],
+                                     v[seqCurveIndex(pattern, curve, i, PointField::Curve)]};
+            }, step, 16.0);
+        };
+        const ParamValues before = load(13), now = load(14);
+        const bool held = std::abs(at(before, 0, SeqCurve::Bend, 1.0) - 0.5) < 1e-9 &&
+                          std::abs(at(before, 0, SeqCurve::Bend, 8.0)) < 1e-9 &&
+                          std::abs(at(before, 0, SeqCurve::Bend, 15.5) + 0.5) < 1e-9 &&
+                          std::abs(at(before, 1, SeqCurve::ModWheel, 2.0) - 0.25) < 1e-9 &&
+                          std::abs(at(before, 1, SeqCurve::ModWheel, 12.0) - 0.375) < 1e-9 &&
+                          std::abs(at(before, 1, SeqCurve::ModWheel, 16.0) - 0.5) < 1e-9;
+        check(held, "a state before version 14 loads its sequencer curves playing as they played, holding their ends");
+        check(std::equal(now.begin(), now.end(), p.begin()) && std::abs(at(now, 0, SeqCurve::Bend, 0.0)) < 1e-9,
+              "a version 14 state loads its sequencer curves as saved, wrapping around the pattern's end");
+    }
+    {
         // The filter effect switched to another type or slope and back: the stage it left out starts from silence,
         // rather than playing back what it held then.
         auto stale = [&](FilterType first, int firstSlope, FilterType second, int secondSlope) {
@@ -4022,6 +4067,25 @@ void sequencerChecks() {
         check(std::isnan(none) && std::abs(bend + 0.5) < 1e-3 && std::abs(reversed - 0.5) < 1e-3 && bent < -0.5 &&
                   std::abs(wheel - 0.75) < 1e-9 && std::abs(before - 0.75) < 1e-9 && std::isnan(idle),
               "the sequencer's curves stand where the playhead is, and do nothing without points");
+
+        // Round the pattern's end: from a point at 1 on step 12 on to one at 0 on step 4, three quarters of the way up on
+        // step 14, half on step 0 and a quarter on step 2; bent by the last point's curve, and a point past the pattern's
+        // end left out.
+        ParamValues w = blank();
+        point(w, SeqCurve::Bend, 0, 4.0, 0.0);
+        point(w, SeqCurve::Bend, 1, 12.0, 1.0);
+        const double late = curveAt(w, 14.0, SeqCurve::Bend), round = curveAt(w, 0.0, SeqCurve::Bend),
+                     early = curveAt(w, 2.0, SeqCurve::Bend), inside = curveAt(w, 8.0, SeqCurve::Bend);
+        point(w, SeqCurve::Bend, 2, 40.0, -1.0);
+        const double leftOut = curveAt(w, 14.0, SeqCurve::Bend);
+        w[seqCurveIndex(0, SeqCurve::Bend, 1, PointField::Curve)] = 1.0;
+        const double bentRound = curveAt(w, 0.0, SeqCurve::Bend);
+        std::printf("      curves round the end: %.3f on step 14, %.3f on 0, %.3f on 2; bent %.3f on 0\n", late, round, early,
+                    bentRound);
+        check(std::abs(late - 0.75) < 1e-3 && std::abs(round - 0.5) < 1e-3 && std::abs(early - 0.25) < 1e-3 &&
+                  std::abs(inside - 0.5) < 1e-3 && std::abs(leftOut - late) < 1e-9 &&
+                  std::abs(bentRound - (1.0 - shapeBend(0.5, 1.0))) < 1e-3,
+              "the sequencer's curves wrap around the pattern's end from their last point to their first");
     }
     // Through the synth, in Key: a bend curve at 1 bends an A4 the sequencer plays up by Bend Range (two semitones, to
     // B4); a mod wheel curve at 1 takes the mod wheel's slot on A's level all the way, silencing it.
@@ -4114,6 +4178,66 @@ void sequencerChecks() {
                     playing.bend, playing.wheel, letGo.bend, letGo.wheel, off.bend, off.wheel);
         check(rests(before) && plays(playing) && rests(letGo) && plays(again) && rests(off),
               "the telemetry shows the wheels the sequencer's curves as they play, and nothing once they stop");
+    }
+    // A macro's curve takes the place of its knob as it plays: Macro 3 turning A's level down, a curve at 1 silences A
+    // with the knob at 0, a curve at 0 leaves A whole with the knob at 1, a curve at 0.5 plays as a knob at 0.5 does
+    // wherever the knob is, and another macro's curve does nothing to it. None stands anywhere before the sequencer has
+    // played.
+    {
+        constexpr int kShown = 2;
+        const SeqCurve curve = seqMacroCurve(kShown);
+        auto start = [&](Engine &e, double knob, int curved, double v) {
+            e.p[paramIndex(SeqParam::Enabled)] = 1.0;
+            e.p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Key);
+            note(e.p, 0, 0.0, 16.0, 69);
+            e.p[paramIndex(kShown, MacroParam::Value)] = knob;
+            e.p[slotTargetIndex(kMaxSources + kShown, 0)] = slotTargetValue(paramIndex(0, OpParam::Out));
+            e.p[slotAmountIndex(kMaxSources + kShown, 0)] = -1.0;
+            if (curved >= 0) {
+                e.p[seqCurveCountIndex(0, seqMacroCurve(curved))] = 1.0;
+                e.p[seqCurveIndex(0, seqMacroCurve(curved), 0, PointField::Y)] = v;
+            }
+            e.synth().setTempo(120.0);
+            e.render(256); // the sequencer on, taking keys
+            e.synth().noteOn({1, 0, 0, 60}, 1.0);
+            e.render(4800);
+        };
+        auto level = [&](double knob, int curved, double v) {
+            Engine e(1);
+            start(e, knob, curved, v);
+            const std::vector<float> x = e.render(8192);
+            double sum = 0.0;
+            for (float s : x)
+                sum += static_cast<double>(s) * s;
+            return std::sqrt(sum / static_cast<double>(x.size()));
+        };
+        const double plain = level(0.0, -1, 0.0), half = level(0.5, -1, 0.0), silent = level(1.0, -1, 0.0);
+        const double full = level(0.0, kShown, 1.0), zero = level(1.0, kShown, 0.0);
+        const double fromLow = level(0.0, kShown, 0.5), fromHigh = level(1.0, kShown, 0.5);
+        const double other = level(1.0, kShown + 1, 0.0);
+        std::printf("      macro curve: level %.4f plain; a curve of 1 over a knob at 0 %.4f, of 0 over a knob at 1 %.4f, "
+                    "of 0.5 %.4f and %.4f (a knob at 0.5 %.4f)\n",
+                    plain, full, zero, fromLow, fromHigh, half);
+        const Sequencer fresh;
+        check(std::isnan(fresh.curve(curve)) && silent < 0.01 * plain && full < 0.01 * plain &&
+                  std::abs(zero - plain) < 0.01 * plain && half < 0.9 * plain && std::abs(fromLow - half) < 0.01 * plain &&
+                  std::abs(fromHigh - half) < 0.01 * plain && other < 0.01 * plain,
+              "a macro's curve takes the place of its knob as it plays, moving what the macro modulates, and no other macro's");
+
+        // The telemetry says how far the curve moves the knob from where it is set: from 0.75, a curve of 0.5 goes 0.25 down.
+        auto t = std::make_unique<Telemetry>();
+        Engine e(1);
+        start(e, 0.75, kShown, 0.5);
+        e.synth().telemetry(*t);
+        const float playing = t->seqMacro[kShown], beside = t->seqMacro[kShown + 1];
+        const bool applied = e.synth().seqCurvesApplied();
+        e.synth().noteOff({1, 0, 0, 60});
+        e.render(4800);
+        e.synth().telemetry(*t);
+        std::printf("      macro curve's telemetry: %+.3f playing, %+.3f let go\n", playing, t->seqMacro[kShown]);
+        check(std::abs(playing + 0.25f) < 1e-6f && beside == 0.0f && applied && t->seqMacro[kShown] == 0.0f &&
+                  !e.synth().seqCurvesApplied(),
+              "the telemetry shows a macro's knob where the sequencer's curve holds it, and nothing once it stops");
     }
     // Muted or at no chance, a note doesn't play; at half, it plays some passes and not others, alike each time.
     {

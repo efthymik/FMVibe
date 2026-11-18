@@ -336,6 +336,17 @@ constexpr Rect kSeqScrollYTrack{kSeqGrid.x + kSeqGrid.w + 3.0f, kSeqGrid.y + 2.0
 constexpr Rect kSeqRuler{kSeqGrid.x, kSeqBox.y, kSeqGrid.w, kSeqRulerH};
 constexpr Rect kSeqLaneArea{kSeqGrid.x, kSeqGrid.y + kSeqGrid.h, kSeqGrid.w, kSeqLaneH};
 constexpr Rect kSeqLaneTabs{kSeqBox.x, kSeqLaneArea.y + kSeqLaneArea.h, kSeqBox.w, kSeqLaneTabsH};
+// After the lane's tabs, the macros' curves: one more tab, wider for its macro's number and its arrow, and over it the
+// list of macros it opens.
+constexpr float kSeqLaneTabStep = 76.0f; // a tab and the gap after it
+constexpr Rect kSeqMacroTab{kSeqGrid.x + 4.0f * kSeqLaneTabStep, kSeqLaneTabs.y + 3.0f, 92.0f, kSeqLaneTabs.h - 6.0f};
+constexpr float kSeqMacroRowH = 22.0f;
+constexpr Rect kSeqMacroList{kSeqMacroTab.x, kSeqMacroTab.y - 4.0f - (8.0f + 8.0f * kSeqMacroRowH), 180.0f,
+                             8.0f + 8.0f * kSeqMacroRowH};
+constexpr Rect seqMacroRow(int macro) {
+    return {kSeqMacroList.x + 4.0f, kSeqMacroList.y + 4.0f + static_cast<float>(macro) * kSeqMacroRowH,
+            kSeqMacroList.w - 8.0f, kSeqMacroRowH};
+}
 // The card's rows, from its top: its title, PATTERN, PLAY, two rows of knobs, ORDER and ROOT, SCALE and FOLD.
 constexpr float kSeqTitleY = kSeqCard.y + 12.0f;
 constexpr float kSeqPatternY = kSeqCard.y + 46.0f;

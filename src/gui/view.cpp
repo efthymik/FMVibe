@@ -956,6 +956,13 @@ bool View::poll() {
     // Where the bend stands, and what the sequencer's curve adds to the mod wheel: the wheels.
     if (t.bend != telemetry_.bend || t.bendSet != telemetry_.bendSet || t.seqWheel != telemetry_.seqWheel)
         in(keyboardPanel(keyboardTop(controller_.layout().sourcesCollapsed), controller_.layout().keysCollapsed));
+    // Where the sequencer's curves hold the macros' knobs: the knobs, and with no voice to tell where they take their
+    // targets, whatever those are.
+    for (int m = 0; m < kMacros; ++m)
+        if (t.seqMacro[m] != telemetry_.seqMacro[m]) {
+            in(keyboardPanel(keyboardTop(controller_.layout().sourcesCollapsed), controller_.layout().keysCollapsed));
+            everywhere = everywhere || t.voices == 0;
+        }
     everywhere = everywhere || changed; // a param: it may show anywhere
     const Rect header{0.0f, 0.0f, kWidth, kHeaderH};
     // The editor's bands, as paint() leaves out those an area doesn't reach: the panels' row (the routing panel or
@@ -2261,7 +2268,9 @@ void View::paint(Canvas &c, Rect area) {
         auto get = [this](int i) { return value(i); };
         const MacroGraph graph = macroGraph(get);
         voiceMovedMacros_ = graph.voiceMoved;
-        const MacroKnobs set = macroKnobsSet(get);
+        MacroKnobs set = macroKnobsSet(get);
+        for (int m = 0; m < kMacros; ++m) // where the sequencer's curves hold them as they play
+            set[m] = std::clamp(set[m] + static_cast<double>(telemetry_.seqMacro[m]), 0.0, 1.0);
         MacroKnobs knobs = set;
         runMacroGraph(
             graph, get, knobs, nullptr, [](int) { return -1.0; },

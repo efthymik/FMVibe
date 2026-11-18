@@ -36,6 +36,7 @@ std::string caps(std::string text) {
 
 constexpr double kNewVelocity = 100.0 / 127.0;
 constexpr float kSeqScaleListW = 170.0f; // the scale's list, wider than its button: "Pentatonic Major" and the rest
+constexpr float kSeqBareMacroDot = 0.3f; // how strongly a macro's dot shows while it has no curve in the pattern
 constexpr double kShortestNote = 1.0 / 16.0; // steps
 constexpr int kFieldCount = 5;
 constexpr float kFieldWidths[kFieldCount] = {72.0f, 58.0f, 92.0f, 58.0f, 84.0f};
@@ -63,7 +64,7 @@ Rect seqCopyButton() { return {kSeqCard.x + kSeqCard.w - 12.0f - 26.0f, kSeqPatt
 Rect seqRootBox() { return {kSeqCardControls, kSeqScaleY, 48.0f, 22.0f}; }
 Rect seqScaleButton() { return {kSeqCardControls + 52.0f, kSeqScaleY, 102.0f, 22.0f}; }
 Rect seqFoldButton() { return {kSeqCard.x + kSeqCard.w - 12.0f - 54.0f, kSeqScaleY, 54.0f, 22.0f}; }
-Rect seqLaneTab(int lane) { return {kSeqGrid.x + lane * 76.0f, kSeqLaneTabs.y + 3.0f, 72.0f, kSeqLaneTabs.h - 6.0f}; }
+Rect seqLaneTab(int lane) { return {kSeqGrid.x + lane * kSeqLaneTabStep, kSeqLaneTabs.y + 3.0f, 72.0f, kSeqLaneTabs.h - 6.0f}; }
 // The zoom's buttons at the lane tabs' right: across out and in, then up and down out and in, each pair after its
 // arrow.
 Rect seqZoomButton(int b) {
@@ -181,7 +182,7 @@ void SeqPanel::zoomSeq(bool across, float factor, Point at) {
 }
 
 Rect SeqPanel::seqScrollTrack() const {
-    const float x = kSeqGrid.x + static_cast<float>(SeqLane::Count) * 76.0f + 8.0f;
+    const float x = kSeqMacroTab.right() + 10.0f;
     return {x, kSeqLaneTabs.y + kSeqLaneTabs.h * 0.5f - 3.0f, seqZoomButton(0).x - 30.0f - x, 6.0f};
 }
 
@@ -490,8 +491,9 @@ void SeqPanel::widgets(std::vector<Widget> &list) const {
     add(Kind::SeqKeys, kSeqKeys);
     add(Kind::SeqGrid, kSeqGrid);
     add(Kind::SeqLane, kSeqLaneArea);
-    for (int lane = 0; lane < static_cast<int>(SeqLane::Count); ++lane)
+    for (int lane = 0; lane < static_cast<int>(SeqLane::Macro1); ++lane)
         add(Kind::SeqLaneTab, seqLaneTab(lane), -1, -1, lane);
+    add(Kind::SeqMacroTab, kSeqMacroTab);
     for (int b = 0; b < 4; ++b)
         add(Kind::SeqZoom, seqZoomButton(b), -1, -1, b);
     if (seqShownSteps() < static_cast<float>(seqSteps()))
@@ -537,6 +539,17 @@ void SeqPanel::popups(std::vector<Widget> &list) const {
         list.back().popup = true;
         for (int i = 0; i < kSeqSnapCount; ++i) {
             add(Kind::SeqSnapItem, item(menu, i), -1, -1, i);
+            list.back().popup = true;
+        }
+    }
+    // The macros' list, over its tab.
+    if (seqMacroMenu_) {
+        add(Kind::SeqMacroMenu, {0.0f, 0.0f, View::kWidth, host_.height()}, -1, 0);
+        list.back().popup = true;
+        add(Kind::SeqMacroMenu, kSeqMacroList, -1, 1);
+        list.back().popup = true;
+        for (int macro = 0; macro < kMacros; ++macro) {
+            add(Kind::SeqMacroItem, seqMacroRow(macro), -1, -1, macro);
             list.back().popup = true;
         }
     }
@@ -701,7 +714,9 @@ void SeqPanel::stretchSeq(double factor) {
         const int bars = paramIndex(pattern, SeqPatternParam::Length);
         changes.push_back({bars, std::min(std::round(value(bars) * factor), static_cast<double>(kSeqBars))});
     }
-    const bool curves = whole && (!seqCurvePoints(SeqCurve::Bend).empty() || !seqCurvePoints(SeqCurve::ModWheel).empty());
+    bool curves = false;
+    for (int c = 0; whole && c < kSeqCurves; ++c)
+        curves = curves || !seqCurvePoints(static_cast<SeqCurve>(c)).empty();
     if (changes.empty() && !curves)
         return;
     controller().beginStep();
@@ -717,15 +732,25 @@ void SeqPanel::stretchSeq(double factor) {
     controller().endStep();
 }
 
-// --- The lane's curves: the pattern's pitch bend and mod wheel.
+// --- The lane's curves: the pattern's pitch bend, mod wheel and macros.
 
-bool SeqPanel::seqCurveLane() const {
-    const SeqLane lane = controller().layout().seqLane;
-    return lane == SeqLane::Bend || lane == SeqLane::ModWheel;
+bool SeqPanel::seqCurveLane() const { return controller().layout().seqLane >= SeqLane::Bend; }
+
+int SeqPanel::seqTabMacro() const {
+    const int shown = static_cast<int>(controller().layout().seqLane) - static_cast<int>(SeqLane::Macro1);
+    return shown >= 0 ? shown : seqLastMacro_;
+}
+
+void SeqPanel::showSeqMacro(int macro) {
+    seqLastMacro_ = std::clamp(macro, 0, kMacros - 1);
+    controller().layout().seqLane = static_cast<SeqLane>(static_cast<int>(SeqLane::Macro1) + seqLastMacro_);
 }
 
 SeqCurve SeqPanel::seqLaneCurve() const {
-    return controller().layout().seqLane == SeqLane::ModWheel ? SeqCurve::ModWheel : SeqCurve::Bend;
+    const SeqLane lane = controller().layout().seqLane;
+    return lane >= SeqLane::Macro1 ? seqMacroCurve(static_cast<int>(lane) - static_cast<int>(SeqLane::Macro1))
+           : lane == SeqLane::ModWheel ? SeqCurve::ModWheel
+                                       : SeqCurve::Bend;
 }
 
 std::vector<SeqCurvePoint> SeqPanel::seqCurvePoints(SeqCurve curve) const {
@@ -867,9 +892,30 @@ int SeqPanel::seqCurvePointAt(Point p) const {
     return -1;
 }
 
+int SeqPanel::seqCurveSegments(const std::vector<SeqCurvePoint> &points) const {
+    const double steps = seqSteps();
+    return static_cast<int>(std::count_if(points.begin(), points.end(), [&](const SeqCurvePoint &q) { return q.x <= steps; }));
+}
+
+SeqCurvePoint SeqPanel::seqCurveSegmentEnd(const std::vector<SeqCurvePoint> &points, int segment) const {
+    if (segment + 1 < seqCurveSegments(points))
+        return points[static_cast<size_t>(segment) + 1];
+    return {points.front().x + seqSteps(), points.front().y, points.front().curve};
+}
+
+bool SeqPanel::seqCurveBends(const std::vector<SeqCurvePoint> &points, int segment) const {
+    const SeqCurvePoint &a = points[static_cast<size_t>(segment)];
+    const SeqCurvePoint b = seqCurveSegmentEnd(points, segment);
+    return seqStepX(b.x) - seqStepX(a.x) >= 20.0f && std::abs(b.y - a.y) >= 1e-6;
+}
+
+// The last segment's middle shows where it falls: before the pattern's end, or past it, back at the pattern's start.
 Point SeqPanel::seqCurveBendPos(const std::vector<SeqCurvePoint> &points, SeqCurve curve, int segment) const {
-    const SeqCurvePoint &a = points[static_cast<size_t>(segment)], &b = points[static_cast<size_t>(segment) + 1];
-    return {(seqStepX(a.x) + seqStepX(b.x)) * 0.5f, seqCurveY(curve, a.y + (b.y - a.y) * shapeBend(0.5, a.curve))};
+    const SeqCurvePoint &a = points[static_cast<size_t>(segment)];
+    const SeqCurvePoint b = seqCurveSegmentEnd(points, segment);
+    const double middle = (a.x + b.x) * 0.5;
+    return {seqStepX(middle > seqSteps() ? middle - seqSteps() : middle),
+            seqCurveY(curve, a.y + (b.y - a.y) * shapeBend(0.5, a.curve))};
 }
 
 // A segment's middle takes a bend where it rises or falls and has room for its handle between its points.
@@ -878,9 +924,8 @@ int SeqPanel::seqCurveBendAt(Point p) const {
         return -1;
     const SeqCurve curve = seqLaneCurve();
     const std::vector<SeqCurvePoint> points = seqCurvePoints(curve);
-    for (int i = 0; i + 1 < static_cast<int>(points.size()); ++i) {
-        const SeqCurvePoint &a = points[static_cast<size_t>(i)], &b = points[static_cast<size_t>(i) + 1];
-        if (seqStepX(b.x) - seqStepX(a.x) < 20.0f || std::abs(b.y - a.y) < 1e-6)
+    for (int i = 0; i < seqCurveSegments(points); ++i) {
+        if (!seqCurveBends(points, i))
             continue;
         const Point handle = seqCurveBendPos(points, curve, i);
         if (std::hypot(p.x - handle.x, p.y - handle.y) <= 6.0f)
@@ -1188,6 +1233,10 @@ std::string SeqPanel::seqFieldText(int field) const {
 bool SeqPanel::key(Key key, bool shift) {
     if (!wide())
         return false;
+    if (seqMacroMenu_ && key == Key::Escape) {
+        seqMacroMenu_ = false;
+        return true;
+    }
     // The lane's curve: Delete removes its points picked, and Ctrl+A over the lane picks every one.
     if (seqCurveLane() && key == Key::Delete && !seqCurvePicked().empty()) {
         const SeqCurve curve = seqLaneCurve();
@@ -1398,7 +1447,20 @@ bool SeqPanel::pressAs(const Widget &w, Point p, Modifiers mods, const Widget &h
         layout.seqFold = !layout.seqFold;
         return true;
     case Kind::SeqLaneTab:
+        seqLastMacro_ = seqTabMacro();
         layout.seqLane = static_cast<SeqLane>(w.b);
+        return true;
+    case Kind::SeqMacroTab:
+        showSeqMacro(seqTabMacro());
+        seqMacroMenu_ = true;
+        return true;
+    case Kind::SeqMacroMenu:
+        if (w.a == 0)
+            seqMacroMenu_ = false;
+        return true;
+    case Kind::SeqMacroItem:
+        showSeqMacro(w.b);
+        seqMacroMenu_ = false;
         return true;
     case Kind::SeqZoom:
         zoomSeq(w.b < 2, w.b % 2 == 1 ? 1.5f : 1.0f / 1.5f, kSeqGrid.center());
@@ -1769,10 +1831,11 @@ void SeqPanel::seqDrag(Point p) {
     case SeqDrag::Mode::CurveBend: { // its middle follows the mouse up and down, as far as a bend takes it
         const SeqCurve curve = seqLaneCurve();
         std::vector<SeqCurvePoint> points = seqCurvePoints(curve);
-        if (d.anchor < 0 || d.anchor + 1 >= static_cast<int>(points.size()))
+        if (d.anchor < 0 || d.anchor >= seqCurveSegments(points))
             break;
         const size_t i = static_cast<size_t>(d.anchor);
-        const double rise = points[i + 1].y > points[i].y ? 1.0 : -1.0; // a bend further up lowers a rising middle
+        // A bend further up lowers a rising middle.
+        const double rise = seqCurveSegmentEnd(points, d.anchor).y > points[i].y ? 1.0 : -1.0;
         points[i].curve = std::clamp(d.startCurve - rise * (d.start.y - p.y) / 40.0, -1.0, 1.0);
         setSeqCurve(curve, points);
         break;
@@ -2006,6 +2069,7 @@ bool SeqPanel::doubleClick(const Widget &w, Point p, Modifiers mods) {
     }
     case Kind::SeqTool:
     case Kind::SeqSnap:
+    case Kind::SeqMacroTab:
     case Kind::SeqStretch:
     case Kind::SeqFlag:
         return true; // a double-click is two clicks of theirs, which the first press took
@@ -2018,7 +2082,7 @@ bool SeqPanel::wheelOn(const Widget &w, Point p, float steps, Modifiers mods) {
     UiLayout &layout = controller().layout();
     const bool roll = w.kind == Kind::SeqGrid || w.kind == Kind::SeqKeys || w.kind == Kind::SeqRuler ||
                       w.kind == Kind::SeqLane || w.kind == Kind::SeqScroll || w.kind == Kind::SeqScrollY ||
-                      w.kind == Kind::SeqZoom || w.kind == Kind::SeqLaneTab;
+                      w.kind == Kind::SeqZoom || w.kind == Kind::SeqLaneTab || w.kind == Kind::SeqMacroTab;
     // Over the roll, Ctrl zooms across and Alt up and down, at the mouse; Shift scrolls across, as the wheel turned
     // sideways does.
     if (roll && mods.ctrl) {
@@ -2055,6 +2119,9 @@ bool SeqPanel::wheelOn(const Widget &w, Point p, float steps, Modifiers mods) {
         return true;
     case Kind::SeqSnap:
         layout.seqSnap = std::clamp(layout.seqSnap + (steps > 0.0f ? -1 : 1), 0, kSeqSnapCount - 1);
+        return true;
+    case Kind::SeqMacroTab: // along the list, as the snap's button does
+        showSeqMacro(seqTabMacro() + (steps > 0.0f ? -1 : 1));
         return true;
     case Kind::SeqZoom: // its axis, in or out a notch
         zoomSeq(w.b < 2, std::pow(1.25f, steps), kSeqGrid.center());
@@ -2145,6 +2212,8 @@ std::string SeqPanel::tooltip(const Widget &w) const {
         return tr(Str::TipSeqScroll);
     case Kind::SeqScrollY:
         return tr(Str::TipSeqScrollY);
+    case Kind::SeqMacroTab:
+        return seqMacroMenu_ ? std::string() : std::string(tr(Str::TipSeqLaneMacro));
     case Kind::SeqLaneTab:
         return w.b == static_cast<int>(SeqLane::Bend)       ? std::string(tr(Str::TipSeqLaneBend))
                : w.b == static_cast<int>(SeqLane::ModWheel) ? std::string(tr(Str::TipSeqLaneWheel))
@@ -2362,7 +2431,10 @@ void SeqPanel::paintBack(Canvas &c) {
         // filled down to that line, its points and the middles of the segments that bend.
         stems.clear();
         const SeqCurve curve = seqLaneCurve();
-        const Color curveInk = look.sources[curve == SeqCurve::Bend ? kBendSource : kWheelSource];
+        const int shownMacro = seqCurveMacro(curve);
+        const Color curveInk = look.sources[shownMacro >= 0              ? kMaxSources + shownMacro
+                                            : curve == SeqCurve::Bend ? kBendSource
+                                                                      : kWheelSource];
         const float rest = seqCurveY(curve, 0.0);
         const float right = std::min(kSeqGrid.x + kSeqGrid.w, seqStepX(steps));
         // The grid: a line at each quarter of the range (what Ctrl puts points on), as strong as the GRID setting says;
@@ -2378,7 +2450,7 @@ void SeqPanel::paintBack(Canvas &c) {
             for (float x = kSeqGrid.x;; x += 2.0f) {
                 const float at = std::min(x, right);
                 const double v = seqCurveAt(static_cast<int>(points.size()),
-                                            [&](int i) { return points[static_cast<size_t>(i)]; }, seqStepAt(at));
+                                            [&](int i) { return points[static_cast<size_t>(i)]; }, seqStepAt(at), seqSteps());
                 line.push_back({at, seqCurveY(curve, v)});
                 if (at >= right)
                     break;
@@ -2395,9 +2467,8 @@ void SeqPanel::paintBack(Canvas &c) {
             const int hoveredBend = dragging() && seqDrag_.mode == SeqDrag::Mode::CurveBend
                                         ? seqDrag_.anchor
                                         : seqCurveBendAt(host_.mouse());
-            for (int i = 0; i + 1 < static_cast<int>(points.size()); ++i) {
-                const SeqCurvePoint &a = points[static_cast<size_t>(i)], &b = points[static_cast<size_t>(i) + 1];
-                if (seqStepX(b.x) - seqStepX(a.x) >= 20.0f && std::abs(b.y - a.y) >= 1e-6)
+            for (int i = 0; i < seqCurveSegments(points); ++i) {
+                if (seqCurveBends(points, i))
                     c.strokeCircle(seqCurveBendPos(points, curve, i), i == hoveredBend ? 4.0f : 2.5f,
                                    curveInk.alpha(i == hoveredBend ? 1.0f : 0.7f), 1.2f);
             }
@@ -2654,6 +2725,59 @@ bool SeqPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
                Align::Left, selected);
         return true;
     }
+    case Kind::SeqMacroTab: {
+        // As the tabs before it, lit only while the lane shows a macro, with a dot in the macro's color (faint while the
+        // macro has no curve in this pattern) and an arrow for its list.
+        const int macro = seqTabMacro();
+        auto get = [this](int index) { return value(index); };
+        const bool curve = seqCurvePointCount(get, seqPattern(), seqMacroCurve(macro)) > 0;
+        const bool shown = layout.seqLane >= SeqLane::Macro1;
+        if (shown)
+            c.fillRect(w.rect, kAccent.alpha(0.2f), kRadiusMark);
+        const Color ink = shown || hovered || seqMacroMenu_ ? kText : kDim;
+        const float y = w.rect.center().y;
+        c.fillCircle({w.rect.x + 10.0f, y}, 3.5f, look.sources[kMaxSources + macro].alpha(curve ? 1.0f : kSeqBareMacroDot));
+        c.text({w.rect.x + 18.0f, w.rect.y, w.rect.w - 32.0f, w.rect.h}, trf(Str::SeqLaneMacro, {std::to_string(macro + 1)}),
+               kTextSmall, ink, Align::Left, true);
+        const float m = w.rect.right() - 10.0f;
+        const Point chevron[] = {{m - 3.5f, y - 2.0f}, {m, y + 2.0f}, {m + 3.5f, y - 2.0f}};
+        c.polyline(chevron, 3, ink, 1.3f);
+        return true;
+    }
+    case Kind::SeqMacroMenu:
+        if (w.a == 1)
+            paintMenuPanel(c, w.rect);
+        return true;
+    case Kind::SeqMacroItem: {
+        // A macro: its color, its name, and its curve in this pattern drawn small; without one, the color faint and a
+        // faint line.
+        const Color color = look.sources[kMaxSources + w.b];
+        const std::vector<SeqCurvePoint> points = seqCurvePoints(seqMacroCurve(w.b));
+        const bool selected = layout.seqLane == static_cast<SeqLane>(static_cast<int>(SeqLane::Macro1) + w.b);
+        paintMenuRow(c, w.rect, hovered, selected);
+        const float y = w.rect.center().y;
+        c.fillCircle({w.rect.x + 11.0f, y}, 4.0f, color.alpha(points.empty() ? kSeqBareMacroDot : 1.0f));
+        const Rect name{w.rect.x + 22.0f, w.rect.y, w.rect.w - 22.0f - 56.0f, w.rect.h};
+        c.pushClip(name);
+        c.text(name, macroName(layout, w.b), kTextBody, hovered || selected || !points.empty() ? kText : kDim, Align::Left,
+               selected);
+        c.popClip();
+        const Rect spark{w.rect.right() - 50.0f, y - 6.0f, 44.0f, 12.0f};
+        if (points.empty()) {
+            c.line({spark.x, y}, {spark.right(), y}, kFaint.alpha(0.6f), 1.0f);
+        } else {
+            std::array<Point, 23> line;
+            for (size_t i = 0; i < line.size(); ++i) {
+                const double t = static_cast<double>(i) / static_cast<double>(line.size() - 1);
+                const double v = seqCurveAt(static_cast<int>(points.size()),
+                                            [&](int p) { return points[static_cast<size_t>(p)]; }, t * seqSteps(), seqSteps());
+                line[i] = {spark.x + static_cast<float>(t) * spark.w,
+                           spark.bottom() - static_cast<float>(std::clamp(v, 0.0, 1.0)) * spark.h};
+            }
+            c.polyline(line.data(), line.size(), color, 1.3f);
+        }
+        return true;
+    }
     case Kind::SeqStretch:
         iconButton(hovered);
         c.text(w.rect, w.b > 0 ? "\xC3\x97" "2" : "\xC3\xB7" "2", kTextLabel, hovered ? kText : kDim, Align::Center, true);
@@ -2721,7 +2845,7 @@ bool SeqPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         if (on)
             c.fillRect(w.rect, kAccent.alpha(0.2f), kRadiusMark);
         const Str names[] = {Str::SeqLaneVelocity, Str::SeqLaneChance, Str::SeqLaneBend, Str::SeqLaneWheel};
-        c.text(w.rect, tr(names[std::clamp(w.b, 0, static_cast<int>(SeqLane::Count) - 1)]), kTextSmall,
+        c.text(w.rect, tr(names[std::clamp(w.b, 0, static_cast<int>(SeqLane::Macro1) - 1)]), kTextSmall,
                on ? kText : hovered ? kText : kDim, Align::Center, true);
         return true;
     }
