@@ -3098,54 +3098,6 @@ void checkAlgorithmMenu(const std::filesystem::path &dir, Renderer &renderer) {
     view.dialogKey(View::Key::Escape);
 }
 
-// The same busy patch's matrix in a theme, to compare cell widths by: routes of every kind, modes other than Phase, a
-// route kept at 0 %, a switched-off node and cells with one, three and six modulations.
-void renderMatrixWidths(const std::filesystem::path &dir, Renderer &renderer, const std::string &theme) {
-    FakeController model;
-    model.themeName = theme;
-    model.glowLevel = 0.5;
-    View view(model);
-    model.ui.view = RoutingView::Matrix;
-    for (int op = 1; op < 5; ++op)
-        model.set(paramIndex(op, OpParam::Enabled), 1.0);
-    for (int shaper = 0; shaper < kShapers; ++shaper)
-        model.set(paramIndex(shaper, ShaperParam::Enabled), 1.0);
-    model.set(paramIndex(0, FilterParam::Enabled), 1.0);
-    model.set(paramIndex(1, FilterParam::Enabled), 1.0);
-    const std::pair<int, double> routes[] = {
-        {matrixIndex(1, 0), 0.72}, {matrixIndex(2, 0), 0.35}, {matrixIndex(3, 2), 1.0},  {matrixIndex(4, 3), 0.18},
-        {matrixIndex(1, 1), 0.25}, {matrixIndex(4, 4), 0.42}, {matrixIndex(2, 1), 0.08}, {sendIndex(0, 0), 1.0},
-        {sendIndex(2, 1), 0.64},   {shaperSendIndex(1, 0), 0.5}, {filterLinkIndex(0, 1), 0.55},
-        {filterShaperIndex(1, 1), 0.3}, {shaperModIndex(0, 3), 0.27}, {paramIndex(0, OpParam::Out), 0.0},
-        {paramIndex(4, OpParam::Out), 0.86}, {paramIndex(1, ShaperParam::Out), 0.9}};
-    for (const auto &[param, amount] : routes)
-        model.set(param, amount);
-    model.ui.keptRoutes.push_back(matrixIndex(3, 1)); // wired at 0 %
-    model.set(routeModeIndex(1, 0), static_cast<double>(RouteMode::LinearFm));
-    model.set(routeModeIndex(3, 2), static_cast<double>(RouteMode::Ring));
-    model.set(routeModeIndex(4, 3), static_cast<double>(RouteMode::ExpFm));
-    // One modulation on B -> A, three on D -> C and six, more than a cell holds, on C -> A.
-    int source = 0;
-    auto modulate = [&](int target, int count) {
-        for (int i = 0; i < count; ++i, ++source) {
-            model.set(paramIndex(source, SourceParam::Type), static_cast<double>(SourceType::Lfo));
-            model.set(slotTargetIndex(source, 0), slotTargetValue(target));
-            model.set(slotAmountIndex(source, 0), 0.12 + 0.05 * i);
-        }
-    };
-    modulate(matrixIndex(1, 0), 1);
-    modulate(matrixIndex(3, 2), 3);
-    modulate(matrixIndex(2, 0), 6);
-    model.ui.selectedNode = 2;
-    view.poll();
-    view.mouseMove({detail::kRouting.right() - 4.0f, detail::kRouting.y + 4.0f}, {});
-    const Rect panel{detail::kInspector.x - 16.0f, detail::kPanelsTop - 6.0f, detail::kRouting.right() - detail::kInspector.x + 24.0f,
-                     detail::kRouting.h + 12.0f};
-    char name[64];
-    std::snprintf(name, sizeof name, "matrix-%.2f-%s.png", detail::kCellAspect, theme.c_str());
-    check(renderer.save(view, dir / name, &panel), "render the matrix's widths");
-}
-
 void renderExample(const std::filesystem::path &dir, Renderer &renderer, const std::string &name,
                    const std::string &prefix, size_t effects, const std::string &theme = "", bool playing = false, bool seq = false) {
     FakeController model;
@@ -13705,7 +13657,7 @@ void run(const std::filesystem::path &dir, float scale) {
 
 int main(int argc, char **argv) {
     if (argc < 2) {
-        std::fprintf(stderr, "usage: fmvibe-uishot <output-dir> [scale] [--presets | --library | --seq | --matrix]\n");
+        std::fprintf(stderr, "usage: fmvibe-uishot <output-dir> [scale] [--presets | --library | --seq]\n");
         return 2;
     }
     const std::filesystem::path dir = argv[1];
@@ -13726,10 +13678,6 @@ int main(int argc, char **argv) {
             if (loadFactoryPreset(preset, values, layout) && values[paramIndex(SeqParam::Enabled)] >= 0.5)
                 renderExample(dir, renderer, preset.name, "seq-" + preset.name, SIZE_MAX, "Spectrum", false, true);
         }
-    } else if (argc > 3 && std::strcmp(argv[3], "--matrix") == 0) { // only the matrix at this build's cell width
-        Renderer renderer(scale);
-        renderMatrixWidths(dir, renderer, "Spectrum");
-        renderMatrixWidths(dir, renderer, "Midnight");
     } else if (argc > 3 && std::strcmp(argv[3], "--library") == 0) { // only the preset library's
         Renderer renderer(scale);
         testPresetLibrary(dir, renderer);
