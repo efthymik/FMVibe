@@ -76,7 +76,9 @@ enable_testing()
 add_executable(fmvibe-quality tests/quality.cpp)
 target_link_libraries(fmvibe-quality PRIVATE fmvibe-core)
 fmvibe_options(fmvibe-quality)
-add_test(NAME quality COMMAND fmvibe-quality)
+# Its effects checks keep a dozen effects and twice as many param sets on the stack at once (see the MSVC build's
+# /STACK in CMakeLists.txt), past Linux's usual 8 MB: run with the 64 MB the Windows build links in.
+add_test(NAME quality COMMAND sh -c "ulimit -s 65536 2>/dev/null; exec \"$0\"" $<TARGET_FILE:fmvibe-quality>)
 
 add_executable(fmvibe-uishot tools/uishot.cpp)
 target_link_libraries(fmvibe-uishot PRIVATE fmvibe-core)
