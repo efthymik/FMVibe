@@ -385,6 +385,7 @@ private:
         std::array<double, kShapers> shaperOutput{};
         std::array<double, kShapers> shaperMix{};
         std::array<double, kShapers> shaperBetween{}; // after each Stack stage but the last
+        std::array<double, kOps> phase{}; // how far its Phase has moved its wave this block, in cycles
     };
 
     struct Voice {
@@ -476,6 +477,7 @@ private:
         std::array<double, kOps> opSum{};
         std::array<double, kOps> opMean{};
         std::array<double, kOps> opLevel{};
+        std::array<double, kOps> phaseSet{}; // where each operator's Phase has moved its wave to (see turnPhase())
     };
 
     struct HeldNote {
@@ -510,6 +512,7 @@ private:
     // Adds the voice to `left` and `right`, which run at the voices' rate: hostFrames * oversampling_ samples, and
     // while analyzing, what its filters put out to filterTaps_.
     void renderBlock(Voice &v, double *left, double *right, uint32_t hostFrames, const ParamValues &params);
+    static double turnPhase(Voice &v, int i, double phase);
     // A synced or warped operator's sample (see renderBlock()): its copies' sum and, with `sides`, their left and
     // right. Kept out of the voices' loop: inside it, MSVC's code made the voices a twenty-fifth slower with one copy
     // when no operator was synced or warped.

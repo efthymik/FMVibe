@@ -27,6 +27,7 @@ namespace {
 bool memberChannel(int channel) { return channel >= 1 && channel < 16; }
 
 constexpr uint32_t kControlBlock = 32;        // samples between modulation updates
+constexpr double kPhaseModCycles = 64.0;      // how many cycles modulation takes an operator's Phase either way
 constexpr double kWarpSlew = 250.0;           // how fast an operator's warp amount moves at most, a second
 // Filter FM: the octaves a modulation at full swing and depth takes a cutoff, as far as the knob goes, and the seconds
 // a filter effect's cutoff takes to get over the jump as the voice it follows changes.
@@ -183,6 +184,11 @@ Synth::Synth() : table_(paramTable()), waves_(waveTables()) {
     // Modulation takes an operator's Ratio past its range, to 128 (see kRatioModNorm).
     for (int op = 0; op < kOps; ++op)
         paramMax_[paramIndex(op, OpParam::Ratio)] = kRatioModNorm;
+    // And an operator's Phase round its cycle either way, past 0 % and 100 %, rather than stopping there.
+    for (int op = 0; op < kOps; ++op) {
+        paramMin_[paramIndex(op, OpParam::Phase)] = -kPhaseModCycles;
+        paramMax_[paramIndex(op, OpParam::Phase)] = kPhaseModCycles;
+    }
 }
 
 namespace {
@@ -1950,6 +1956,30 @@ std::array<double, kMaxUnison> Synth::unisonDetunes(int index, int copies, const
     return unisonSpread(copies, modes.curve, modes.pan, modes.blend, modes.seed, index).detune;
 }
 
+// Takes what the last block's ramp moved operator `i`'s wave by into its copies' phases, and returns how far its Phase,
+// modulated as the voice has it, still is from where the wave stands, the short way round (100 % is 0 % again), for
+// this block's ramp.
+#ifdef _MSC_VER
+__declspec(noinline)
+#else
+__attribute__((noinline))
+#endif
+double Synth::turnPhase(Voice &v, int i, double phase) {
+    Operator &op = v.ops[i];
+    const double moved = v.levels.phase[i];
+    for (int k = 0; k < kMaxUnison; ++k) {
+        op.phases[k] += moved - std::floor(op.phases[k] + moved);
+        op.startPhases[k] += moved - std::floor(op.startPhases[k] + moved);
+    }
+    v.levels.phase[i] = 0.0;
+    v.phaseSet[i] += moved;
+    const double left = std::remainder(phase - v.phaseSet[i], 1.0);
+    if (std::abs(left) >= 1e-9)
+        return left;
+    v.phaseSet[i] = phase; // there
+    return 0.0;
+}
+
 // Each copy read through its warp, and restarted by its master.
 #ifdef _MSC_VER
 __declspec(noinline)
@@ -2322,6 +2352,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         for (int i = 0; i < kOps; ++i) {
             const double start = p[paramIndex(i, OpParam::Phase)];
             const double amount = p[paramIndex(i, OpParam::PhaseRandom)];
+            v.phaseSet[i] = start;
             for (int k = 0; k < kMaxUnison; ++k) {
                 const double phase = start + amount * 0.5 * (nextRandom(v.rng) + 1.0);
                 v.ops[i].phases[k] = phase - std::floor(phase);
@@ -2452,6 +2483,10 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     bool stereo = false;
     for (int i = 0; i < kOps; ++i) {
         Operator &op = v.ops[i];
+        // Phase moved under the note, by its knob or its modulation, moves the wave along with it.
+        const double phaseNow = p[paramIndex(i, OpParam::Phase)];
+        if (phaseNow != v.phaseSet[i] || v.levels.phase[i] != 0.0)
+            target.phase[i] = turnPhase(v, i, phaseNow);
         opOn[i] = p[paramIndex(i, OpParam::Enabled)] >= 0.5;
         if (!opOn[i]) {
             // Off is off at once; switched on again, it comes back from silence. It plays nothing and routes
@@ -2567,7 +2602,9 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         }
         // Blended copies weigh into the mono sum other operators hear, which only that loop does: the plain loops
         // below, which most operators run, sum them as they are (a multiply a copy there cost every patch 2-3 %).
-        warped[i] = op.syncOn || op.warp != OpWarp::Off || op.carrying || (modes.blend > 0.0 && copies[i] > 1);
+        // So does one whose Phase is moving its wave, for as long as that takes.
+        warped[i] = op.syncOn || op.warp != OpWarp::Off || op.carrying || (modes.blend > 0.0 && copies[i] > 1) ||
+                    (!noise[i] && target.phase[i] != 0.0);
 
         // The table suits the highest copy, so none of them reaches past Nyquist, and the warp's steepest stretch.
         const double highest = (copies[i] > 1 ? inc * std::exp2(detune / 1200.0) : inc) * squeeze;
@@ -3017,9 +3054,9 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             if (warped[i]) {
                 // Synced or warped (see Operator): in a function of its own, so the plain loops below are as they were.
                 const OpSample out =
-                    warpedSample(op, wave[i], offset, factor, copies[i], copyGains[i], v.copyWeights[i].data(),
-                                 route.out || route.sendCount > 0 || route.shaperSendCount > 0, syncIncStep[i],
-                                 warpStep[i]);
+                    warpedSample(op, wave[i], offset + level.phase[i], factor, copies[i], copyGains[i],
+                                 v.copyWeights[i].data(), route.out || route.sendCount > 0 || route.shaperSendCount > 0,
+                                 syncIncStep[i], warpStep[i]);
                 mono = out.mono;
                 l = out.l;
                 r = out.r;
@@ -3089,8 +3126,10 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             op.prevOut = op.out;
             op.out = mono * monoGain[i] * envLevel;
             if (tapped >> i & 1u) {
-                if (i == scopeOp)
-                    scopeTake(scopePhase, op.out);
+                if (i == scopeOp) {
+                    const double moved = op.syncOn ? scopePhase : scopePhase + level.phase[i]; // where its wave stands
+                    scopeTake(moved - std::floor(moved), op.out);
+                }
                 v.opSum[i] += op.out;
                 if (fxOps >> i & 1u)
                     fxOpOut_[i][s / static_cast<uint32_t>(oversampling_)] += static_cast<float>(op.out);

@@ -2969,6 +2969,120 @@ void noteAndVoiceChecks() {
         check(out[0] > 0.99f && out[1] > 0.99f, "a 0 ms attack starts at full level from the first sample");
     }
     {
+        // The Phase knob turned under a held note: once it has moved, the note plays on as one started there, plain
+        // and synced; the move itself doesn't click; 100 % is 0 % again; the next note starts where the knob stands;
+        // and a source's modulation moves it under the note too, either way of a knob at 0 %, without zipper.
+        const int phase = paramIndex(0, OpParam::Phase);
+        auto furthest = [](const std::vector<float> &a, const std::vector<float> &b) {
+            double most = 0.0;
+            for (size_t i = 0; i < a.size(); ++i)
+                most = std::max(most, std::abs(static_cast<double>(a[i]) - b[i]));
+            return most;
+        };
+        // The last of a note held with its Phase at `from` for a tenth of a second, then at `to` for a second, over
+        // which what the move left in the DC blocker before the effects dies away.
+        auto turned = [&](double from, double to, bool synced) {
+            Engine e(1);
+            e.p[paramIndex(0, OpParam::Sync)] = synced ? 1.0 : 0.0;
+            e.p[paramIndex(0, OpParam::Ratio)] = normFromRatio(synced ? 2.5 : 1.0);
+            e.p[phase] = from;
+            e.noteOn(57);
+            e.render(4800);
+            e.p[phase] = to;
+            e.render(48000);
+            return e.render(2400);
+        };
+        const double plain = furthest(turned(0.0, 0.25, false), turned(0.25, 0.25, false));
+        const double synced = furthest(turned(0.0, 0.25, true), turned(0.25, 0.25, true));
+        const double round = furthest(turned(0.0, 1.0, false), turned(0.0, 0.0, false));
+
+        // Half a cycle at once, in whole blocks and in single frames: the largest step between two samples, as a share
+        // of the note's peak, where a jump there would step by up to twice the peak.
+        auto steepest = [&](uint32_t piece) {
+            Engine e(1);
+            e.noteOn(45);
+            e.render(4800);
+            double peak = 0.0;
+            for (const float x : e.render(2400))
+                peak = std::max(peak, std::abs(static_cast<double>(x)));
+            e.p[phase] = 0.5;
+            const std::vector<float> out = e.render(480, piece);
+            double most = 0.0;
+            for (size_t i = 1; i < out.size(); ++i)
+                most = std::max(most, std::abs(static_cast<double>(out[i]) - out[i - 1]));
+            return most / peak;
+        };
+        const double whole = steepest(kBlock), single = steepest(1);
+
+        // Played, let go and played again with the knob turned in between.
+        auto again = [&](double from) {
+            Engine e(1);
+            e.p[phase] = from;
+            e.noteOn(57);
+            e.render(4800);
+            e.p[phase] = 0.25;
+            e.render(4800);
+            e.noteOff(57);
+            e.render(24000);
+            e.noteOn(57);
+            e.render(2400);
+            return e.render(2400);
+        };
+        const double next = furthest(again(0.0), again(0.25));
+
+        // A slow LFO on Phase, 40 % deep: how far an A4's phase swings, in cycles, and how far above and below its
+        // middle, read off the note a window of ten cycles at a time. With the knob at 0 %, half of it would be lost if
+        // Phase stopped there.
+        struct Swing {
+            double up = 0.0, down = 0.0;
+        };
+        auto swing = [&](double knob) {
+            Engine e(1);
+            e.p[phase] = knob;
+            lfoOn(e.p, phase, 0.4, 2.0);
+            e.noteOn(69);
+            e.render(4800);
+            const std::vector<float> out = e.render(48000);
+            const size_t window = 1091; // ten cycles of 440 Hz, near enough
+            const double w = 2.0 * std::numbers::pi * 440.0 / kSampleRate;
+            std::vector<double> at; // unwrapped, in cycles
+            for (size_t from = 0; from + window <= out.size(); from += window) {
+                double re = 0.0, im = 0.0;
+                for (size_t i = from; i < from + window; ++i) {
+                    re += out[i] * std::cos(w * static_cast<double>(i));
+                    im += out[i] * std::sin(w * static_cast<double>(i));
+                }
+                const double cycles = std::atan2(im, re) / (2.0 * std::numbers::pi);
+                at.push_back(at.empty() ? cycles : at.back() + std::remainder(cycles - at.back(), 1.0));
+            }
+            const auto [low, high] = std::minmax_element(at.begin(), at.end());
+            double mean = 0.0;
+            for (const double x : at)
+                mean += x / static_cast<double>(at.size());
+            return Swing{*high - mean, mean - *low};
+        };
+        const Swing fromZero = swing(0.0), fromMiddle = swing(0.5);
+        auto wobble = [&](ParamValues &p) { lfoOn(p, phase, 0.2, 20.0); };
+        std::vector<double> sidebands;
+        for (int k = -12; k <= 12; ++k)
+            sidebands.push_back(keyHz(57) + k * 20.0);
+        const double zipper = unexpectedDb(steadyTone(1, 57, wobble), sidebands);
+        std::printf("      Phase turned under a note: %.6f off one started there, synced %.6f, 0 to 100 %% %.6f; steepest "
+                    "step %.3f of its peak, in single frames %.3f; the next note %.6f off\n",
+                    plain, synced, round, whole, single, next);
+        std::printf("      an LFO 40 %% deep on Phase swings a note +%.3f/-%.3f cycles from a knob at 0 %%, +%.3f/-%.3f at "
+                    "50 %%; at 20 Hz %.1f dB off its sidebands\n",
+                    fromZero.up, fromZero.down, fromMiddle.up, fromMiddle.down, zipper);
+        check(plain < 1e-4 && synced < 1e-4, "Phase turned under a held note plays on as a note started there");
+        check(round == 0.0, "Phase turned from 0 to 100 % leaves a note as it was");
+        check(whole < 0.15 && single < 0.15, "Phase turned half a cycle under a note doesn't click");
+        check(next < 1e-4, "a note after Phase was turned starts where the knob stands");
+        auto near = [](double x) { return std::abs(x - 0.2) < 0.02; };
+        check(near(fromZero.up) && near(fromZero.down) && near(fromMiddle.up) && near(fromMiddle.down),
+              "an LFO on Phase swings a held note's phase both ways, from a knob at 0 % too");
+        check(zipper < -60.0, "an LFO on Phase doesn't zipper");
+    }
+    {
         // Every voice taken by notes that have played a while, then a chord: the chord takes the oldest voices, and
         // each of its notes sounds, rather than each new note stealing the one started a moment before it (whose
         // level is still unknown). A slow attack's notes count at the top of their attack, so a new note steals an

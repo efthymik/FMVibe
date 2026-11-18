@@ -11714,6 +11714,56 @@ void run(const std::filesystem::path &dir, float scale) {
         check(layout.opTab == InspectorTab::Envelope, "the ENVELOPE tab is back after WARP");
     }
 
+    // An envelope's display follows the modulation of its knobs: a longer release ends further right, a shorter one
+    // leaves the faint line of what the knobs set where it was, and a higher sustain holds the curve up for longer.
+    // Read off the rendered pixels: how far right a row of the display has anything drawn on it.
+    {
+        FakeController moved;
+        View movedView(moved);
+        moved.ui.opTab = InspectorTab::Envelope;
+        const int release = paramIndex(0, OpParam::Release), sustain = paramIndex(0, OpParam::Sustain);
+        moved.set(paramIndex(0, OpParam::Decay), normFromTime(0.1));
+        moved.set(sustain, 0.5);
+        moved.set(release, normFromTime(0.1));
+        moved.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
+        moved.set(slotTargetIndex(0, 0), slotTargetValue(release));
+        moved.set(slotAmountIndex(0, 0), 0.4);
+        const Rect display = detail::kOpEnvRect;
+        const float top = kOpEnvTop + 12.0f, bottom = kOpEnvBottom - 10.0f;
+        auto rowEnd = [&](float level, int param, float offset, const char *name) {
+            moved.live.voices = param >= 0 ? 1 : 0;
+            moved.live.opEnvPos[0] = -1.0f;
+            moved.live.opEnvLevels[0] = 1.0f; // the line at its level, up at the top and out of the rows read
+            if (param >= 0)
+                moved.live.modOffset[param] = offset;
+            movedView.poll();
+            movedView.mouseMove({600.0f, 328.0f}, {});
+            renderer.save(movedView, dir / name);
+            if (param >= 0)
+                moved.live.modOffset[param] = 0.0f;
+            const float y = std::round(bottom - level * (bottom - top));
+            const uint32_t clear = renderer.pixel({display.right() - 11.0f, y});
+            for (float x = display.right() - 12.0f; x > display.x + 10.0f; x -= 1.0f) {
+                const uint32_t color = renderer.pixel({x, y});
+                for (const int shift : {16, 8, 0})
+                    if (std::abs(static_cast<int>(color >> shift & 255) - static_cast<int>(clear >> shift & 255)) > 24)
+                        return x;
+            }
+            return display.x;
+        };
+        // Along the bottom, where the release ends (and the handle stays, at the end the knobs set).
+        const float idle = rowEnd(0.0f, -1, 0.0f, "3g-env-mod-idle.png");
+        const float longer = rowEnd(0.0f, release, 0.1f, "3g-env-mod-longer.png");
+        const float shorter = rowEnd(0.0f, release, -0.1f, "3g-env-mod-shorter.png");
+        const float idleHigh = rowEnd(0.7f, -1, 0.0f, "3g-env-mod-idle-high.png");
+        const float raised = rowEnd(0.7f, sustain, 0.2f, "3g-env-mod-sustain.png");
+        std::printf("      a modulated envelope's row ends: release %.0f, longer %.0f, shorter %.0f; "
+                    "sustain %.0f, raised %.0f\n",
+                    idle, longer, shorter, idleHigh, raised);
+        check(longer > idle + 3.0f && std::abs(shorter - idle) <= 2.5f && raised > idleHigh + 3.0f,
+              "an envelope's display follows the modulation of its knobs, a faint line staying where they are set");
+    }
+
     // While notes play, the ENVELOPE tab draws a line across at the newest voice's envelope level, as a mod
     // envelope's card does. Read off the rendered pixels: across the sustain's stretch, the row at a level of 0.5
     // lights up and the row at 0.25 doesn't.

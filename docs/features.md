@@ -54,10 +54,13 @@ What the plugin does and how its editor works, in full. Building and installing 
     filters and shapers (which are stereo, so a panned operator stays where it is through them), and its unison
     copies' spread with it; what other operators hear of it is the mono sum, so a modulator's Pan changes nothing it
     modulates, and does nothing unless the operator is also heard;
-  - **Phase**: where a note starts the waveform, 0 to 100 % of a cycle (0 % by default; a sine at 25 % starts at
-    its peak). It is read as a note starts, with the host's and the sources' modulation on it then, and holds for the
-    note. A noise operator has none. Operators don't follow velocity themselves: velocity reaches them as a source
-    (see Velocity, under the modulation sources), aimed at Out or wherever else;
+  - **Phase**: where the waveform stands, 0 to 100 % of a cycle (0 % by default; a sine at 25 % starts at its peak).
+    A note starts there, with the host's and the sources' modulation on it then. Turning the knob, automating it or
+    modulating it moves the notes already sounding along with it at once, without a click: a jump goes the short way
+    round the cycle, and modulation carries on past 0 % and 100 % rather than stopping there, so an LFO on Phase is
+    phase modulation at any setting of the knob. A noise operator has none. Operators don't follow velocity
+    themselves: velocity reaches them as a source (see Velocity, under the modulation sources), aimed at Out or
+    wherever else;
   - **Unison**: up to 16 copies of the operator. *Detune* (Unison Detune) spreads them in pitch (the outermost
     copies by up to ±200 cents; patches saved while it stopped at 100, state version 12 and earlier, load a
     modulation's depth on it half as deep, to swing it as far) and *Spread* (Unison Spread) across the stereo field. On a modulator, the copies' sum
@@ -1711,9 +1714,12 @@ one may have changed since it last did.
     its middle level and ± in its corner. While notes play, an envelope's display has a dashed line across at the
     newest voice's level, and a dot on the curve as far along the stage the envelope is in as it has come: along
     the attack, decay or release, across the hold, and at the sustain level's point through the sustain. While the
-    envelope follows its knobs, the dot sits where the line meets the curve. Where it doesn't (a note let go
-    during the decay releases from above the sustain; modulation moves the sustain), the dot keeps to the curve
-    and the line shows the level.
+    envelope follows its curve, the dot sits where the line meets it. Where it doesn't (a note let go during the
+    decay releases from above the sustain), the dot keeps to the curve and the line shows the level. An envelope's
+    display (on a mod envelope's card and an operator's ENVELOPE tab alike) draws its curve as modulation of its
+    attack, hold, decay, sustain, release and bends takes it for the newest voice, or with no note playing as the
+    macros take it, a faint line staying where the knobs set it, with the handles on it. Its time axis leaves room for
+    the times at their longest under that modulation, so it stands still as the curve moves.
   - A card's title row is laid out as an effect card's: the handle and the name in capitals ("LFO 2", "ENV 1") at
     the left, then the fold chevron, the power switch and the × at the right.
   - The power switch turns a source on and off; one that is off has its card dimmed, its name grey (as an effect's is), and its handle and its rings

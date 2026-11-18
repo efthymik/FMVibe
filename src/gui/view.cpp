@@ -1280,8 +1280,21 @@ Rect View::envRect(int env) const {
     return env < kOps ? kOpEnvRect : sourceDisplay(card == kOffScreen ? 0.0f : card);
 }
 
+float View::envFit(int env) const {
+    const DerivedScope scope(*this);
+    return envFitScale(envRect(env), envIndices(env), [this](int index) {
+        const ParamDef &def = table_[index];
+        double longest = value(index);
+        forEachMod(index, [&](const Assignment &m) {
+            if (!m.bypassed && mods_.sourceOn(m.source))
+                longest += modReach(m).second * (def.max - def.min);
+        });
+        return std::clamp(longest, def.min, def.max);
+    });
+}
+
 float View::envScale(int env) const {
-    const float fit = envFitScale(envRect(env), envIndices(env), [this](int index) { return value(index); });
+    const float fit = envFit(env);
     // While its zoom is held, it stays still, so a point stays where it was put, until the envelope would run past the
     // display's end: then it zooms out to keep all of it in.
     return envZoom_.env == env ? std::min(envZoom_.scale, fit) : fit;
@@ -1314,7 +1327,7 @@ bool View::envZoomStep() {
     const Rect r = envRect(env);
     const EnvIndices e = envIndices(env);
     auto get = [this](int index) { return value(index); };
-    const float fit = envFitScale(r, e, get);
+    const float fit = envFit(env);
     const float scale = envZoom_.scale = std::min(envZoom_.scale, fit); // as drawn: never further in than fits
     if (drag_.kind == DragKind::EnvPoint && drag_.widget.a == env) {
         // Pushed past where it stops, up to 24 px further, a handle zooms the envelope out by up to 2.5 % a poll (and
@@ -3690,26 +3703,44 @@ void View::paintEnvelope(Canvas &c, Rect r, int env, Color color, bool live) {
         c.line({r.x + 8.0f, r.y + r.h * i / 4.0f}, {r.right() - 8.0f, r.y + r.h * i / 4.0f}, kBorder.alpha(0.6f), 1.0f);
 
     const EnvIndices e = envIndices(env);
-    const double sustain = value(e.sustain);
-    const EnvShape s = envShape(r, e, [this](int index) { return value(index); }, envScale(env));
+    // The curve as modulation takes it now. While that isn't where the knobs set it, a faint line shows where they do,
+    // which the handles keep to.
+    auto now = [this](int index) { return liveValue(index); };
+    auto setAt = [this](int index) { return value(index); };
+    const double sustain = now(e.sustain);
+    const float scale = envScale(env);
+    const EnvShape s = envShape(r, e, now, scale);
     const float height = s.bottom - s.top;
-    std::vector<double> key = curveKey(Curve::Envelope, r);
-    key.insert(key.end(), {s.scale, value(e.attack), value(e.hold), value(e.decay), sustain, value(e.release),
-                           value(e.curve(0)), value(e.curve(1)), value(e.curve(2))});
-    const std::vector<Point> points = curveCache().get(key, [&] {
-        std::vector<Point> points{s.p0};
+    auto curve = [&](const EnvShape &shape, const auto &get) {
+        std::vector<Point> points{shape.p0};
         for (int segment = 0; segment < 3; ++segment) {
             if (segment == 1)
-                points.push_back(s.ph); // the end of the hold
+                points.push_back(shape.ph); // the end of the hold
             for (int i = 1; i <= 24; ++i)
-                points.push_back(envSegmentPoint(s, segment, i / 24.0, value(e.curve(segment)), sustain));
+                points.push_back(envSegmentPoint(shape, segment, i / 24.0, get(e.curve(segment)), get(e.sustain)));
         }
         return points;
-    });
+    };
+    const int shaping[] = {e.attack, e.hold, e.decay, e.sustain, e.release, e.curve(0), e.curve(1), e.curve(2)};
+    const bool moved =
+        std::any_of(std::begin(shaping), std::end(shaping), [&](int index) { return now(index) != value(index); });
+    std::vector<Point> points;
+    if (moved) { // a new curve every paint, kept out of the cache so that it pushes no others out
+        points = curve(s, now);
+    } else {
+        std::vector<double> key = curveKey(Curve::Envelope, r);
+        key.insert(key.end(), {s.scale, value(e.attack), value(e.hold), value(e.decay), sustain, value(e.release),
+                               value(e.curve(0)), value(e.curve(1)), value(e.curve(2))});
+        points = curveCache().get(key, [&] { return curve(s, setAt); });
+    }
 
     std::vector<Point> area = points;
     area.push_back({s.p4.x, s.bottom});
     c.fillPolygon(area.data(), area.size(), color.alpha(0.12f));
+    if (moved) {
+        const std::vector<Point> knobs = curve(envShape(r, e, setAt, scale), setAt);
+        c.polyline(knobs.data(), knobs.size(), color.alpha(0.4f), 1.25f);
+    }
     plotLine(c, points.data(), points.size(), color, 2.0f);
 
     // While notes play, a line across at the newest voice's level: an operator's envelope's, or a mod envelope's.
@@ -3719,9 +3750,8 @@ void View::paintEnvelope(Canvas &c, Rect r, int env, Color color, bool live) {
         c.line({r.x + 8.0f, y}, {r.right() - 8.0f, y}, color.alpha(0.35f), 1.0f, true);
         // And a dot on the curve, as far along the stage the envelope is in as it has come: along the attack, decay
         // or release by its bend, across the hold, and at the sustain level's point through the sustain. Where the
-        // envelope follows its knobs, that is where the line meets the curve. Where it doesn't (a note let go during
-        // the decay releases from above the sustain; modulation moves its sustain), the dot keeps to the curve, and
-        // the line shows the level.
+        // envelope follows its curve, that is where the line meets it. Where it doesn't (a note let go during the decay
+        // releases from above the sustain), the dot keeps to the curve, and the line shows the level.
         const float position = env < kOps ? telemetry_.opEnvPos[env] : telemetry_.envPos[env - kOps];
         if (position >= 0.0f) {
             const int stage = std::min(static_cast<int>(position), 4);
@@ -3730,7 +3760,7 @@ void View::paintEnvelope(Canvas &c, Rect r, int env, Color color, bool live) {
             if (stage == 1)
                 dot = {s.p1.x + static_cast<float>(along) * (s.ph.x - s.p1.x), s.top};
             else if (stage != 3)
-                dot = envSegmentPoint(s, stage / 2, along, value(e.curve(stage / 2)), sustain);
+                dot = envSegmentPoint(s, stage / 2, along, now(e.curve(stage / 2)), sustain);
             c.fillCircle(dot, 7.0f, color.alpha(0.25f));
             c.fillCircle(dot, 3.5f, kText);
         }

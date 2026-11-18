@@ -345,7 +345,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     release taking a sample each, a 0.5 ms and a 1 ms attack their time, a sustain change after a 0 ms decay still
     smoothed, and a voice with a 0 ms attack at full level from its first sample;
   - a Custom wave playing the partials drawn, taken up as it is picked and changed partial by partial as it plays;
-  - an operator's Phase starting its wave that far into its cycle, set or modulated;
+  - an operator's Phase starting its wave that far into its cycle, set or modulated; turned under a held note (a
+    synced one too) playing on as a note started there, without a click, 100 % leaving it as at 0 %, a new note
+    starting where the knob stands, and an LFO on it swinging a held note's phase as far both ways, from a knob at 0 %
+    too, without zipper;
   - an operator's Note Sync and warps: the aliasing of synced sines and saws and of every warp (Bend, Squeeze,
     Pulse, Steps, Sync, either way, and synced and warped together) at each oversampling factor, every warp at 0 the
     plain wave bit for bit, sync switched on and off and a warp switched on and changed to another under a note
@@ -621,6 +624,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     operator's output (and a noise operator's, or a hidden one's, for none), its trace drawn over 2 and 4 cycles
     and as a slow span fills, the faint plain wave with no note, a hidden tab's dot while one of its knobs is
     modulated (read off the rendered pixels), and a dragged handle opening the tab it is held over;
+  - an envelope's curve following the modulation of its release and sustain, a faint line staying where the knobs
+    set it (read off the rendered pixels);
   - an operator's Ratio readout: each digit dragged by its own place, carrying and held to 64.00, each drag an undo
     step; the wheel stepping the digit under the mouse, a double-click rounding to it, its depth handle dragging an octave every 60 px, the hovered digit lit (read off
     the rendered pixels), a typed fraction, and a source's handle dropped on it modulating it, its reach drawn along
