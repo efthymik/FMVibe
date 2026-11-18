@@ -258,7 +258,7 @@ What the plugin does and how its editor works, in full. Building and installing 
   depth. Depth is ±100 % of the target's range: how far a **unipolar** source takes the target one way, and the
   whole swing of a **bipolar** one, half of it below the set value and half above (at 100 %, −50 % to +50 %).
   Every source can be either, for all of its modulations, picked from its right-click menu or the switch after its
-  name in the MODS view (see the editor): LFOs, Random sources and the pitch bend start bipolar, and Curve sources, envelopes, macros,
+  name in the MODS view (see the editor): LFOs, Random sources, the pitch bend and the operators start bipolar, and Curve sources, envelopes, macros,
   the note source, the mod wheel and velocity unipolar. A bipolar envelope swings about its middle level (nothing at half of
   it, half the depth down at rest and up at its peak), and a bipolar macro, mod wheel, note source, velocity or pitch
   bend about the middle of what it puts out (a macro moves nothing with its knob at 50 %, the pitch bend nothing at
@@ -345,6 +345,15 @@ What the plugin does and how its editor works, in full. Building and installing 
     voice, and modulates from a note's first block on. It starts bipolar, so it moves nothing at rest and swings its
     targets both ways as the wheel goes up and down; unipolar, it moves them half its depth at rest and all of it fully
     up. The pitch still bends by Bend Range too, whatever the source modulates.
+  - **Operators**: each operator's output (**Op A** to **Op F**) is a source too, picked in the MODS view's source and
+    aux menus. Like velocity each has 16 slots and no switch of its own, runs per voice and reaches the effects through
+    the newest voice. It puts out what the operator plays, after its envelope and whatever its Out says, so an operator
+    heard by nothing can modulate; one switched off modulates nothing. Modulation runs at the control rate, once every
+    32 samples, so a source takes the operator's output averaged over the last such block: a slow operator (a fixed
+    one at a few Hz, say) moves its targets along its wave and envelope, and one far above that rate averages away
+    rather than aliasing. It starts bipolar, swinging its targets both ways of the set value with the output;
+    unipolar, it takes them one way, from nothing up to as far as the operator's envelope has risen, so a silent
+    operator moves nothing either way.
   - An LFO runs in one of four clock modes, picked one at a time: **Retrigger** (the default), **Free**, **Anchor** or
     **One-Shot**. Retrigger restarts the LFO from its Phase with every note. Each of the other three is a switch
     hosts see; the editor turns the other two off as it picks one. Should a host turn on more than one, One-Shot
@@ -1378,10 +1387,10 @@ one may have changed since it last did.
       while it is unipolar (the LFO's UNIPOLAR icon), flipping it between the two for all of its modulations, as its
       right-click menu does. A click on the source or the target opens a cascading menu, the next level opening beside
       an entry under the mouse. The source's lists the sources by category (LFOs, the Random and Curve sources among them, Envelopes,
-      Note & MIDI for the MIDI sources, Macros, and Keyboard:
-      Note, Velocity, Mod Wheel and Pitch Bend); picking one moves the modulation there, into a free slot, with its depth,
+      Note & MIDI for the MIDI sources, Macros, Keyboard:
+      Note, Velocity, Mod Wheel and Pitch Bend, and Operators: Op A to Op F); picking one moves the modulation there, into a free slot, with its depth,
       curve, Amount, aux and bypass, as one undo step; it then swings as its new source does. What modulates its depth
-      follows it to its new slot, or, moved to a macro, the note source, the mod wheel, velocity or the pitch bend (whose depths
+      follows it to its new slot, or, moved to a macro, the note source, the mod wheel, velocity, the pitch bend or an operator (whose depths
       can't be modulated), goes. A source that modulates the
       target already, or has no slot free, is listed faintly, saying why, and can't be picked. The target's lists
       every target by category: Global (but the mod wheel, which is played rather than set); Operators, each with
@@ -2203,9 +2212,9 @@ activation will make it). An edit, once it is whole, or a state that moves it as
 reports the new one (a CLAP host is told through its latency extension's `changed()`); an edit that leaves it as it was,
 an effect moved along the line say, asks for none.
 
-Hosts are given 1,317 of FMVibe's 31,554 parameters: the globals, the operators, the matrix and the routes' modes,
-the filters, the shapers, the macros' knobs, the note source's, the mod wheel's, velocity's and the pitch bend's own,
-and every modulation's depth and Amount (16 slots for each of the 28 sources, used or not). The rest are set in the editor only:
+Hosts are given 1,515 of FMVibe's 32,232 parameters: the globals, the operators, the matrix and the routes' modes,
+the filters, the shapers, the macros' knobs, the note source's, the mod wheel's, velocity's, the pitch bend's and the
+operators' own as sources, and every modulation's depth and Amount (16 slots for each of the 34 sources, used or not). The rest are set in the editor only:
 the effects, the LFOs', envelopes' and other sources' own knobs, what each modulation targets and its aux, curve and
 bypass, the Curve sources' drawn shapes, the shaper curves and the note source's curve, the Custom waves' partials and their
 counts, the effects graph (its splits, joins and wires), the chain's retired order, the feedback's route modes and the

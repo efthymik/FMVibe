@@ -9708,6 +9708,48 @@ void testModsEmpty(const std::filesystem::path &dir, Renderer &renderer) {
           "an empty modulation given a source with rows goes among them");
 }
 
+// An operator's output picked as a source in the MODS view: its menu's last category, Operators, lists Op A to Op F; the
+// empty modulation given Op B and a target becomes Op B's, bipolar to begin with, and its row's switch makes it unipolar,
+// undoably.
+void testModsOpSource(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
+    model.set(slotTargetIndex(0, 0), slotTargetValue(paramIndex(0, OpParam::Ratio)));
+    model.set(slotAmountIndex(0, 0), 0.4);
+    view.poll();
+    click(view, {382.0f, 116.0f}); // the MODS tab
+    const float y = 212.0f;
+    click(view, {100.0f, y}); // adds an empty modulation, its source's menu open under it
+    // LFOs, Macros, Keyboard and Operators, whose entries show beside it, Op A level with it.
+    const float operators = 228.0f + 4.0f + 3.0f * 22.0f + 11.0f;
+    view.mouseMove({80.0f, operators}, {});
+    view.mouseMove({230.0f, operators}, {});
+    view.mouseMove({230.0f, operators + 22.0f}, {}); // Op B
+    const bool menuShot = renderer.save(view, dir / "35p-mods-op-source-menu.png");
+    click(view, {230.0f, operators + 22.0f});
+    const int source = kOpSource + 1;
+    check(menuShot && model.ui.emptyMods == std::vector<std::pair<int, int>>{{source, -1}},
+          "the MODS view's source menu offers the operators, and an empty modulation takes one");
+    click(view, {300.0f, y}); // its target's menu: Global, then its first param beside it
+    view.mouseMove({300.0f, 258.0f + 4.0f + 11.0f}, {});
+    int first = -1;
+    for (int g = 0; g < kGlobalCount && first < 0; ++g)
+        if (isModTarget(g) && !isPlayed(g))
+            first = g;
+    click(view, {540.0f, 258.0f + 4.0f + 11.0f});
+    view.mouseMove({600.0f, 468.0f}, {});
+    const bool rowShot = renderer.save(view, dir / "35q-mods-op-source.png");
+    check(rowShot && model.ui.emptyMods.empty() && slotTarget(model.value(slotTargetIndex(source, 0))) == first &&
+              model.value(paramIndex(1, OpSourceParam::Bipolar)) == 1.0,
+          "an operator given a target modulates it, bipolar to begin with");
+    click(view, detail::modsCell(detail::modsRow(1.0f), detail::kModsPolarity).center());
+    const bool unipolar = model.value(paramIndex(1, OpSourceParam::Bipolar)) == 0.0;
+    view.undo();
+    check(unipolar && model.value(paramIndex(1, OpSourceParam::Bipolar)) == 1.0,
+          "an operator's row switches it between bipolar and unipolar, undoably");
+}
+
 // The MODS view's filter and the target menu's search. LFO 1 modulates Op A's Ratio and Detune, Env 1 FM Amount and
 // Macro 1 Filter 1's Resonance: four rows, their middles from y 154, 30 px apart, each one's x at x 1144. The filter's
 // magnifier is at the right end of the columns' names (x 1156, y 126); open, its x is at x 1155.
@@ -13540,6 +13582,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testRadarGlow(dir, renderer);
     testOutBend(dir, renderer);
     testModsEmpty(dir, renderer);
+    testModsOpSource(dir, renderer);
     testNewSources(dir, renderer);
     testMods(dir, renderer);
     testSeq(dir, renderer);

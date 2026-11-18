@@ -716,6 +716,7 @@ int main(int argc, char **argv) {
                   !listed(slotTargetIndex(kMaxSources, 0)) && listed(slotAmountIndex(0, 0)) &&
                   listed(slotAmountIndex(kMaxSources, 0)) && listed(slotScaleIndex(0, 0)) &&
                   listed(slotScaleIndex(kVelocitySource, kSlots - 1)) &&
+                  listed(slotAmountIndex(kAllSources - 1, kSlots - 1)) && !listed(slotTargetIndex(kOpSource, 0)) &&
                   listed(paramIndex(0, MacroParam::Value)) &&
                   !listed(paramIndex(GlobalParam::RetiredFxOrder)) && !listed(fxPositionIndex(0)) &&
                   !listed(fxPositionIndex(kFxSlots - 1)) && !listed(paramIndex(kFxSlots - 1, FxParam::Type)) &&

@@ -2440,6 +2440,85 @@ void noteAndVoiceChecks() {
               "host modulation of a macro, the mod wheel, the note source's and velocity's depth moves their targets");
     }
     {
+        // An operator's output as a source: B, fixed and heard by nothing, on A's Out, set at half. The level A's note
+        // peaks at, window by window (two of its periods each), from once B's envelope has settled.
+        const int b = 1, source = kOpSource + b, aOut = paramIndex(0, OpParam::Out);
+        auto setUp = [&](Engine &e, double hz, double sustain) {
+            e.p[aOut] = 0.5;
+            e.p[paramIndex(b, OpParam::Enabled)] = 1.0;
+            e.p[paramIndex(b, OpParam::Fixed)] = 1.0;
+            e.p[paramIndex(b, OpParam::FixedFreq)] = normFromFixedFreq(hz > kMaxFixedFreq ? hz / 10.0 : hz);
+            e.p[paramIndex(b, OpParam::FixedMult)] = hz > kMaxFixedFreq ? 4.0 : 3.0; // x10, x1
+            e.p[paramIndex(b, OpParam::Decay)] = normFromTime(0.02);
+            e.p[paramIndex(b, OpParam::Sustain)] = sustain;
+        };
+        struct Range {
+            float low = 1e9f, high = 0.0f;
+        };
+        auto levels = [](Engine &e) {
+            e.noteOn(69);
+            const std::vector<float> out = e.render(static_cast<size_t>(kSampleRate));
+            Range r;
+            constexpr size_t kWindow = 240;
+            for (size_t at = out.size() / 4; at + kWindow <= out.size(); at += kWindow) {
+                float peak = 0.0f;
+                for (size_t i = at; i < at + kWindow; ++i)
+                    peak = std::max(peak, std::abs(out[i]));
+                r.low = std::min(r.low, peak);
+                r.high = std::max(r.high, peak);
+            }
+            return r;
+        };
+        auto modulated = [&](double hz, double sustain, double depth, bool bipolar) {
+            Engine e(2);
+            setUp(e, hz, sustain);
+            e.p[slotTargetIndex(source, 0)] = slotTargetValue(aOut);
+            e.p[slotAmountIndex(source, 0)] = depth;
+            e.p[paramIndex(b, OpSourceParam::Bipolar)] = bipolar ? 1.0 : 0.0;
+            return levels(e);
+        };
+        Engine plainEngine(2);
+        setUp(plainEngine, 5.0, 1.0);
+        const Range plain = levels(plainEngine);
+        const Range slow = modulated(5.0, 1.0, 1.0, true);
+        const Range fast = modulated(12000.0, 1.0, 1.0, true);
+        const Range lifted = modulated(5.0, 1.0, 0.5, false);
+        const Range silent = modulated(5.0, 0.0, 0.5, false);
+        Engine offEngine(2);
+        setUp(offEngine, 5.0, 1.0);
+        offEngine.p[paramIndex(b, OpParam::Enabled)] = 0.0;
+        offEngine.p[slotTargetIndex(source, 0)] = slotTargetValue(aOut);
+        offEngine.p[slotAmountIndex(source, 0)] = 1.0;
+        const Range off = levels(offEngine);
+        // As an aux: a macro taking A's Out away, scaled by a B that is silent, leaves it as it was.
+        auto macroOn = [&](bool aux) {
+            Engine e(2);
+            setUp(e, 5.0, 0.0);
+            e.p[paramIndex(0, MacroParam::Value)] = 1.0;
+            e.p[slotTargetIndex(kMaxSources, 0)] = slotTargetValue(aOut);
+            e.p[slotAmountIndex(kMaxSources, 0)] = -1.0;
+            if (aux)
+                e.p[slotAuxIndex(kMaxSources, 0)] = slotAuxValue(source);
+            return levels(e);
+        };
+        const Range unscaled = macroOn(false), scaled = macroOn(true);
+        std::printf("      A's peak %.3f set; under a 5 Hz operator %.3f to %.3f, a 12 kHz one %.3f to %.3f, unipolar "
+                    "%.3f to %.3f, silent %.3f, switched off %.3f; a macro's %.4f, with a silent operator as its aux "
+                    "%.3f\n",
+                    plain.high, slow.low, slow.high, fast.low, fast.high, lifted.low, lifted.high, silent.high, off.high,
+                    unscaled.high, scaled.high);
+        check(slow.high > 1.8f * plain.high && slow.low < 0.2f * plain.high,
+              "an operator at 5 Hz swings what it modulates both ways with its output");
+        check(fast.high < 1.05f * plain.high && fast.low > 0.95f * plain.high,
+              "an operator far above the control rate averages away rather than aliasing onto what it modulates");
+        check(lifted.high > 1.8f * plain.high && lifted.low > 0.95f * plain.high && lifted.low < 1.1f * plain.high,
+              "a unipolar operator takes what it modulates one way, from nothing up to its depth");
+        check(std::abs(silent.high - plain.high) < 0.01f * plain.high && off.high == plain.high,
+              "a silent operator, unipolar, and one switched off move nothing");
+        check(unscaled.high < 1e-3f && std::abs(scaled.high - plain.high) < 0.01f * plain.high,
+              "a silent operator as an aux scales its modulation to nothing");
+    }
+    {
         // A host's automation and modulation splitting blocks into pieces: render() told only which params changed
         // (paramChanged(), sameParams) plays sample for sample as one working out everything again for every piece.
         // The params moved: the operators', a route's, the voice's, a filter's, an LFO's rate, an effect's (one an

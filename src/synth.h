@@ -471,6 +471,11 @@ private:
         // Each operator's copies' weights in the mono sum other operators hear, as its unison gains last worked them
         // out (1 until Blend moves them): beside the operators, which grew slower in renderBlock() as they grew.
         std::array<std::array<double, kMaxUnison>, kOps> copyWeights{};
+        // The operators as sources (see OpSourceParam), for those that modulate something: what each has put out so far
+        // this block, and over the last block: on average (-1..1), and as a unipolar source puts it out (0..1).
+        std::array<double, kOps> opSum{};
+        std::array<double, kOps> opMean{};
+        std::array<double, kOps> opLevel{};
     };
 
     struct HeldNote {
@@ -671,6 +676,11 @@ private:
     std::array<int, kAllSources> sharedSlotCount_{};
     bool sharedSlotsReady_ = false;
     void shareSlots(const ParamValues &params);
+    // The operators whose output modulates something or scales a modulation as its aux, a bit each: the voices keep
+    // what those put out (see Voice::opSum), and add their slots' modulation (see runOpSources()).
+    uint32_t opSourceMask_ = 0;
+    void runOpSources(Voice &v, const ParamValues &params) const;
+    void finishOpSources(Voice &v, const std::array<bool, kOps> &opOn, uint32_t frames) const;
     std::vector<double> voiceBase_ = std::vector<double>(kVoiceParamCount, 0.0);
     std::vector<double> voiceClamped_ = std::vector<double>(kVoiceParamCount, 0.0);
     bool voiceBaseReady_ = false;

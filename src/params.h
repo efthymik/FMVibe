@@ -244,8 +244,10 @@ constexpr int kNoteSource = kMaxSources + kMacros; // the note source (see NoteP
 constexpr int kWheelSource = kNoteSource + 1;      // the mod wheel (see WheelParam)
 constexpr int kVelocitySource = kWheelSource + 1;  // the velocity source (see VelocityParam)
 constexpr int kBendSource = kVelocitySource + 1;    // the pitch bend (see BendParam)
-// The places, the macros, the note source, the mod wheel, velocity and the pitch bend.
-constexpr int kAllSources = kBendSource + 1;
+constexpr int kOpSource = kBendSource + 1;          // operator A's output, then B's and on to F's (see OpSourceParam)
+// The places, the macros, the note source, the mod wheel, velocity, the pitch bend and the operators.
+constexpr int kAllSources = kOpSource + kOps;
+constexpr bool isOpSource(int source) { return source >= kOpSource && source < kAllSources; }
 constexpr bool isMacro(int source) { return source >= kMaxSources && source < kNoteSource; }
 constexpr bool isNote(int source) { return source == kNoteSource; }
 constexpr bool isWheel(int source) { return source == kWheelSource; }
@@ -256,8 +258,8 @@ constexpr bool hasKnob(int source) { return isMacro(source) || isWheel(source); 
 // The sources that run per voice from what the note brings, each with a curve of its own: the note source and
 // velocity.
 constexpr bool isNoteBorne(int source) { return isNote(source) || isVelocity(source); }
-// The macros, the note source, the mod wheel, velocity and the pitch bend, under the keyboard: no card, type, switch or
-// bypasses.
+// The macros, the note source, the mod wheel, velocity and the pitch bend, under the keyboard, and the operators: no
+// card, type or switch of their own.
 constexpr bool isStripSource(int source) { return source >= kMaxSources; }
 enum class ShapeParam { PointCount, Points, Count = Points + 3 * kMaxShapePoints };
 enum class PointField { X, Y, Curve };
@@ -297,6 +299,14 @@ constexpr int kVelocityParamCount = static_cast<int>(VelocityParam::Count);
 // Stored in projects by number: only append.
 enum class BendParam { Slots, Bipolar = Slots + 2 * kSlots, Count };
 constexpr int kBendParamCount = static_cast<int>(BendParam::Count);
+// An operator's output as a source: kSlots (target, amount) pairs, like the pitch bend's, and Bipolar like a macro's, on
+// to begin with, as an LFO's. Per voice, it puts out what the operator put out (after its envelope, before its Out)
+// over the last control block, averaged: an operator far above the control rate averages away rather than aliasing.
+// Bipolar, it swings its targets about the set value with the output; unipolar, from nothing up to the operator's
+// envelope level, so a silent operator moves nothing either way. They count as sources kOpSource + op, after the pitch
+// bend. Stored in projects by number: only append.
+enum class OpSourceParam { Slots, Bipolar = Slots + 2 * kSlots, Count };
+constexpr int kOpSourceParamCount = static_cast<int>(OpSourceParam::Count);
 // Each slot of every source also has an Aux and an Amount (see slotAuxIndex()): its depth is scaled by Amount (0..1,
 // all of it to begin with) and, while it has an aux, by what that other source puts out now, 0..1, taken as unipolar,
 // as far as its aux depth says (see auxScale() and slotAuxDepthIndex()). Aux holds the aux's source number + 1 (0 = none): wiring like a target, set in the editor. Stored
@@ -940,9 +950,11 @@ constexpr int kRouteModeBase = kSlotAuxDepthBase + kAllSources * kSlots;
 // order they ran (see fxOrder()). Loading one wires them as the effects graph's line (see readParams()); since then the
 // graph's wires alone hold the order, and these do nothing.
 constexpr int kFxPositionBase = kRouteModeBase + kRouteSources * kOps;
+// The operators as sources (see OpSourceParam).
+constexpr int kOpSourceBase = kFxPositionBase + kFxSlots;
 // The sequencer: its settings, each pattern's length and loop, then each pattern's notes, then each pattern's curves
 // (see SeqParam). Only ever read as set; the notes and curves are hidden from hosts, like the drawn shapes.
-constexpr int kSeqBase = kFxPositionBase + kFxSlots;
+constexpr int kSeqBase = kOpSourceBase + kOps * kOpSourceParamCount;
 constexpr int kSeqPatternBase = kSeqBase + kSeqParamCount;
 constexpr int kSeqNoteBase = kSeqPatternBase + kSeqPatterns * kSeqPatternParamCount;
 constexpr int kSeqCurveBase = kSeqNoteBase + kSeqPatterns * kSeqNotes * kSeqNoteParamCount;
@@ -1379,6 +1391,9 @@ constexpr int paramIndex(NoteParam p) { return kNoteBase + static_cast<int>(p); 
 constexpr int paramIndex(WheelParam p) { return kWheelBase + static_cast<int>(p); }
 constexpr int paramIndex(VelocityParam p) { return kVelocityBase + static_cast<int>(p); }
 constexpr int paramIndex(BendParam p) { return kBendBase + static_cast<int>(p); }
+constexpr int paramIndex(int op, OpSourceParam p) {
+    return kOpSourceBase + op * kOpSourceParamCount + static_cast<int>(p);
+}
 // The knob whose value a macro (kMaxSources + macro) or the mod wheel puts out.
 constexpr int stripKnobIndex(int source) {
     return isWheel(source) ? paramIndex(GlobalParam::ModWheel) : paramIndex(source - kMaxSources, MacroParam::Value);
@@ -1388,9 +1403,11 @@ constexpr int macroOf(int index) {
     return index >= kMacroBase && index < kNoteBase ? (index - kMacroBase) / kMacroParamCount : -1;
 }
 // A source's slots, for kMaxSources + macro on a macro's, for kNoteSource the note source's, for kWheelSource
-// the mod wheel's, for kVelocitySource the velocity source's and for kBendSource the pitch bend's.
+// the mod wheel's, for kVelocitySource the velocity source's, for kBendSource the pitch bend's and for kOpSource + op
+// the operator's.
 constexpr int slotTargetIndex(int source, int slot) {
-    return isBend(source)       ? paramIndex(BendParam::Slots) + 2 * slot
+    return isOpSource(source)   ? paramIndex(source - kOpSource, OpSourceParam::Slots) + 2 * slot
+           : isBend(source)     ? paramIndex(BendParam::Slots) + 2 * slot
            : isVelocity(source) ? paramIndex(VelocityParam::Slots) + 2 * slot
            : isWheel(source)  ? paramIndex(WheelParam::Slots) + 2 * slot
            : isNote(source)   ? paramIndex(NoteParam::Slots) + 2 * slot
@@ -1425,19 +1442,20 @@ inline int slotAuxSource(double value) {
     return source >= 0 && source < kAllSources ? static_cast<int>(source) : -1;
 }
 inline double slotAuxValue(int source) { return source < 0 ? 0.0 : source + 1.0; }
-// The sources that run in each voice (the places, the note source, velocity and the pitch bend), whose output differs
-// from voice to voice; the macros and the mod wheel are the same for all.
+// The sources that run in each voice (the places, the note source, velocity, the pitch bend and the operators), whose
+// output differs from voice to voice; the macros and the mod wheel are the same for all.
 constexpr bool runsPerVoice(int source) { return !hasKnob(source); }
 // The on/off switch of a source.
 constexpr int sourceEnabledIndex(int source) { return paramIndex(source, SourceParam::Enabled); }
 // The switch that makes a source bipolar, and its value when it does: an LFO's Unipolar off, the Bipolar of an
-// envelope (as of `type`), a macro, the note source, the mod wheel, velocity or the pitch bend on.
+// envelope (as of `type`), a macro, the note source, the mod wheel, velocity, the pitch bend or an operator on.
 struct Polarity {
     int index;
     double bipolar;
 };
 constexpr Polarity polarityOf(int source, SourceType type) {
-    return isBend(source)             ? Polarity{paramIndex(BendParam::Bipolar), 1.0}
+    return isOpSource(source)         ? Polarity{paramIndex(source - kOpSource, OpSourceParam::Bipolar), 1.0}
+           : isBend(source)           ? Polarity{paramIndex(BendParam::Bipolar), 1.0}
            : isVelocity(source)       ? Polarity{paramIndex(VelocityParam::Bipolar), 1.0}
            : isWheel(source)          ? Polarity{paramIndex(WheelParam::Bipolar), 1.0}
            : isNote(source)           ? Polarity{paramIndex(NoteParam::Bipolar), 1.0}
@@ -1511,6 +1529,8 @@ constexpr Section kSections[] = {
     {kSeqCurveBase, kSeqPatterns * kSeqFirstCurves, kSeqCurveParamCount, 47000, 200},
     // The macros' curves, pattern by pattern.
     {kSeqMacroCurveBase, kSeqPatterns * kMacros, kSeqCurveParamCount, 50000, 200},
+    // The operators as sources.
+    {kOpSourceBase, kOps, kOpSourceParamCount, 57000, 40},
 };
 
 // Sources had kFirstSlots slots at first. Their fields keep the ids they had
@@ -1810,6 +1830,16 @@ static_assert(idOfIndex(clipCurveCountIndex(0)) == 7000 &&
 static_assert(idOfIndex(slotBypassIndex(0, 0)) == 9000 &&
                   idOfIndex(slotBypassIndex(kMaxSources - 1, kSlots - 1)) == 9315,
               "slot bypass param ids moved");
+static_assert(kOpSource == 28 && kAllSources == 34 && idOfIndex(slotTargetIndex(kOpSource, 0)) == 57000 &&
+                  idOfIndex(slotAmountIndex(kAllSources - 1, kSlots - 1)) == 57231 &&
+                  idOfIndex(paramIndex(kOps - 1, OpSourceParam::Bipolar)) == 57232 &&
+                  idOfIndex(slotBypassIndex(kOpSource, 0)) == 9560 &&
+                  idOfIndex(slotBypassIndex(kAllSources - 1, kSlots - 1)) == 9675 &&
+                  idOfIndex(slotAuxIndex(kOpSource, 0)) == 23120 &&
+                  idOfIndex(slotScaleIndex(kAllSources - 1, kSlots - 1)) == 23351 &&
+                  idOfIndex(slotCurveIndex(kAllSources - 1, kSlots - 1)) == 24675 &&
+                  idOfIndex(slotAuxDepthIndex(kAllSources - 1, kSlots - 1)) == 49675,
+              "the operators' source param ids moved");
 static_assert(idOfIndex(slotBypassIndex(kMaxSources, 0)) == 9320 &&
                   idOfIndex(slotBypassIndex(kNoteSource, 0)) == 9480 &&
                   idOfIndex(slotBypassIndex(kWheelSource, 0)) == 9500 &&

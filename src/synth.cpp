@@ -1072,6 +1072,7 @@ void Synth::startFxTail(const Voice &v, const ParamValues &params) {
     fxTail_.silent = 0.0;
     fxTail_.lfos = v.lfos;
     fxTail_.auxOut = v.auxOut;
+    std::fill_n(fxTail_.auxOut.begin() + kOpSource, kOps, 0.0); // the voice's operators have stopped
     fxTail_.rng = v.rng;
     // The LFOs' slots are worked out again each block; the other sources' keep what they gave last.
     fxTail_.heldCount = 0;
@@ -1082,6 +1083,10 @@ void Synth::startFxTail(const Voice &v, const ParamValues &params) {
             continue;
         const int source = mod.slot / kSlots;
         if (source < kMaxSources && runsLfo(sourceType(params[paramIndex(source, SourceParam::Type)])))
+            continue;
+        // The voice's operators have stopped: nothing of a moment of their wave stays held, as a source or an aux.
+        if (isOpSource(source) ||
+            isOpSource(slotAux([&params](int i) { return params[i]; }, source, mod.slot % kSlots)))
             continue;
         fxTail_.held[fxTail_.heldCount++] = mod;
     }
@@ -1616,12 +1621,17 @@ void Synth::clearVoiceMods(Voice &v) {
 
 void Synth::shareSlots(const ParamValues &params) {
     auto get = [&params](int i) { return params[i]; };
+    opSourceMask_ = 0;
     for (int source = 0; source < kAllSources; ++source) {
         int count = 0;
         for (int s = 0; s < kSlots; ++s) {
             const int target = slotTarget(params[slotTargetIndex(source, s)]);
             if (target < 0 || params[slotBypassIndex(source, s)] >= 0.5)
                 continue;
+            if (isOpSource(source))
+                opSourceMask_ |= 1u << (source - kOpSource);
+            if (const int aux = slotAux(get, source, s); isOpSource(aux))
+                opSourceMask_ |= 1u << (aux - kOpSource);
             SharedSlot &slot = sharedSlots_[source][count++];
             slot.slot = s;
             slot.target = target;
@@ -1641,6 +1651,41 @@ void Synth::shareSlots(const ParamValues &params) {
         sharedSlotCount_[source] = count;
     }
     sharedSlotsReady_ = true;
+}
+
+// Kept out of renderBlock(), which patches without an operator as a source run as they did.
+void Synth::runOpSources(Voice &v, const ParamValues &params) const {
+    for (int op = 0; op < kOps; ++op) {
+        if (!(opSourceMask_ >> op & 1u))
+            continue;
+        const int source = kOpSource + op;
+        v.auxOut[source] = v.opLevel[op];
+        if (params[paramIndex(op, OpParam::Enabled)] < 0.5)
+            continue; // switched off, it stands still and modulates nothing
+        const bool bipolar = params[paramIndex(op, OpSourceParam::Bipolar)] >= 0.5;
+        const double swing = bipolar ? 0.5 * v.opMean[op] : v.opLevel[op];
+        for (int k = 0; k < sharedSlotCount_[source]; ++k) {
+            const SharedSlot &slot = sharedSlots_[source][k];
+            if (slot.depth == 0.0)
+                continue;
+            const double scale =
+                slot.voiceAux >= 0 ? slot.scale * auxScale(slot.auxDepth, v.auxOut[slot.voiceAux]) : slot.scale;
+            v.slotMods[v.slotModCount++] = {slot.target,
+                                            slotCurveValue(swing, slot.curve, bipolar) * slot.depth * scale * slot.range,
+                                            source * kSlots + slot.slot};
+        }
+    }
+}
+
+void Synth::finishOpSources(Voice &v, const std::array<bool, kOps> &opOn, uint32_t frames) const {
+    for (int op = 0; op < kOps; ++op) {
+        // Unison's copies can sum past full scale; a source puts out -1..1.
+        const double mean = opOn[op] && frames > 0 ? std::clamp(v.opSum[op] / frames, -1.0, 1.0) : 0.0;
+        v.opSum[op] = 0.0;
+        v.opMean[op] = mean;
+        // From nothing to the envelope's level as the wave swings, so that silence is 0, as an LFO's lowest point is.
+        v.opLevel[op] = opOn[op] ? std::clamp(0.5 * (mean + v.ops[op].env.level()), 0.0, 1.0) : 0.0;
+    }
 }
 
 void Synth::shareVoiceParams(const ParamValues &params) {
@@ -1969,6 +2014,10 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             }
         }
     };
+    // The operators, from what they put out over the last block, known before the places run, so the slots they scale
+    // as their aux take it too.
+    if (opSourceMask_ != 0)
+        runOpSources(v, params);
     // Empty places and switched-off sources stand still and modulate nothing.
     auto get = [&p](int i) { return p[i]; };
     for (int s = 0; s < kMaxSources; ++s) {
@@ -2196,6 +2245,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     // the release down rather than jumping back; it renders nothing meanwhile, and ends once they have.
     if (v.silent) {
         v.peak = 0.0;
+        v.opMean.fill(0.0); // its operators play no more
+        v.opLevel.fill(0.0);
         if (v.fading || !modEnvReleasing(v, params))
             endVoice(v);
         return;
@@ -2739,6 +2790,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     double blockPeak = 0.0;
     std::array<double, kFilters> filterPeak{};
     const int scopeOp = &v == scopeVoice_ ? scope_.op : -1;
+    // The operators something listens to as they play, a single test a sample for the scope and the sources alike.
+    const uint32_t tapped = opSourceMask_ | (scopeOp >= 0 ? 1u << scopeOp : 0u);
     for (uint32_t s = 0; s < frames; ++s) {
         v.fmScale += fmStep;
         v.gainL += gainLStep;
@@ -2891,8 +2944,11 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             }
             op.prevOut = op.out;
             op.out = mono * monoGain[i] * envLevel;
-            if (i == scopeOp)
-                scopeTake(scopePhase, op.out);
+            if (tapped >> i & 1u) {
+                if (i == scopeOp)
+                    scopeTake(scopePhase, op.out);
+                v.opSum[i] += op.out;
+            }
             l *= envLevel * level.panL[i];
             r *= envLevel * level.panR[i];
             if (route.out) {
@@ -2973,6 +3029,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         if (opOn[i] && !noise[i])
             for (int k = 0; k < copies[i]; ++k)
                 v.ops[i].incNow[k] = copy[i]->inc[k];
+    if (tapped != 0)
+        finishOpSources(v, opOn, frames);
     bool filtersHeard = false; // whether a filter heard has put out anything within a comb line
     for (int f = 0; f < kFilters; ++f)
         if (filterOn[f]) {
