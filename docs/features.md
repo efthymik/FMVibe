@@ -2058,7 +2058,8 @@ one may have changed since it last did.
       picked, its row scrolled into sight, and is greyed out when Save As is. Factory, All, Favorites and Recent, which
       nothing can be saved in, don't show it, nor does the browser demo, which has no files. A preset's info
       is edited from the info card, for the preset loaded.
-    - Favorites and the recent presets are kept in the user's settings.
+    - Favorites and the recent presets are kept in the user's settings, which every instance shares: what one instance
+      changes there leaves what another changed, and shows in the others as their browsers open.
     - A click in its **search**, in its first row, gives it the keyboard, and a click anywhere else takes it away (while
       it hasn't the keyboard, Enter still loads the preset picked and Escape closes the browser): what is typed narrows the
       list (of what the sidebar shows) to the presets whose name, folder, author, category and description hold every

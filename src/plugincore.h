@@ -97,7 +97,10 @@ public:
         return presetHasFile() && !presetFile().starts_with(PresetLibrary::kFactoryPrefix);
     }
     void choosePreset(bool save) override;
-    void rescanPresets() override { presets_.rescan(); }
+    void rescanPresets() override { // the favorites and categories other instances changed show along with their files
+        presets_.rescan();
+        readUserSettings();
+    }
     const std::vector<gui::PresetEntry> &presets() const override { return presets_.entries(); }
     int presetIndex() const override;
     std::string presetName() const override;

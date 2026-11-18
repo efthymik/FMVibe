@@ -6,17 +6,23 @@
 
 #include "params.h"    // param ids only; everything else goes through CLAP
 #include "uistrings.h" // the wordings the plugin names its pages with
+#include "usersettings.h" // built in here too, to share the settings file between processes of this test
 
 #include <windows.h>
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <set>
+#include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace fmvibe;
@@ -317,17 +323,178 @@ bool paramTextRoundTrips(const clap_plugin_t *plugin, const clap_plugin_params_t
     return ok;
 }
 
+// This test run again as another process sharing the settings file, as an instance in another process does.
+int settingsProcess(int argc, char **argv) {
+    const std::string what = argv[2], a = argc > 3 ? argv[3] : "", b = argc > 4 ? argv[4] : "";
+    if (what == "many") { // categories named from a, one edit after another
+        for (int i = 0; i < std::atoi(b.c_str()); ++i) {
+            readUserSettings();
+            userSettings.categories.push_back({a + std::to_string(i), 8});
+            writeUserSettings();
+        }
+        return 0;
+    }
+    readUserSettings();
+    if (what == "category")
+        userSettings.categories.push_back({a, 11});
+    else if (what == "uncategory")
+        std::erase_if(userSettings.categories, [&](const auto &category) { return category.first == a; });
+    else if (what == "favorite")
+        userSettings.favorites.push_back(a);
+    else if (what == "move")
+        std::replace(userSettings.favorites.begin(), userSettings.favorites.end(), a, b);
+    else if (what == "recent")
+        userSettings.recent.insert(userSettings.recent.begin(), a);
+    writeUserSettings();
+    return 0;
+}
+
+HANDLE startSettingsProcess(const std::string &arguments) {
+    char self[MAX_PATH];
+    GetModuleFileNameA(nullptr, self, MAX_PATH);
+    std::string line = "\"" + std::string(self) + "\" --settings " + arguments;
+    STARTUPINFOA startup{};
+    startup.cb = sizeof(startup);
+    PROCESS_INFORMATION process{};
+    if (!CreateProcessA(nullptr, line.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup, &process))
+        return nullptr;
+    CloseHandle(process.hThread);
+    return process.hProcess;
+}
+
+void runSettingsProcess(const std::string &arguments) {
+    if (const HANDLE process = startSettingsProcess(arguments)) {
+        WaitForSingleObject(process, 30000);
+        CloseHandle(process);
+    }
+}
+
+// What instances in several processes do to the settings file they share.
+void checkSharedSettings(const std::wstring &dir) {
+    const std::wstring file = dir + L"\\settings.txt";
+    auto fileText = [&] {
+        std::ifstream in(file);
+        std::stringstream text;
+        text << in.rdbuf();
+        return text.str();
+    };
+    auto start = [&] { // a file of the user's, this process having read it
+        DeleteFileW(file.c_str());
+        readUserSettings();
+        userSettings.theme = "Midnight";
+        userSettings.categories = {{"Keep", 8}, {"Gone", 9}};
+        userSettings.favorites = {"a", "b"};
+        userSettings.recent = {"r1", "r2"};
+        writeUserSettings();
+    };
+    using Names = std::vector<std::string>;
+    auto categoryNames = [] {
+        Names names;
+        for (const auto &category : userSettings.categories)
+            names.push_back(category.first);
+        return names;
+    };
+
+    // Each process edits while the other, its editor open, knows nothing of it.
+    start();
+    runSettingsProcess("category Theirs");
+    runSettingsProcess("uncategory Gone");
+    runSettingsProcess("favorite theirs");
+    runSettingsProcess("move a moved");
+    runSettingsProcess("recent theirs");
+    userSettings.categories.push_back({"Mine", 12});
+    userSettings.favorites.push_back("mine");
+    userSettings.recent.insert(userSettings.recent.begin(), "mine");
+    writeUserSettings();
+    readUserSettings();
+    check(categoryNames() == Names{"Keep", "Theirs", "Mine"},
+          "settings: categories added and removed in two processes all count");
+    check(userSettings.favorites == Names{"b", "theirs", "moved", "mine"}, // a moved one is added anew, at the end
+          "settings: favorites added and moved in two processes all count");
+    check(userSettings.recent == Names{"mine", "theirs", "r1", "r2"},
+          "settings: presets loaded in two processes are recent, the last first");
+
+    start();
+    runSettingsProcess("category Same");
+    userSettings.categories.push_back({"Same", 12});
+    writeUserSettings();
+    readUserSettings();
+    check(categoryNames() == Names{"Keep", "Gone", "Same"} && userSettings.categories[2].second == 12,
+          "settings: a category two processes add under one name is one category");
+
+    start();
+    runSettingsProcess("favorite theirs");
+    readUserSettings();
+    check(userSettings.favorites == Names{"a", "b", "theirs"}, "settings: reading takes up another process's edits");
+
+    // Something else holds the file, without sharing it, for a moment and then for longer than is waited.
+    start();
+    {
+        const HANDLE held = CreateFileW(file.c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING, 0, nullptr);
+        std::thread letGo([held] {
+            Sleep(30);
+            CloseHandle(held);
+        });
+        userSettings.browserPlace = "all";
+        writeUserSettings();
+        letGo.join();
+    }
+    readUserSettings();
+    check(userSettings.theme == "Midnight" && userSettings.favorites.size() == 2 &&
+              userSettings.categories.size() == 2 && userSettings.browserPlace == "all",
+          "settings: a file held for a moment is waited for, and nothing lost");
+
+    start();
+    {
+        const std::string before = fileText();
+        const HANDLE held = CreateFileW(file.c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING, 0, nullptr);
+        userSettings.favorites.push_back("late");
+        writeUserSettings();
+        readUserSettings();
+        CloseHandle(held);
+        check(fileText() == before && userSettings.favorites == Names{"a", "b", "late"} &&
+                  userSettings.theme == "Midnight",
+              "settings: a file that can't be read is left as it is, the edit kept");
+        writeUserSettings();
+        check(fileText().find("favorite=late") != std::string::npos && fileText().find("favorite=a") != std::string::npos,
+              "settings: the edit is written once the file can be read");
+    }
+
+    // Processes editing all at once take turns.
+    start();
+    {
+        std::vector<HANDLE> processes;
+        for (int i = 0; i < 4; ++i)
+            processes.push_back(startSettingsProcess("many p" + std::to_string(i) + "_ 40"));
+        WaitForMultipleObjects(static_cast<DWORD>(processes.size()), processes.data(), TRUE, 60000);
+        for (HANDLE process : processes)
+            CloseHandle(process);
+    }
+    readUserSettings();
+    check(userSettings.categories.size() == 2 + 4 * 40, "settings: four processes editing at once lose no edit");
+
+    userSettings.zoom = 1.5;
+    writeUserSettings();
+    check(savedEditorZoom() == 1.5, "settings: a new instance reads the editor's size without taking up the rest");
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
+    if (argc >= 3 && std::strcmp(argv[1], "--settings") == 0)
+        return settingsProcess(argc, argv);
     if (argc != 2) {
         std::fprintf(stderr, "usage: fmvibe-smoke <plugin.clap>\n");
         return 2;
     }
-    // The editor saves its size into the user's settings: keep the test's resizes out of them.
     {
         wchar_t temp[MAX_PATH];
         GetTempPathW(MAX_PATH, temp);
+        const std::wstring shared = std::wstring(temp) + L"fmvibe-smoke-shared-settings";
+        CreateDirectoryW(shared.c_str(), nullptr);
+        SetEnvironmentVariableW(L"FMVIBE_SETTINGS_DIR", shared.c_str());
+        checkSharedSettings(shared);
+        // The editor saves its size into the user's settings: keep the test's resizes out of them.
         const std::wstring dir = std::wstring(temp) + L"fmvibe-smoke-settings";
         CreateDirectoryW(dir.c_str(), nullptr);
         SetEnvironmentVariableW(L"FMVIBE_SETTINGS_DIR", dir.c_str());
@@ -353,6 +520,21 @@ int main(int argc, char **argv) {
     }
     const clap_plugin_descriptor_t *desc = factory->get_plugin_descriptor(factory, 0);
     std::printf("      %s %s (%s)\n", desc->name, desc->version, desc->id);
+
+    {
+        std::atomic<int> created{0};
+        auto create = [&] { // CLAP lets a host create instances on any thread
+            for (int i = 0; i < 20; ++i)
+                if (const clap_plugin_t *instance = factory->create_plugin(factory, &kHost, desc->id)) {
+                    instance->destroy(instance);
+                    ++created;
+                }
+        };
+        std::thread first(create), second(create);
+        first.join();
+        second.join();
+        check(created == 40, "instances created on two threads at once");
+    }
 
     const clap_plugin_t *plugin = factory->create_plugin(factory, &kHost, desc->id);
     if (!plugin || !plugin->init(plugin)) {

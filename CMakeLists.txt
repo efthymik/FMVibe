@@ -250,8 +250,8 @@ install(TARGETS FMVibe-vst3 LIBRARY DESTINATION VST3/FMVibe.vst3/Contents/x86_64
 enable_testing()
 
 # Headless host that loads the built plugin, plays notes and opens the editor.
-add_executable(fmvibe-smoke tests/smoke_host.cpp src/params.cpp src/uistrings.cpp)
-target_link_libraries(fmvibe-smoke PRIVATE clap)
+add_executable(fmvibe-smoke tests/smoke_host.cpp src/params.cpp src/uistrings.cpp src/usersettings.cpp)
+target_link_libraries(fmvibe-smoke PRIVATE clap shell32 ole32)
 # The core checks the param ids' layout already (see params.cpp).
 target_compile_definitions(fmvibe-smoke PRIVATE FMVIBE_ID_CHECKS_ELSEWHERE)
 # For the param id helpers in params.h and the wordings in uistrings.h; the test still talks to the plugin only

@@ -36,9 +36,8 @@ PluginCore::PluginCore() {
     for (int i = 0; i < kParamCount; ++i)
         values_[i].store(table[i].def);
     // A new instance opens at the size the user last gave an editor; a state loaded after it brings its own.
-    readUserSettings();
-    if (userSettings.zoom >= 0.5)
-        layout_.zoom = static_cast<float>(userSettings.zoom);
+    if (const double zoom = savedEditorZoom(); zoom >= 0.5)
+        layout_.zoom = static_cast<float>(zoom);
 }
 
 PluginCore::~PluginCore() = default;
@@ -438,6 +437,7 @@ bool PluginCore::renamePresetFolder(const std::string &from, const std::string &
     if (file.size() > prefix.size() && _wcsnicmp(file.c_str(), prefix.c_str(), prefix.size()) == 0)
         setPreset(b + file.substr(a.size()), patchEdited());
     const std::string from8 = utf8(std::filesystem::path(a)) + "\\", to8 = utf8(std::filesystem::path(b)) + "\\";
+    readUserSettings(); // those another instance marked in it follow too
     bool moved = false;
     for (std::vector<std::string> *list : {&userSettings.favorites, &userSettings.recent})
         for (std::string &kept : *list)

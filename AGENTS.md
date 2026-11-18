@@ -43,7 +43,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
 
 - **Smoke test** (`tests/smoke_host.cpp`): a small headless host. (It and the VST3 test set `FMVIBE_SETTINGS_DIR`,
   which `src/usersettings.cpp` reads in place of the roaming app data, so their editor resizes don't land in your
-  settings file.) It loads the `.clap` and checks the parameter
+  settings file.) It first runs itself as other processes sharing a settings file: categories, favorites and recent
+  presets edited in two at once all counting, four editing at once losing no edit, and a file another program holds
+  waited for or, held longer, left as it is with the edit written later. It loads the `.clap`, creates instances on two
+  threads at once and checks the parameter
   table, text round-trips (at each end and just inside it too, the slowest sweep rate and the shortest time typed
   neither still nor Off), the note source's range (every MIDI note, on to the pitch at 20 kHz) and remote-control pages. It then plays
   notes, checking:
@@ -1054,7 +1057,7 @@ breakpoints in `src/` then hit.
 | `src/state.cpp` | The state's bytes: the patch (params, then the editor layout chunk, whose fields one list describes for writing and reading), the settings and preset chunks; independent of Windows |
 | `src/remotepages.cpp` | The remote control pages hosts show, built from the patch and the editor's source order |
 | `src/presets.cpp` | The preset library: the factory presets, built in, and the preset folder and its scan |
-| `src/usersettings.cpp` | The user's settings file in the roaming app data (theme, hue, glow, handle size, line strength, the editor's size, favorite and recent presets, the user's own categories and where the preset browser opens) |
+| `src/usersettings.cpp` | The user's settings file in the roaming app data (theme, hue, glow, handle size, line strength, the editor's size, favorite and recent presets, the user's own categories and where the preset browser opens), which processes share under a lock, each merging its own edits into the file as it is |
 | `src/sharedtelemetry.h` | The telemetry the audio thread hands the editor, in atomics |
 | `src/params.h` | Parameter layout (index ↔ id), slot targets, value mappings |
 | `src/params.cpp` | Parameter table (names, ranges, defaults) and value text |
