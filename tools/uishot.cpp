@@ -862,7 +862,7 @@ Point slopeItem(int slope) {
 
 // Every node has its row and column, A..F, F1 and F2, then S1 and S2; the output is the last column.
 Point gridCellCenter(int row, int col) {
-    return {detail::kGridOrigin.x + col * 32.6f + 14.3f, 168.0f + row * 32.6f + 14.3f};
+    return detail::gridCell(row, col).center();
 }
 
 Point nodeCenter(const UiLayout &layout, int node) {
@@ -3096,6 +3096,54 @@ void checkAlgorithmMenu(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove(detail::algorithmCell(8, 4).center(), {});
     renderer.save(view, dir / "51h-algorithm-spectrum.png");
     view.dialogKey(View::Key::Escape);
+}
+
+// The same busy patch's matrix in a theme, to compare cell widths by: routes of every kind, modes other than Phase, a
+// route kept at 0 %, a switched-off node and cells with one, three and six modulations.
+void renderMatrixWidths(const std::filesystem::path &dir, Renderer &renderer, const std::string &theme) {
+    FakeController model;
+    model.themeName = theme;
+    model.glowLevel = 0.5;
+    View view(model);
+    model.ui.view = RoutingView::Matrix;
+    for (int op = 1; op < 5; ++op)
+        model.set(paramIndex(op, OpParam::Enabled), 1.0);
+    for (int shaper = 0; shaper < kShapers; ++shaper)
+        model.set(paramIndex(shaper, ShaperParam::Enabled), 1.0);
+    model.set(paramIndex(0, FilterParam::Enabled), 1.0);
+    model.set(paramIndex(1, FilterParam::Enabled), 1.0);
+    const std::pair<int, double> routes[] = {
+        {matrixIndex(1, 0), 0.72}, {matrixIndex(2, 0), 0.35}, {matrixIndex(3, 2), 1.0},  {matrixIndex(4, 3), 0.18},
+        {matrixIndex(1, 1), 0.25}, {matrixIndex(4, 4), 0.42}, {matrixIndex(2, 1), 0.08}, {sendIndex(0, 0), 1.0},
+        {sendIndex(2, 1), 0.64},   {shaperSendIndex(1, 0), 0.5}, {filterLinkIndex(0, 1), 0.55},
+        {filterShaperIndex(1, 1), 0.3}, {shaperModIndex(0, 3), 0.27}, {paramIndex(0, OpParam::Out), 0.0},
+        {paramIndex(4, OpParam::Out), 0.86}, {paramIndex(1, ShaperParam::Out), 0.9}};
+    for (const auto &[param, amount] : routes)
+        model.set(param, amount);
+    model.ui.keptRoutes.push_back(matrixIndex(3, 1)); // wired at 0 %
+    model.set(routeModeIndex(1, 0), static_cast<double>(RouteMode::LinearFm));
+    model.set(routeModeIndex(3, 2), static_cast<double>(RouteMode::Ring));
+    model.set(routeModeIndex(4, 3), static_cast<double>(RouteMode::ExpFm));
+    // One modulation on B -> A, three on D -> C and six, more than a cell holds, on C -> A.
+    int source = 0;
+    auto modulate = [&](int target, int count) {
+        for (int i = 0; i < count; ++i, ++source) {
+            model.set(paramIndex(source, SourceParam::Type), static_cast<double>(SourceType::Lfo));
+            model.set(slotTargetIndex(source, 0), slotTargetValue(target));
+            model.set(slotAmountIndex(source, 0), 0.12 + 0.05 * i);
+        }
+    };
+    modulate(matrixIndex(1, 0), 1);
+    modulate(matrixIndex(3, 2), 3);
+    modulate(matrixIndex(2, 0), 6);
+    model.ui.selectedNode = 2;
+    view.poll();
+    view.mouseMove({detail::kRouting.right() - 4.0f, detail::kRouting.y + 4.0f}, {});
+    const Rect panel{detail::kInspector.x - 16.0f, detail::kPanelsTop - 6.0f, detail::kRouting.right() - detail::kInspector.x + 24.0f,
+                     detail::kRouting.h + 12.0f};
+    char name[64];
+    std::snprintf(name, sizeof name, "matrix-%.2f-%s.png", detail::kCellAspect, theme.c_str());
+    check(renderer.save(view, dir / name, &panel), "render the matrix's widths");
 }
 
 void renderExample(const std::filesystem::path &dir, Renderer &renderer, const std::string &name,
@@ -8519,7 +8567,7 @@ void testRouteModes(const std::filesystem::path &dir, Renderer &renderer) {
     model.ui.view = RoutingView::Matrix;
     view.poll();
     const Point cell = gridCellCenter(1, 0);
-    const Point corner{cell.x - 14.3f + 7.0f, cell.y - 14.3f + 7.0f};
+    const Point corner{detail::gridCell(1, 0).x + 7.0f, detail::gridCell(1, 0).y + 7.0f};
     auto cornerPixels = [&] {
         std::vector<uint32_t> pixels;
         for (float y = corner.y - 4.0f; y <= corner.y + 4.0f; y += 1.0f)
@@ -9822,7 +9870,7 @@ void testModsSearch(const std::filesystem::path &dir, Renderer &renderer) {
 // column (read off the rendered pixels). The pill opens the list of all eight, whose rows bypass, set the depth of
 // and remove their modulation as a card's rows do; a click elsewhere closes it. A macro's handle held over the pill
 // opens the list under it, and let go of on a row makes the macro that row's aux; let go of anywhere else, the list
-// closes again. Six on a matrix cell: two handles and a smaller pill, none in the next cell.
+// closes again. Six on a matrix cell: handles and a smaller pill, none in the next cell.
 void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -9937,7 +9985,7 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove(sourceHandle(2), {});
     check(renderer.save(view, dir / "40h-pill-link.png"), "render a source's line ending at the pill holding its handle");
 
-    // Six on the matrix's B -> C cell: two handles in its corner and a pill, none in the corner of B -> B left of it.
+    // Six on the matrix's B -> C cell: handles along its foot and a pill, none in the corner of B -> B left of it.
     click(view, {160.0f, 116.0f}); // MATRIX
     const Point cell = gridCellCenter(1, 2), left = gridCellCenter(1, 1);
     auto corner = [&] {
@@ -9958,7 +10006,7 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     }
     view.poll();
     const bool cellShot = renderer.save(view, dir / "40j-cell-pill.png");
-    check(cellShot && corner() == plain, "six modulations on a matrix cell show two handles and a pill, none in the next cell");
+    check(cellShot && corner() == plain, "six modulations on a matrix cell show handles and a pill, none in the next cell");
 
     // At the larger handle sizes, the cell's handles and pill are drawn bigger, in the same places (read off the
     // rendered pixels round them), and Small draws them as before.
@@ -12306,6 +12354,20 @@ void run(const std::filesystem::path &dir, float scale) {
     check(layout.view == RoutingView::Matrix, "the Matrix tab switches the routing panel to the grid");
     view.mouseMove(gridCellCenter(0, kOps), {});
     check(renderer.save(view, dir / "6-matrix.png"), "render the matrix view");
+    {
+        // Its cells are as much wider than tall as kCellAspect says, the mouse finding each across its whole width, and
+        // the cells, then the legend, stay inside the panel: nothing is drawn along the panel's right edge.
+        const Rect first = detail::gridCell(0, 0), last = detail::gridCell(kNodes - 1, detail::kGridCols - 1);
+        const bool ratio = std::abs(first.w / first.h - detail::kCellAspect) < 1e-4f;
+        const std::vector<MenuItem> inCell = view.contextMenu({first.right() - 1.0f, first.center().y});
+        const std::vector<MenuItem> inGap = view.contextMenu({first.right() + 0.5f * detail::kCellGap, first.center().y});
+        const float edge = detail::kRouting.right() - 8.0f;
+        bool clear = true;
+        for (float y = detail::kRouting.y + 12.0f; y < detail::kRouting.bottom() - 12.0f; y += 1.0f)
+            clear = clear && renderer.pixel({edge, y}) == renderer.pixel({edge, detail::kRouting.y + 12.0f});
+        check(ratio && !inCell.empty() && inGap.empty() && last.right() < detail::kLegendX && clear,
+              "the matrix's cells keep their ratio, and they and the legend stay inside the panel");
+    }
     // The tab shown opens the panel's top edge under it, the edge running on under the others; one under the mouse
     // shows a tab's shape.
     // (Read above the inspector's lens, which floats 6 px under the panel's top.)
@@ -13643,7 +13705,7 @@ void run(const std::filesystem::path &dir, float scale) {
 
 int main(int argc, char **argv) {
     if (argc < 2) {
-        std::fprintf(stderr, "usage: fmvibe-uishot <output-dir> [scale] [--presets | --library | --seq]\n");
+        std::fprintf(stderr, "usage: fmvibe-uishot <output-dir> [scale] [--presets | --library | --seq | --matrix]\n");
         return 2;
     }
     const std::filesystem::path dir = argv[1];
@@ -13664,6 +13726,10 @@ int main(int argc, char **argv) {
             if (loadFactoryPreset(preset, values, layout) && values[paramIndex(SeqParam::Enabled)] >= 0.5)
                 renderExample(dir, renderer, preset.name, "seq-" + preset.name, SIZE_MAX, "Spectrum", false, true);
         }
+    } else if (argc > 3 && std::strcmp(argv[3], "--matrix") == 0) { // only the matrix at this build's cell width
+        Renderer renderer(scale);
+        renderMatrixWidths(dir, renderer, "Spectrum");
+        renderMatrixWidths(dir, renderer, "Midnight");
     } else if (argc > 3 && std::strcmp(argv[3], "--library") == 0) { // only the preset library's
         Renderer renderer(scale);
         testPresetLibrary(dir, renderer);
