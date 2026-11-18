@@ -25,6 +25,7 @@ struct Telemetry;
 namespace fmvibe::gui {
 
 class Controller;
+struct UndoStep;
 class FxGraphModel;
 class ModulationModel;
 class Panel;
@@ -272,6 +273,8 @@ public:
     virtual void closePopups() {}
     // An undo or redo about to change the patch: what it keeps of where a list was opened may not hold after.
     virtual void undoing() {}
+    // A step just undone, or redone (`forward`): what the step keeps for the panel comes back.
+    virtual void stepApplied(const UndoStep &, bool) {}
     // A press anywhere, before it goes to what it hit (`hit`, or nothing): what lets go at a click elsewhere (a field
     // taking the keyboard, say) lets go here.
     virtual void pressing(const Widget * /*hit*/) {}

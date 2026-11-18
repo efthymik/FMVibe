@@ -6343,6 +6343,67 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         check(passedOn && copied && after && pasted && asCopied && picked && undone && cut && back && restored,
               "Ctrl+C, Ctrl+X and Ctrl+V copy, cut and paste the notes picked, at the mouse or after them, undoably");
     }
+    // Ctrl+D puts the notes picked again right after the last of them to end, as far apart as they were, and picks the
+    // copies, so that it lays them end to end; what was copied stays. Each an undo step, and none once the pattern has
+    // no room left; with nothing picked, it goes on to the host.
+    {
+        const Modifiers shift{true, false, false};
+        click(view, at(15.5, 66)); // nothing picked
+        const bool passedOn = !view.seqKey(View::Key::Duplicate, false);
+        click(view, at(4.4, 55));
+        view.seqKey(View::Key::Copy, false);
+        click(view, at(8.5, 51)); // the note on step 8, two steps long
+        const bool took = view.seqKey(View::Key::Duplicate, false);
+        const int copy = noteAt(10.0, 51);
+        const bool asItWas = copy >= 0 && field(copy, SeqNoteParam::Length) == 2.0 && noteAt(8.0, 51) == 2;
+        view.seqKey(View::Key::Duplicate, false);
+        view.seqKey(View::Key::Duplicate, false);
+        const bool endToEnd = noteAt(12.0, 51) >= 0 && noteAt(14.0, 51) >= 0;
+        view.seqKey(View::Key::Duplicate, false); // past the pattern's end: nothing to undo
+        view.undo();
+        view.undo();
+        view.undo();
+        const bool undone = noteAt(10.0, 51) < 0 && noteAt(12.0, 51) < 0 && noteAt(14.0, 51) < 0 && noteAt(8.0, 51) == 2;
+        click(view, at(15.5, 66));
+        click(view, at(4.4, 55));
+        view.mouseMove(at(8.5, 51), shift);
+        view.mouseDown(at(8.5, 51), shift);
+        view.mouseUp(at(8.5, 51), shift);
+        view.seqKey(View::Key::Duplicate, false);
+        const bool both = noteAt(10.0, 55) >= 0 && noteAt(14.0, 51) >= 0; // six steps on, from step 4 to the end of 8's
+        // Undone, the notes it was pressed on are picked again, and redone, the copies: Delete shows which.
+        view.undo();
+        view.redo();
+        view.seqKey(View::Key::Delete, false);
+        const bool copiesPicked = noteAt(10.0, 55) < 0 && noteAt(14.0, 51) < 0 && noteAt(4.0, 55) == 1 && noteAt(8.0, 51) == 2;
+        view.undo();
+        view.undo();
+        view.seqKey(View::Key::Delete, false);
+        const bool pickedAgain = noteAt(4.0, 55) < 0 && noteAt(8.0, 51) < 0 && noteAt(0.0, 48) == 0 && noteAt(12.0, 58) == 3;
+        view.undo();
+        // Pressed twice, each undo goes back to what that press was made on.
+        click(view, at(15.5, 66));
+        click(view, at(8.5, 51));
+        view.seqKey(View::Key::Duplicate, false);
+        view.seqKey(View::Key::Duplicate, false);
+        view.undo();
+        view.seqKey(View::Key::Delete, false);
+        const bool firstCopyPicked = noteAt(10.0, 51) < 0 && noteAt(8.0, 51) == 2;
+        view.undo();
+        view.undo();
+        view.seqKey(View::Key::Delete, false);
+        const bool originalPicked = noteAt(8.0, 51) < 0;
+        view.undo();
+        view.mouseMove(at(14.6, 62), {});
+        view.seqKey(View::Key::Paste, false);
+        const bool clipKept = noteAt(14.0, 55) >= 0;
+        view.undo();
+        click(view, at(15.5, 66)); // nothing picked
+        check(passedOn && took && asItWas && endToEnd && undone && both && clipKept && noteAt(10.0, 55) < 0,
+              "Ctrl+D duplicates the notes picked right after the last of them, undoably, leaving what was copied");
+        check(copiesPicked && pickedAgain && firstCopyPicked && originalPicked,
+              "a duplicate undone picks the notes it was made from again, and redone picks its copies");
+    }
     // The roll's right-click menu: on a note not picked, picking it alone; Duplicate putting a copy right after it, Mute
     // muting it (checked then), Quantize putting it on the grid, Paste on an empty place putting what was copied there,
     // Select All picking every note; each an undo step.

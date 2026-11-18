@@ -432,6 +432,10 @@ struct UndoStep {
     // The preset the patch came from, and whether it had changed since, before and after the step.
     std::wstring presetBefore, presetAfter;
     bool editedBefore = false, editedAfter = false;
+    // For a step that brings the SEQ view's picked notes back (a duplicate): their pattern (-1 for any other step) and
+    // the slots picked before and after it.
+    int seqPattern = -1;
+    std::vector<int> seqPickedBefore, seqPickedAfter;
 };
 
 class Controller;
@@ -464,9 +468,11 @@ public:
     void recordAll();
     const UndoStep *nextUndo() const { return undo_.empty() ? nullptr : &undo_.back(); }
     const UndoStep *nextRedo() const { return redo_.empty() ? nullptr : &redo_.back(); }
-    // Not while a step is open.
-    void undo();
-    void redo();
+    // The open step brings these notes picked in the SEQ view back as it is undone and redone.
+    void keepSeqPicks(int pattern, std::vector<int> before, std::vector<int> after);
+    // Not while a step is open. The step undone or redone, if there was one.
+    const UndoStep *undo();
+    const UndoStep *redo();
     // When the host replaces the whole state, what the history would bring back is gone.
     void clear();
     // How many times the whole patch was replaced (a preset loaded, Init, the host's state), as clear() counts
@@ -533,8 +539,11 @@ public:
     void recordAll() { history_.recordAll(); }
     const UndoStep *nextUndo() const { return history_.nextUndo(); }
     const UndoStep *nextRedo() const { return history_.nextRedo(); }
-    void undo() { history_.undo(); }
-    void redo() { history_.redo(); }
+    void keepSeqPicks(int pattern, std::vector<int> before, std::vector<int> after) {
+        history_.keepSeqPicks(pattern, std::move(before), std::move(after));
+    }
+    const UndoStep *undo() { return history_.undo(); }
+    const UndoStep *redo() { return history_.redo(); }
     void clearHistory() { history_.clear(); }
     uint64_t patchLoads() const { return history_.patchLoads(); }
 

@@ -7642,7 +7642,9 @@ void View::undo() {
             panel->undoing();
         listMenu_ = -1;
         peqMenu_ = -1;
-        controller_.undo();
+        if (const UndoStep *step = controller_.undo())
+            for (Panel *panel : panels_)
+                panel->stepApplied(*step, false);
         menuLive_ = false;
     }
 }
@@ -7655,7 +7657,9 @@ void View::redo() {
             panel->undoing();
         listMenu_ = -1;
         peqMenu_ = -1;
-        controller_.redo();
+        if (const UndoStep *step = controller_.redo())
+            for (Panel *panel : panels_)
+                panel->stepApplied(*step, true);
         menuLive_ = false;
     }
 }

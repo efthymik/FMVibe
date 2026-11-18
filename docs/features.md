@@ -926,11 +926,12 @@ one may have changed since it last did.
     (on the grid, the first note there and the rest as far after it as they were), or with the mouse off the roll
     where a cut took them from, or right after what was copied or pasted last (rounded up to the grid), so pasting
     again lays them end to end. The notes pasted are picked, notes past the pattern's end are left out, and each is an
-    undo step. With no note picked, the arrows, Ctrl+C and Ctrl+X go on to the host, and so does Ctrl+V with nothing
-    copied.
+    undo step. **Ctrl+D** duplicates the notes picked: the copies go right after the last of them to end (rounded up to
+    the grid), as far apart as they were, and are picked, so pressing it again lays them end to end, and what was copied
+    stays as it is. Undoing it picks the notes it was pressed on again, and redoing it the copies. With no note picked, the arrows, Ctrl+C, Ctrl+X and Ctrl+D go on to the host, and so does Ctrl+V with
+    nothing copied.
   - **The roll's right-click menu**, on a note (which it picks alone, unless it is picked) or an empty place (keeping
-    what is picked): **Cut**, **Copy**, **Paste** (where the menu was opened, on the grid), **Duplicate** (the notes
-    picked again right after them, leaving what was copied as it is) and **Delete**; **Select All**; **Slide** and
+    what is picked): **Cut**, **Copy**, **Paste** (where the menu was opened, on the grid), **Duplicate** (as Ctrl+D does) and **Delete**; **Select All**; **Slide** and
     **Mute** (checked while every note picked has it), and **Quantize**, which puts the notes picked on the snap's
     grid. It offers only what applies: the notes' entries while notes are picked, Paste once something is copied.
 - **Routing panel**: the right of the panel the inspector floats over (see below); the graph shows only what is

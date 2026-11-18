@@ -1158,11 +1158,9 @@ bool SeqPanel::menuCommand(int command) {
         if (seqPaste(seqClip_, seqMenuAt_))
             seqClipNext_ = seqMenuAt_ + seqClip_.span;
         break;
-    case kSeqDuplicate: { // right after them, leaving what was copied as it is
-        const SeqClip clip = seqCopyPicked();
-        seqPaste(clip, clip.from + clip.span);
+    case kSeqDuplicate:
+        host_.sendKey(Key::Duplicate, false);
         break;
-    }
     case kSeqDelete:
         removeSeqNotes(picked);
         break;
@@ -1284,8 +1282,16 @@ bool SeqPanel::key(Key key, bool shift) {
     }
     const std::vector<int> picked = seqPicked();
     if (picked.empty() || (key != Key::Left && key != Key::Right && key != Key::Up && key != Key::Down &&
-                           key != Key::Delete && key != Key::Copy && key != Key::Cut))
+                           key != Key::Delete && key != Key::Copy && key != Key::Cut && key != Key::Duplicate))
         return false;
+    if (key == Key::Duplicate) { // right after them, leaving what was copied as it is; undone, they are picked again
+        const SeqClip clip = seqCopyPicked();
+        controller().beginStep();
+        if (seqPaste(clip, clip.from + clip.span))
+            controller().keepSeqPicks(pattern, picked, seqPicked());
+        controller().endStep();
+        return true;
+    }
     if (key == Key::Copy || key == Key::Cut) { // a paste then going after them, or for a cut where they were
         seqClip_ = seqCopyPicked();
         seqClipNext_ = key == Key::Cut ? seqClip_.from : seqClip_.from + seqClip_.span;
@@ -1333,6 +1339,13 @@ bool SeqPanel::key(Key key, bool shift) {
     if (key == Key::Up || key == Key::Down)
         seqReveal(picked, key == Key::Up);
     return true;
+}
+
+void SeqPanel::stepApplied(const UndoStep &step, bool forward) {
+    if (step.seqPattern != seqPattern()) // it keeps no notes picked, or another pattern shows
+        return;
+    seqSelection_ = forward ? step.seqPickedAfter : step.seqPickedBefore;
+    seqSelectionPattern_ = step.seqPattern;
 }
 
 void SeqPanel::seqReveal(const std::vector<int> &slots, bool up) {

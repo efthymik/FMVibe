@@ -60,6 +60,7 @@ public:
     bool menuCommand(int command) override;
     // The SEQ view's keys, while it shows (see View::seqKey()).
     bool key(Key key, bool shift) override;
+    void stepApplied(const UndoStep &step, bool forward) override;
     ConfirmWords confirmWords(int kind) const override;
     void confirmed(int kind, int button) override;
 
