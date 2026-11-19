@@ -5735,6 +5735,168 @@ int main() {
         check(blocks < 0.002 && frames < 0.002, "the phase disperser's Stages changed under a sine fade rather than click");
     }
 
+    // --- The phase disperser's Key Track and Stretch, each against the chain they make, worked out from the same
+    // coefficients: an impulse through the effect, after a moment's silence while it fades in, comes out as through
+    // that chain (to within the float it is kept in between effects).
+    std::printf("phase disperser key track and stretch (impulse against the chain they make, largest difference):\n");
+    {
+        // What the effect puts out for an impulse, `pitch` the newest note's, at `rate`.
+        auto impulse = [](double freqHz, double keyTrack, double stretch, double pitch, double rate) {
+            Effects fx;
+            fx.prepare(rate);
+            ParamValues p;
+            for (int i = 0; i < kParamCount; ++i)
+                p[i] = paramTable()[i].def;
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Disperser);
+            p[paramIndex(0, FxParam::DisperserFreq)] = normFromCutoff(freqHz);
+            p[paramIndex(0, FxParam::DisperserStages)] = 8.0;
+            p[paramIndex(0, FxParam::DisperserPinch)] = 0.6;
+            p[paramIndex(0, FxParam::DisperserMix)] = 1.0;
+            p[paramIndex(0, FxParam::DisperserKeyTrack)] = keyTrack;
+            p[paramIndex(0, FxParam::DisperserStretch)] = stretch;
+            chain(p, {0});
+            const uint32_t settle = static_cast<uint32_t>(0.05 * rate) / kBlock * kBlock;
+            std::vector<float> out;
+            std::vector<float> left(kBlock), right(kBlock);
+            for (uint32_t t = 0; t < settle + 16384; t += kBlock) {
+                std::fill(left.begin(), left.end(), 0.0f);
+                if (t == settle)
+                    left[0] = 1.0f;
+                right = left;
+                fx.process(left.data(), right.data(), kBlock, p, 120.0, pitch);
+                if (t >= settle)
+                    out.insert(out.end(), left.begin(), left.end());
+            }
+            return out;
+        };
+        // The plain chain of 8 at `hz`, its delays `stretch` samples long: the unstretched one's impulse response
+        // spread out, every stretch-th sample, silence between.
+        auto expected = [](double hz, int stretch, double rate, size_t length) {
+            const std::array<double, 5> b = disperserCoefs(hz, 0.6, rate, stretch);
+            const fx::BiquadCoefs c{b[0], b[1], b[2], b[3], b[4]};
+            std::array<fx::Biquad, 8> chain{};
+            std::vector<double> out(length, 0.0);
+            for (size_t m = 0; m * stretch < length; ++m) {
+                double y = m == 0 ? 1.0 : 0.0;
+                for (fx::Biquad &stage : chain)
+                    y = stage.process(y, c);
+                out[m * stretch] = y;
+            }
+            return out;
+        };
+        auto difference = [](const std::vector<float> &got, const std::vector<double> &want) {
+            double most = 0.0;
+            for (size_t i = 0; i < want.size(); ++i)
+                most = std::max(most, std::abs(got[i] - want[i]));
+            return most;
+        };
+        const double c4 = difference(impulse(500.0, 1.0, 1.0, 60.0, kSampleRate), expected(500.0, 1, kSampleRate, 16384));
+        const double c5 = difference(impulse(500.0, 1.0, 1.0, 72.0, kSampleRate), expected(1000.0, 1, kSampleRate, 16384));
+        const double half = difference(impulse(500.0, 0.5, 1.0, 84.0, kSampleRate), expected(1000.0, 1, kSampleRate, 16384));
+        std::printf("      key track 100 %%: a C4 at Freq %.1e, a C5 an octave up %.1e; 50 %% and a C6 an octave up %.1e\n",
+                    c4, c5, half);
+        check(c4 < 1e-6 && c5 < 1e-6 && half < 1e-6,
+              "the phase disperser's Key Track moves Freq with the note from C4 on, as the filter's does");
+        const double by4 = difference(impulse(700.0, 0.0, 4.0, 60.0, kSampleRate), expected(700.0, 4, kSampleRate, 16384));
+        const double by37 =
+            difference(impulse(700.0, 0.0, 37.0, 60.0, kSampleRate), expected(700.0, 37, kSampleRate, 16384));
+        const double by8At96 = difference(impulse(700.0, 0.0, 4.0, 60.0, 96000.0), expected(700.0, 8, 96000.0, 16384));
+        std::printf("      stretch 4 %.1e, 37 %.1e, 4 at 96 kHz (8 samples) %.1e\n", by4, by37, by8At96);
+        check(by4 < 1e-6 && by37 < 1e-6 && by8At96 < 1e-6 && disperserStretch(4.0, 96000.0) == 8 &&
+                  disperserStretch(4.0, 44100.0) == 4 && disperserStretch(64.0, 192000.0) == 256,
+              "the phase disperser's Stretch makes each all-pass's delays as many samples long at 48 kHz, as long a "
+              "time at other rates");
+        // Stretched, its delay peaks at Freq and again every 48 kHz / Stretch either way: at 32, 1.5 kHz apart, a
+        // 400 Hz one's copies at 1.1 and 1.9 kHz.
+        auto peakNear = [](double hz) {
+            double best = 0.0, at = hz;
+            for (double f = hz * 0.9; f < hz * 1.1; f += hz * 0.0002)
+                if (const double d = disperserDelay(f, 400.0, 0.6, 8, kSampleRate, 32); d > best) {
+                    best = d;
+                    at = f;
+                }
+            return at;
+        };
+        const double first = peakNear(400.0), mirror = peakNear(1100.0), copy = peakNear(1900.0);
+        std::printf("      stretch 32 at 400 Hz: its delay peaks at %.0f Hz, %.0f Hz and %.0f Hz\n", first, mirror, copy);
+        check(std::abs(first / 400.0 - 1.0) < 0.01 && std::abs(mirror / 1100.0 - 1.0) < 0.01 &&
+                  std::abs(copy / 1900.0 - 1.0) < 0.01,
+              "stretched, the phase disperser's delay peaks at Freq and again every 48 kHz / Stretch, either way");
+    }
+    // Its Stretch changed under a sine, all wet: it fades out to the sine and back in at the new length, so its third
+    // difference stays far under an instant switch's (1 to 1.6 here). A stretched chain starting from silence buzzes
+    // at the rate over its stretch, as it does on any note, which the fade back in keeps down rather than takes away.
+    // And the longest stretch, the most stages and the narrowest pinch stay finite and ring out.
+    {
+        auto roughest = [](uint32_t piece) {
+            Effects fx;
+            fx.prepare(kSampleRate);
+            ParamValues p;
+            for (int i = 0; i < kParamCount; ++i)
+                p[i] = paramTable()[i].def;
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Disperser);
+            p[paramIndex(0, FxParam::DisperserFreq)] = normFromCutoff(600.0);
+            p[paramIndex(0, FxParam::DisperserMix)] = 1.0;
+            chain(p, {0});
+            const uint32_t each = static_cast<uint32_t>(kSampleRate / 4);
+            std::vector<float> left(piece), right(piece);
+            double most = 0.0;
+            std::array<double, 3> last{};
+            uint32_t t = 0;
+            for (double stretch : {1.0, 4.0, 16.0, 64.0, 2.0, 1.0}) {
+                p[paramIndex(0, FxParam::DisperserStretch)] = stretch;
+                for (uint32_t done = 0; done < each; done += piece, t += piece) {
+                    for (uint32_t s = 0; s < piece; ++s)
+                        left[s] = right[s] = static_cast<float>(
+                            0.5 * std::sin(2.0 * std::numbers::pi * 220.0 * (t + s) / kSampleRate));
+                    fx.process(left.data(), right.data(), piece, p, 120.0, 60.0);
+                    for (uint32_t s = 0; s < piece; ++s) {
+                        const double third = left[s] - 3.0 * last[0] + 3.0 * last[1] - last[2];
+                        if (t + s > kSampleRate / 10)
+                            most = std::max(most, std::abs(third));
+                        last = {left[s], last[0], last[1]};
+                    }
+                }
+            }
+            return most;
+        };
+        const double blocks = roughest(kBlock), frames = roughest(1);
+        std::printf("      stretch 1, 4, 16, 64, 2, 1 under a sine: third difference %.5f in whole blocks, %.5f in single "
+                    "frames\n", blocks, frames);
+        check(blocks < 0.05 && frames < 0.05, "the phase disperser's Stretch changed under a sine fades rather than clicks");
+
+        Effects fx;
+        fx.prepare(kSampleRate);
+        ParamValues p;
+        for (int i = 0; i < kParamCount; ++i)
+            p[i] = paramTable()[i].def;
+        p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Disperser);
+        p[paramIndex(0, FxParam::DisperserStages)] = 64.0;
+        p[paramIndex(0, FxParam::DisperserPinch)] = 1.0;
+        p[paramIndex(0, FxParam::DisperserStretch)] = 64.0;
+        p[paramIndex(0, FxParam::DisperserKeyTrack)] = 1.0;
+        chain(p, {0});
+        std::vector<float> left(kBlock), right(kBlock);
+        bool finite = true;
+        double loud = 0.0, end = 0.0;
+        for (uint32_t t = 0; t < 30 * static_cast<uint32_t>(kSampleRate); t += kBlock) {
+            const bool sounding = t < kSampleRate / 2;
+            for (uint32_t s = 0; s < kBlock; ++s)
+                left[s] = right[s] = sounding ? static_cast<float>(((t + s) * 2654435761u >> 16 & 1023) / 1023.0 - 0.5) : 0.0f;
+            fx.process(left.data(), right.data(), kBlock, p, 120.0, 96.0); // a C7, its tracked Freq high up
+            for (uint32_t s = 0; s < kBlock; ++s) {
+                finite = finite && std::isfinite(left[s]) && std::isfinite(right[s]);
+                loud = std::max(loud, static_cast<double>(std::abs(left[s])));
+                if (t > 29 * static_cast<uint32_t>(kSampleRate))
+                    end = std::max(end, static_cast<double>(std::abs(left[s])));
+            }
+        }
+        std::printf("      64 stages, full pinch and stretch, noise for half a second: loudest %.2f, after 29 s %.1e\n",
+                    loud, end);
+        check(finite && loud < 4.0 && end < 1e-4,
+              "the phase disperser at its longest stretch, most stages and narrowest pinch stays finite and rings out");
+    }
+
     // --- The chorus's voices, held still (no Depth), all wet and in the middle: an impulse comes out once a voice,
     // each at its place along Delay (12.5 ms here, so every place falls on a sample), a little shorter or longer than it, as loud as 1 / sqrt(voices) (less
     // the share of it the bass takes past them). And swept, its voices together play a sine about as loud as it went

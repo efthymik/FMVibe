@@ -41,7 +41,7 @@ constexpr bool idsRoundTrip(int from, int to) {
     return true;
 }
 // (MSVC allows an expression 1,048,576 steps, fewer than GCC, so the parts are small.)
-static_assert(kParamCount == 31554 && kParamCount <= 11 * 3000);
+static_assert(kParamCount == 31618 && kParamCount <= 11 * 3000);
 static_assert(idsRoundTrip(0, 1500), "param id layout overlaps");
 static_assert(idsRoundTrip(1500, 3000), "param id layout overlaps");
 static_assert(idsRoundTrip(3000, 4500), "param id layout overlaps");
@@ -855,6 +855,9 @@ void buildTable(ParamTable &t) {
         fx(FxParam::DisperserStages, tr(Str::ParamDisperserStages), ParamKind::Count, 1.0, kMaxDisperserStages, 8.0);
         fx(FxParam::DisperserPinch, tr(Str::ParamDisperserPinch), ParamKind::Percent, 0.0, 1.0, 0.5);
         fx(FxParam::DisperserMix, tr(Str::ParamDisperserMix), ParamKind::Percent, 0.0, 1.0, 1.0);
+        // Its later fields start where they leave it as it came: tracking nothing, each all-pass on every sample.
+        fx(FxParam::DisperserKeyTrack, tr(Str::ParamDisperserKeyTrack), ParamKind::Percent, 0.0, 1.0, 0.0);
+        fx(FxParam::DisperserStretch, tr(Str::ParamDisperserStretch), ParamKind::Count, 1.0, kMaxDisperserStretch, 1.0);
 
         // Wide from the start, the lows left in the middle: the sides above 150 Hz, half in.
         fx(FxParam::WidenerSize, tr(Str::ParamWidenerSize), ParamKind::Percent, 0.0, 1.0, 0.5);

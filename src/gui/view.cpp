@@ -2140,9 +2140,11 @@ void View::effectCardWidgets(std::vector<Widget> &list, int slot, Rect card) con
               {tr(Str::LabelFeedback), nullptr, tr(Str::LabelMix)}, 266.0f);
         break;
     case FxType::Disperser:
-        knobs({at(FxParam::DisperserFreq), at(FxParam::DisperserStages), at(FxParam::DisperserPinch),
-               at(FxParam::DisperserMix)},
-              {tr(Str::LabelFreq), tr(Str::LabelStages), tr(Str::LabelPinch), tr(Str::LabelMix)});
+        // Where it disperses and how, over what moves it with the note, how often it repeats and how much is heard.
+        knobs({at(FxParam::DisperserFreq), at(FxParam::DisperserStages), at(FxParam::DisperserPinch)},
+              {tr(Str::LabelFreq), tr(Str::LabelStages), tr(Str::LabelPinch)}, 206.0f);
+        knobs({at(FxParam::DisperserKeyTrack), at(FxParam::DisperserStretch), at(FxParam::DisperserMix)},
+              {tr(Str::LabelKeyTrack), tr(Str::LabelStretch), tr(Str::LabelMix)}, 266.0f);
         break;
     case FxType::Widener:
         knobs({at(FxParam::WidenerSize), at(FxParam::WidenerWidth), at(FxParam::WidenerHighPass),
@@ -3329,24 +3331,29 @@ void View::paintChorus(Canvas &c, Rect r, int slot) {
 // The partials of a 220 Hz tone, faint, and where the shifter moves them: the left side above the
 // line, the right below, on a log axis from 50 Hz to 10 kHz.
 // The disperser's delay across frequency: how much later than the rest each part of the sound comes out,
-// rising to its peak at Freq, taller and narrower with more stages and more pinch. Behind it, on the same axis, what
-// it puts out, measured.
+// rising to its peak at Freq (where Key Track moves it with the note), taller and narrower with more stages and more
+// pinch, and coming again across the spectrum when stretched. Behind it, on the same axis, what it puts out, measured.
 void View::paintDisperser(Canvas &c, Rect r, int slot) {
     const Color fx = fxColor(slot);
     const Rect inner{r.x + 8.0f, r.y + 20.0f, r.w - 16.0f, r.h - 28.0f};
     auto at = [&](FxParam f) { return liveValue(paramIndex(slot, f)); }; // as modulation takes them now
     const int stages = static_cast<int>(std::lround(at(FxParam::DisperserStages)));
     constexpr double kRate = 48000.0;
+    const double center = disperserCenter(at(FxParam::DisperserFreq), at(FxParam::DisperserKeyTrack),
+                                          telemetry_.fxPitch);
+    const int stretch = disperserStretch(at(FxParam::DisperserStretch), kRate);
+    // Finer across where it is stretched, so each copy's narrow peak is drawn.
+    const int steps = 160 * std::min(stretch, 4);
     std::vector<double> delays;
     double most = 1e-4;
-    for (int i = 0; i <= 160; ++i) {
-        delays.push_back(disperserDelay(cutoffFromNorm(i / 160.0), at(FxParam::DisperserFreq),
-                                        at(FxParam::DisperserPinch), stages, kRate));
+    for (int i = 0; i <= steps; ++i) {
+        delays.push_back(disperserDelay(cutoffFromNorm(static_cast<double>(i) / steps), center,
+                                        at(FxParam::DisperserPinch), stages, kRate, stretch));
         most = std::max(most, delays.back());
     }
     std::vector<Point> points;
-    for (int i = 0; i <= 160; ++i)
-        points.push_back({inner.x + inner.w * i / 160.0f,
+    for (int i = 0; i <= steps; ++i)
+        points.push_back({inner.x + inner.w * static_cast<float>(i) / static_cast<float>(steps),
                           inner.bottom() - static_cast<float>(delays[i] / (most * 1.1)) * inner.h});
     paintSpectrum(c, inner, telemetry_.fxSpectrum[slot], telemetry_.age);
     c.line({inner.x, inner.bottom()}, {inner.right(), inner.bottom()}, kBorder, 1.0f);
@@ -3355,8 +3362,10 @@ void View::paintDisperser(Canvas &c, Rect r, int slot) {
     area.push_back({inner.x, inner.bottom()});
     c.fillPolygon(area.data(), area.size(), fx.alpha(0.12f * static_cast<float>(at(FxParam::DisperserMix)) + 0.04f));
     plotLine(c, points.data(), points.size(), fx, 1.8f);
+    // Where it centers, as Freq's text reads (moved by Key Track), and how late its peak comes.
     char freq[32], text[80];
-    formatParam(paramIndex(slot, FxParam::DisperserFreq), at(FxParam::DisperserFreq), freq, sizeof(freq));
+    const int freqParam = paramIndex(slot, FxParam::DisperserFreq);
+    formatParam(freqParam, std::clamp(normFromCutoff(center), 0.0, 1.0), freq, sizeof(freq));
     std::snprintf(text, sizeof(text), "%s", trf(Str::CaptionDispersion, {freq, number("%.1f", most * 1000.0)}).c_str());
     c.text({r.x + 8.0f, r.y + 4.0f, r.w - 16.0f, 14.0f}, text, kTextLabel, kDim, Align::Left);
 }

@@ -254,6 +254,12 @@ the plain CMake commands and installing into a host are in the [README](README.m
     Alternate, the pan a new operator starts with, and its depth on a source's Division loading 26/28 as deep, as it
     grew two note values slower, a version 13 state's as saved; and a version 13 state's sequencer curves loading with
     points that hold their ends as they played, a version 14 state's as saved, wrapping around;
+  - the phase disperser's Key Track and Stretch against the chain they make, from the same coefficients: an impulse
+    through Key Track with a C4, a C5 and (at 50 %) a C6 coming out as through the chain at Freq and an octave up, and
+    through Stretch 4, 37 and 4 at 96 kHz (eight samples) as the plain chain's impulse response spread that far apart,
+    silence between; Stretch 32 at 400 Hz peaking at 400 Hz, 1.1 and 1.9 kHz; Stretch changed under a sine fading out
+    and back in, its third difference far under an instant switch's, in single frames too; and 64 stages at full
+    Pinch and Stretch, tracking a C7, staying finite and ringing out;
   - the chorus's Voices (2, 6, 3, 2) and Spread (0, 100, 0 %) changed under a sine, all wet, gliding rather than
     clicking: no sample stepping further than the sine's own do; held still, an impulse coming out once a voice, at
     its place along Delay and as loud as 1 / sqrt(voices) (2 and 6); and swept, its voices together playing a sine at
@@ -681,6 +687,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - a filter's and the filter effect's responses moving with the note their key tracking follows, and the filter
     effect's with its Mix (read off the rendered pixels);
   - the disperser's and widener's displays following their params as modulation takes them (read off the rendered
+    pixels); and the disperser's Key Track and Stretch knobs turning, each one undo step, Stretch in whole steps, its
+    display's peak moving with the note Key Track follows and its copies drawn stretched (read off the rendered
     pixels);
   - switching effects with their cards' power switches and icons (a switched-off one's staying grey under the mouse,
     read off the rendered pixels), dragging cards by them, and folding cards, the icon staying put, one in a slot past the 16th
@@ -1091,7 +1099,7 @@ breakpoints in `src/` then hit.
 | `src/synth.cpp` | FM voices, matrix, filter routing, LFOs and mod envelopes, telemetry; independent of the plugin formats |
 | `src/sequencer.h`, `src/sequencer.cpp` | The sequencer: plans the notes of its pattern for each stretch the synth renders, from the host's transport or a key |
 | `src/wavetable.cpp` | Band-limited operator wavetables, one per octave |
-| `src/zerobuffer.h`, `src/zerobuffer.cpp` | Delay lines allocated as zero pages that only take memory once written |
+| `src/zerobuffer.h`, `src/zerobuffer.cpp` | Delay lines (floats, or doubles for the phase disperser's stretched all-passes) allocated as zero pages that only take memory once written |
 | `src/filter.h` | State-variable and comb filters, plus their response curves for the editor |
 | `src/clipcurve.h` | The shapers' curves, anti-aliasing and running, shared by the shaper effect and the voices' shapers |
 | `src/effects.h`, `src/effects.cpp` | The effects on the voices' sum: `Effects`, its slots (each holding every effect type's state, so it switches type without allocating, and running its type through a static dispatch in `runSlot()`) and the effects graph that runs them (wires, splits, sums, the paths kept in step) |
@@ -1237,7 +1245,7 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 1,317 of the 31,554 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 1,317 of the 31,618 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 896 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain's retired order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'

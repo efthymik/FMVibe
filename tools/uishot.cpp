@@ -3297,6 +3297,67 @@ void testChorus(const std::filesystem::path &dir, Renderer &renderer) {
           "render a chorus mid-sweep, three voices, in Midnight and Spectrum");
 }
 
+// The phase disperser's Key Track and Stretch, the second row's first two knobs: each turned as one undo step, Stretch
+// in whole steps, and its display following them, its peak moving with the note Key Track follows and coming again
+// across the spectrum stretched (read off the rendered pixels: how many pixels of the display change).
+void renderDisperserControls(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    setChain(model, {0});
+    model.values[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Disperser);
+    view.poll();
+    click(view, kFxTab);
+    auto displayPixels = [&] {
+        view.poll();
+        const Rect shown = detail::fxDisplay((fxCardX(model, 0) - 46.0f) / kFxStep, FxType::Disperser);
+        renderer.save(view, dir / "27g-disperser-scratch.png");
+        std::vector<uint32_t> pixels;
+        for (float y = shown.y + 20.0f; y < shown.bottom() - 4.0f; y += 1.0f)
+            for (float x = shown.x + 4.0f; x < shown.right() - 4.0f; x += 1.0f)
+                pixels.push_back(renderer.pixel({x, y}));
+        return pixels;
+    };
+    auto changed = [](const std::vector<uint32_t> &a, const std::vector<uint32_t> &b) {
+        int n = 0;
+        for (size_t i = 0; i < a.size(); ++i)
+            n += a[i] != b[i];
+        return n;
+    };
+    const int keyTrack = paramIndex(0, FxParam::DisperserKeyTrack), stretch = paramIndex(0, FxParam::DisperserStretch);
+    // Key Track turned all the way up, then a C6 taking the peak two octaves up from where a C4 puts it.
+    const Point trackKnob = fxKnob(model, 0, 0, 3, 266.0f);
+    drag(view, trackKnob, {trackKnob.x, trackKnob.y - 200.0f});
+    const bool tracked = model.value(keyTrack) == 1.0;
+    model.live.fxPitch = 60.0f;
+    const std::vector<uint32_t> atC4 = displayPixels();
+    model.live.fxPitch = 84.0f;
+    const int trackMoved = changed(atC4, displayPixels());
+    const bool trackShot = renderer.save(view, dir / "27g-disperser-key-track.png");
+    view.undo();
+    const bool trackUndone = model.value(keyTrack) == 0.0;
+    model.live.fxPitch = 60.0f;
+    // Stretch turned up a little, landing on a whole step, and further: its copies across the display.
+    const std::vector<uint32_t> plain = displayPixels();
+    const Point stretchKnob = fxKnob(model, 0, 1, 3, 266.0f);
+    drag(view, stretchKnob, {stretchKnob.x, stretchKnob.y - 20.0f});
+    const double stepped = model.value(stretch);
+    const int stretchMoved = changed(plain, displayPixels());
+    const bool stretchShot = renderer.save(view, dir / "27h-disperser-stretch.png");
+    drag(view, stretchKnob, {stretchKnob.x, stretchKnob.y - 200.0f});
+    const double full = model.value(stretch);
+    view.undo();
+    const bool oneStep = model.value(stretch) == stepped;
+    std::filesystem::remove(dir / "27g-disperser-scratch.png");
+    std::printf("      key track: %d pixels of the display move from a C4 to a C6; stretch %.0f then %.0f: %d move\n",
+                trackMoved, stepped, full, stretchMoved);
+    check(tracked && trackUndone && trackShot && trackMoved > 100,
+          "the phase disperser's Key Track turns, undoably, and moves its display's peak with the note");
+    check(stepped > 1.0 && stepped == std::round(stepped) && full > stepped && full == std::round(full) && oneStep &&
+              stretchShot &&
+              stretchMoved > 100,
+          "the phase disperser's Stretch turns in whole steps, each drag one undo step, its copies drawn on its display");
+}
+
 // A stereo phaser and a flanger mid-sweep (their LFOs where the audio left them), a phase disperser and a filter,
 // each with its output's spectrum behind its curve, and a widener, half of it in the middle.
 void renderNewEffects(const std::filesystem::path &dir, Renderer &renderer) {
@@ -13604,6 +13665,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testMeter(dir, renderer);
     testOutScope(dir, renderer);
     renderNewEffects(dir, renderer);
+    renderDisperserControls(dir, renderer);
     testChorus(dir, renderer);
     testShapers(dir, renderer);
     testShapePick(dir, renderer);

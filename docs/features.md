@@ -641,6 +641,16 @@ What the plugin does and how its editor works, in full. Building and installing 
     Pinch sets (Q 0.3 to 6): the sound around Freq comes out later than the rest, smeared in time into a chirp,
     but at full level; Mix blends it with the dry sound. A new Stages fades in from the count before over 10 ms
     rather than clicking (another change meanwhile waiting for the fade to end), so Stages can be modulated too.
+    **Key Track** (0 to begin with) moves Freq with the newest voice's pitch from C4 on, as the filter's does: at
+    100 %, a C5 puts it an octave up, so a dispersed bass or kick zaps at the same place in each note. **Stretch**
+    (1 to 64, 1 to begin with) makes each all-pass's delays that many samples long (at 48 kHz; as long a time at other
+    rates), so its dispersion comes again every 48 kHz / Stretch, either way of each multiple: at 32, a chain at
+    400 Hz also disperses around 1.1, 1.9, 2.6 kHz and on, each copy chirping as long as the one at Freq, the
+    metallic drip of a spring. Freq stays one of the copies (pulled a little toward where two copies meet, close to
+    one). A new Stretch can't take over from the old one without a jump, so the effect fades out to what goes in over
+    5 ms and back in at the new length over 4 ms a step of it (20 ms to a quarter of a second): a stretched chain
+    starting from silence buzzes for a moment at the copies' spacing, as it does on any note, which the slow fade keeps
+    down. Its card has two rows: Freq, Stages and Pinch over Key Track, Stretch and Mix.
   - **Widener** (a dimension expander): the sound above **Cutoff** (a high-pass, 20 Hz–2 kHz, 150 Hz to begin with, 12 dB
     per octave), summed to mono, goes through four short delays, each swept slowly by an LFO of its own
     (0.29–0.53 Hz, 12 % of its delay either way). **Size** sets how long they are: 2–5 ms at 0, a tight doubling,
@@ -1150,7 +1160,8 @@ one may have changed since it last did.
       along the delays, the dashed middle line Delay, as far either way as Depth swings it, each lane a share of the
       cycle behind the one before and fainter, the first brightest (their slow drifts aren't drawn); while the audio
       runs, a dot on each lane where its sweep is now. Over it, how many voices and the Rate;
-    - the phase disperser's delay across frequency, peaking at Freq, with what it puts out, measured, behind it
+    - the phase disperser's delay across frequency, peaking at Freq (where Key Track moves it with the note, the
+      caption reading where that is) and again at each copy Stretch makes, with what it puts out, measured, behind it
       like the Param EQ's;
     - the frequency shifter's move: a 220 Hz tone's partials, and where it takes them on each side, under the
       shift in Hz and the range it is a share of;
@@ -2213,7 +2224,7 @@ activation will make it). An edit, once it is whole, or a state that moves it as
 reports the new one (a CLAP host is told through its latency extension's `changed()`); an edit that leaves it as it was,
 an effect moved along the line say, asks for none.
 
-Hosts are given 1,317 of FMVibe's 31,554 parameters: the globals, the operators, the matrix and the routes' modes,
+Hosts are given 1,317 of FMVibe's 31,618 parameters: the globals, the operators, the matrix and the routes' modes,
 the filters, the shapers, the macros' knobs, the note source's, the mod wheel's, velocity's and the pitch bend's own,
 and every modulation's depth and Amount (16 slots for each of the 28 sources, used or not). The rest are set in the editor only:
 the effects, the LFOs', envelopes' and other sources' own knobs, what each modulation targets and its aux, curve and

@@ -977,7 +977,7 @@ inline Rect fxDisplayIn(Rect card, FxType type) {
     const bool twoRows = type == FxType::Delay || type == FxType::ParamEq || type == FxType::Compressor ||
                          type == FxType::Reverb || type == FxType::Phaser || type == FxType::Flanger ||
                          type == FxType::Chorus || type == FxType::Filter || type == FxType::FreqShifter ||
-                         type == FxType::Utility;
+                         type == FxType::Utility || type == FxType::Disperser;
     // The filter's slope switch, the delay's SYNC, LINK and PING-PONG, the phaser's and flanger's SYNC, STEREO and
     // polarity and the chorus's voices go under their displays.
     const bool switchesUnder = type == FxType::Phaser || type == FxType::Flanger || type == FxType::Chorus ||

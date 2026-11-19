@@ -760,6 +760,11 @@ enum class FxParam {
     FilterVowel,
     FilterMorph,
     FilterMorphMode,
+    // The phase disperser's, past the fields it came with (see fx::Disperser). Key Track moves Freq with the newest
+    // voice's pitch from C4 on, as the filter's does; Stretch makes each all-pass's delays so many samples long (as
+    // many at 48 kHz, as long a time at other rates), so its dispersion repeats every 48 kHz / Stretch.
+    DisperserKeyTrack,
+    DisperserStretch,
     Count
 };
 // A split in the effects graph: Used puts it in the graph; Bands (2 or 3) cuts what goes in at Low, and at High too
@@ -827,6 +832,7 @@ inline double chorusOffset(int voice, int voices) {
     return static_cast<double>(voice) / voices;
 }
 constexpr int kMaxDisperserStages = 64;
+constexpr int kMaxDisperserStretch = 64; // at 48 kHz: the disperser's copies 750 Hz apart
 constexpr double kMaxWidenerHighPass = 2000.0; // Hz, the top of the widener's Cutoff knob
 constexpr double kMaxUtilityWidth = 2.0;       // the utility's Width at its top: the sides twice as loud
 constexpr double kMaxUtilityMonoBass = 500.0;  // Hz, the top of the utility's Mono Bass knob
@@ -1240,6 +1246,7 @@ constexpr FxFieldRun kFxFieldRuns[] = {
     {FxParam::ChorusRate, FxParam::ChorusVoices, FxType::Chorus},
     {FxParam::ShaperStack, FxParam::ShaperStack, FxType::Shaper},
     {FxParam::FilterVowel, FxParam::FilterMorphMode, FxType::Filter},
+    {FxParam::DisperserKeyTrack, FxParam::DisperserStretch, FxType::Disperser},
 };
 // Whether the runs take every field once, in order, up to the last.
 constexpr bool fxFieldRunsCoverAll() {
@@ -1791,7 +1798,11 @@ static_assert(idOfIndex(paramIndex(0, FxParam::Type)) == 1400 &&
                   idOfIndex(paramIndex(kFxSlots - 1, FxParam::ChorusVoices)) == 29160 &&
                   idOfIndex(paramIndex(0, FxParam::ShaperStack)) == 36401 &&
                   idOfIndex(paramIndex(kFirstFxSlots - 1, FxParam::ShaperStack)) == 37001 &&
-                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::ShaperStack)) == 29161,
+                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::ShaperStack)) == 29161 &&
+                  idOfIndex(paramIndex(0, FxParam::DisperserKeyTrack)) == 36405 &&
+                  idOfIndex(paramIndex(kFirstFxSlots - 1, FxParam::DisperserStretch)) == 37006 &&
+                  idOfIndex(paramIndex(kFirstFxSlots, FxParam::DisperserKeyTrack)) == 26165 &&
+                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::DisperserStretch)) == 29166,
               "effect slot param ids moved");
 static_assert(idOfIndex(shapeCountIndex(0)) == 4000 &&
                   idOfIndex(shapePointIndex(kMaxSources - 1, 32, PointField::Curve)) == 5599 &&

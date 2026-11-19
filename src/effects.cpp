@@ -36,6 +36,7 @@ void Effects::prepare(double sampleRate) {
         slot.widener.prepare(sampleRate);
         slot.flanger.prepare(sampleRate);
         slot.chorus.prepare(sampleRate);
+        slot.disperser.prepare(sampleRate);
         Analyzer::prepare(slot.analyzed, static_cast<int>(&slot - slots_.data()), kFxSlots + kFilters);
         if (!slot.amp)
             slot.amp = std::make_unique<fx::AmpFx>();
