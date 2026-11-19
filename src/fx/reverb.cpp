@@ -101,6 +101,19 @@ void hadamardStage(std::array<double, 16> &x) {
         }
 }
 
+// A stage of the lines' mixing as Diffusion loosens it: each pair turned by an angle (c and s its cosine and sine)
+// and one of them turned over, which keeps their energy at any angle. At 45 degrees, a stage of the transform below;
+// at 0, each line keeps its own.
+template <size_t half>
+void mixStage(std::array<double, 16> &x, double c, double s) {
+    for (size_t i = 0; i < x.size(); i += 2 * half)
+        for (size_t j = i; j < i + half; ++j) {
+            const double a = x[j], b = x[j + half];
+            x[j] = c * a + s * b;
+            x[j + half] = s * a - c * b;
+        }
+}
+
 // The fast Walsh-Hadamard transform of the lines' outputs, scaled to keep their energy.
 void hadamard(std::array<double, 16> &x) {
     hadamardStage<1>(x);
@@ -109,6 +122,16 @@ void hadamard(std::array<double, 16> &x) {
     hadamardStage<8>(x);
     for (double &v : x)
         v *= 0.25;
+}
+
+// How far Diffusion turns the lines' mixing (see mixStage()): 45 degrees at 100 %, as the Hadamard transform mixes
+// them, down to a tenth of that at 0 %, on a square so the knob loosens it evenly to the ear. Nearly unmixed, each
+// line's echoes come back on their own a while, a grainy tail of distinct echoes that fills in only slowly; not quite
+// unmixed, so it does fill in, rather than ringing on as sixteen combs.
+double reverbMixAngle(double diffusion) {
+    constexpr double kLeast = 0.1;
+    const double d = std::clamp(diffusion, 0.0, 1.0);
+    return 0.25 * std::numbers::pi * (kLeast + (1.0 - kLeast) * d * d);
 }
 
 } // namespace
@@ -179,6 +202,8 @@ void Reverb::start(const Context &ctx) {
     wet = delayWetLevel(ctx.at(FxParam::ReverbMix));
     width = ctx.at(FxParam::ReverbWidth);
     diffusion = ctx.at(FxParam::ReverbDiffusion);
+    mixC = std::cos(reverbMixAngle(diffusion));
+    mixS = std::sin(reverbMixAngle(diffusion));
     cuts = {};
     cutCoefs = {};
 }
@@ -204,7 +229,17 @@ double Reverb::run(const Context &ctx, const ReverbTables &tables, float *const 
     const double dryStep = rampStep(dry, delayDryLevel(mix), n, ctx.rampShortest);
     const double wetStep = rampStep(wet, delayWetLevel(mix), n, ctx.rampShortest);
     const double widthStep = rampStep(width, ctx.at(FxParam::ReverbWidth), n, ctx.rampShortest);
-    const double diffusionStep = rampStep(diffusion, ctx.at(FxParam::ReverbDiffusion), n, ctx.rampShortest);
+    const double diffusionTarget = ctx.at(FxParam::ReverbDiffusion);
+    const double diffusionStep = rampStep(diffusion, diffusionTarget, n, ctx.rampShortest);
+    // The lines' mixing turns with it, its cosine and sine ramping (a straight line between two turns loses a hair
+    // of energy between, never gains any). At 100 % it is the Hadamard transform exactly.
+    const double mixCTarget = std::cos(reverbMixAngle(diffusionTarget));
+    const double mixSTarget = std::sin(reverbMixAngle(diffusionTarget));
+    const double mixCStep = rampStep(mixC, mixCTarget, n, ctx.rampShortest);
+    const double mixSStep = rampStep(mixS, mixSTarget, n, ctx.rampShortest);
+    const bool mixArrives =
+        rampEnds(mixC, mixCTarget, n, ctx.rampShortest) && rampEnds(mixS, mixSTarget, n, ctx.rampShortest);
+    const bool fullMix = diffusion == 1.0 && diffusionTarget == 1.0;
     // Low Cut and High Cut, a high-pass and a low-pass of 12 dB an octave on what goes in (into the pre-delay, so a
     // room's early reflections take them too); at their ends, a filter that lets everything through.
     const double lowCut = utilityMonoBassHz(ctx.at(FxParam::ReverbLowCut));
@@ -403,7 +438,16 @@ double Reverb::run(const Context &ctx, const ReverbTables &tables, float *const 
             damp[i] += corner * (out[i] - damp[i]);
             back[i] = (damp[i] + highs[i] * (out[i] - damp[i])) * gains[i];
         }
-        hadamard(back);
+        if (fullMix) {
+            hadamard(back);
+        } else {
+            mixC += mixCStep;
+            mixS += mixSStep;
+            mixStage<1>(back, mixC, mixS);
+            mixStage<2>(back, mixC, mixS);
+            mixStage<4>(back, mixC, mixS);
+            mixStage<8>(back, mixC, mixS);
+        }
         for (int i = 0; i < kReverbLines; ++i)
             lines[i][lineWrite] = static_cast<float>(
                 back[i] + (in[i % 2] * kReverbInSigns[i] + fed[(i + 1) % 2] * kReverbOutSigns[0][i]) * kInGain);
@@ -428,11 +472,24 @@ double Reverb::run(const Context &ctx, const ReverbTables &tables, float *const 
     }
     cutCoefs[0].end();
     cutCoefs[1].end();
-    // What goes in now comes out after the pre-delay, and in a room its last early reflection later still: until
-    // then, the reverb may be silent with more to come.
-    reach = style.early > 0.0
-                ? std::min(preLength + kRoomEchoSeconds[std::size(kRoomEchoSeconds) - 1] * echoScale, echoRoom)
-                : preLength;
+    if (fullMix || mixArrives) {
+        mixC = mixCTarget;
+        mixS = mixSTarget;
+    }
+    // What goes in now comes out after the pre-delay, and in a room its last early reflection later still; its tail
+    // after the all-passes (at no Diffusion plain delays as long as they are) and the shortest line. Until then, the
+    // reverb may be silent with more to come.
+    int diffuserDelay = 0;
+    for (int c = 0; c < 2; ++c) {
+        int along = 0;
+        for (int d = 0; d < style.diffusers; ++d)
+            along += tables.diffuserLengths[c][d];
+        diffuserDelay = std::max(diffuserDelay, along);
+    }
+    reach = std::max(style.early > 0.0 ? std::min(preLength + kRoomEchoSeconds[std::size(kRoomEchoSeconds) - 1] * echoScale,
+                                                  echoRoom)
+                                       : preLength,
+                     preLength + diffuserDelay + lengths[0] * size);
     // Faded out (over more than one chunk, if events cut them short), turned down or switched to another algorithm:
     // the ramp leaves a hair either side of 0, which would keep it shifting or skip clearing its lines next time.
     if (shimmerTarget == 0.0 && std::abs(shimmer) < 1e-9)

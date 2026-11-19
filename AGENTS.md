@@ -410,12 +410,14 @@ the plain CMake commands and installing into a host are in the [README](README.m
     (a pad of nine paths), and a shaper at 4x and at 8x beside the input, each flat within 0.05 dB from 20 Hz to
     18 kHz (the paths meeting in step) and as late as fxlag.h works out, and nothing oversampled on time;
   - the effects' newer controls: the reverb's Low Cut and High Cut taking its tail's ends away and Diffusion at 0
-    leaving its first echoes spikier; the delay's Duck taking its echoes away under a loud sine and letting them back
-    after; the shaper's Tone leaving what its curve leaves straight alone and changing what it drives, its oversampling
-    changed under a sine ducking rather than clicking, and a hard-clipped C7 aliasing less at 4x and 8x than at 2x; the
-    compressor's detector high-pass keeping a loud bass from pulling a quiet treble down; the flanger through zero,
-    held at its sweep's middle and negative, cancelling noise to nothing; the phaser's Spread moving its notches; and
-    the Lo-Fi holding Bits' levels at Rate, Smooth taking the steps' edges off and Mix at 0 dry;
+    leaving its first echoes spikier, its tail's echoes apart for longer (filling in as it rises, smooth and its sides
+    unalike) and a click into it still ringing out; the delay's Duck taking its echoes away under a loud sine and
+    letting them back after; the shaper's Tone leaving what its curve leaves straight alone and changing what it
+    drives, its oversampling changed under a sine ducking rather than clicking, and a hard-clipped C7 aliasing less at
+    4x and 8x than at 2x; the compressor's detector high-pass keeping a loud bass from pulling a quiet treble down;
+    the flanger through zero, held at its sweep's middle and negative, cancelling noise to nothing; the phaser's
+    Spread moving its notches; and the Lo-Fi holding Bits' levels at Rate, Smooth taking the steps' edges off and Mix
+    at 0 dry;
   - the CPU cost of each factor.
 - **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`, in Midnight,
   the theme its pixel checks were written in, but for the checks and examples that pick another (the README's

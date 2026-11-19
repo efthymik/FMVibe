@@ -5280,7 +5280,8 @@ void newerEffectChecks() {
     };
 
     // The reverb's Low Cut at 1 kHz takes its tail's bass away (below 200 Hz), High Cut at 2 kHz its top (above
-    // 8 kHz); Diffusion at 0 leaves its first 125 ms spikier (its crest factor higher) than at 100 %.
+    // 8 kHz); Diffusion at 0 leaves its first 125 ms spikier (its crest factor higher) than at 100 %, and its tail
+    // sparser for longer.
     {
         const size_t frames = static_cast<size_t>(kSampleRate) + kFftSize;
         auto burst = [&](size_t t, int side) { return t < 4800 ? noise(t, side) : 0.0; };
@@ -5316,6 +5317,81 @@ void newerEffectChecks() {
                     -bassDb, -topDb, spiky, diffuse);
         check(bassDb < -15.0 && topDb < -15.0, "the reverb's Low Cut and High Cut take its tail's ends away");
         check(spiky > 1.3 * diffuse, "the reverb's Diffusion at 0 leaves its early echoes spikier");
+
+        // A click into a hall and a plate (4 s decay), at Diffusion 0, 50 and 100 %: how dense its echoes are 200 to
+        // 300 ms on (the share of samples further out than the window's RMS, against noise's 31.7 %), how loud the
+        // tail is, how alike its sides are and how smooth its spectrum from 0.3 to 1.5 s (as the reverbs' tails are
+        // measured further down). At 0 the lines' mixing is loosened as well as the input's all-passes: its echoes stay
+        // apart for longer, and fill in as Diffusion rises. The all-passes are plain delays at 0, holding a click back
+        // longer than the effect would ring on after silence did it not wait for it: it still comes out.
+        auto density = [](const std::vector<float> &x, size_t from, size_t to) {
+            double power = 0.0;
+            for (size_t i = from; i < to; ++i)
+                power += x[i] * x[i];
+            const double rms = std::sqrt(power / (to - from));
+            size_t out = 0;
+            for (size_t i = from; i < to; ++i)
+                out += std::abs(x[i]) > rms;
+            return out / static_cast<double>(to - from) / 0.3173;
+        };
+        auto lumps = [](const std::vector<float> &tail, size_t from) {
+            constexpr size_t kN = 4096;
+            std::vector<double> power(kN / 2, 0.0);
+            for (size_t start = from + static_cast<size_t>(0.3 * kSampleRate);
+                 start + kN < from + static_cast<size_t>(1.5 * kSampleRate); start += kN / 2) {
+                std::vector<std::complex<double>> x(kN);
+                for (size_t i = 0; i < kN; ++i)
+                    x[i] = tail[start + i] * (0.5 - 0.5 * std::cos(2.0 * std::numbers::pi * i / kN));
+                fft(x);
+                for (size_t k = 0; k < kN / 2; ++k)
+                    power[k] += std::norm(x[k]);
+            }
+            const double binHz = kSampleRate / kN;
+            double stray = 0.0;
+            int bins = 0;
+            for (size_t k = static_cast<size_t>(200.0 / binHz); k < static_cast<size_t>(5000.0 / binHz); ++k) {
+                double around = 0.0;
+                int count = 0;
+                for (size_t j = static_cast<size_t>(k / 1.122); j <= static_cast<size_t>(k * 1.122); ++j, ++count)
+                    around += power[j];
+                stray += std::abs(10.0 * std::log10(power[k] * count / around));
+                ++bins;
+            }
+            return stray / bins;
+        };
+        bool spreads = true, rings = true, smooth = true;
+        for (ReverbType type : {ReverbType::Hall, ReverbType::Plate}) {
+            double dense[3], energy[3];
+            for (int k = 0; k < 3; ++k) {
+                const Run out = run(FxType::Reverb,
+                                    {{FxParam::ReverbType, static_cast<double>(type)},
+                                     {FxParam::ReverbMix, 1.0},
+                                     {FxParam::ReverbPreDelay, 0.0},
+                                     {FxParam::ReverbDecay, normFromTime(4.0)},
+                                     {FxParam::ReverbDiffusion, 0.5 * k}},
+                                    4800 + static_cast<size_t>(1.6 * kSampleRate), click);
+                const size_t at = 4800;
+                dense[k] = density(out.left, at + 9600, at + 14400);
+                double ll = 0.0, rr = 0.0, lr = 0.0;
+                for (size_t i = at + 4800; i < at + static_cast<size_t>(1.5 * kSampleRate); ++i) {
+                    ll += out.left[i] * out.left[i];
+                    rr += out.right[i] * out.right[i];
+                    lr += out.left[i] * out.right[i];
+                }
+                energy[k] = ll;
+                const double stray = lumps(out.left, at), correlation = lr / std::sqrt(ll * rr + 1e-30);
+                std::printf("      reverb %s at %3.0f %% diffusion: echo density %.2f at 200-300 ms, tail %.1f dB, its "
+                            "spectrum straying %.2f dB, sides correlating %+.2f\n",
+                            type == ReverbType::Hall ? "hall " : "plate", 50.0 * k, dense[k],
+                            10.0 * std::log10(ll + 1e-30), stray, correlation);
+                smooth = smooth && stray < 2.5 && std::abs(correlation) < 0.15;
+            }
+            spreads = spreads && dense[0] < 0.5 && dense[0] < dense[1] - 0.1 && dense[2] > 0.85;
+            rings = rings && energy[0] > 0.5 * energy[2];
+        }
+        check(spreads, "the reverb's Diffusion at 0 keeps its tail's echoes apart for longer, filling in as it rises");
+        check(rings, "a click into a reverb at 0 % Diffusion comes out of it, its all-passes' delay waited for");
+        check(smooth, "the reverb's tail is smooth and its sides unalike at any Diffusion");
     }
 
     // The delay's Duck: a sine at -6 dB for half a second with Duck full up takes the echoes away while it plays

@@ -638,9 +638,13 @@ What the plugin does and how its editor works, in full. Building and installing 
     note. **Low Cut** (Off to begin with, up to 1 kHz) and **High Cut** (letting everything through at its top, to
     begin with; down to 1 kHz) are 12 dB an octave on what goes into it, so a room's early reflections take them too:
     the low end kept out of a long tail, or a dark one; switched on they rise from letting everything through rather
-    than jumping. **Diffusion** (100 % to begin with) sets how much the input's all-passes smear what goes in: at 0 they
-    are plain delays, and its first echoes come out as distinct as the lines' lengths make them (**Diffuse** on the
-    card). Its card has three rows: Size, Decay and Pre; Damp, Width and Diffuse; and Low Cut, High Cut and Mix, Mix at
+    than jumping. **Diffusion** (100 % to begin with) sets how much the input's all-passes smear what goes in and how much
+    the lines mix each time round (**Diffuse** on the card). At 100 % they mix through the Hadamard transform, as they
+    always did; lower, each stage of it turns its pairs by less (on the square of the knob, down to a tenth of its 45
+    degrees at 0 %), keeping their energy. At 0 the all-passes are plain delays and each line's echoes come back
+    nearly on their own for a while: a grainy tail of distinct echoes that fills in over a second or so, where at
+    100 % it is dense within about 100 ms. The reverb waits for what the all-passes hold back before it sleeps after
+    silence, so a lone click at 0 still rings out. Its card has three rows: Size, Decay and Pre; Damp, Width and Diffuse; and Low Cut, High Cut and Mix, Mix at
     the bottom right as on the other cards. A shimmer's, four to a row, puts Diffuse after Pre and its Pitch and
     Shimmer between Damp and Width. Size (the
     lines from a quarter of their length to all of it, gliding when turned, also when the algorithm changes),

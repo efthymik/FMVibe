@@ -1042,10 +1042,10 @@ A dense algorithmic reverb with four algorithms:
   sets the interval (±24 semitones, an octave up by default) and **Shimmer** how much comes back.
 
 Controls: **Size**, **Decay** (0.2–20 s), **Damp** (the frequency above which the tail decays faster), **Pre**
-(pre-delay, up to 250 ms), **Diffuse** (how smooth the start is: lower values give distinct, spikier early echoes),
-**Width**, **Low Cut** (Off, or up to 1 kHz) and **High Cut** (from 1 kHz up) to thin out and darken the reverb
-without touching the dry sound, and **Mix** (dry signal at full level up to 50 %). The display sketches the tail's
-shape.
+(pre-delay, up to 250 ms), **Diffuse** (how quickly the echoes blend into a smooth tail: turn it down for distinct,
+grainy echoes that fill in slowly), **Width**, **Low Cut** (Off, or up to 1 kHz) and **High Cut** (from 1 kHz up) to
+thin out and darken the reverb without touching the dry sound, and **Mix** (dry signal at full level up to 50 %). The
+display sketches the tail's shape.
 
 #### Phaser
 

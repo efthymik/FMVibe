@@ -83,12 +83,13 @@ struct Reverb {
     std::array<double, 2> shimmerBass{};
     double size = 1.0;      // the lines' length scale, gliding toward the knob
     double preLength = 0.0; // samples, gliding
-    double reach = 0.0;     // samples before what goes in has all come out of the pre-delay (see run())
+    double reach = 0.0;     // samples before what goes in starts coming out (see run())
     double dry = 1.0;       // ramped
     double wet = 0.0;
     double width = 1.0;
     double shimmer = 0.0;   // the gain the shifted tail goes back in at, ramped
     double diffusion = 1.0; // the share of the input all-passes' gains it takes, ramped
+    double mixC = std::numbers::sqrt2 / 2.0, mixS = std::numbers::sqrt2 / 2.0; // the lines' mixing (see run()), ramped
     // Low Cut and High Cut on what goes in, a side each, ramping from letting everything through (as they rest at
     // their ends, where they don't run) to their cuts, so switching them on doesn't jump.
     std::array<std::array<Biquad, 2>, 2> cuts{}; // per side: the low cut, then the high cut
