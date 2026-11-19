@@ -47,6 +47,8 @@ class Converter:
         return base if n == 0 else f"{base}-{n}"
 
     def image(self, alt, src):
+        # The text around it is escaped already, but for its quotes, which would end the attribute.
+        alt = alt.replace('"', "&quot;")
         path = self.source_dir / src
         if not path.is_file():
             self.errors.append(f"image not found: {src}")
