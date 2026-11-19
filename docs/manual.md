@@ -38,8 +38,8 @@ FMVibe works in the spirit of classic and modern FM synthesizers. Its main featu
 - **Two filters and two shapers per voice**, which can be placed anywhere in the routing, fed back into themselves
   and each other, and used as modulators.
 - **Flexible modulation**: up to 16 sources (LFOs, envelopes, drawn curves, random and MIDI sources), plus eight
-  macros, the mod wheel, pitch bend, note pitch and velocity. Each modulation has its own depth, curve, amount and an
-  optional auxiliary source that scales it.
+  macros, the mod wheel, pitch bend, note pitch, velocity and the operators' outputs, which also give filter FM. Each
+  modulation has its own depth, curve, amount and an optional auxiliary source that scales it.
 - **Effects**: up to 32 effects from 16 types, in a chain that can be split into frequency bands.
 - **A step sequencer** with a piano roll, four patterns per preset and automation curves.
 - **Presets** with a browser, categories, favorites and search, and a library of factory presets.
@@ -513,6 +513,9 @@ display, knobs set the send levels of everything that feeds the filter.
 **Tracking the note exactly**: to make a filter (a comb, say) follow the note's pitch exactly, set its Cutoff to 0
 and assign the **Note** source to it at 100 %, leaving Key Track at 0.
 
+**Filter FM**: assign an operator's output to Cutoff to move it at audio rate (see
+[Operators as sources](#operators-as-sources)).
+
 A voice ends only once its filters have rung out, so resonant combs and self-oscillating filters fade naturally.
 
 ## 9. Shapers
@@ -546,7 +549,8 @@ filters that feed the shaper.
 ### Concepts
 
 - **Sources**: LFOs, envelopes, Curve, Random and MIDI sources (up to 16 in total, added in the modulation panel),
-  plus eight **macros**, the **Mod Wheel**, **Pitch Bend**, **Note** and **Velocity**, which are always there.
+  plus eight **macros**, the **Mod Wheel**, **Pitch Bend**, **Note**, **Velocity** and the six operators' outputs
+  (**Op A** to **Op F**), which are always there.
 - **Slots**: each source has 16 slots. A slot connects the source to one target with a depth.
 - **Targets**: any continuous control. That includes knobs, route amounts, operator outputs, effect controls,
   other sources' controls, macro knobs and other modulations' depths.
@@ -562,18 +566,21 @@ filters that feed the shaper.
   at 0 silences it, at 0 % the aux does nothing.
 - **Bypass**: switches a single modulation off, keeping its settings.
 
-New sources start as follows: LFOs, Random sources and Pitch Bend are bipolar; envelopes, Curve and MIDI sources,
-macros, the Mod Wheel, Note and Velocity are unipolar.
+New sources start as follows: LFOs, Random sources, Pitch Bend and the operators are bipolar; envelopes, Curve and
+MIDI sources, macros, the Mod Wheel, Note and Velocity are unipolar.
 
-LFOs, envelopes, Note, Velocity and Pitch Bend run **per voice**, so each note has its own modulation. Macros and the
-Mod Wheel act on all voices at once. Because the effects are shared by all voices, when per-voice sources modulate
-effects, they follow the most recently played note.
+LFOs, envelopes, Note, Velocity, Pitch Bend and the operators run **per voice**, so each note has its own
+modulation. Macros and the Mod Wheel act on all voices at once. Because the effects are shared by all voices, when
+per-voice sources modulate effects, they follow the most recently played note.
 
 ### Assigning modulation
 
-Every source has a colored **handle** (on its card, beside each macro, over each wheel, and beside the Note and
-Velocity displays). Drag it onto a knob, a wire label, a matrix cell, a stepper or the Ratio readout. A new
-modulation starts at +30 %.
+Every source has a colored **handle** (on its card, beside each macro, over each wheel, beside the Note and
+Velocity displays, and an operator's letter at the top of its page). Drag it onto a knob, a wire label, a matrix cell,
+a stepper or the Ratio readout. A new modulation starts at +30 %.
+
+While you drag a handle, hold it over a view tab (ROUTING, MATRIX, FX, SEQ or MODS) to show that view, then drop it
+on a control there.
 
 The target then shows:
 
@@ -742,6 +749,23 @@ numbers. The reset button restores the defaults.
 The **Velocity** source outputs each note's velocity. Its display
 shows the most recent velocity; click it to edit its **curve**, which maps velocities 0–127 to its output (up to 16
 points). By default it is a straight line; draw it falling instead of rising to make soft notes move their targets most.
+
+### Operators as sources
+
+Each operator's output is a source too: **Op A** to **Op F**. Pick one in the MODS view's source or aux menu, or drag
+the operator's letter at the top of its page in the inspector, which is its handle.
+
+- It follows what the operator plays, after its envelope. The operator doesn't need to be heard: one with its Out at
+  0 still modulates. A switched-off operator modulates nothing.
+- Most targets are updated every 32 samples. A slow operator (a fixed one at a few Hz, say) moves them along its wave
+  and envelope; a fast one averages out.
+- **Bipolar** (the default) swings its targets both ways around their setting. **Unipolar** pushes them one way, as
+  far as the operator's envelope has risen, so a silent operator moves nothing.
+
+**Filter FM**: on the **Cutoff** of a filter or a filter effect, an operator moves the cutoff at audio rate, which
+gives the growl and sidebands of filter FM. At 100 % depth its full swing covers the knob's whole range. A voice's
+filter follows that voice's operator; a filter effect follows the most recent note's. The Formant type doesn't take
+filter FM.
 
 ### Modulation after the last note
 
@@ -1205,13 +1229,13 @@ host; patterns, notes and curves are edited in the plugin only.
 ### Keyboard strip
 
 - **Keys**: six octaves, C1 to C7. The small **−** and **+** buttons under the right end shift the range by an
-  octave. Drag across the keys to glide between notes. Keys light while held, whether clicked or played by the host.
+  octave. A key plays as hard as where you click it: softest at its top, hardest at its bottom. Drag across the keys
+  to glide between notes; each key plays as hard as where the mouse enters it. Keys light while held, whether clicked
+  or played by the host.
 - **Bend** and **Mod** wheels, with their handles above them. Right-click a wheel or its handle to make it unipolar or
   bipolar.
 - The eight **macros**, the **Note** display and the **Velocity** display, each with its handle.
 - **KEYBOARD** collapses the strip to its top row; the wheels' handles stay available.
-
-Notes played from the plugin window's keyboard use velocity 100.
 
 ### Play modes
 
@@ -1332,6 +1356,7 @@ does not contain the instance settings (oversampling and MPE).
 | Crunch Rhythm | Pluck | Crunchy rhythm guitar for strumming chords. |
 | Crush Downer | FX | Crushing, growling downer that sinks into darkness. |
 | Crystal Motion | Pad | Sparkling crystal textures that keep moving and evolving. |
+| Cutoff Growl | Bass | Growling bass: an operator moves a ladder filter's cutoff at audio rate. The Growl macro sets how deep. |
 | Deep Sea | Pluck | Dark, watery pluck with a resonant bloop. |
 | Distorted Swell | Pad | Gritty, wide pad that swells and opens up as you hold it. |
 | Drawbar Organ | Keys | Classic drawbar organ with a gentle swirl. |
@@ -1342,6 +1367,7 @@ does not contain the instance settings (oversampling and MPE).
 | FM Bass | Bass | Round, punchy mono bass with a gentle bite that glides between notes. |
 | FM Brass | Lead | Bold brass with a punchy attack and a touch of vibrato. |
 | Feedback Lead | Lead | Expressive mono lead; the mod wheel goes from soft flute to buzzy reed. |
+| Filter Bloom | Pad | Wide pad whose filter FM swells in over four seconds. The Bloom macro sets how deep. |
 | Folded Lead | Lead | Edgy mono lead that snarls harder at the start of each note. |
 | Funk Clav | Keys | Funky, nasal clavinet for tight rhythm parts. |
 | Future Plucks | Seq | Moody, plucky riff that plays itself while you hold a key. |
