@@ -64,20 +64,28 @@ double FilterFx::run(const Context &ctx, float *const *io, uint32_t n) {
     }
     const bool moving = inputsNow != inputs;
     const std::array<double, 10> from = inputsNow;
-    // Worked out again only when its inputs move: every kSweepStep samples while they ramp, at the step's end.
+    // Its settings from its inputs. Key tracking moves the cutoff with the pitch from C4 on, as a voice filter's does.
+    auto make = [&](const std::array<double, 10> &now) {
+        const auto type = static_cast<FilterType>(
+            std::clamp(static_cast<int>(std::lround(now[0])), 0, static_cast<int>(FilterType::Count) - 1));
+        const double cutoffHz = cutoffFromNorm(now[1]) * std::exp2((now[3] - 60.0) / 12.0 * now[2]);
+        return filterSettings(type, filterSlope(now[4]), cutoffHz, now[5], now[6], 2.0 * ctx.sampleRate, now[7], now[8],
+                              morphMode(now[9]));
+    };
+    // Worked out again only when its inputs move: every kSweepStep samples while they ramp, at the step's end, what it
+    // scales its outputs by gliding there from the step before, sample by sample (see FilterGains).
     auto settle = [&](const std::array<double, 10> &now) {
         if (std::memcmp(now.data(), settingsFor.data(), sizeof now) == 0)
             return;
         settingsFor = now;
-        const auto type = static_cast<FilterType>(
-            std::clamp(static_cast<int>(std::lround(now[0])), 0, static_cast<int>(FilterType::Count) - 1));
-        // Key tracking moves the cutoff with the pitch from C4 on, as a voice filter's does.
-        const double cutoffHz = cutoffFromNorm(now[1]) * std::exp2((now[3] - 60.0) / 12.0 * now[2]);
-        settings = filterSettings(type, filterSlope(now[4]), cutoffHz, now[5], now[6], 2.0 * ctx.sampleRate, now[7],
-                                  now[8], morphMode(now[9]));
+        settings = make(now);
     };
+    FilterGains gainsFrom{}, gainsTo{};
+    uint32_t stepLength = 1;
     if (!moving)
         settle(inputs);
+    else
+        gainsTo = filterGains(make(from)); // as it was left, the first step's start
     // At twice the rate, as the voices' filters run at their oversampling: the analog types saturate inside their
     // loops and Drive before them, whose harmonics fold back far less there, and Drive's anti-aliasing, an average
     // over each step, would dull the top at the host rate. What goes past (Mix) goes up and down the same way, so the
@@ -86,13 +94,20 @@ double FilterFx::run(const Context &ctx, float *const *io, uint32_t n) {
     const int combSize = static_cast<int>(combs[0].size());
     double peak = 0.0;
     for (uint32_t s = 0; s < n; ++s) {
-        if (moving && s % kSweepStep == 0) {
-            const uint32_t to = std::min(s + kSweepStep, n);
-            std::array<double, 10> now = inputsNow;
-            for (size_t i = 0; i < now.size(); ++i)
-                if (kSmooth[i])
-                    now[i] = to == n && arrives ? inputs[i] : from[i] + step[i] * to;
-            settle(now);
+        if (moving) {
+            if (s % kSweepStep == 0) {
+                const uint32_t to = std::min(s + kSweepStep, n);
+                std::array<double, 10> now = inputsNow;
+                for (size_t i = 0; i < now.size(); ++i)
+                    if (kSmooth[i])
+                        now[i] = to == n && arrives ? inputs[i] : from[i] + step[i] * to;
+                gainsFrom = gainsTo;
+                settingsFor.fill(std::numeric_limits<double>::quiet_NaN()); // its gains are gliding: worked out anew
+                settle(now);
+                gainsTo = filterGains(settings);
+                stepLength = to - s;
+            }
+            glideFilterGains(settings, gainsFrom, gainsTo, static_cast<double>(s % kSweepStep + 1) / stepLength);
         }
         mix += mixStep;
         for (int ch = 0; ch < 2; ++ch) {
@@ -106,9 +121,11 @@ double FilterFx::run(const Context &ctx, float *const *io, uint32_t n) {
             io[ch][s] = static_cast<float>(down[ch].process(twice[0], twice[1]));
         }
     }
-    if (moving)
+    if (moving) {
         for (size_t i = 0; i < inputs.size(); ++i)
             inputsNow[i] = arrives ? inputs[i] : from[i] + step[i] * n;
+        settingsFor.fill(std::numeric_limits<double>::quiet_NaN()); // the gains it left glided; worked out anew next
+    }
     return peak;
 }
 

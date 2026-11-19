@@ -20,6 +20,11 @@ namespace {
 bool memberChannel(int channel) { return channel >= 1 && channel < 16; }
 
 constexpr uint32_t kControlBlock = 32;        // samples between modulation updates
+// A voice filter's inputs (see renderBlock()): which move it smoothly, and ramp (its cutoff, key tracking, the pitch it
+// tracks, resonance, drive, vowel and morph) rather than switch (its type, slope and morph mode); and how many host
+// samples apart its settings are worked out again while they ramp.
+constexpr std::array<bool, 10> kFilterSmooth{true, true, true, false, false, true, true, true, true, false};
+constexpr uint32_t kFilterSubStep = 8;
 constexpr double kPhaseModCycles = 64.0;      // how many cycles modulation takes an operator's Phase either way
 constexpr double kWarpSlew = 250.0;           // how fast an operator's warp amount moves at most, a second
 constexpr double kMaxIndex = 8.0;             // radians of phase modulation at a 100 % matrix amount
@@ -2630,8 +2635,36 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                            (shaperOn[from] && routed(target.shaperShaper[from][sh], current.shaperShaper[from][sh]));
     }
     const double pole = clipBlockerPole(rate_); // the shapers' DC blockers
-    // The settings of the filters that run, and their comb lines.
+    // The settings of the filters that run, and their comb lines; while a filter's inputs ramp (see below), its
+    // settings as they stand at each step, and the inputs it ramps from and to over the block.
     std::array<const FilterSettings *, kFilters> filter{};
+    std::array<FilterSettings, kFilters> filterStepped{};
+    std::array<bool, kFilters> filterMoving{};
+    // What a ramping filter scales its outputs by at the start and the end of the step it is in (see FilterGains),
+    // and how many samples that step has.
+    std::array<FilterGains, kFilters> gainsFrom{}, gainsTo{};
+    std::array<uint32_t, kFilters> stepLength{};
+    std::array<std::array<double, 10>, kFilters> filterFrom{}, filterTo{};
+    // How far along their ramp this block takes them (a block shorter than a control block going its share), and the
+    // inputs `done` samples into it, at the end of the step that starts there.
+    const double filterShare = std::min(1.0, static_cast<double>(hostFrames) / kControlBlock);
+    const uint32_t filterStep = kFilterSubStep * static_cast<uint32_t>(oversampling_); // at the oversampled rate
+    auto filterInputsAt = [&](int f, uint32_t done) {
+        const double along =
+            filterShare * std::min(1.0, static_cast<double>(done + filterStep) / static_cast<double>(frames));
+        std::array<double, 10> in = filterTo[f];
+        for (size_t i = 0; i < in.size(); ++i)
+            if (kFilterSmooth[i])
+                in[i] = along >= 1.0 ? filterTo[f][i] : filterFrom[f][i] + (filterTo[f][i] - filterFrom[f][i]) * along;
+        return in;
+    };
+    // A filter's settings from its inputs (see below). Without key tracking the pitch is 0 there (left out), and 2 to
+    // the power of 0 is exactly 1.
+    auto filterSettingsOf = [&](const std::array<double, 10> &in) {
+        const double cutoffHz = cutoffFromNorm(in[0]) * std::exp2((in[2] - 60.0) / 12.0 * in[1]);
+        const auto type = static_cast<FilterType>(stepped(in[3], static_cast<int>(FilterType::Count) - 1));
+        return filterSettings(type, filterSlope(in[4]), cutoffHz, in[5], in[6], rate_, in[7], in[8], morphMode(in[9]));
+    };
     std::array<std::array<float *, 2>, kFilters> combs{};
     bool filterBack = false; // whether any filter that runs hears itself or a later one
     for (int f = 0; f < kFilters; ++f) {
@@ -2675,12 +2708,34 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             formant ? p[paramIndex(f, FilterParam::Vowel)] : 0.0,
             morph ? p[paramIndex(f, FilterParam::Morph)] : 0.0,
             morph ? p[paramIndex(f, FilterParam::MorphMode)] : 0.0};
-        filter[f] = &v.filterSettings[f].get(inputs, [&] {
-            const double cutoffHz = cutoffFromNorm(inputs[0]) * std::exp2((pitch - 60.0) / 12.0 * inputs[1]);
-            const auto type = static_cast<FilterType>(stepped(inputs[3], static_cast<int>(FilterType::Count) - 1));
-            return filterSettings(type, filterSlope(inputs[4]), cutoffHz, inputs[5], inputs[6], rate_, inputs[7],
-                                  inputs[8], morphMode(inputs[9]));
-        });
+        // The inputs that move the filter smoothly ramp to the block's over a control block (a shorter block going its
+        // share of the way), worked out again every kFilterSubStep samples while they move: taken once a block, an
+        // LFO or envelope on the cutoff would step it every control block, a buzz at the control rate's multiples.
+        // The type, the slope and the morph's mode switch at once, and a new type takes every input at once.
+        std::array<double, 10> &now = v.filterInputsNow[f];
+        if (std::isnan(now[0]) || now[3] != inputs[3])
+            now = inputs;
+        filterMoving[f] = false;
+        for (size_t i = 0; i < inputs.size(); ++i) {
+            if (!kFilterSmooth[i])
+                now[i] = inputs[i];
+            else if (now[i] != inputs[i])
+                filterMoving[f] = true;
+        }
+        if (filterMoving[f]) {
+            filterFrom[f] = now;
+            filterTo[f] = inputs;
+            for (size_t i = 0; i < inputs.size(); ++i) // where the block leaves them
+                if (kFilterSmooth[i])
+                    now[i] = filterShare >= 1.0 ? inputs[i] : now[i] + (inputs[i] - now[i]) * filterShare;
+            gainsFrom[f] = filterGains(filterSettingsOf(filterFrom[f])); // as it was left
+            filterStepped[f] = filterSettingsOf(filterInputsAt(f, 0));
+            gainsTo[f] = filterGains(filterStepped[f]);
+            stepLength[f] = std::min(filterStep, frames);
+            filter[f] = &filterStepped[f];
+        } else {
+            filter[f] = &v.filterSettings[f].get(inputs, [&] { return filterSettingsOf(inputs); });
+        }
         if (filter[f]->type == FilterType::Comb) // its lines start silent
             for (int c = 0; c < channels; ++c)
                 if (v.combDirty[f][c]) {
@@ -2981,6 +3036,17 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                 v.filterOut[f] = 0.0;
                 v.filterLast[f] = {};
                 continue;
+            }
+            if (filterMoving[f]) {
+                const uint32_t into = s % filterStep;
+                if (s > 0 && into == 0) { // its ramp's next step
+                    gainsFrom[f] = gainsTo[f];
+                    filterStepped[f] = filterSettingsOf(filterInputsAt(f, s));
+                    gainsTo[f] = filterGains(filterStepped[f]);
+                    stepLength[f] = std::min(filterStep, frames - s);
+                }
+                glideFilterGains(filterStepped[f], gainsFrom[f], gainsTo[f],
+                                 static_cast<double>(into + 1) / stepLength[f]);
             }
             if (filterBack) // itself and the filters after it, from the previous sample
                 for (int from = f; from < kFilters; ++from)

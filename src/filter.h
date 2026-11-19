@@ -220,6 +220,37 @@ struct FilterSettings {
     MorphWeights morph{1.0, 0.0, 0.0};
 };
 
+// What a filter's settings scale its outputs by rather than run its stages with: the stages' damping (which a
+// high-pass's, a band-pass's and a notch's outputs take, see Svf::process()), the morph's shares and the formants'
+// levels and dampings. While a filter's inputs ramp, its settings are worked out again a few samples apart (see
+// Synth::renderBlock() and fx::FilterFx::run()): its stages take each step as it comes, smoothed by their state, but
+// these would step what comes out at once, so they glide from one step's to the next, sample by sample.
+struct FilterGains {
+    double mainK = 2.0, secondK = 2.0;
+    MorphWeights morph{1.0, 0.0, 0.0};
+    double formantGain[3]{};
+    double formantK[3]{};
+};
+inline FilterGains filterGains(const FilterSettings &s) {
+    FilterGains g{s.main.k, s.second.k, s.morph, {}, {}};
+    for (int i = 0; i < 3; ++i) {
+        g.formantGain[i] = s.formantGain[i];
+        g.formantK[i] = s.formants[i].k;
+    }
+    return g;
+}
+// `s` given what lies `t` (0..1) of the way from `from` to `to`.
+inline void glideFilterGains(FilterSettings &s, const FilterGains &from, const FilterGains &to, double t) {
+    auto at = [t](double a, double b) { return a + (b - a) * t; };
+    s.main.k = at(from.mainK, to.mainK);
+    s.second.k = at(from.secondK, to.secondK);
+    s.morph = {at(from.morph.low, to.morph.low), at(from.morph.band, to.morph.band), at(from.morph.high, to.morph.high)};
+    for (int i = 0; i < 3; ++i) {
+        s.formantGain[i] = at(from.formantGain[i], to.formantGain[i]);
+        s.formants[i].k = at(from.formantK[i], to.formantK[i]);
+    }
+}
+
 // cutoffHz already includes key tracking. `slope` (0..3, as stored) only matters to the types with a slope, `vowel` to
 // the Formant type and `morph` and `mode` to the Morph type.
 inline FilterSettings filterSettings(FilterType type, int slope, double cutoffHz, double resonance, double drive,

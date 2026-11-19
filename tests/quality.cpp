@@ -5592,7 +5592,7 @@ int main() {
         std::printf("      %-30s %7.1f\n", "LFO on an effects graph wire", wire);
         check(wire < -70.0, "LFO on a wire of the effects graph doesn't zipper");
     }
-    // --- The same for the effects' frequencies, which an effect takes once per control block: an LFO on each, the
+    // --- The same for the effects' frequencies and the voice filters', which they take once per control block: an LFO on each, the
     // effect alone in the chain, puts out a sine's sidebands from its movement alone (all of them the sine's frequency
     // and the LFO's multiples), and nothing around the control rate's multiples, where steps would put them. At 7 Hz,
     // the LFO's sidebands keep clear of those.
@@ -5620,6 +5620,13 @@ int main() {
              {{FxParam::FilterType, static_cast<double>(FilterType::LowPass)},
               {FxParam::FilterCutoff, normFromCutoff(2.0 * f0)},
               {FxParam::FilterResonance, 0.5}}},
+            {"filter effect formant vowel", FxType::Filter, FxParam::FilterVowel, 0.1,
+             {{FxParam::FilterType, static_cast<double>(FilterType::Formant)}, {FxParam::FilterVowel, 0.375}}},
+            {"filter effect morph place", FxType::Filter, FxParam::FilterMorph, 0.2,
+             {{FxParam::FilterType, static_cast<double>(FilterType::Morph)},
+              {FxParam::FilterCutoff, normFromCutoff(2.0 * f0)},
+              {FxParam::FilterResonance, 0.3},
+              {FxParam::FilterMorph, 0.25}}},
             {"param EQ band frequency", FxType::ParamEq, FxParam::PeqFreq1, 0.1,
              {{FxParam::PeqFreq1, normFromCutoff(2.0 * f0)}, {FxParam::PeqGain1, 12.0}, {FxParam::PeqQ1, 0.5}}},
             {"phaser center", FxType::Phaser, FxParam::PhaserCenter, 0.1,
@@ -5627,6 +5634,47 @@ int main() {
             {"widener cutoff", FxType::Widener, FxParam::WidenerHighPass, 0.2,
              {{FxParam::WidenerHighPass, normFromCutoff(f0)}, {FxParam::WidenerWidth, 1.0}}},
         };
+        // The voice filters the same way: an LFO on a resonant low-pass's and ladder's cutoff, a formant's vowel and a
+        // morph's place, the operator going out through the filter alone.
+        // The ladder quietly, so its saturation's harmonics stay under what is measured.
+        struct VoiceSwept {
+            const char *name;
+            FilterType type;
+            FilterParam param;
+            double amount, resonance, send;
+        };
+        const VoiceSwept voiceSwept[] = {
+            {"voice filter cutoff", FilterType::LowPass, FilterParam::Cutoff, 0.1, 0.5, 1.0},
+            {"voice ladder cutoff", FilterType::Ladder, FilterParam::Cutoff, 0.1, 0.5, 0.01},
+            {"voice formant vowel", FilterType::Formant, FilterParam::Vowel, 0.1, 0.0, 1.0},
+            {"voice morph place", FilterType::Morph, FilterParam::Morph, 0.2, 0.3, 1.0},
+        };
+        for (const VoiceSwept &sweep : voiceSwept) {
+            auto setup = [&](ParamValues &p) {
+                p[paramIndex(0, OpParam::Out)] = 0.0;
+                p[sendIndex(0, 0)] = sweep.send;
+                p[paramIndex(0, FilterParam::Enabled)] = 1.0;
+                p[paramIndex(0, FilterParam::Out)] = 1.0;
+                p[paramIndex(0, FilterParam::Type)] = static_cast<double>(sweep.type);
+                p[paramIndex(0, FilterParam::Cutoff)] =
+                    sweep.type == FilterType::Formant ? kDefaultCutoff : normFromCutoff(2.0 * f0);
+                p[paramIndex(0, FilterParam::KeyTrack)] = 0.0;
+                p[paramIndex(0, FilterParam::Resonance)] = sweep.resonance;
+                p[paramIndex(0, FilterParam::Vowel)] = 0.375;
+                p[paramIndex(0, FilterParam::Morph)] = 0.25;
+                lfoOn(p, paramIndex(0, sweep.param), sweep.amount, lfo);
+            };
+            auto still = [&](ParamValues &p) {
+                setup(p);
+                p[slotAmountIndex(0, 0)] = 0.0;
+            };
+            const double db = unexpectedDb(steadyTone(1, key, setup), sidebands);
+            const double held = unexpectedDb(steadyTone(1, key, still), sidebands);
+            std::printf("      %-30s %7.1f  (%.1f)\n", sweep.name, db, held);
+            char what[128];
+            std::snprintf(what, sizeof(what), "an LFO on a %s doesn't zipper", sweep.name);
+            check(db < -90.0, what);
+        }
         for (const Swept &sweep : swept) {
             auto setup = [&](ParamValues &p) {
                 p[paramIndex(0, FxParam::Type)] = static_cast<double>(sweep.type);

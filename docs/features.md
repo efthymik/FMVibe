@@ -156,7 +156,13 @@ What the plugin does and how its editor works, in full. Building and installing 
   itself, a sample late, so filters can feed each other and themselves round in a loop. Once a released note's
   operators have faded, those loops fade away, so they can't ring on, and what a filter hears from itself or a later
   filter is held within +18 dB, so a loop that lifts itself past unity grows loud but never without end. A filter
-  that only modulates can leave its output level at 0. Types:
+  that only modulates can leave its output level at 0. Modulation moves a filter smoothly: its cutoff, key
+  tracking, resonance, drive, vowel and morph ramp over each 32-sample control block, the filter's settings worked
+  out again every 8 samples while they move, and what it scales its outputs by (a morph's shares, a formant's levels,
+  the resonance's share of a high-pass, band-pass or notch) gliding sample by sample, so a fast envelope or LFO on the
+  cutoff sweeps it rather than stepping it every block (which buzzed faintly at the steps' rate, 1.5 kHz at 48 kHz:
+  some 72 dB under an LFO's sweep, 53 dB for a morph's place, now 96 dB and more). Its type, slope and morph mode switch
+  at once. Types:
   - Low-pass, High-pass, Band-pass and Notch: a state-variable filter that stays smooth under fast modulation.
     **Slope** picks 6, 12 (the default), 18 or 24 dB per octave. At 6 dB the filter is a one-pole, taken from the
     state-variable filter so resonance still adds a peak at the cutoff (as high as at 12 dB) while the slope past it
@@ -616,8 +622,10 @@ What the plugin does and how its editor works, in full. Building and installing 
     begin with; down to 1 kHz) are 12 dB an octave on what goes into it, so a room's early reflections take them too:
     the low end kept out of a long tail, or a dark one; switched on they rise from letting everything through rather
     than jumping. **Diffusion** (100 % to begin with) sets how much the input's all-passes smear what goes in: at 0 they
-    are plain delays, and its first echoes come out as distinct as the lines' lengths make them. Its card has three
-    rows: the two it had, and Low Cut, High Cut and Diffusion under them. Size (the
+    are plain delays, and its first echoes come out as distinct as the lines' lengths make them (**Diffuse** on the
+    card). Its card has three rows: Size, Decay and Pre; Damp, Width and Diffuse; and Low Cut, High Cut and Mix, Mix at
+    the bottom right as on the other cards. A shimmer's, four to a row, puts Diffuse after Pre and its Pitch and
+    Shimmer between Damp and Width. Size (the
     lines from a quarter of their length to all of it, gliding when turned, also when the algorithm changes),
     Decay (0.2–20 s to fall 60 dB), Damp (Damping in the host; the corner, from 20 kHz down to 1 kHz, above which the tail falls five
     times as fast, by as much in every line), Pre (the pre-delay, off to 250 ms), Width and Mix (like the delay's: the dry
@@ -716,9 +724,9 @@ What the plugin does and how its editor works, in full. Building and installing 
   The phaser, flanger and chorus keep their feedback from ringing louder: what they send round is scaled so their level
   across the spectrum stays where it was without it. Effect knobs can be modulated like any other. Their levels and
   mixes ramp to a new setting sample by sample, however the host splits the block, and so do the frequencies their
-  filters are set to (the phase disperser's Freq and Pinch, the filter effect's cutoff and its other knobs, the Param
-  EQ's bands, the phaser's Center and Depth, the widener's Cutoff): an LFO sweeping one glides it rather than stepping
-  it every 32 samples, which buzzed at the steps' rate. As the effects are shared by all voices, the LFOs and envelopes
+  filters are set to (the phase disperser's Freq and Pinch, the filter effect's cutoff and its other knobs, as a voice
+  filter's do, the Param EQ's bands, the phaser's Center and Depth, the widener's Cutoff): an LFO sweeping one glides
+  it rather than stepping it every 32 samples, which buzzed at the steps' rate. As the effects are shared by all voices, the LFOs and envelopes
   reach them through the most recently played voice. Each of the 16 places in the chain has the parameters of
   every effect type. Hosts aren't given the effects' parameters: an effect is set and automated from the editor's
   sources only, and has no remote control page.

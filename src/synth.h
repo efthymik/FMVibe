@@ -426,6 +426,14 @@ private:
         std::array<Envelope, kMaxSources> modEnvs{};
         std::array<Memo<EnvRates, 8>, kMaxSources> modEnvRates{};
         std::array<Memo<FilterSettings, 10>, kFilters> filterSettings{};
+        // Each filter's inputs (see renderBlock()) as they ramp to the block's, the continuous ones over a control
+        // block, as the levels do: NaN until its first block, which takes them as they are.
+        std::array<std::array<double, 10>, kFilters> filterInputsNow = [] {
+            std::array<std::array<double, 10>, kFilters> none;
+            for (auto &inputs : none)
+                inputs.fill(std::numeric_limits<double>::quiet_NaN());
+            return none;
+        }();
         std::array<Memo<ShaperSettings, 7>, kShapers> shaperSettings{};
         std::array<std::array<Filter, 2>, kFilters> filters{}; // [filter][channel]
         // Samples (at the oversampled rate) a filter whose inputs have stopped runs on for, ringing out: a comb's

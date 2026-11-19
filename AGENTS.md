@@ -207,9 +207,12 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - aliasing (the energy off the harmonics, 20 Hz–20 kHz) of a high saw, bright FM (phase, linear and ring),
     feedback, a driven filter and a driven, resonant ladder, diode and Sallen-Key;
   - zipper noise from an LFO on an operator's level and Pan, a matrix amount, a filter cutoff, a resonant ladder's
-    cutoff, a formant's vowel, a morph's place and a wire of the effects graph; and on the effects' frequencies (a
-    phase disperser's Freq, a filter effect's cutoff, a Param EQ band's frequency, a phaser's Center and a widener's
-    Cutoff), nothing but the sine's own sidebands coming out (held still in brackets);
+    cutoff, a formant's vowel, a morph's place and a wire of the effects graph; and on the voice filters (a resonant
+    low-pass's and a quiet ladder's cutoff, a formant's vowel and a morph's place, each within one stretch of its curve)
+    and the effects' frequencies (a phase disperser's Freq, a filter effect's cutoff, formant vowel and morph place, a
+    Param EQ band's frequency, a phaser's Center and a widener's Cutoff), nothing but the sine's own sidebands at 7 Hz
+    apart coming out, where control-block steps would put energy near the control rate's multiples (held still in
+    brackets);
   - clicks when a voice is stolen (and six at once by a chord), when a note joins a held one in poly legato
     (fading in over 5 ms, its Random LFOs carrying on with the held one's step), and when a param (Volume, and an effect's: a compressor's Makeup, a delay's and a
     reverb's Mix, a DJ EQ band, a three-band dynamics' Output, an amp's Output, Mix and Gain, a utility's Gain (0 to
@@ -695,8 +698,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     effect's with its Mix (read off the rendered pixels);
   - the disperser's and widener's displays following their params as modulation takes them (read off the rendered
     pixels); the shaper's oversampling picked in its title's menu (2x to 8x, the one in force checked, undoably), its
-    Tone, the delay's Duck, the compressor's SC HP, the reverb's Low Cut, High Cut and Diffusion (its third row) and the
-    phaser's Spread turning, the flanger's TZF switching, and the Lo-Fi added from the list of effects, its knobs
+    Tone, the delay's Duck, the compressor's SC HP, the reverb's Diffusion (its second row), Low Cut and High Cut (its third) and the
+    phaser's Spread turning, the reverb's Mix at its card's bottom right, the flanger's TZF switching, and the Lo-Fi added from the list of effects, its knobs
     turning and its display following Bits (read off the rendered pixels); and the disperser's Key Track and Stretch
     knobs turning, each one undo step, Stretch in whole steps, its
     display's peak moving with the note Key Track follows and its copies drawn stretched (read off the rendered

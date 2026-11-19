@@ -2072,25 +2072,26 @@ void View::effectCardWidgets(std::vector<Widget> &list, int slot, Rect card) con
     }
     case FxType::Reverb:
         add(Kind::ListButton, reverbTypeButton(card), at(FxParam::ReverbType));
-        // Three rows: the two it came with, and Low Cut, High Cut and Diffusion under them; a shimmer's interval and
-        // how much of what goes round it shifts among the first two.
+        // Three rows: the space; its tone, spread and diffusion; what goes in and how much is heard, Mix at the bottom
+        // right as on the other cards. A shimmer's, four to a row, puts Diffuse after Pre (the labels' widths allow it
+        // there) and its interval and how much of what goes round it shifts together in the middle of the second.
         if (reverbType(value(at(FxParam::ReverbType))) == ReverbType::Shimmer) {
             knobs({at(FxParam::ReverbSize), at(FxParam::ReverbDecay), at(FxParam::ReverbPreDelay),
-                   at(FxParam::ReverbShimmerPitch)},
-                  {tr(Str::LabelSize), tr(Str::LabelDecay), tr(Str::LabelPreDelay), tr(Str::LabelPitch)},
+                   at(FxParam::ReverbDiffusion)},
+                  {tr(Str::LabelSize), tr(Str::LabelDecay), tr(Str::LabelPreDelay), tr(Str::LabelDiffusion)},
                   kReverbKnobsY[0]);
-            knobs({at(FxParam::ReverbDamping), at(FxParam::ReverbWidth), at(FxParam::ReverbShimmer),
-                   at(FxParam::ReverbMix)},
-                  {tr(Str::LabelDamp), tr(Str::LabelWidth), tr(Str::LabelShimmer), tr(Str::LabelMix)},
+            knobs({at(FxParam::ReverbDamping), at(FxParam::ReverbShimmerPitch), at(FxParam::ReverbShimmer),
+                   at(FxParam::ReverbWidth)},
+                  {tr(Str::LabelDamp), tr(Str::LabelPitch), tr(Str::LabelShimmer), tr(Str::LabelWidth)},
                   kReverbKnobsY[1]);
         } else {
             knobs({at(FxParam::ReverbSize), at(FxParam::ReverbDecay), at(FxParam::ReverbPreDelay)},
                   {tr(Str::LabelSize), tr(Str::LabelDecay), tr(Str::LabelPreDelay)}, kReverbKnobsY[0]);
-            knobs({at(FxParam::ReverbDamping), at(FxParam::ReverbWidth), at(FxParam::ReverbMix)},
-                  {tr(Str::LabelDamp), tr(Str::LabelWidth), tr(Str::LabelMix)}, kReverbKnobsY[1]);
+            knobs({at(FxParam::ReverbDamping), at(FxParam::ReverbWidth), at(FxParam::ReverbDiffusion)},
+                  {tr(Str::LabelDamp), tr(Str::LabelWidth), tr(Str::LabelDiffusion)}, kReverbKnobsY[1]);
         }
-        knobs({at(FxParam::ReverbLowCut), at(FxParam::ReverbHighCut), at(FxParam::ReverbDiffusion)},
-              {tr(Str::LabelLowCut), tr(Str::LabelHighCut), tr(Str::LabelDiffusion)}, kReverbKnobsY[2]);
+        knobs({at(FxParam::ReverbLowCut), at(FxParam::ReverbHighCut), at(FxParam::ReverbMix)},
+              {tr(Str::LabelLowCut), tr(Str::LabelHighCut), tr(Str::LabelMix)}, kReverbKnobsY[2]);
         break;
     case FxType::Phaser:
     case FxType::Flanger: {

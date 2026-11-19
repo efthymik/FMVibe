@@ -3298,8 +3298,8 @@ void testChorus(const std::filesystem::path &dir, Renderer &renderer) {
 }
 
 // The effects' newer controls: the shaper's oversampling in its title's menu only (2x checked to begin with, 4x and 8x
-// offered, 1x not), its Tone; the delay's Duck, the compressor's detector high-pass, the reverb's Low Cut, High Cut and
-// Diffusion in its third row, the phaser's Spread and the flanger's TZF switch between its Feedback and Mix; then the
+// offered, 1x not), its Tone; the delay's Duck, the compressor's detector high-pass, the reverb's Diffusion in its
+// second row and Low Cut, High Cut and Mix in its third (Mix at the bottom right), the phaser's Spread and the flanger's TZF switch between its Feedback and Mix; then the
 // Lo-Fi, added from the list of effects (under DRIVE), its knobs, and its display following Bits (read off the rendered
 // pixels).
 void renderNewerControls(const std::filesystem::path &dir, Renderer &renderer) {
@@ -3340,16 +3340,19 @@ void renderNewerControls(const std::filesystem::path &dir, Renderer &renderer) {
     const bool lowCut = turned(fxKnob(model, 3, 0, 3, detail::kReverbKnobsY[2]), 20.0f, paramIndex(3, FxParam::ReverbLowCut));
     const bool highCut = turned(fxKnob(model, 3, 1, 3, detail::kReverbKnobsY[2]), -20.0f, paramIndex(3, FxParam::ReverbHighCut));
     const bool diffusion =
-        turned(fxKnob(model, 3, 2, 3, detail::kReverbKnobsY[2]), -20.0f, paramIndex(3, FxParam::ReverbDiffusion));
+        turned(fxKnob(model, 3, 2, 3, detail::kReverbKnobsY[1]), -20.0f, paramIndex(3, FxParam::ReverbDiffusion));
+    // Its Mix at the bottom right, as on the other cards.
+    const bool reverbMix =
+        turned(fxKnob(model, 3, 2, 3, detail::kReverbKnobsY[2]), 20.0f, paramIndex(3, FxParam::ReverbMix));
     const bool spread = turned(fxKnob(model, 4, 3, 4, 206.0f), 20.0f, paramIndex(4, FxParam::PhaserSpread));
     const Point tzf{fxCardX(model, 5) + fxCardW(model, 5) * 0.5f, 180.0f + 266.0f};
     click(view, tzf);
     const bool throughZero = model.value(paramIndex(5, FxParam::FlangerThroughZero)) == 1.0;
     view.mouseMove(tzf, {});
-    check(tone && duck && detector && lowCut && highCut && diffusion && spread && throughZero &&
+    check(tone && duck && detector && lowCut && highCut && diffusion && reverbMix && spread && throughZero &&
               renderer.save(view, dir / "28-newer-controls.png"),
-          "the shaper's Tone, the delay's Duck, the compressor's detector high-pass, the reverb's Low Cut, High Cut and "
-          "Diffusion and the phaser's Spread turn, and the flanger's TZF switches");
+          "the shaper's Tone, the delay's Duck, the compressor's detector high-pass, the reverb's Low Cut, High Cut, "
+          "Diffusion and Mix (at its bottom right) and the phaser's Spread turn, and the flanger's TZF switches");
 
     // The Lo-Fi from the list of effects, after the flanger.
     addFx(view, FxType::LoFi);

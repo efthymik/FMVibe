@@ -727,7 +727,7 @@ STR(LabelSpread, "Spread")
 STR(LabelStretch, "Stretch") // the phase disperser's knob that repeats its dispersion across the spectrum
 STR(LabelLowCut, "Low Cut")
 STR(LabelHighCut, "High Cut")
-STR(LabelDiffusion, "Diffusion")
+STR(LabelDiffusion, "Diffuse") // the reverb's Diffusion, short to fit four knobs in a row
 STR(LabelDuck, "Duck")
 STR(LabelThresh, "Thresh") // the compressor's Threshold, short beside three more knobs in its row
 STR(LabelDetectorHp, "SC HP") // the compressor's high-pass on what its detector hears (its side chain)
