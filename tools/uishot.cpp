@@ -865,7 +865,7 @@ Point slopeItem(int slope) {
 
 // Every node has its row and column, A..F, F1 and F2, then S1 and S2; the output is the last column.
 Point gridCellCenter(int row, int col) {
-    return {detail::kGridOrigin.x + col * 32.6f + 14.3f, 168.0f + row * 32.6f + 14.3f};
+    return detail::gridCell(row, col).center();
 }
 
 Point nodeCenter(const UiLayout &layout, int node) {
@@ -8549,7 +8549,7 @@ void testRouteModes(const std::filesystem::path &dir, Renderer &renderer) {
     model.ui.view = RoutingView::Matrix;
     view.poll();
     const Point cell = gridCellCenter(1, 0);
-    const Point corner{cell.x - 14.3f + 7.0f, cell.y - 14.3f + 7.0f};
+    const Point corner{detail::gridCell(1, 0).x + 7.0f, detail::gridCell(1, 0).y + 7.0f};
     auto cornerPixels = [&] {
         std::vector<uint32_t> pixels;
         for (float y = corner.y - 4.0f; y <= corner.y + 4.0f; y += 1.0f)
@@ -9852,7 +9852,7 @@ void testModsSearch(const std::filesystem::path &dir, Renderer &renderer) {
 // column (read off the rendered pixels). The pill opens the list of all eight, whose rows bypass, set the depth of
 // and remove their modulation as a card's rows do; a click elsewhere closes it. A macro's handle held over the pill
 // opens the list under it, and let go of on a row makes the macro that row's aux; let go of anywhere else, the list
-// closes again. Six on a matrix cell: two handles and a smaller pill, none in the next cell.
+// closes again. Six on a matrix cell: handles and a smaller pill, none in the next cell.
 void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -9967,7 +9967,7 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove(sourceHandle(2), {});
     check(renderer.save(view, dir / "40h-pill-link.png"), "render a source's line ending at the pill holding its handle");
 
-    // Six on the matrix's B -> C cell: two handles in its corner and a pill, none in the corner of B -> B left of it.
+    // Six on the matrix's B -> C cell: handles along its foot and a pill, none in the corner of B -> B left of it.
     click(view, {160.0f, 116.0f}); // MATRIX
     const Point cell = gridCellCenter(1, 2), left = gridCellCenter(1, 1);
     auto corner = [&] {
@@ -9988,7 +9988,7 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     }
     view.poll();
     const bool cellShot = renderer.save(view, dir / "40j-cell-pill.png");
-    check(cellShot && corner() == plain, "six modulations on a matrix cell show two handles and a pill, none in the next cell");
+    check(cellShot && corner() == plain, "six modulations on a matrix cell show handles and a pill, none in the next cell");
 
     // At the larger handle sizes, the cell's handles and pill are drawn bigger, in the same places (read off the
     // rendered pixels round them), and Small draws them as before.
@@ -12336,6 +12336,20 @@ void run(const std::filesystem::path &dir, float scale) {
     check(layout.view == RoutingView::Matrix, "the Matrix tab switches the routing panel to the grid");
     view.mouseMove(gridCellCenter(0, kOps), {});
     check(renderer.save(view, dir / "6-matrix.png"), "render the matrix view");
+    {
+        // Its cells are as much wider than tall as kCellAspect says, the mouse finding each across its whole width, and
+        // the cells, then the legend, stay inside the panel: nothing is drawn along the panel's right edge.
+        const Rect first = detail::gridCell(0, 0), last = detail::gridCell(kNodes - 1, detail::kGridCols - 1);
+        const bool ratio = std::abs(first.w / first.h - detail::kCellAspect) < 1e-4f;
+        const std::vector<MenuItem> inCell = view.contextMenu({first.right() - 1.0f, first.center().y});
+        const std::vector<MenuItem> inGap = view.contextMenu({first.right() + 0.5f * detail::kCellGap, first.center().y});
+        const float edge = detail::kRouting.right() - 8.0f;
+        bool clear = true;
+        for (float y = detail::kRouting.y + 12.0f; y < detail::kRouting.bottom() - 12.0f; y += 1.0f)
+            clear = clear && renderer.pixel({edge, y}) == renderer.pixel({edge, detail::kRouting.y + 12.0f});
+        check(ratio && !inCell.empty() && inGap.empty() && last.right() < detail::kLegendX && clear,
+              "the matrix's cells keep their ratio, and they and the legend stay inside the panel");
+    }
     // The tab shown opens the panel's top edge under it, the edge running on under the others; one under the mouse
     // shows a tab's shape.
     // (Read above the inspector's lens, which floats 6 px under the panel's top.)

@@ -558,6 +558,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - a switched-off source's handle going faint, and an LFO's, an envelope's, a macro's and the note source's until
     they modulate something
     (read off the rendered pixels);
+  - the matrix's cells keeping their width-to-height ratio, the mouse finding a cell across its width and not in the
+    gap after it, and the cells and legend staying inside the panel (read off the rendered pixels);
   - the dot on a filter's and a shaper's tab while it sounds out, the output meter and its clip light, and the
     output scope beside it, empty with nothing captured and drawing a span at its peak (read off the rendered
     pixels), its height easing down to a quieter span, and its spans too small to draw painting nothing again;

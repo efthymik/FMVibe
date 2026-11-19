@@ -1048,7 +1048,8 @@ one may have changed since it last did.
       the plugin's process is in front, so Ctrl held in another application shows nothing).
   - **Matrix** (grid): each row is a source (an operator, filter or shaper), and its cells say how much of it goes
     to each column: the operators, F1 and F2, S1 and S2, and OUT. It always lists all ten nodes and fills the
-    panel's height, as far from its top as from its bottom; every cell is a route; the row and
+    panel's height, as far from its top as from its bottom, its cells one and a half times as wide as they are tall
+    and its legend beside them; every cell is a route; the row and
     column of a node that is off are greyed out, its routes kept as they are. The diagonal is each node's feedback,
     outlined in its color; toggled on, it starts at 25 %. A route into an operator that isn't Phase shows its mode's
     glyph in its cell's top left corner, and the cell's right-click menu lists the modes. Drag cells
@@ -1768,8 +1769,8 @@ one may have changed since it last did.
     a depth bar in the MODS view): the bar then has the dot in its top right corner, a strip under it shows
     how far the depth swings, and hovering the handle draws a dashed line to it like to any other target.
   - **More than fit**: a knob, label, cell or depth bar shows as many depth handles as its width holds (under a 30
-    or 32 px knob 3, under a 34 px one 4; on a wire label 5, a matrix cell 4, a depth bar 11), in the order the
-    sources show. Past that, as many as fit beside a **+n** pill (2 under a knob, 3 on a label, 2 on a cell, 9 on
+    or 32 px knob 3, under a 34 px one 4; on a wire label 5, a matrix cell 5, a depth bar 11), in the order the
+    sources show. Past that, as many as fit beside a **+n** pill (2 under a knob, 3 on a label, 4 on a cell, 9 on
     a depth bar) hold the rest, so nothing runs under the next control. Hovering the pill draws the ranges of the
     modulations it holds wider, and says how many there are; a hovered source whose depth handle the pill holds
     draws its dashed line to the pill, ringed in the source's color. A click opens the pill's list, under it (over
