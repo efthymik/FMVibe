@@ -307,6 +307,10 @@ ModsPanel::MenuNode ModsPanel::cascadeCategories() const {
         for (int source : {kNoteSource, kVelocitySource, kWheelSource, kBendSource})
             keyboard.children.push_back(sourcePick(source));
         keep(std::move(keyboard));
+        MenuNode operators = category(tr(Str::CascadeOperators));
+        for (int op = 0; op < kOps; ++op)
+            operators.children.push_back(sourcePick(kOpSource + op));
+        keep(std::move(operators));
         markHolds(root);
         return root;
     }

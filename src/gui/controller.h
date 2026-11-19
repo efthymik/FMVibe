@@ -242,9 +242,11 @@ std::vector<int> shownSources(const UiLayout &layout, const Get &get) {
 }
 
 // What the editor and the host's remote pages call a source: "LFO 2", "Env 1", "Random 1" or "MIDI 1",
-// numbered by type in the order the sources show, a macro's name, "Note" or "Mod Wheel".
+// numbered by type in the order the sources show, a macro's name, "Note", "Mod Wheel" or an operator's "Op A".
 template <class Get>
 std::string sourceName(const UiLayout &layout, const Get &get, int source) {
+    if (isOpSource(source))
+        return trf(Str::SourceNameOp, {std::string(1, static_cast<char>('A' + source - kOpSource))});
     if (isNote(source))
         return tr(Str::SourceNameNote);
     if (isWheel(source))

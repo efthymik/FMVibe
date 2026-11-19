@@ -88,6 +88,8 @@ constexpr Rect kInspectorPage{kInspector.x + 1.0f, kInspector.y + 60.0f, kInspec
 // The page's title row under the tabs: the node's letter, then its summary; the switches at its right end.
 constexpr Rect kTitleRow{kInspector.x + 16.0f, kInspector.y + 37.0f, kInspector.w - 32.0f, 20.0f};
 constexpr float kTitleLetterW = 16.0f;
+// An operator's letter there is its output's handle as a modulation source: dragged onto what it should modulate.
+constexpr Rect kOpNameHandle{kTitleRow.x - 4.0f, kTitleRow.y, kTitleLetterW + 8.0f, kTitleRow.h};
 // An operator's Fixed switch, a keyboard on the summary line left of the power switch.
 constexpr Rect kFixedSwitch{kInspector.x + kInspector.w - 16.0f - 26.0f - 30.0f, kInspector.y + 37.0f, 26.0f, 19.0f};
 // An operator's sound in one block under the title: at its left, its pitch (the Ratio readout, Freq and Mult when

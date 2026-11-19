@@ -315,6 +315,13 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the DC blocker before the effects: a squeezed square coming out with no DC, a Ring route at unison going into
     a hard shaper as its octave alone (clipped evenly, no 4th harmonic), and the output exactly silent once the
     note has rung out, the effects resting;
+  - an operator's output as a source: one at 5 Hz swinging its target both ways, one at 12 kHz averaging away, unipolar
+    taking its target one way, silent or switched off moving nothing, and silent as an aux scaling its modulation to
+    nothing;
+  - filter FM, an operator on the Cutoff of a voice's filter and of the filter effect: sidebands from a modulator at
+    3 kHz (two whole cycles a control block), every filter type finite at full depth and resonance in both places and
+    a voice ending with its note, the aliasing at each oversampling factor, a slow operator moving a cutoff as far as an
+    LFO does, and the filter effect's FM taken over by a new note without a click;
   - a macro's knob modulated: along a chain of macros out of their numbers' order (the telemetry saying where the
     knobs stand), in a loop a state holds, steadily and alike each time, and per voice by velocity, a loud note's
     knob silencing it while a soft one played with it plays as it would alone;
@@ -503,6 +510,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
     faint (read off the rendered pixels), and the depth handle hovered drawing the line from its source's handle
     (read off the rendered pixels);
   - the MODS tab's columns' names with no modulations (read off the rendered pixels);
+  - an operator picked as a source from the MODS tab's source menu, given a target, bipolar to begin with, and its
+    row's switch making it unipolar, undoably;
+  - an operator's letter on its page lit under the mouse (read off the rendered pixels) and dragged onto a knob
+    modulating it, undoably; and its handle and an LFO's held over a view's tab showing that view, let go of there
+    modulating nothing, and carried back still landing on a knob;
   - a MODS row's depth bar ticking where its modulation is now: an LFO's under a playing note (none with no note),
     a macro's from its knob (read off the rendered pixels);
   - a node switched on where another one shown sits coming back clear of it, undoably, and one whose place is free
@@ -1189,10 +1201,10 @@ itself.
   later slots 6000 + 30·place, shaper effects' curves 7000 + 50·slot (their points past the 16th
   17000 + 200·slot; the slots past the first 16 every field 30000 + 200·(slot - 16)), the chain's order 33400 + place,
   slot bypasses 9000 + 20·place (then the macros', the note source's, the mod wheel's,
-  velocity's and the pitch bend's, 9320 + 20 a source by the sources' number), Custom waves' first 32 partials
+  velocity's, the pitch bend's and the operators', 9320 + 20 a source by the sources' number), Custom waves' first 32 partials
   10000 + 100·op, macros 11000 + 40·macro, the note source 11400+ (its slots, then its range and curve), the mod
   wheel's slots 11500+, velocity 11600+ (its slots, then its curve and Bipolar), the pitch bend 11700+ (its slots,
-  then Bipolar), the
+  then Bipolar), the operators as sources 57000 + 40·op (their slots, then Bipolar), the
   Custom waves' partial counts 14000+ and their partials past the 32nd 14100 + 100·op, the routes' modes
   700 + 10·from + to (from by the routing graph's node order: the operators, the filters, the shapers; to an
   operator; an operator's own field, its feedback, hidden and always Phase), the voice shapers'
@@ -1239,8 +1251,8 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 1,317 of the 31,554 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
-  `src/params.h`), 896 of them the slots' depths and Amounts. The editor's alone are those the table marks
+- Hosts are given 1,515 of the 32,232 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+  `src/params.h`), 1,088 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain's retired order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'
   fields, the effects graph (its splits, joins and wires), the source places' own fields (a place's slot
