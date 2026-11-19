@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <bit>
+#include <chrono>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
@@ -532,6 +533,53 @@ void View::showView(RoutingView view) {
         panel->closePopups();
     shapes_.close();
     listMenu_ = -1;
+}
+
+double View::steadySeconds() {
+    return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+std::optional<Widget> View::dwellTarget(const std::optional<Widget> &at) const {
+    if (!at)
+        return std::nullopt;
+    const RoutingView view = controller_.layout().view;
+    switch (at->kind) {
+    case Kind::ViewTab:
+        return at;
+    case Kind::NodeTab: // the inspector's tab of a node
+        return Widget{Kind::Node, {}, -1, at->a};
+    case Kind::Node:
+    case Kind::Port: // a node's edge, its node
+        if (view != RoutingView::Graph)
+            return std::nullopt;
+        return Widget{Kind::Node, {}, -1, at->a};
+    case Kind::MatrixLabel: // a row's or column's name in the matrix, not one of the INPUTS tab's rows
+        if (view != RoutingView::Matrix || kInspector.contains(at->rect.center()))
+            return std::nullopt;
+        return Widget{Kind::Node, {}, -1, at->a};
+    default:
+        return std::nullopt;
+    }
+}
+
+bool View::dwellStep() {
+    if (drag_.kind != DragKind::ModSource || !dwell_.over || dwell_.done || clock_() - dwell_.since < kDwellSeconds)
+        return false;
+    dwell_.done = true;
+    const Widget &w = *dwell_.over;
+    UiLayout &layout = controller_.layout();
+    if (w.kind == Kind::ViewTab) {
+        if (layout.view == static_cast<RoutingView>(w.a))
+            return false;
+        modList_.reset(); // a pill's, of the view it leaves
+        showView(static_cast<RoutingView>(w.a));
+        return true;
+    }
+    if (layout.selectedNode == w.a)
+        return false;
+    layout.selectedNode = w.a; // shown, as it is, on or off
+    shapes_.closePartialsBut(w.a);
+    return true;
 }
 
 void View::showSourceMods(int source) {
@@ -1173,7 +1221,7 @@ bool View::poll() {
     }
     if (flashTicks_ > 0 && --flashTicks_ == 0)
         everywhere = true;
-    if (edgeScroll())
+    if (edgeScroll() || dwellStep())
         everywhere = true;
     // What moves by itself in the panels: the SEQ view's roll scrolling under a drag held at its edge, or fitted to a
     // patch loaded; the MODS view's rows gliding where the wheel sent them; the FX view's row under a card held at its
@@ -6134,13 +6182,16 @@ void View::applyDrag(Point p) {
         break;
     }
     case DragKind::ModSource: {
-        // Over a view's tab or an operator's tab, a dragged handle opens it, so what it shows can take the drop; over a
-        // pill, its list, so one of its rows can take the handle as that modulation's aux.
+        // Held a moment over a view's tab, or a node's tab, or a node or its name in the graph or the matrix, a dragged
+        // handle shows that
+        // view or node (see dwellStep()); over an operator's tab, it opens it at once, so what it shows can take the
+        // drop; over a pill, its list, so one of its rows can take the handle as that modulation's aux.
         const auto at = hitTest(p);
-        if (at && at->kind == Kind::ViewTab && controller_.layout().view != static_cast<RoutingView>(at->a)) {
-            modList_.reset(); // a pill's, of the view it leaves
-            showView(static_cast<RoutingView>(at->a));
-        }
+        if (const std::optional<Widget> over = dwellTarget(at); !over)
+            dwell_ = {};
+        else if (!dwell_.over || !dwell_.over->same(*over))
+            dwell_ = {over, clock_(), false};
+        dwellStep();
         if (at && at->kind == Kind::OpTab)
             controller_.layout().opTab = static_cast<InspectorTab>(at->a);
         if (at && at->kind == Kind::ModPill && !modListOn(*at))
@@ -6833,6 +6884,7 @@ void View::finishDrag() {
     if (drag_.step)
         controller_.endStep();
     drag_ = Drag{};
+    dwell_ = {};
 }
 
 void View::mouseLeave() {

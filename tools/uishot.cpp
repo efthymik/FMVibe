@@ -9832,34 +9832,116 @@ void testOpNameHandle(const std::filesystem::path &dir, Renderer &renderer) {
     view.undo();
     check(slotTarget(model.value(slotTargetIndex(kOpSource, 0))) < 0, "undo takes that modulation away");
 
+    // The editor's clock, which the test moves on: a handle shows a view or a node only once held there half a second.
+    static double now = 0.0;
+    view.setClock([] { return now; });
     auto tab = [](RoutingView shown) { return detail::kViewTabs[static_cast<int>(shown)].center(); };
+    // Over the tab, not yet; moved within it 0.3 s later, not yet; at 0.55 s, a poll shows it.
+    auto dwells = [&](Point at, auto shown) {
+        view.mouseMove(at, {});
+        const bool waits = !shown();
+        now += 0.3;
+        view.mouseMove({at.x + 1.0f, at.y}, {});
+        const bool still = !shown();
+        now += 0.25;
+        view.poll();
+        return waits && still && shown();
+    };
+    auto overTab = [&](RoutingView v) { return dwells(tab(v), [&] { return model.ui.view == v; }); };
     auto held = [&](Point from) {
         view.mouseDown(from, {});
-        view.mouseMove(tab(RoutingView::Fx), {});
-        const bool fx = model.ui.view == RoutingView::Fx;
-        view.mouseMove(tab(RoutingView::Mods), {});
-        const bool mods = model.ui.view == RoutingView::Mods;
-        view.mouseMove(tab(RoutingView::Matrix), {});
-        const bool matrix = model.ui.view == RoutingView::Matrix;
-        view.mouseMove(tab(RoutingView::Graph), {});
-        const bool graph = model.ui.view == RoutingView::Graph;
+        const bool fx = overTab(RoutingView::Fx);
+        const bool mods = overTab(RoutingView::Mods);
+        const bool matrix = overTab(RoutingView::Matrix);
+        const bool graph = overTab(RoutingView::Graph);
         view.mouseUp(tab(RoutingView::Graph), {});
         return fx && mods && matrix && graph;
     };
     check(held(name) && slotTarget(model.value(slotTargetIndex(kOpSource, 0))) < 0,
-          "an operator's handle held over a view's tab shows that view, and let go of there modulates nothing");
+          "an operator's handle held over a view's tab shows that view after half a second, and let go of there "
+          "modulates nothing");
     model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
     view.poll();
-    check(held(detail::sourceHandleRect(detail::sourceCard(0.0f)).center()),
-          "an LFO's handle held over a view's tab shows that view");
+    const Point lfoHandle = detail::sourceHandleRect(detail::sourceCard(0.0f)).center();
+    check(held(lfoHandle), "an LFO's handle held over a view's tab shows that view after half a second");
+
+    // Passed over the tabs, a moment on each, it shows none of them.
+    view.mouseDown(lfoHandle, {});
+    view.mouseMove(tab(RoutingView::Fx), {});
+    now += 0.3;
+    view.mouseMove(tab(RoutingView::Mods), {});
+    now += 0.3;
+    view.poll();
+    view.mouseMove(tab(RoutingView::Matrix), {});
+    now += 0.3;
+    view.poll();
+    const bool passed = model.ui.view == RoutingView::Graph;
+    view.mouseUp(tab(RoutingView::Matrix), {});
+    check(passed, "a handle passed over the views' tabs, a moment on each, shows none of them");
+
+    // Held over a node in the graph, and over a node's name in the matrix, it shows that node in the inspector, without
+    // switching it on; passed over one, it doesn't.
+    model.set(paramIndex(1, OpParam::Enabled), 1.0);
+    model.ui.selectedNode = 0;
+    view.poll();
+    const Point bNode = nodeCenter(model.layout(), 1);
+    view.mouseDown(lfoHandle, {});
+    view.mouseMove(bNode, {});
+    now += 0.3;
+    view.mouseMove(nodeCenter(model.layout(), 0), {});
+    now += 0.3;
+    view.poll();
+    const bool nodePassed = model.ui.selectedNode == 0;
+    const bool bShown = dwells(bNode, [&] { return model.ui.selectedNode == 1; });
+    const bool graphShot = renderer.save(view, dir / "35u-handle-held-over-node.png");
+    view.mouseUp(bNode, {});
+    check(nodePassed && bShown && graphShot,
+          "a handle held over a node in the graph shows it in the inspector after half a second, and passed over one "
+          "doesn't");
+    const bool modulatesNothing = slotTarget(model.value(slotTargetIndex(0, 0))) < 0;
+    view.mouseDown(lfoHandle, {});
+    const bool matrixShown = overTab(RoutingView::Matrix);
+    const Rect cRow = detail::gridCell(2, 0), dColumn = detail::gridCell(0, 3);
+    const bool cShown = dwells({cRow.x - 18.0f, cRow.center().y}, [&] { return model.ui.selectedNode == 2; });
+    const bool dShown = dwells({dColumn.center().x, dColumn.y - detail::kMatrixNamesH + 9.0f},
+                               [&] { return model.ui.selectedNode == 3; });
+    const bool filterShown = dwells({detail::gridCell(kOps, 0).x - 18.0f, detail::gridCell(kOps, 0).center().y},
+                                    [&] { return model.ui.selectedNode == kOps; });
+    view.mouseUp({cRow.x - 18.0f, cRow.center().y}, {});
+    check(modulatesNothing && matrixShown && cShown && dShown && filterShown &&
+              model.value(paramIndex(2, OpParam::Enabled)) == 0.0 &&
+              model.value(paramIndex(0, FilterParam::Enabled)) == 0.0,
+          "a handle held over an operator's or a filter's name in the matrix, a row's or a column's, shows it in the "
+          "inspector after half a second, leaving it switched off");
+    view.poll();
+    click(view, tab(RoutingView::Graph));
+    model.ui.selectedNode = 0;
+    view.poll();
+
+    // Held over a node's tab atop the inspector, it shows that node, without switching it on.
+    view.mouseDown(lfoHandle, {});
+    const bool f2Shown = dwells(detail::nodeTabRect(kOps + 1).center(), [&] { return model.ui.selectedNode == kOps + 1; });
+    const bool eShown = dwells(detail::nodeTabRect(4).center(), [&] { return model.ui.selectedNode == 4; });
+    view.mouseUp(detail::nodeTabRect(4).center(), {});
+    check(f2Shown && eShown && model.value(paramIndex(1, FilterParam::Enabled)) == 0.0 &&
+              model.value(paramIndex(4, OpParam::Enabled)) == 0.0 && slotTarget(model.value(slotTargetIndex(0, 0))) < 0,
+          "a handle held over a node's tab shows that node after half a second, leaving it switched off");
+    model.ui.selectedNode = 0;
+    view.poll();
 
     // Carried over another view's tab and back, it still lands on the operator's knob.
     view.mouseDown(name, {});
     view.mouseMove(tab(RoutingView::Matrix), {});
+    now += 0.55;
+    view.poll();
     const bool matrixShot = renderer.save(view, dir / "35t-op-name-held-over-tab.png");
+    const bool overMatrix = model.ui.view == RoutingView::Matrix;
     view.mouseMove(tab(RoutingView::Graph), {});
+    now += 0.55;
+    view.poll();
     view.mouseUp(kOpPhaseKnob, {});
-    check(matrixShot && slotTarget(model.value(slotTargetIndex(kOpSource, 0))) == paramIndex(0, OpParam::Phase),
+    check(matrixShot && overMatrix &&
+              slotTarget(model.value(slotTargetIndex(kOpSource, 0))) == paramIndex(0, OpParam::Phase),
           "a handle carried over the tabs and back still lands on a knob");
 }
 

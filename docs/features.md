@@ -1801,7 +1801,11 @@ one may have changed since it last did.
     the wheel over them (off the depth bars, which the wheel turns), by dragging with the middle button held, or by
     the bar. A click anywhere else closes it, but not
     on a source's handle, so a handle can be dragged onto one of its rows. A source's handle held over a view's tab
-    (ROUTING, MATRIX, FX, SEQ or MODS) shows that view, so it can be carried to what is there. Held over a pill, it opens
+    (ROUTING, MATRIX, FX, SEQ or MODS) for half a second shows that view, so it can be carried to what is there; held
+    as long over a node's tab atop the inspector, a node in the routing graph (or its edge), or a node's name in the
+    matrix (a row's or a column's), it shows that node in the inspector, as it is, switching nothing on. Passed over them, a moment on
+    each, it shows nothing: the half second starts again on each tab or node, and the poll shows it while the handle
+    stays still. Held over a pill, it opens
     its list too; let go of on a row, the source becomes that modulation's aux (see below), and anywhere else the
     list closes again. The list closes with its pill, when the modulations come down to what fits. While every
     modulation the pill holds is bypassed or its source switched off, the pill is hollow.

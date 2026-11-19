@@ -580,8 +580,9 @@ Every source has a colored **handle** (on its card, beside each macro, over each
 Velocity displays, and an operator's letter at the top of its page). Drag it onto a knob, a wire label, a matrix cell,
 a stepper or the Ratio readout. A new modulation starts at +30 %.
 
-While you drag a handle, hold it over a view tab (ROUTING, MATRIX, FX, SEQ or MODS) to show that view, then drop it
-on a control there.
+While you drag a handle, hold it over a view tab (ROUTING, MATRIX, FX, SEQ or MODS) for half a second to show that
+view, then drop it on a control there. Hold it over a node in ROUTING, or over a node's name in MATRIX, for half a
+second, or over its tab at the top of the inspector, to show that node's page in the inspector. Passing over a tab or a node on the way shows nothing.
 
 The target then shows:
 
@@ -1577,7 +1578,8 @@ the main CPU costs.
 | Alt+drag a depth handle | Set the aux depth |
 | Double-click a depth handle | Remove the modulation |
 | Drop a handle on a depth handle | Make that source the modulation's aux |
-| Hold a dragged handle over a view tab | Show that view |
+| Hold a dragged handle over a view tab for half a second | Show that view |
+| Hold a dragged handle over a node, its tab or its name in the matrix for half a second | Show that node in the inspector |
 | Drag an operator's letter (its page's title) | Assign the operator's output as modulation |
 
 ### Shape editors

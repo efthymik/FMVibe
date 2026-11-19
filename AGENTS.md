@@ -515,8 +515,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - an operator picked as a source from the MODS tab's source menu, given a target, bipolar to begin with, and its
     row's switch making it unipolar, undoably;
   - an operator's letter on its page lit under the mouse (read off the rendered pixels) and dragged onto a knob
-    modulating it, undoably; and its handle and an LFO's held over a view's tab showing that view, let go of there
-    modulating nothing, and carried back still landing on a knob;
+    modulating it, undoably; and its handle and an LFO's held over a view's tab half a second showing that view (not
+    before, and passed over the tabs showing none), let go of there modulating nothing, held as long over a node in
+    the graph, an operator's and a filter's name in the matrix (a row's and a column's) and a node's tab atop the
+    inspector showing that node in the inspector, still off (passed over one, not), and carried back still landing on a knob;
   - a MODS row's depth bar ticking where its modulation is now: an LFO's under a playing note (none with no note),
     a macro's from its knob (read off the rendered pixels);
   - a node switched on where another one shown sits coming back clear of it, undoably, and one whose place is free
