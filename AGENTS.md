@@ -3,7 +3,7 @@
 Notes for anyone (human or agent) working on FMVibe, a six-operator FM synthesizer as a CLAP and a VST3 instrument
 plugin for Windows. The README introduces the plugin and says how to build and install it. What the plugin does and how
 its editor works, in full, is in [docs/features.md](docs/features.md): read the parts you need before changing a
-feature.
+feature. How to use it, for the plugin's users, is in the user manual, [docs/manual.md](docs/manual.md).
 
 ## Ground rules
 
@@ -18,8 +18,10 @@ feature.
 - Both plugins sit on one core, `PluginCore` (`src/plugincore.cpp`): the params, the state, the editor's
   `Controller`, presets and the editor window. What one format does goes in its own file (`src/plugin.cpp` for CLAP,
   `src/vst3plugin.cpp` for VST3), and what both do in the core, which tells each host through its `host...()` hooks.
-- When a feature changes, update [docs/features.md](docs/features.md); keep `README.md` to its short
-  description and the build and install instructions.
+- When a feature changes, update [docs/features.md](docs/features.md), and the user manual,
+  [docs/manual.md](docs/manual.md), where it says how to use what changed: the manual is for the plugin's users, so
+  it says what a control does and how to work it, not how the engine does it, in short, plain sentences. Keep
+  `README.md` to its short description and the build and install instructions.
 - Don't start Bitwig or another host yourself: the plugin is tried in the host by hand.
 - The editor draws through `Canvas`, which has three backends: Direct2D (`src/gui/canvas.cpp`), the browser
   demo's 2D context (`src/gui/canvas_web.cpp` with `web/site/canvas2d.js`) and Cairo for the Linux development
@@ -39,7 +41,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
 
 ## Testing
 
-`ctest` runs four programs, four at a time (the test presets' and `build.sh`'s jobs):
+`ctest` runs five programs, four at a time (the test presets' and `build.sh`'s jobs):
 
 - **Smoke test** (`tests/smoke_host.cpp`): a small headless host. (It and the VST3 test set `FMVIBE_SETTINGS_DIR`,
   which `src/usersettings.cpp` reads in place of the roaming app data, so their editor resizes don't land in your
@@ -887,6 +889,13 @@ the plain CMake commands and installing into a host are in the [README](README.m
     (beginEdit, performEdit, endEdit, and an older value the host hands back right after not taken), a state with
     the modulation panel collapsed asking the host for a shorter window, its window gone once it is removed, and
     opening again after.
+- **User manual** (`tools/manual.py`, `cmake/manual.cmake`): turns `docs/manual.md` into the one self-contained
+  HTML file the release ships, `FMVibe-Manual.html` in the build folder (its styles inline, the screenshots as data
+  URIs, system fonts, so it opens offline), and fails on a link to a heading that isn't there (the manual's links
+  use GitHub's heading ids), an image that isn't there, a link to a file, which the page can't carry, or Markdown
+  it couldn't convert. It reads only what the manual uses: headings, paragraphs, lists nested by two spaces, tables,
+  fenced blocks, images, links, bold, italics and code; something else the manual takes up needs a line there. It
+  needs Python 3 and nothing else, and without Python the test is left out (CMake says so).
 
 More checks:
 
@@ -932,10 +941,11 @@ built there, `./build.sh` builds: the engine and the editor (`fmvibe-core`, draw
 `src/gui/canvas_cairo.cpp`), the audio quality test, the UI snapshots and the preset tool (`cmake/linux.cmake`, which
 `CMakeLists.txt` takes in on any system but Windows). It needs CMake, Ninja, a C++20 compiler (GCC 13 or Clang 18),
 pkg-config, git and Cairo's headers (`libcairo2-dev`), and fetches the CLAP SDK with a git clone of the tag
-`CMakeLists.txt` pins, since the cloud sessions' proxy refuses GitHub's archive downloads.
+`CMakeLists.txt` pins, since the cloud sessions' proxy refuses GitHub's archive downloads. The manual's check takes
+Python 3 too, where there is one.
 
 ```bash
-./build.sh                  # build/linux: build, then ctest (quality, ui); about a minute from scratch
+./build.sh                  # build/linux: build, then ctest (quality, ui, manual); about a minute from scratch
 ./build.sh --skip-tests     # build only
 ./build.sh --debug          # build/linux-debug
 ./build.sh --shots 2        # render the snapshots only, at 2x, into build/linux/ui-shots
@@ -1040,10 +1050,12 @@ A version tag publishes a release. `.github/workflows/release.yml` builds the pl
 2026) with `build.ps1 -Validate`, so every test and both validators have to pass. It packs each format into a zip
 of its own: `FMVibe.clap`, `LICENSE` and the CLAP SDK's license (`LICENSE-CLAP`) into
 `FMVibe-<tag>-windows-x64-clap.zip`, and the `FMVibe.vst3` folder, `LICENSE` and the VST3 SDK's license
-(`LICENSE-VST3`) into `FMVibe-<tag>-windows-x64-vst3.zip`. It then creates a GitHub release for the tag with both
+(`LICENSE-VST3`) into `FMVibe-<tag>-windows-x64-vst3.zip`, each with the user manual, `FMVibe-Manual.html`
+(`tools/manual.py`, from `docs/manual.md`). It then creates a GitHub release for the tag with both
 zips and notes generated from the commits since the previous tag. Meanwhile it builds the
 browser demo on Linux, with the Emscripten version `build-web.ps1` pins, and publishes it on GitHub Pages
-(`https://pcdlin.github.io/FMVibe/`). Neither goes out unless both build.
+(`https://pcdlin.github.io/FMVibe/`), with the manual beside it as `manual.html`, which the README links to: the
+manual online is the released version's, as the download is. Neither goes out unless both build.
 
 `.\release.ps1` does all of it: it needs `main`, a clean working tree, `main` level with origin and a free tag. It
 raises the minor version in `project()` at the top of `CMakeLists.txt` (`-Version 1.0` picks another), runs
@@ -1153,6 +1165,7 @@ breakpoints in `src/` then hit.
 | `tools/uishot.cpp` | Offscreen editor renderer and interaction checks |
 | `tools/uihost.cpp` | `fmvibe-uihost`: a small CLAP host with a window and audio, for trying the editor by hand |
 | `tools/bench.cpp` | `fmvibe-bench`: what a build of the CLAP plugin costs (`time`) and what it plays (`render`), to compare builds by |
+| `tools/manual.py`, `cmake/manual.cmake` | The user manual (`docs/manual.md`) as one self-contained HTML file, for the zips and GitHub Pages, and the `manual` test that checks it |
 | `tools/bench.ps1` | Builds commits (or the working tree) and compares them with `fmvibe-bench`: bit for bit, then CPU, round-robin |
 | `build.ps1` | One-shot configure/build/test/validate/install |
 | `build.sh`, `cmake/linux.cmake` | The Linux development build: the engine, the editor over Cairo, the quality test and the UI snapshots (see [Linux development build](#linux-development-build)) |
