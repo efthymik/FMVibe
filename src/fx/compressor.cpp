@@ -50,6 +50,19 @@ bool Compressor::run(const Context &ctx, float *const *io, uint32_t n, const Met
     // Below the knee the curve leaves the level as it is (see compressorCurve()): compared as a level, it takes no
     // logarithm.
     const double quiet = dbToGain(threshold - 0.5 * std::max(knee, 0.0));
+    // Detector HP: a high-pass of 12 dB an octave on what the detector hears, so the bass doesn't pull the rest down.
+    const double hpHz = utilityMonoBassHz(ctx.at(FxParam::CompDetectorHp));
+    BiquadCoefs hp{};
+    if (hpHz > 0.0) {
+        const Coefs c = biquad(BiquadType::HighPass, std::min(hpHz, 0.45 * ctx.sampleRate), ctx.sampleRate);
+        hp = {c.b0, c.b1, c.b2, c.a1, c.a2};
+    }
+    detectorCoefs.begin(hp, n, ctx.rampShortest);
+    const BiquadCoefs &rest = detectorCoefs.now;
+    const bool filtering = detectorCoefs.moving || rest.b0 != 1.0 || rest.b1 != 0.0 || rest.b2 != 0.0 ||
+                           rest.a1 != 0.0 || rest.a2 != 0.0;
+    if (!filtering)
+        detector = {}; // resting at Off, its states run out to nothing: it starts clean
     double most = 0.0;
     // The reduction as a gain, worked out again only when it moves: below the threshold it rests at 0 dB.
     double gainOf = std::numeric_limits<double>::quiet_NaN(), reductionGain = 1.0;
@@ -58,7 +71,14 @@ bool Compressor::run(const Context &ctx, float *const *io, uint32_t n, const Met
         makeup += makeupStep;
         mix += mixStep;
         // Both sides follow the louder one, so the stereo image stays put.
-        const double peak = std::max(std::abs(io[0][s]), std::abs(io[1][s]));
+        double peak = 0.0;
+        if (filtering) {
+            detectorCoefs.next();
+            peak = std::max(std::abs(detector[0].process(io[0][s], detectorCoefs.now)),
+                            std::abs(detector[1].process(io[1][s], detectorCoefs.now)));
+        } else {
+            peak = std::max(std::abs(io[0][s]), std::abs(io[1][s]));
+        }
         moving = followReduction(reduction, peak, threshold, ratio, knee, attack, release, quiet);
         const double now = reduction;
         most = std::min(most, now);
@@ -72,6 +92,7 @@ bool Compressor::run(const Context &ctx, float *const *io, uint32_t n, const Met
             io[ch][s] = static_cast<float>(x + (x * gain - x) * mix);
         }
     }
+    detectorCoefs.end();
     meters.reduction = {static_cast<float>(-most), 0.0f, 0.0f};
     return moving;
 }

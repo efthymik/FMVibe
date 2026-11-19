@@ -15,7 +15,9 @@ double phaserResponse(double hz, double cornerHz, int stages, double feedback, d
 namespace fx {
 
 // The phaser: first-order all-passes in a row, per side, their corners swept by the LFO; the right side's
-// LFO runs a quarter cycle ahead. Those past Stages wait cleared, so more start clean.
+// LFO runs a quarter cycle ahead. Those past Stages wait cleared, so more start clean. Spread spaces the stages'
+// corners evenly in octaves about where the sweep puts them, up to kPhaserSpreadOctaves from the first to the last, as
+// an analog phaser's parts spread them: notches unevenly apart, a less regular, more vocal sweep.
 struct Phaser {
     std::array<std::array<double, kMaxPhaserStages>, 2> stages{};
     std::array<double, 2> last{}; // the last stage's output, fed back to the first
@@ -31,6 +33,10 @@ struct Phaser {
     // first chunk, which takes them as they are.
     double centerOctaves = std::numeric_limits<double>::quiet_NaN();
     double depth = 0.0;
+    // Spread, ramped as a gain is; while it is above 0, each stage's coefficient of its own (its corner the sweep's,
+    // moved by its share of the spread), worked out and moved along as the shared one is.
+    double stageSpread = 0.0;
+    std::array<std::array<double, kMaxPhaserStages>, 2> stageCoef{};
 
     void start(const Context &ctx);
     // Returns the loudest sample it put out or took in, so its feedback keeps it running.

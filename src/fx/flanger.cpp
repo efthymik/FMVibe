@@ -32,14 +32,20 @@ constexpr double kMaxFlangerDelay = 0.032; // the longest center delay at full d
 void Flanger::prepare(double sampleRate) {
     for (ZeroBuffer &line : lines)
         line.assign(static_cast<size_t>(std::ceil(kMaxFlangerDelay * sampleRate)) + 4, 0.0f);
+    for (ZeroBuffer &line : dryLines)
+        line.assign(static_cast<size_t>(std::ceil(kMaxFlangerDelay * sampleRate)) + 4, 0.0f);
 }
 
 void Flanger::start(const Context &ctx) {
     for (ZeroBuffer &line : lines)
         line.zero(ran);
+    for (ZeroBuffer &line : dryLines)
+        line.zero(ran);
     ran = 0;
     write = 0;
     last = {};
+    dryDelay = 0.0; // taken as it is, below
+    throughZero = ctx.at(FxParam::FlangerThroughZero) >= 0.5 ? 1.0 : 0.0;
     phase = 0.0;
     delayKnown = false;
     mix = sweepWet(ctx.at(FxParam::FlangerMix));
@@ -66,6 +72,14 @@ double Flanger::run(const Context &ctx, float *const *io, uint32_t n) {
     const double polarityStep = 2.0 / (kPolaritySeconds * sampleRate);
     const double spread = ctx.at(FxParam::FlangerStereo) >= 0.5 ? 0.25 : 0.0; // the right side's head start
     const int size = static_cast<int>(lines[0].size());
+    // Through zero: the dry sound as late as the sweep's middle, gliding there like a tape's (and, starting, there
+    // at once), and how far it has gone over to it.
+    const double dryTarget = std::clamp(middleSamples, 3.0, size - 3.0);
+    if (dryDelay <= 0.0)
+        dryDelay = dryTarget;
+    const double dryGlide = 1.0 - std::exp(-1.0 / (0.02 * sampleRate));
+    const double zeroTo = ctx.at(FxParam::FlangerThroughZero) >= 0.5 ? 1.0 : 0.0;
+    const double zeroStep = 1.0 / (kThroughZeroFadeSeconds * sampleRate);
     // The delay in samples where the sweep is at `phase`, on each side: worked out every kSweepStep samples, as the
     // phaser's coefficient is (see Phaser::run()). 3 samples at the least, for its cubic.
     auto delayAt = [&](double at, int ch) {
@@ -97,16 +111,24 @@ double Flanger::run(const Context &ctx, float *const *io, uint32_t n) {
         polarity = moveToward(polarity, polarityTo, polarityStep);
         phase += step;
         phase -= std::floor(phase);
+        throughZero = moveToward(throughZero, zeroTo, zeroStep);
+        const bool zeroing = throughZero > 0.0;
+        if (zeroing)
+            dryDelay += (dryTarget - dryDelay) * dryGlide;
+        // The dry sound's share as it goes over to the delayed one, along a raised cosine.
+        const double late = zeroing ? 0.5 - 0.5 * std::cos(std::numbers::pi * throughZero) : 0.0;
         for (int ch = 0; ch < 2; ++ch) {
             delay[ch] = stepLeft == 0 ? delayTo[ch] : delay[ch] + delayStep[ch];
             // On a cubic: through a straight line between two samples, what goes round would lose its top and come
             // back grainy as the sweep moves.
             const double delayed = readCubic(lines[ch], write, delay[ch]);
-            const double x = io[ch][s];
-            lines[ch][write] = static_cast<float>(x + polarity * feedback * delayed);
+            const double in = io[ch][s];
+            dryLines[ch][write] = static_cast<float>(in); // always, so through zero starts with what came before
+            const double x = zeroing ? in + (readCubic(dryLines[ch], write, dryDelay) - in) * late : in;
+            lines[ch][write] = static_cast<float>(in + polarity * feedback * delayed);
             last[ch] = delayed;
             io[ch][s] = static_cast<float>(x + (polarity * delayed * gain - x) * mix);
-            peak = std::max({peak, std::abs(x), std::abs(delayed)});
+            peak = std::max({peak, std::abs(in), std::abs(delayed)});
         }
         write = write + 1 == size ? 0 : write + 1;
     }

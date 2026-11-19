@@ -531,6 +531,19 @@ void fxIcon(Canvas &c, Rect r, FxType type, Color color) {
             return y;
         });
         break;
+    case FxType::LoFi: { // a sine, faint, and the steps a few bits and a low rate make of it
+        for (int i = 0; i <= 24; ++i)
+            at(i / 24.0f, 0.75f * std::sin(2.0f * kPi * i / 24.0f));
+        stroke(color.alpha(0.35f));
+        std::vector<Point> steps;
+        for (int k = 0; k < 8; ++k) {
+            const float y = std::round(3.0f * std::sin(2.0f * kPi * (k + 0.5f) / 8.0f)) / 3.0f * 0.75f;
+            for (const float x : {k / 8.0f, (k + 1) / 8.0f})
+                steps.push_back({r.x + x * r.w, r.center().y - y * 0.5f * r.h});
+        }
+        c.polyline(steps.data(), steps.size(), color, 1.4f);
+        break;
+    }
     case FxType::Chorus: // three voices of a wave, each a little apart from the next, fainter
         for (int k = 2; k >= 0; --k) {
             for (int i = 0; i <= 24; ++i) {

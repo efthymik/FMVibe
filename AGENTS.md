@@ -395,8 +395,15 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the effects' latency, on an impulse through effects that run oversampled and leave the sound as it is (a filter
     and an amp at Mix 0): the input straight out beside a filter, the filter on and off, a split with an amp at 4x on
     one band and a filter on the other, two filters beside an amp at 8x, and nine filters in a row beside the input
-    (a pad of nine paths), each flat within 0.05 dB from 20 Hz to
+    (a pad of nine paths), and a shaper at 4x and at 8x beside the input, each flat within 0.05 dB from 20 Hz to
     18 kHz (the paths meeting in step) and as late as fxlag.h works out, and nothing oversampled on time;
+  - the effects' newer controls: the reverb's Low Cut and High Cut taking its tail's ends away and Diffusion at 0
+    leaving its first echoes spikier; the delay's Duck taking its echoes away under a loud sine and letting them back
+    after; the shaper's Tone leaving what its curve leaves straight alone and changing what it drives, its oversampling
+    changed under a sine ducking rather than clicking, and a hard-clipped C7 aliasing less at 4x and 8x than at 2x; the
+    compressor's detector high-pass keeping a loud bass from pulling a quiet treble down; the flanger through zero,
+    held at its sweep's middle and negative, cancelling noise to nothing; the phaser's Spread moving its notches; and
+    the Lo-Fi holding Bits' levels at Rate, Smooth taking the steps' edges off and Mix at 0 dry;
   - the CPU cost of each factor.
 - **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`, in Midnight,
   the theme its pixel checks were written in, but for the checks and examples that pick another (the README's
@@ -687,7 +694,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - a filter's and the filter effect's responses moving with the note their key tracking follows, and the filter
     effect's with its Mix (read off the rendered pixels);
   - the disperser's and widener's displays following their params as modulation takes them (read off the rendered
-    pixels); and the disperser's Key Track and Stretch knobs turning, each one undo step, Stretch in whole steps, its
+    pixels); the shaper's oversampling picked in its title's menu (2x to 8x, the one in force checked, undoably), its
+    Tone, the delay's Duck, the compressor's SC HP, the reverb's Low Cut, High Cut and Diffusion (its third row) and the
+    phaser's Spread turning, the flanger's TZF switching, and the Lo-Fi added from the list of effects, its knobs
+    turning and its display following Bits (read off the rendered pixels); and the disperser's Key Track and Stretch
+    knobs turning, each one undo step, Stretch in whole steps, its
     display's peak moving with the note Key Track follows and its copies drawn stretched (read off the rendered
     pixels);
   - switching effects with their cards' power switches and icons (a switched-off one's staying grey under the mouse,
@@ -1103,7 +1114,7 @@ breakpoints in `src/` then hit.
 | `src/filter.h` | State-variable and comb filters, plus their response curves for the editor |
 | `src/clipcurve.h` | The shapers' curves, anti-aliasing and running, shared by the shaper effect and the voices' shapers |
 | `src/effects.h`, `src/effects.cpp` | The effects on the voices' sum: `Effects`, its slots (each holding every effect type's state, so it switches type without allocating, and running its type through a static dispatch in `runSlot()`) and the effects graph that runs them (wires, splits, sums, the paths kept in step) |
-| `src/fx/` | Each effect type a slot runs, in a module of its own (`shaper`, `delay`, `eq`, `parameq`, `filterfx`, `compressor`, `multidyn`, `reverb`, `phaser`, `flanger`, `chorus`, `shifter`, `disperser`, `widener`, `utility`, `ampfx`): its state, its `prepare()`, `start()` and `run()`, and the responses the editor draws of it; `common.h` what they share (the `fx::Context` a slot hands its effect, the `fx::Meters` it writes, biquads and crossovers, ramps, delay line reads) |
+| `src/fx/` | Each effect type a slot runs, in a module of its own (`shaper`, `delay`, `eq`, `parameq`, `filterfx`, `compressor`, `multidyn`, `reverb`, `phaser`, `flanger`, `chorus`, `shifter`, `disperser`, `widener`, `utility`, `ampfx`, `lofi`): its state, its `prepare()`, `start()` and `run()`, and the responses the editor draws of it; `common.h` what they share (the `fx::Context` a slot hands its effect, the `fx::Meters` it writes, biquads and crossovers, ramps, delay line reads) |
 | `src/amp.h`, `src/amp.cpp` | The Amp effect's sound: its models (preamp stages, tone stack, power amp), cabinets and mics, its oversampling, and the responses the editor draws (`src/fx/ampfx.h` runs it in a slot) |
 | `src/analyzer.cpp` | The spectrum analyzer (FFT) behind the Param EQ's, filter effect's, phase disperser's and voice filters' displays |
 | `src/envelope.h` | AHDSR used by operators and mod envelopes |
@@ -1245,7 +1256,7 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 1,317 of the 31,618 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 1,317 of the 32,034 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 896 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain's retired order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'

@@ -178,6 +178,9 @@ void Reverb::start(const Context &ctx) {
     dry = delayDryLevel(ctx.at(FxParam::ReverbMix));
     wet = delayWetLevel(ctx.at(FxParam::ReverbMix));
     width = ctx.at(FxParam::ReverbWidth);
+    diffusion = ctx.at(FxParam::ReverbDiffusion);
+    cuts = {};
+    cutCoefs = {};
 }
 
 double Reverb::run(const Context &ctx, const ReverbTables &tables, float *const *io, uint32_t n) {
@@ -201,6 +204,28 @@ double Reverb::run(const Context &ctx, const ReverbTables &tables, float *const 
     const double dryStep = rampStep(dry, delayDryLevel(mix), n, ctx.rampShortest);
     const double wetStep = rampStep(wet, delayWetLevel(mix), n, ctx.rampShortest);
     const double widthStep = rampStep(width, ctx.at(FxParam::ReverbWidth), n, ctx.rampShortest);
+    const double diffusionStep = rampStep(diffusion, ctx.at(FxParam::ReverbDiffusion), n, ctx.rampShortest);
+    // Low Cut and High Cut, a high-pass and a low-pass of 12 dB an octave on what goes in (into the pre-delay, so a
+    // room's early reflections take them too); at their ends, a filter that lets everything through.
+    const double lowCut = utilityMonoBassHz(ctx.at(FxParam::ReverbLowCut));
+    const double highCutNorm = ctx.at(FxParam::ReverbHighCut);
+    auto cutCoefsOf = [&](BiquadType type, bool on, double hz) {
+        if (!on)
+            return BiquadCoefs{};
+        const Coefs c = biquad(type, std::min(hz, 0.45 * sampleRate), sampleRate);
+        return BiquadCoefs{c.b0, c.b1, c.b2, c.a1, c.a2};
+    };
+    cutCoefs[0].begin(cutCoefsOf(BiquadType::HighPass, lowCut > 0.0, lowCut), n, ctx.rampShortest);
+    cutCoefs[1].begin(cutCoefsOf(BiquadType::LowPass, highCutNorm < 1.0, cutoffFromNorm(highCutNorm)), n,
+                      ctx.rampShortest);
+    const BiquadCoefs through{};
+    auto isThrough = [&](const BiquadRamp &r) {
+        return !r.moving && r.now.b0 == through.b0 && r.now.b1 == through.b1 && r.now.b2 == through.b2 &&
+               r.now.a1 == through.a1 && r.now.a2 == through.a2;
+    };
+    const bool cutting = !isThrough(cutCoefs[0]) || !isThrough(cutCoefs[1]);
+    if (!cutting)
+        cuts = {}; // at rest letting everything through, their states run out to nothing: they start clean
     constexpr double kInGain = 0.35355339059327373; // 1 / sqrt(8): each side goes into half the lines
     constexpr double kOutGain = 0.22; // about 1 / sqrt(16), a little under, for the level a mono sound had before
     // A shimmer feeds its tail back into its lines, band-passed and pitch-shifted, so each time round part of it
@@ -289,10 +314,18 @@ double Reverb::run(const Context &ctx, const ReverbTables &tables, float *const 
         width += widthStep;
         size += (sizeTarget - size) * glide;
         preLength += (preTarget - preLength) * glide;
+        diffusion += diffusionStep;
         const double x[2] = {io[0][s], io[1][s]};
         double in[2], early[2] = {0.0, 0.0};
+        double going[2] = {x[0], x[1]}; // what goes in, through the cuts
+        if (cutting) {
+            cutCoefs[0].next();
+            cutCoefs[1].next();
+            for (int c = 0; c < 2; ++c)
+                going[c] = cuts[c][1].process(cuts[c][0].process(x[c], cutCoefs[0].now), cutCoefs[1].now);
+        }
         for (int c = 0; c < 2; ++c) {
-            preDelay[c][preWrite] = static_cast<float>(x[c]);
+            preDelay[c][preWrite] = static_cast<float>(going[c]);
             in[c] = readBehind(preDelay[c], preWrite, preLength);
         }
         if (style.early > 0.0) {
@@ -333,7 +366,7 @@ double Reverb::run(const Context &ctx, const ReverbTables &tables, float *const 
                                         : diffuserWrite - tables.diffuserLengths[c][d] + diffuserSize;
         for (int c = 0; c < 2; ++c) {
             for (int d = 0; d < style.diffusers; ++d) {
-                const double g = kDiffuserGains[d];
+                const double g = kDiffuserGains[d] * diffusion;
                 const double v = diffusers[c][d][diffuserTap[c][d]]; // a whole number of samples behind
                 const double w = in[c] + g * v;
                 diffusers[c][d][diffuserWrite] = static_cast<float>(w);
@@ -393,6 +426,8 @@ double Reverb::run(const Context &ctx, const ReverbTables &tables, float *const 
         io[1][s] = static_cast<float>(x[1] * dry + (middle - side) * wet);
         peak = std::max({peak, std::abs(x[0]), std::abs(x[1]), std::abs(tail[0]), std::abs(tail[1])});
     }
+    cutCoefs[0].end();
+    cutCoefs[1].end();
     // What goes in now comes out after the pre-delay, and in a room its last early reflection later still: until
     // then, the reverb may be silent with more to come.
     reach = style.early > 0.0

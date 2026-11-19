@@ -43,6 +43,8 @@ set(FMVIBE_ENGINE_SOURCES
     src/fx/filterfx.h
     src/fx/flanger.cpp
     src/fx/flanger.h
+    src/fx/lofi.cpp
+    src/fx/lofi.h
     src/fx/multidyn.cpp
     src/fx/multidyn.h
     src/fx/parameq.cpp

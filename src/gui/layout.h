@@ -798,7 +798,7 @@ inline Rect fxMenuButton() {
 // The effects the list offers, in its order: every type but None and the retired three-band compressor, whose place
 // the three-band dynamics takes. They go by kind in six groups (kFxMenuGroups), each under its name.
 constexpr FxType kFxOffered[] = {
-    FxType::Shaper,     FxType::Amp,                             // drive
+    FxType::Shaper,     FxType::Amp,       FxType::LoFi,         // drive
     FxType::Eq,         FxType::ParamEq,   FxType::Filter,       // EQ and filter
     FxType::Compressor, FxType::MultiDyn,                        // dynamics
     FxType::Delay,      FxType::Reverb,                          // space
@@ -815,7 +815,7 @@ constexpr int fxOfferedPlace(FxType type) {
 }
 // How many effects each group holds, in the list's order. The first kFxMenuLeftGroups go down its left column, the
 // others down its right one.
-constexpr int kFxMenuGroups[] = {2, 3, 2, 2, 4, 3};
+constexpr int kFxMenuGroups[] = {3, 3, 2, 2, 4, 3};
 constexpr int kFxMenuGroupCount = static_cast<int>(std::size(kFxMenuGroups));
 constexpr int kFxMenuLeftGroups = 3;
 constexpr int fxMenuGroupsTotal() {
@@ -903,6 +903,8 @@ inline Rect clipSymButton(Rect card) {
 inline Rect clipLinkButton(Rect card, bool custom) {
     return {card.center().x + (custom ? 3.0f : -22.0f), card.y + 194.0f, 44.0f, 20.0f};
 }
+// The reverb's three rows of knobs, down its card from its top.
+constexpr float kReverbKnobsY[] = {154.0f, 210.0f, 266.0f};
 inline Rect reverbTypeButton(Rect card) {
     return {card.x + 14.0f, card.y + 44.0f, card.w - 28.0f, 22.0f};
 }
@@ -982,8 +984,10 @@ inline Rect fxDisplayIn(Rect card, FxType type) {
     // polarity and the chorus's voices go under their displays.
     const bool switchesUnder = type == FxType::Phaser || type == FxType::Flanger || type == FxType::Chorus ||
                                type == FxType::Filter || type == FxType::Delay;
-    // The shaper's LINK goes between its display and its knobs.
-    const float bottom = switchesUnder               ? 158.0f
+    // The shaper's LINK goes between its display and its knobs; the reverb's three rows of knobs (kReverbKnobsY)
+    // take more of it.
+    const float bottom = type == FxType::Reverb      ? 126.0f
+                         : switchesUnder             ? 158.0f
                          : twoRows                   ? 180.0f
                          : type == FxType::Shaper    ? 190.0f
                                                      : 198.0f;

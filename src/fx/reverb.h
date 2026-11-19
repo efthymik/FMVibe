@@ -88,6 +88,11 @@ struct Reverb {
     double wet = 0.0;
     double width = 1.0;
     double shimmer = 0.0;   // the gain the shifted tail goes back in at, ramped
+    double diffusion = 1.0; // the share of the input all-passes' gains it takes, ramped
+    // Low Cut and High Cut on what goes in, a side each, ramping from letting everything through (as they rest at
+    // their ends, where they don't run) to their cuts, so switching them on doesn't jump.
+    std::array<std::array<Biquad, 2>, 2> cuts{}; // per side: the low cut, then the high cut
+    std::array<BiquadRamp, 2> cutCoefs{};
     // Each line's gain and its shelf's (see run()), and the size, share of the tail fed back shifted and
     // decay they were worked out for: NaN until the first chunk.
     std::array<double, kReverbLines> gains{}, highs{};

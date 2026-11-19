@@ -14,7 +14,15 @@ inline double delayWetLevel(double mix) {
 
 namespace fx {
 
-// The delay: a line a side, its echoes through tone filters, fed back.
+// How Duck follows what goes in: up over kDuckAttack, down over kDuckRelease (seconds), and the level (-12 dBFS) at
+// which, Duck full up, the echoes are heard no more.
+constexpr double kDuckAttack = 0.005;
+constexpr double kDuckRelease = 0.25;
+constexpr double kDuckFull = 0.25;
+
+// The delay: a line a side, its echoes through tone filters, fed back. Duck turns the echoes heard down while what
+// goes in is loud, by as far as it says times how loud that is against kDuckFull; the echoes going round stay as they
+// are, so they come back up as the playing stops.
 struct Delay {
     std::array<ZeroBuffer, 2> lines;
     int write = 0;
@@ -26,6 +34,8 @@ struct Delay {
     double dry = 1.0;
     double wet = 0.0;
     double width = 1.0;
+    double duck = 0.0;     // Duck, ramped
+    double follower = 0.0; // how loud what goes in is, for Duck: up at once, down over kDuckRelease
 
     // Allocates the lines. Main thread, while the plugin is inactive.
     void prepare(double sampleRate);
