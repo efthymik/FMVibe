@@ -157,6 +157,10 @@ public:
     // an undo step. Whether it took the key: the arrows, Delete, Copy and Cut only while notes are picked, Paste only
     // with notes kept, so the host keeps them otherwise.
     bool seqKey(Key key, bool shift);
+    // What the editor tells time by, in seconds on a steady clock (how long a source's handle is held over a tab or a
+    // node): a test may hand it a clock of its own.
+    using Clock = double (*)();
+    void setClock(Clock clock) { clock_ = clock; }
 
 private:
     using Kind = WidgetKind;
@@ -376,9 +380,19 @@ private:
     // While an LFO's or envelope's handle, or a card of the row, is dragged near either end of a row of cards, the
     // row scrolls that way.
     bool edgeScroll();
+    // A source's handle held over a view's tab, or over a node's tab in the inspector or the node or its name in the
+    // routing graph or the matrix, for
+    // kDwellSeconds shows that view, or that node in the inspector: what dwellTarget() finds under it (a node's edge as
+    // its node), and once it has stayed there long enough, dwellStep() shows it, once, whether the mouse moves or a
+    // poll comes. Whether it showed something.
+    static constexpr double kDwellSeconds = 0.5;
+    std::optional<Widget> dwellTarget(const std::optional<Widget> &at) const;
+    bool dwellStep();
     void flash(std::string message) override;
     // The MIDI note under the keyboard's first key.
     int keyboardBase() const;
+    // The MIDI velocity a key (its rect) struck at `p` plays at: 1 at its top, 127 at its bottom.
+    static int keyVelocity(const Rect &key, Point p);
     // Modulation sources. The places that hold one, in the order they show (kept while a scope goes on); shown,
     // with the card being dragged already moved to where it would land.
     std::vector<int> sources() const;
@@ -807,6 +821,15 @@ private:
                   SeqPanel::kConfirmClear < PresetBrowser::kConfirmCategoryRemove);
     std::string flash_;
     int flashTicks_ = 0;
+    // What a source's handle is held over (see dwellTarget()), since when, and whether that showed already.
+    struct Dwell {
+        std::optional<Widget> over;
+        double since = 0.0;
+        bool done = false;
+    };
+    Dwell dwell_;
+    Clock clock_ = steadySeconds;
+    static double steadySeconds();
     std::optional<Typing> typing_;
     int caretTicks_ = 0; // polls since the last key, for the caret's blink
     mutable Derived derived_; // see DerivedScope

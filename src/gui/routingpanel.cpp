@@ -973,12 +973,29 @@ void RoutingPanel::paintMatrixLabels(Canvas &c) {
         const Rect cell = gridCell(row, 0);
         c.text({cell.x - 32.0f, cell.y, 28.0f, cell.h}, kNodeNames[row], kTextValue, nameColor(row), Align::Center, true);
     }
-    c.text({kLegendX, kRouting.y + 10.0f, kRouting.right() - 16.0f - kLegendX, 22.0f},
-           tr(Str::HintMatrix), kTextLabel, kFaint, Align::Right);
 
-    // Legend beside the grid.
-    const float width = kRouting.right() - 16.0f - kLegendX;
-    float y = kRouting.y + 72.0f;
+    // Legend beside the grid, its lines broken at their spaces to fit the width the cells leave it.
+    const float width = kLegendW;
+    constexpr float kLineH = 15.0f;
+    auto wrapped = [&](float x, float top, float room, std::string_view text, float size, Color color) {
+        int lines = 0;
+        while (!text.empty()) {
+            size_t end = text.size();
+            while (c.textWidth(text.substr(0, end), size) > room) {
+                const size_t space = text.substr(0, end).rfind(' ');
+                if (space == std::string_view::npos || space == 0)
+                    break; // a single word wider than the room stays whole
+                end = space;
+            }
+            c.text({x, top + static_cast<float>(lines) * kLineH, room, 20.0f}, text.substr(0, end), size, color, Align::Left);
+            text.remove_prefix(end);
+            while (!text.empty() && text.front() == ' ')
+                text.remove_prefix(1);
+            ++lines;
+        }
+        return lines;
+    };
+    float y = kRouting.y + 36.0f;
     c.text({kLegendX, y - 22.0f, width, 16.0f}, tr(Str::HeadingHowToRead), kTextLabel, kFaint, Align::Left, true);
     struct Entry {
         Color color;
@@ -1009,13 +1026,15 @@ void RoutingPanel::paintMatrixLabels(Canvas &c) {
             if (strips > 1)
                 c.popClip();
         }
-        c.text({kLegendX + 24.0f, y, width - 24.0f, 20.0f}, e.text, kTextBody, kDim, Align::Left);
-        y += 26.0f;
+        const int lines = wrapped(kLegendX + 24.0f, y, width - 24.0f, e.text, kTextBody, kDim);
+        y += 26.0f + static_cast<float>(lines - 1) * kLineH;
     }
-    y += 10.0f;
-    const Str notes[] = {Str::MatrixClick, Str::MatrixClickThen};
-    for (size_t i = 0; i < std::size(notes); ++i)
-        c.text({kLegendX, y + static_cast<float>(i) * 20.0f, width, 18.0f}, tr(notes[i]), kTextBody, kFaint, Align::Left);
+    y += 8.0f;
+    for (const Str note : {Str::MatrixClick, Str::MatrixClickThen})
+        y += static_cast<float>(wrapped(kLegendX, y, width, tr(note), kTextBody, kFaint)) * kLineH + 4.0f;
+    y += 8.0f;
+    for (const Str hint : {Str::HintMatrixRows, Str::HintMatrixDrag, Str::HintMatrixToggle})
+        y += static_cast<float>(wrapped(kLegendX, y, width, tr(hint), kTextLabel, kFaint)) * kLineH;
 }
 
 bool RoutingPanel::opHeard(int op) const {

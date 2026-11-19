@@ -3,7 +3,7 @@
 Notes for anyone (human or agent) working on FMVibe, a six-operator FM synthesizer as a CLAP and a VST3 instrument
 plugin for Windows. The README introduces the plugin and says how to build and install it. What the plugin does and how
 its editor works, in full, is in [docs/features.md](docs/features.md): read the parts you need before changing a
-feature.
+feature. How to use it, for the plugin's users, is in the user manual, [docs/manual.md](docs/manual.md).
 
 ## Ground rules
 
@@ -18,8 +18,10 @@ feature.
 - Both plugins sit on one core, `PluginCore` (`src/plugincore.cpp`): the params, the state, the editor's
   `Controller`, presets and the editor window. What one format does goes in its own file (`src/plugin.cpp` for CLAP,
   `src/vst3plugin.cpp` for VST3), and what both do in the core, which tells each host through its `host...()` hooks.
-- When a feature changes, update [docs/features.md](docs/features.md); keep `README.md` to its short
-  description and the build and install instructions.
+- When a feature changes, update [docs/features.md](docs/features.md), and the user manual,
+  [docs/manual.md](docs/manual.md), where it says how to use what changed: the manual is for the plugin's users, so
+  it says what a control does and how to work it, not how the engine does it, in short, plain sentences. Keep
+  `README.md` to its short description and the build and install instructions.
 - Don't start Bitwig or another host yourself: the plugin is tried in the host by hand.
 - The editor draws through `Canvas`, which has three backends: Direct2D (`src/gui/canvas.cpp`), the browser
   demo's 2D context (`src/gui/canvas_web.cpp` with `web/site/canvas2d.js`) and Cairo for the Linux development
@@ -39,7 +41,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
 
 ## Testing
 
-`ctest` runs four programs, four at a time (the test presets' and `build.sh`'s jobs):
+`ctest` runs five programs, four at a time (the test presets' and `build.sh`'s jobs):
 
 - **Smoke test** (`tests/smoke_host.cpp`): a small headless host. (It and the VST3 test set `FMVIBE_SETTINGS_DIR`,
   which `src/usersettings.cpp` reads in place of the roaming app data, so their editor resizes don't land in your
@@ -327,6 +329,13 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the DC blocker before the effects: a squeezed square coming out with no DC, a Ring route at unison going into
     a hard shaper as its octave alone (clipped evenly, no 4th harmonic), and the output exactly silent once the
     note has rung out, the effects resting;
+  - an operator's output as a source: one at 5 Hz swinging its target both ways, one at 12 kHz averaging away, unipolar
+    taking its target one way, silent or switched off moving nothing, and silent as an aux scaling its modulation to
+    nothing;
+  - filter FM, an operator on the Cutoff of a voice's filter and of the filter effect: sidebands from a modulator at
+    3 kHz (two whole cycles a control block), every filter type finite at full depth and resonance in both places and
+    a voice ending with its note, the aliasing at each oversampling factor, a slow operator moving a cutoff as far as an
+    LFO does, and the filter effect's FM taken over by a new note without a click;
   - a macro's knob modulated: along a chain of macros out of their numbers' order (the telemetry saying where the
     knobs stand), in a loop a state holds, steadily and alike each time, and per voice by velocity, a loud note's
     knob silencing it while a soft one played with it plays as it would alone;
@@ -522,6 +531,13 @@ the plain CMake commands and installing into a host are in the [README](README.m
     faint (read off the rendered pixels), and the depth handle hovered drawing the line from its source's handle
     (read off the rendered pixels);
   - the MODS tab's columns' names with no modulations (read off the rendered pixels);
+  - an operator picked as a source from the MODS tab's source menu, given a target, bipolar to begin with, and its
+    row's switch making it unipolar, undoably;
+  - an operator's letter on its page lit under the mouse (read off the rendered pixels) and dragged onto a knob
+    modulating it, undoably; and its handle and an LFO's held over a view's tab half a second showing that view (not
+    before, and passed over the tabs showing none), let go of there modulating nothing, held as long over a node in
+    the graph, an operator's and a filter's name in the matrix (a row's and a column's) and a node's tab atop the
+    inspector showing that node in the inspector, still off (passed over one, not), and carried back still landing on a knob;
   - a MODS row's depth bar ticking where its modulation is now: an LFO's under a playing note (none with no note),
     a macro's from its knob (read off the rendered pixels);
   - a node switched on where another one shown sits coming back clear of it, undoably, and one whose place is free
@@ -577,6 +593,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - a switched-off source's handle going faint, and an LFO's, an envelope's, a macro's and the note source's until
     they modulate something
     (read off the rendered pixels);
+  - the matrix's cells keeping their width-to-height ratio, the mouse finding a cell across its width and not in the
+    gap after it, and the cells and legend staying inside the panel (read off the rendered pixels);
   - the dot on a filter's and a shaper's tab while it sounds out, the output meter and its clip light, and the
     output scope beside it, empty with nothing captured and drawing a span at its peak (read off the rendered
     pixels), its height easing down to a quieter span, and its spans too small to draw painting nothing again;
@@ -717,7 +735,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     their displays faint until they modulate something (read off the rendered pixels), the mod wheel's
     handle (new modulation starting upward) and the pitch bend's (bipolar), each over its wheel and faint until it
     modulates something (read off the rendered pixels); with no note playing, a knob's dot showing where a macro
-    takes it (read off the rendered pixels); the octave shift's small buttons under the keys; a key the host holds easing up to lit over a few polls (read off the rendered pixels); collapsing the keyboard
+    takes it (read off the rendered pixels); the octave shift's small buttons under the keys; a key clicked playing at
+    velocity 1 at its top and 127 at its bottom (a black key along its own height), and a key slid onto as hard as
+    where the mouse enters it; a key the host holds easing up to lit over a few polls (read off the rendered pixels); collapsing the keyboard
     strip to its top row by its chevron or title, the wheels' handles staying in it and still mapping the wheels; and
     Bend's knob, in the header after Pitch, turning; the bend wheel dragged editing the Pitch Bend param in one
     gesture (the host following it), springing back to the middle and leaving nothing to undo;
@@ -896,6 +916,13 @@ the plain CMake commands and installing into a host are in the [README](README.m
     (beginEdit, performEdit, endEdit, and an older value the host hands back right after not taken), a state with
     the modulation panel collapsed asking the host for a shorter window, its window gone once it is removed, and
     opening again after.
+- **User manual** (`tools/manual.py`, `cmake/manual.cmake`): turns `docs/manual.md` into the one self-contained
+  HTML file the release ships, `FMVibe-Manual.html` in the build folder (its styles inline, the screenshots as data
+  URIs, system fonts, so it opens offline), and fails on a link to a heading that isn't there (the manual's links
+  use GitHub's heading ids), an image that isn't there, a link to a file, which the page can't carry, or Markdown
+  it couldn't convert. It reads only what the manual uses: headings, paragraphs, lists nested by two spaces, tables,
+  fenced blocks, images, links, bold, italics and code; something else the manual takes up needs a line there. It
+  needs Python 3 and nothing else, and without Python the test is left out (CMake says so).
 
 More checks:
 
@@ -941,10 +968,11 @@ built there, `./build.sh` builds: the engine and the editor (`fmvibe-core`, draw
 `src/gui/canvas_cairo.cpp`), the audio quality test, the UI snapshots and the preset tool (`cmake/linux.cmake`, which
 `CMakeLists.txt` takes in on any system but Windows). It needs CMake, Ninja, a C++20 compiler (GCC 13 or Clang 18),
 pkg-config, git and Cairo's headers (`libcairo2-dev`), and fetches the CLAP SDK with a git clone of the tag
-`CMakeLists.txt` pins, since the cloud sessions' proxy refuses GitHub's archive downloads.
+`CMakeLists.txt` pins, since the cloud sessions' proxy refuses GitHub's archive downloads. The manual's check takes
+Python 3 too, where there is one.
 
 ```bash
-./build.sh                  # build/linux: build, then ctest (quality, ui); about a minute from scratch
+./build.sh                  # build/linux: build, then ctest (quality, ui, manual); about a minute from scratch
 ./build.sh --skip-tests     # build only
 ./build.sh --debug          # build/linux-debug
 ./build.sh --shots 2        # render the snapshots only, at 2x, into build/linux/ui-shots
@@ -1027,7 +1055,8 @@ version pinned at its top. After that it loads Visual Studio's environment for C
 - Presets are the factory ones, held in memory. Load, Save and the preset folder show a message instead, since the
   demo has no files. The theme, hue, glow, handle size and line strength are kept in the browser's storage.
 - The computer keyboard plays notes: A W S E D … from middle C, with Z and X to shift the octave and C and V to step
-  the velocity (1, 20, 40 … 100, 120, 127; 100 to begin with, as the editor's keyboard always plays).
+  the velocity (1, 20, 40 … 100, 120, 127; 100 to begin with). The editor's keyboard plays as hard as where its keys are
+  clicked.
 - On a touchscreen, `main.js` hands the editor one finger (`View::touchDown()` and on: it drags what drags, pans
   what scrolls, and taps) and two (`View::touchPanBegin()` and on: a pan), with its own slop and double tap.
 - The page stands in for a host's transport: its `Controller` offers the tempo (`hasTempo()`), which the editor's
@@ -1048,10 +1077,12 @@ A version tag publishes a release. `.github/workflows/release.yml` builds the pl
 2026) with `build.ps1 -Validate`, so every test and both validators have to pass. It packs each format into a zip
 of its own: `FMVibe.clap`, `LICENSE` and the CLAP SDK's license (`LICENSE-CLAP`) into
 `FMVibe-<tag>-windows-x64-clap.zip`, and the `FMVibe.vst3` folder, `LICENSE` and the VST3 SDK's license
-(`LICENSE-VST3`) into `FMVibe-<tag>-windows-x64-vst3.zip`. It then creates a GitHub release for the tag with both
+(`LICENSE-VST3`) into `FMVibe-<tag>-windows-x64-vst3.zip`, each with the user manual, `FMVibe-Manual.html`
+(`tools/manual.py`, from `docs/manual.md`). It then creates a GitHub release for the tag with both
 zips and notes generated from the commits since the previous tag. Meanwhile it builds the
 browser demo on Linux, with the Emscripten version `build-web.ps1` pins, and publishes it on GitHub Pages
-(`https://pcdlin.github.io/FMVibe/`). Neither goes out unless both build.
+(`https://pcdlin.github.io/FMVibe/`), with the manual beside it as `manual.html`, which the README links to: the
+manual online is the released version's, as the download is. Neither goes out unless both build.
 
 `.\release.ps1` does all of it: it needs `main`, a clean working tree, `main` level with origin and a free tag. It
 raises the minor version in `project()` at the top of `CMakeLists.txt` (`-Version 1.0` picks another), runs
@@ -1161,6 +1192,7 @@ breakpoints in `src/` then hit.
 | `tools/uishot.cpp` | Offscreen editor renderer and interaction checks |
 | `tools/uihost.cpp` | `fmvibe-uihost`: a small CLAP host with a window and audio, for trying the editor by hand |
 | `tools/bench.cpp` | `fmvibe-bench`: what a build of the CLAP plugin costs (`time`) and what it plays (`render`), to compare builds by |
+| `tools/manual.py`, `cmake/manual.cmake` | The user manual (`docs/manual.md`) as one self-contained HTML file, for the zips and GitHub Pages, and the `manual` test that checks it |
 | `tools/bench.ps1` | Builds commits (or the working tree) and compares them with `fmvibe-bench`: bit for bit, then CPU, round-robin |
 | `build.ps1` | One-shot configure/build/test/validate/install |
 | `build.sh`, `cmake/linux.cmake` | The Linux development build: the engine, the editor over Cairo, the quality test and the UI snapshots (see [Linux development build](#linux-development-build)) |
@@ -1209,10 +1241,10 @@ itself.
   later slots 6000 + 30·place, shaper effects' curves 7000 + 50·slot (their points past the 16th
   17000 + 200·slot; the slots past the first 16 every field 30000 + 200·(slot - 16)), the chain's order 33400 + place,
   slot bypasses 9000 + 20·place (then the macros', the note source's, the mod wheel's,
-  velocity's and the pitch bend's, 9320 + 20 a source by the sources' number), Custom waves' first 32 partials
+  velocity's, the pitch bend's and the operators', 9320 + 20 a source by the sources' number), Custom waves' first 32 partials
   10000 + 100·op, macros 11000 + 40·macro, the note source 11400+ (its slots, then its range and curve), the mod
   wheel's slots 11500+, velocity 11600+ (its slots, then its curve and Bipolar), the pitch bend 11700+ (its slots,
-  then Bipolar), the
+  then Bipolar), the operators as sources 57000 + 40·op (their slots, then Bipolar), the
   Custom waves' partial counts 14000+ and their partials past the 32nd 14100 + 100·op, the routes' modes
   700 + 10·from + to (from by the routing graph's node order: the operators, the filters, the shapers; to an
   operator; an operator's own field, its feedback, hidden and always Phase), the voice shapers'
@@ -1259,8 +1291,8 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 1,317 of the 32,034 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
-  `src/params.h`), 896 of them the slots' depths and Amounts. The editor's alone are those the table marks
+- Hosts are given 1,515 of the 32,712 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+  `src/params.h`), 1,088 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain's retired order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'
   fields, the effects graph (its splits, joins and wires), the source places' own fields (a place's slot

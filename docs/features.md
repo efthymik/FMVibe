@@ -267,7 +267,7 @@ What the plugin does and how its editor works, in full. Building and installing 
   depth. Depth is ±100 % of the target's range: how far a **unipolar** source takes the target one way, and the
   whole swing of a **bipolar** one, half of it below the set value and half above (at 100 %, −50 % to +50 %).
   Every source can be either, for all of its modulations, picked from its right-click menu or the switch after its
-  name in the MODS view (see the editor): LFOs, Random sources and the pitch bend start bipolar, and Curve sources, envelopes, macros,
+  name in the MODS view (see the editor): LFOs, Random sources, the pitch bend and the operators start bipolar, and Curve sources, envelopes, macros,
   the note source, the mod wheel and velocity unipolar. A bipolar envelope swings about its middle level (nothing at half of
   it, half the depth down at rest and up at its peak), and a bipolar macro, mod wheel, note source, velocity or pitch
   bend about the middle of what it puts out (a macro moves nothing with its knob at 50 %, the pitch bend nothing at
@@ -354,6 +354,23 @@ What the plugin does and how its editor works, in full. Building and installing 
     voice, and modulates from a note's first block on. It starts bipolar, so it moves nothing at rest and swings its
     targets both ways as the wheel goes up and down; unipolar, it moves them half its depth at rest and all of it fully
     up. The pitch still bends by Bend Range too, whatever the source modulates.
+  - **Operators**: each operator's output (**Op A** to **Op F**) is a source too, picked in the MODS view's source and
+    aux menus, or dragged from the operator's letter at the top of its page in the inspector, which is its handle and
+    lights under the mouse. Like velocity each has 16 slots and no switch of its own, runs per voice and reaches the effects through
+    the newest voice. It puts out what the operator plays, after its envelope and whatever its Out says, so an operator
+    heard by nothing can modulate; one switched off modulates nothing. Modulation runs at the control rate, once every
+    32 samples, so a source takes the operator's output averaged over the last such block: a slow operator (a fixed
+    one at a few Hz, say) moves its targets along its wave and envelope, and one far above that rate averages away
+    rather than aliasing. It starts bipolar, swinging its targets both ways of the set value with the output;
+    unipolar, it takes them one way, from nothing up to as far as the operator's envelope has risen, so a silent
+    operator moves nothing either way.
+    **Filter FM**: on the **Cutoff** of a voice's filter or of a filter effect, an operator doesn't average: it moves the
+    cutoff every sample, at audio rate, by as many octaves as its depth takes the knob (100 % at full swing being the
+    knob's 10 octaves), its Amount, aux and depth read once per 32-sample block. A voice's filter follows that voice's
+    own operator. A filter effect, which hears all the voices together, follows the newest voice's, as the effects' other
+    modulation does, and takes over from one note to the next over about 5 ms, so a new note doesn't click; an operator
+    at a fixed frequency moves it alike whichever note is newest. The Formant type's cutoff stays with the 32-sample
+    blocks.
   - An LFO runs in one of four clock modes, picked one at a time: **Retrigger** (the default), **Free**, **Anchor** or
     **One-Shot**. Retrigger restarts the LFO from its Phase with every note. Each of the other three is a switch
     hosts see; the editor turns the other two off as it picks one. Should a host turn on more than one, One-Shot
@@ -1105,7 +1122,8 @@ one may have changed since it last did.
       the plugin's process is in front, so Ctrl held in another application shows nothing).
   - **Matrix** (grid): each row is a source (an operator, filter or shaper), and its cells say how much of it goes
     to each column: the operators, F1 and F2, S1 and S2, and OUT. It always lists all ten nodes and fills the
-    panel's height, as far from its top as from its bottom; every cell is a route; the row and
+    panel's height, as far from its top as from its bottom, its cells one and a half times as wide as they are tall
+    and its legend beside them; every cell is a route; the row and
     column of a node that is off are greyed out, its routes kept as they are. The diagonal is each node's feedback,
     outlined in its color; toggled on, it starts at 25 %. A route into an operator that isn't Phase shows its mode's
     glyph in its cell's top left corner, and the cell's right-click menu lists the modes. Drag cells
@@ -1439,10 +1457,10 @@ one may have changed since it last did.
       while it is unipolar (the LFO's UNIPOLAR icon), flipping it between the two for all of its modulations, as its
       right-click menu does. A click on the source or the target opens a cascading menu, the next level opening beside
       an entry under the mouse. The source's lists the sources by category (LFOs, the Random and Curve sources among them, Envelopes,
-      Note & MIDI for the MIDI sources, Macros, and Keyboard:
-      Note, Velocity, Mod Wheel and Pitch Bend); picking one moves the modulation there, into a free slot, with its depth,
+      Note & MIDI for the MIDI sources, Macros, Keyboard:
+      Note, Velocity, Mod Wheel and Pitch Bend, and Operators: Op A to Op F); picking one moves the modulation there, into a free slot, with its depth,
       curve, Amount, aux and bypass, as one undo step; it then swings as its new source does. What modulates its depth
-      follows it to its new slot, or, moved to a macro, the note source, the mod wheel, velocity or the pitch bend (whose depths
+      follows it to its new slot, or, moved to a macro, the note source, the mod wheel, velocity, the pitch bend or an operator (whose depths
       can't be modulated), goes. A source that modulates the
       target already, or has no slot free, is listed faintly, saying why, and can't be picked. The target's lists
       every target by category: Global (but the mod wheel, which is played rather than set); Operators, each with
@@ -1826,8 +1844,8 @@ one may have changed since it last did.
     a depth bar in the MODS view): the bar then has the dot in its top right corner, a strip under it shows
     how far the depth swings, and hovering the handle draws a dashed line to it like to any other target.
   - **More than fit**: a knob, label, cell or depth bar shows as many depth handles as its width holds (under a 30
-    or 32 px knob 3, under a 34 px one 4; on a wire label 5, a matrix cell 4, a depth bar 11), in the order the
-    sources show. Past that, as many as fit beside a **+n** pill (2 under a knob, 3 on a label, 2 on a cell, 9 on
+    or 32 px knob 3, under a 34 px one 4; on a wire label 5, a matrix cell 5, a depth bar 11), in the order the
+    sources show. Past that, as many as fit beside a **+n** pill (2 under a knob, 3 on a label, 4 on a cell, 9 on
     a depth bar) hold the rest, so nothing runs under the next control. Hovering the pill draws the ranges of the
     modulations it holds wider, and says how many there are; a hovered source whose depth handle the pill holds
     draws its dashed line to the pill, ringed in the source's color. A click opens the pill's list, under it (over
@@ -1840,7 +1858,12 @@ one may have changed since it last did.
     "…"). It shows six rows at most; past that, it is 8 px wider for a scrollbar at its right, and the rows scroll by
     the wheel over them (off the depth bars, which the wheel turns), by dragging with the middle button held, or by
     the bar. A click anywhere else closes it, but not
-    on a source's handle, so a handle can be dragged onto one of its rows. A source's handle held over a pill opens
+    on a source's handle, so a handle can be dragged onto one of its rows. A source's handle held over a view's tab
+    (ROUTING, MATRIX, FX, SEQ or MODS) for half a second shows that view, so it can be carried to what is there; held
+    as long over a node's tab atop the inspector, a node in the routing graph (or its edge), or a node's name in the
+    matrix (a row's or a column's), it shows that node in the inspector, as it is, switching nothing on. Passed over them, a moment on
+    each, it shows nothing: the half second starts again on each tab or node, and the poll shows it while the handle
+    stays still. Held over a pill, it opens
     its list too; let go of on a row, the source becomes that modulation's aux (see below), and anywhere else the
     list closes again. The list closes with its pill, when the modulations come down to what fits. While every
     modulation the pill holds is bypassed or its source switched off, the pill is hollow.
@@ -1952,7 +1975,9 @@ one may have changed since it last did.
   row, taking the wheels, the keys and the octave shift away; the wheels' handles stay, their names (BEND, MOD) then
   under them, so the wheels can still be assigned. Whether it is
   collapsed is kept with the editor, like the modulation panel's, and loading a
-  preset leaves it as it is. Drag across the keys to glide between notes. Keys light up while they are held, whether clicked here or
+  preset leaves it as it is. A key plays as hard as where it is clicked: velocity 1 at its top, 127 at its bottom
+  (a black key along its own height). Drag across the keys to glide between notes, each key struck as hard as where
+  the mouse enters it. Keys light up while they are held, whether clicked here or
   played by the host, rising and fading a moment as the roll's keys do rather than switching. The **Bend** wheel is the Pitch Bend param: it bends the pitch by the Bend Range and springs
   back to center on release, in one edit the host follows. It shows where the bend stands: the param, with what the
   host adds on top (its MIDI pitch bend, and its modulation of the param, the newest note's own while notes play) and
@@ -2267,9 +2292,9 @@ activation will make it). An edit, once it is whole, or a state that moves it as
 reports the new one (a CLAP host is told through its latency extension's `changed()`); an edit that leaves it as it was,
 an effect moved along the line say, asks for none.
 
-Hosts are given 1,317 of FMVibe's 32,034 parameters: the globals, the operators, the matrix and the routes' modes,
-the filters, the shapers, the macros' knobs, the note source's, the mod wheel's, velocity's and the pitch bend's own,
-and every modulation's depth and Amount (16 slots for each of the 28 sources, used or not). The rest are set in the editor only:
+Hosts are given 1,515 of FMVibe's 32,712 parameters: the globals, the operators, the matrix and the routes' modes,
+the filters, the shapers, the macros' knobs, the note source's, the mod wheel's, velocity's, the pitch bend's and the
+operators' own as sources, and every modulation's depth and Amount (16 slots for each of the 34 sources, used or not). The rest are set in the editor only:
 the effects, the LFOs', envelopes' and other sources' own knobs, what each modulation targets and its aux, curve and
 bypass, the Curve sources' drawn shapes, the shaper curves and the note source's curve, the Custom waves' partials and their
 counts, the effects graph (its splits, joins and wires), the chain's retired order, the feedback's route modes and the

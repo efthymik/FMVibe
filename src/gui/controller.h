@@ -242,9 +242,11 @@ std::vector<int> shownSources(const UiLayout &layout, const Get &get) {
 }
 
 // What the editor and the host's remote pages call a source: "LFO 2", "Env 1", "Random 1" or "MIDI 1",
-// numbered by type in the order the sources show, a macro's name, "Note" or "Mod Wheel".
+// numbered by type in the order the sources show, a macro's name, "Note", "Mod Wheel" or an operator's "Op A".
 template <class Get>
 std::string sourceName(const UiLayout &layout, const Get &get, int source) {
+    if (isOpSource(source))
+        return trf(Str::SourceNameOp, {std::string(1, static_cast<char>('A' + source - kOpSource))});
     if (isNote(source))
         return tr(Str::SourceNameNote);
     if (isWheel(source))
@@ -554,11 +556,12 @@ public:
     // Editor::followDpi()). A host that won't leaves it as it is.
     virtual void requestEditorSize(uint32_t, uint32_t) {}
 
-    // The virtual keyboard: a MIDI note number (60 is middle C). (Its bend wheel is the Pitch Bend param, edited.)
-    virtual void playNote(int note, bool on) = 0;
+    // The virtual keyboard: a MIDI note number (60 is middle C) at a MIDI velocity (0-127; a note off ignores it).
+    // (Its bend wheel is the Pitch Bend param, edited.)
+    virtual void playNote(int note, bool on, int velocity) = 0;
     // A note the SEQ view plays to be heard (a key or a note clicked in its roll): that note alone, never the
-    // sequencer's pattern, as the keyboard's would in Key or Latch.
-    virtual void auditionNote(int note, bool on) { playNote(note, on); }
+    // sequencer's pattern, as the keyboard's would in Key or Latch. At velocity 100.
+    virtual void auditionNote(int note, bool on) { playNote(note, on, 100); }
     // The operator whose output the scope shows (-1 while no scope is shown, so the audio thread captures nothing),
     // over how many of its cycles.
     virtual void setScope(int op, int cycles) = 0;

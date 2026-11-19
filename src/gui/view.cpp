@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <bit>
+#include <chrono>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
@@ -534,6 +535,53 @@ void View::showView(RoutingView view) {
     listMenu_ = -1;
 }
 
+double View::steadySeconds() {
+    return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+std::optional<Widget> View::dwellTarget(const std::optional<Widget> &at) const {
+    if (!at)
+        return std::nullopt;
+    const RoutingView view = controller_.layout().view;
+    switch (at->kind) {
+    case Kind::ViewTab:
+        return at;
+    case Kind::NodeTab: // the inspector's tab of a node
+        return Widget{Kind::Node, {}, -1, at->a};
+    case Kind::Node:
+    case Kind::Port: // a node's edge, its node
+        if (view != RoutingView::Graph)
+            return std::nullopt;
+        return Widget{Kind::Node, {}, -1, at->a};
+    case Kind::MatrixLabel: // a row's or column's name in the matrix, not one of the INPUTS tab's rows
+        if (view != RoutingView::Matrix || kInspector.contains(at->rect.center()))
+            return std::nullopt;
+        return Widget{Kind::Node, {}, -1, at->a};
+    default:
+        return std::nullopt;
+    }
+}
+
+bool View::dwellStep() {
+    if (drag_.kind != DragKind::ModSource || !dwell_.over || dwell_.done || clock_() - dwell_.since < kDwellSeconds)
+        return false;
+    dwell_.done = true;
+    const Widget &w = *dwell_.over;
+    UiLayout &layout = controller_.layout();
+    if (w.kind == Kind::ViewTab) {
+        if (layout.view == static_cast<RoutingView>(w.a))
+            return false;
+        modList_.reset(); // a pill's, of the view it leaves
+        showView(static_cast<RoutingView>(w.a));
+        return true;
+    }
+    if (layout.selectedNode == w.a)
+        return false;
+    layout.selectedNode = w.a; // shown, as it is, on or off
+    shapes_.closePartialsBut(w.a);
+    return true;
+}
+
 void View::showSourceMods(int source) {
     showView(RoutingView::Mods);
     modsPanel_.showSource(source);
@@ -701,6 +749,12 @@ void View::flash(std::string message) {
 
 int View::keyboardBase() const {
     return kBaseNote + 12 * octave_;
+}
+
+int View::keyVelocity(const Rect &key, Point p) {
+    const float along = key.h > 0.0f ? (p.y - key.y) / key.h : 1.0f;
+    // At least 1, so a key struck at its very top still sounds where velocity sets the level.
+    return std::max(1, static_cast<int>(std::lround(std::clamp(along, 0.0f, 1.0f) * 127.0f)));
 }
 
 std::vector<int> View::sources() const {
@@ -1167,7 +1221,7 @@ bool View::poll() {
     }
     if (flashTicks_ > 0 && --flashTicks_ == 0)
         everywhere = true;
-    if (edgeScroll())
+    if (edgeScroll() || dwellStep())
         everywhere = true;
     // What moves by itself in the panels: the SEQ view's roll scrolling under a drag held at its edge, or fitted to a
     // patch loaded; the MODS view's rows gliding where the wheel sent them; the FX view's row under a card held at its
@@ -5465,6 +5519,8 @@ void View::paintTooltip(Canvas &c) {
         text = tr(hover_->b % 2 == 1 ? Str::TipUpZone : Str::TipDownZone);
     } else if (hover_->kind == Kind::Knob) {
         text = tr(dynKnobTip(param));
+    } else if (hover_->kind == Kind::MacroHandle && isOpSource(hover_->a)) {
+        text = trf(Str::TipSourceHandle, {mods_.sourceName(hover_->a)});
     } else if (hover_->kind == Kind::MacroHandle && isWheel(hover_->a)) {
         text = tr(Str::TipWheelHandle);
     } else if (hover_->kind == Kind::MacroHandle && isNote(hover_->a)) {
@@ -6018,11 +6074,12 @@ void View::applyDrag(Point p) {
     };
     switch (drag_.kind) {
     case DragKind::Key: {
-        // Sliding across keys moves the note; off the keys, the last one keeps sounding.
+        // Sliding across keys moves the note, struck as hard as where the mouse enters the key says; off the keys,
+        // the last one keeps sounding.
         const auto hit = hitTest(p);
         if (hit && hit->kind == Kind::Key && hit->a != w.a) {
-            controller_.playNote(keyboardBase() + w.a, false);
-            controller_.playNote(keyboardBase() + hit->a, true);
+            controller_.playNote(keyboardBase() + w.a, false, 0);
+            controller_.playNote(keyboardBase() + hit->a, true, keyVelocity(hit->rect, p));
             drag_.widget.a = hit->a;
         }
         break;
@@ -6199,9 +6256,16 @@ void View::applyDrag(Point p) {
         break;
     }
     case DragKind::ModSource: {
-        // Over an operator's tab, a dragged handle opens it, so its knobs can take the drop; over a pill, its list, so
-        // one of its rows can take the handle as that modulation's aux.
+        // Held a moment over a view's tab, or a node's tab, or a node or its name in the graph or the matrix, a dragged
+        // handle shows that
+        // view or node (see dwellStep()); over an operator's tab, it opens it at once, so what it shows can take the
+        // drop; over a pill, its list, so one of its rows can take the handle as that modulation's aux.
         const auto at = hitTest(p);
+        if (const std::optional<Widget> over = dwellTarget(at); !over)
+            dwell_ = {};
+        else if (!dwell_.over || !dwell_.over->same(*over))
+            dwell_ = {over, clock_(), false};
+        dwellStep();
         if (at && at->kind == Kind::OpTab)
             controller_.layout().opTab = static_cast<InspectorTab>(at->a);
         if (at && at->kind == Kind::ModPill && !modListOn(*at))
@@ -6569,7 +6633,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         break;
     case Kind::Key:
         drag_.kind = DragKind::Key;
-        controller_.playNote(keyboardBase() + w.a, true);
+        controller_.playNote(keyboardBase() + w.a, true, keyVelocity(w.rect, drag_.start));
         break;
     case Kind::Octave:
         octave_ = std::clamp(octave_ + w.a, -2, 2);
@@ -6867,7 +6931,7 @@ void View::finishDrag() {
             controller_.endEdit(index);
         break;
     case DragKind::Key:
-        controller_.playNote(keyboardBase() + w.a, false);
+        controller_.playNote(keyboardBase() + w.a, false, 0);
         break;
     case DragKind::BendWheel: // springs back to center, in the same gesture
         if (value(paramIndex(GlobalParam::PitchBend)) != 0.0)
@@ -6894,6 +6958,7 @@ void View::finishDrag() {
     if (drag_.step)
         controller_.endStep();
     drag_ = Drag{};
+    dwell_ = {};
 }
 
 void View::mouseLeave() {

@@ -56,11 +56,14 @@ public:
     void telemetry(Telemetry &out) const override { out = live; }
     UiLayout &layout() override { return ui; }
     void layoutChanged() override {}
-    void playNote(int note, bool on) override {
-        if (on)
+    void playNote(int note, bool on, int velocity) override {
+        if (on) {
             lastNote = note;
+            lastVelocity = velocity;
+        }
     }
-    int lastNote = -1; // the last key played
+    int lastNote = -1;     // the last key played
+    int lastVelocity = -1; // and its velocity
     void auditionNote(int note, bool on) override {
         if (on)
             lastAudition = note;
@@ -862,7 +865,7 @@ Point slopeItem(int slope) {
 
 // Every node has its row and column, A..F, F1 and F2, then S1 and S2; the output is the last column.
 Point gridCellCenter(int row, int col) {
-    return {detail::kGridOrigin.x + col * 32.6f + 14.3f, 168.0f + row * 32.6f + 14.3f};
+    return detail::gridCell(row, col).center();
 }
 
 Point nodeCenter(const UiLayout &layout, int node) {
@@ -7694,6 +7697,33 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
               "the octave shift's buttons under the keys move them an octave up and back");
     }
 
+    // A key plays as hard as where it is clicked: velocity 1 at its top, 127 at its bottom, a black key's along its
+    // own height; and a drag across the keys strikes each key it enters as hard as where the mouse enters it.
+    {
+        const float top = detail::keyboardTop(model.ui.sourcesCollapsed) + detail::kKeys.y;
+        const float bottom = top + detail::kKeys.h, blackBottom = top + detail::kBlackH;
+        const float c1 = detail::kKeys.x + 4.0f, cSharp1 = detail::kKeys.x + detail::kWhiteW;
+        const float d1 = detail::kKeys.x + 1.5f * detail::kWhiteW;
+        auto struck = [&](Point p) {
+            click(view, p);
+            return std::pair{model.lastNote, model.lastVelocity};
+        };
+        const auto atTop = struck({c1, top}), atMiddle = struck({c1, (top + bottom) * 0.5f}),
+                   atBottom = struck({c1, bottom - 0.01f}), black = struck({cSharp1, blackBottom - 0.01f}),
+                   blackTop = struck({cSharp1, top + detail::kBlackH * 0.25f});
+        view.mouseDown({c1, top + 1.0f}, {});
+        const int pressed = model.lastVelocity;
+        view.mouseMove({d1, bottom - 1.0f}, {});
+        const auto slid = std::pair{model.lastNote, model.lastVelocity};
+        view.mouseUp({d1, bottom - 1.0f}, {});
+        std::printf("      key velocities: top %d, middle %d, bottom %d, black key's bottom %d and quarter %d, slid %d\n",
+                    atTop.second, atMiddle.second, atBottom.second, black.second, blackTop.second, slid.second);
+        check(atTop == std::pair{24, 1} && atMiddle == std::pair{24, 64} && atBottom == std::pair{24, 127} &&
+                  black == std::pair{25, 127} && blackTop == std::pair{25, 32} && pressed == 1 &&
+                  slid.first == 26 && slid.second == 126,
+              "a key clicked plays at velocity 1 at its top and 127 at its bottom, a key slid onto as hard as where");
+    }
+
     // Collapsed by its chevron or its title, the keyboard panel keeps its top row and the editor gets 120 px
     // shorter: the keys, the wheels and the octave shift go, and the wheels' handles stay under the title, where they
     // still map the wheels, onto filter 1's cutoff here.
@@ -8670,7 +8700,7 @@ void testRouteModes(const std::filesystem::path &dir, Renderer &renderer) {
     model.ui.view = RoutingView::Matrix;
     view.poll();
     const Point cell = gridCellCenter(1, 0);
-    const Point corner{cell.x - 14.3f + 7.0f, cell.y - 14.3f + 7.0f};
+    const Point corner{detail::gridCell(1, 0).x + 7.0f, detail::gridCell(1, 0).y + 7.0f};
     auto cornerPixels = [&] {
         std::vector<uint32_t> pixels;
         for (float y = corner.y - 4.0f; y <= corner.y + 4.0f; y += 1.0f)
@@ -9859,6 +9889,213 @@ void testModsEmpty(const std::filesystem::path &dir, Renderer &renderer) {
           "an empty modulation given a source with rows goes among them");
 }
 
+// An operator's output picked as a source in the MODS view: its menu's last category, Operators, lists Op A to Op F; the
+// empty modulation given Op B and a target becomes Op B's, bipolar to begin with, and its row's switch makes it unipolar,
+// undoably.
+void testModsOpSource(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
+    model.set(slotTargetIndex(0, 0), slotTargetValue(paramIndex(0, OpParam::Ratio)));
+    model.set(slotAmountIndex(0, 0), 0.4);
+    view.poll();
+    click(view, {382.0f, 116.0f}); // the MODS tab
+    const float y = 212.0f;
+    click(view, {100.0f, y}); // adds an empty modulation, its source's menu open under it
+    // LFOs, Macros, Keyboard and Operators, whose entries show beside it, Op A level with it.
+    const float operators = 228.0f + 4.0f + 3.0f * 22.0f + 11.0f;
+    view.mouseMove({80.0f, operators}, {});
+    view.mouseMove({230.0f, operators}, {});
+    view.mouseMove({230.0f, operators + 22.0f}, {}); // Op B
+    const bool menuShot = renderer.save(view, dir / "35p-mods-op-source-menu.png");
+    click(view, {230.0f, operators + 22.0f});
+    const int source = kOpSource + 1;
+    check(menuShot && model.ui.emptyMods == std::vector<std::pair<int, int>>{{source, -1}},
+          "the MODS view's source menu offers the operators, and an empty modulation takes one");
+    click(view, {300.0f, y}); // its target's menu: Global, then its first param beside it
+    view.mouseMove({300.0f, 258.0f + 4.0f + 11.0f}, {});
+    int first = -1;
+    for (int g = 0; g < kGlobalCount && first < 0; ++g)
+        if (isModTarget(g) && !isPlayed(g))
+            first = g;
+    click(view, {540.0f, 258.0f + 4.0f + 11.0f});
+    view.mouseMove({600.0f, 468.0f}, {});
+    const bool rowShot = renderer.save(view, dir / "35q-mods-op-source.png");
+    check(rowShot && model.ui.emptyMods.empty() && slotTarget(model.value(slotTargetIndex(source, 0))) == first &&
+              model.value(paramIndex(1, OpSourceParam::Bipolar)) == 1.0,
+          "an operator given a target modulates it, bipolar to begin with");
+    click(view, detail::modsCell(detail::modsRow(1.0f), detail::kModsPolarity).center());
+    const bool unipolar = model.value(paramIndex(1, OpSourceParam::Bipolar)) == 0.0;
+    view.undo();
+    check(unipolar && model.value(paramIndex(1, OpSourceParam::Bipolar)) == 1.0,
+          "an operator's row switches it between bipolar and unipolar, undoably");
+}
+
+// An operator's letter on its page is its output's handle, lit under the mouse (read off the rendered pixels); and a
+// source's handle held over a view's tab shows that view, as let go of there it modulates nothing.
+void testOpNameHandle(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    view.poll();
+    const Point name = detail::kOpNameHandle.center();
+    const Rect handle = detail::kOpNameHandle;
+    const Point beside{handle.x + 2.0f, handle.center().y}; // left of the letter
+    // The letter's ink at rest, then how far the light goes along a row above it, for A and for a wider D.
+    bool lit = true, centered = true;
+    for (const int op : {3, 0}) {
+        model.ui.selectedNode = op;
+        view.poll();
+        view.mouseMove({600.0f, 468.0f}, {});
+        (void)renderer.save(view, dir / "35r-op-name-rest.png");
+        const auto rest = renderer.pixel(beside);
+        float inkLeft = 1e9f, inkRight = -1e9f;
+        for (float x = detail::kTitleRow.x - 1.0f; x < detail::kTitleRow.x + detail::kTitleLetterW; x += 1.0f)
+            for (float y = handle.y; y < handle.bottom(); y += 1.0f)
+                if (renderer.pixel({x, y}) != rest) {
+                    inkLeft = std::min(inkLeft, x);
+                    inkRight = std::max(inkRight, x + 1.0f);
+                }
+        std::vector<bool> restRow;
+        const float row = handle.y + 3.0f;
+        for (float x = handle.x - 4.0f; x < handle.right() + 4.0f; x += 1.0f)
+            restRow.push_back(renderer.pixel({x, row}) == rest);
+        view.mouseMove(name, {});
+        (void)renderer.save(view, dir / (op == 3 ? "35s-op-name-hover-d.png" : "35s-op-name-hover.png"));
+        lit = lit && renderer.pixel(beside) != rest;
+        float lightLeft = 1e9f, lightRight = -1e9f;
+        size_t k = 0;
+        for (float x = handle.x - 4.0f; x < handle.right() + 4.0f; x += 1.0f, ++k)
+            if (restRow[k] && renderer.pixel({x, row}) != rest) {
+                lightLeft = std::min(lightLeft, x);
+                lightRight = std::max(lightRight, x + 1.0f);
+            }
+        const float off = 0.5f * (lightLeft + lightRight) - 0.5f * (inkLeft + inkRight);
+        std::printf("      %c's light runs %.0f to %.0f, its ink %.0f to %.0f: %.1f px off center\n", 'A' + op, lightLeft,
+                    lightRight, inkLeft, inkRight, off);
+        centered = centered && std::abs(off) <= 1.5f;
+    }
+    check(lit, "an operator's letter on its page lights under the mouse");
+    check(centered, "the light under an operator's letter is centered on it");
+
+    drag(view, name, kOpPhaseKnob);
+    check(slotTarget(model.value(slotTargetIndex(kOpSource, 0))) == paramIndex(0, OpParam::Phase),
+          "an operator's letter dragged onto a knob makes its output modulate that knob");
+    view.undo();
+    check(slotTarget(model.value(slotTargetIndex(kOpSource, 0))) < 0, "undo takes that modulation away");
+
+    // The editor's clock, which the test moves on: a handle shows a view or a node only once held there half a second.
+    static double now = 0.0;
+    view.setClock([] { return now; });
+    auto tab = [](RoutingView shown) { return detail::kViewTabs[static_cast<int>(shown)].center(); };
+    // Over the tab, not yet; moved within it 0.3 s later, not yet; at 0.55 s, a poll shows it.
+    auto dwells = [&](Point at, auto shown) {
+        view.mouseMove(at, {});
+        const bool waits = !shown();
+        now += 0.3;
+        view.mouseMove({at.x + 1.0f, at.y}, {});
+        const bool still = !shown();
+        now += 0.25;
+        view.poll();
+        return waits && still && shown();
+    };
+    auto overTab = [&](RoutingView v) { return dwells(tab(v), [&] { return model.ui.view == v; }); };
+    auto held = [&](Point from) {
+        view.mouseDown(from, {});
+        const bool fx = overTab(RoutingView::Fx);
+        const bool mods = overTab(RoutingView::Mods);
+        const bool matrix = overTab(RoutingView::Matrix);
+        const bool graph = overTab(RoutingView::Graph);
+        view.mouseUp(tab(RoutingView::Graph), {});
+        return fx && mods && matrix && graph;
+    };
+    check(held(name) && slotTarget(model.value(slotTargetIndex(kOpSource, 0))) < 0,
+          "an operator's handle held over a view's tab shows that view after half a second, and let go of there "
+          "modulates nothing");
+    model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
+    view.poll();
+    const Point lfoHandle = detail::sourceHandleRect(detail::sourceCard(0.0f)).center();
+    check(held(lfoHandle), "an LFO's handle held over a view's tab shows that view after half a second");
+
+    // Passed over the tabs, a moment on each, it shows none of them.
+    view.mouseDown(lfoHandle, {});
+    view.mouseMove(tab(RoutingView::Fx), {});
+    now += 0.3;
+    view.mouseMove(tab(RoutingView::Mods), {});
+    now += 0.3;
+    view.poll();
+    view.mouseMove(tab(RoutingView::Matrix), {});
+    now += 0.3;
+    view.poll();
+    const bool passed = model.ui.view == RoutingView::Graph;
+    view.mouseUp(tab(RoutingView::Matrix), {});
+    check(passed, "a handle passed over the views' tabs, a moment on each, shows none of them");
+
+    // Held over a node in the graph, and over a node's name in the matrix, it shows that node in the inspector, without
+    // switching it on; passed over one, it doesn't.
+    model.set(paramIndex(1, OpParam::Enabled), 1.0);
+    model.ui.selectedNode = 0;
+    view.poll();
+    const Point bNode = nodeCenter(model.layout(), 1);
+    view.mouseDown(lfoHandle, {});
+    view.mouseMove(bNode, {});
+    now += 0.3;
+    view.mouseMove(nodeCenter(model.layout(), 0), {});
+    now += 0.3;
+    view.poll();
+    const bool nodePassed = model.ui.selectedNode == 0;
+    const bool bShown = dwells(bNode, [&] { return model.ui.selectedNode == 1; });
+    const bool graphShot = renderer.save(view, dir / "35u-handle-held-over-node.png");
+    view.mouseUp(bNode, {});
+    check(nodePassed && bShown && graphShot,
+          "a handle held over a node in the graph shows it in the inspector after half a second, and passed over one "
+          "doesn't");
+    const bool modulatesNothing = slotTarget(model.value(slotTargetIndex(0, 0))) < 0;
+    view.mouseDown(lfoHandle, {});
+    const bool matrixShown = overTab(RoutingView::Matrix);
+    const Rect cRow = detail::gridCell(2, 0), dColumn = detail::gridCell(0, 3);
+    const bool cShown = dwells({cRow.x - 18.0f, cRow.center().y}, [&] { return model.ui.selectedNode == 2; });
+    const bool dShown = dwells({dColumn.center().x, dColumn.y - detail::kMatrixNamesH + 9.0f},
+                               [&] { return model.ui.selectedNode == 3; });
+    const bool filterShown = dwells({detail::gridCell(kOps, 0).x - 18.0f, detail::gridCell(kOps, 0).center().y},
+                                    [&] { return model.ui.selectedNode == kOps; });
+    view.mouseUp({cRow.x - 18.0f, cRow.center().y}, {});
+    check(modulatesNothing && matrixShown && cShown && dShown && filterShown &&
+              model.value(paramIndex(2, OpParam::Enabled)) == 0.0 &&
+              model.value(paramIndex(0, FilterParam::Enabled)) == 0.0,
+          "a handle held over an operator's or a filter's name in the matrix, a row's or a column's, shows it in the "
+          "inspector after half a second, leaving it switched off");
+    view.poll();
+    click(view, tab(RoutingView::Graph));
+    model.ui.selectedNode = 0;
+    view.poll();
+
+    // Held over a node's tab atop the inspector, it shows that node, without switching it on.
+    view.mouseDown(lfoHandle, {});
+    const bool f2Shown = dwells(detail::nodeTabRect(kOps + 1).center(), [&] { return model.ui.selectedNode == kOps + 1; });
+    const bool eShown = dwells(detail::nodeTabRect(4).center(), [&] { return model.ui.selectedNode == 4; });
+    view.mouseUp(detail::nodeTabRect(4).center(), {});
+    check(f2Shown && eShown && model.value(paramIndex(1, FilterParam::Enabled)) == 0.0 &&
+              model.value(paramIndex(4, OpParam::Enabled)) == 0.0 && slotTarget(model.value(slotTargetIndex(0, 0))) < 0,
+          "a handle held over a node's tab shows that node after half a second, leaving it switched off");
+    model.ui.selectedNode = 0;
+    view.poll();
+
+    // Carried over another view's tab and back, it still lands on the operator's knob.
+    view.mouseDown(name, {});
+    view.mouseMove(tab(RoutingView::Matrix), {});
+    now += 0.55;
+    view.poll();
+    const bool matrixShot = renderer.save(view, dir / "35t-op-name-held-over-tab.png");
+    const bool overMatrix = model.ui.view == RoutingView::Matrix;
+    view.mouseMove(tab(RoutingView::Graph), {});
+    now += 0.55;
+    view.poll();
+    view.mouseUp(kOpPhaseKnob, {});
+    check(matrixShot && overMatrix &&
+              slotTarget(model.value(slotTargetIndex(kOpSource, 0))) == paramIndex(0, OpParam::Phase),
+          "a handle carried over the tabs and back still lands on a knob");
+}
+
 // The MODS view's filter and the target menu's search. LFO 1 modulates Op A's Ratio and Detune, Env 1 FM Amount and
 // Macro 1 Filter 1's Resonance: four rows, their middles from y 154, 30 px apart, each one's x at x 1144. The filter's
 // magnifier is at the right end of the columns' names (x 1156, y 126); open, its x is at x 1155.
@@ -9973,7 +10210,7 @@ void testModsSearch(const std::filesystem::path &dir, Renderer &renderer) {
 // column (read off the rendered pixels). The pill opens the list of all eight, whose rows bypass, set the depth of
 // and remove their modulation as a card's rows do; a click elsewhere closes it. A macro's handle held over the pill
 // opens the list under it, and let go of on a row makes the macro that row's aux; let go of anywhere else, the list
-// closes again. Six on a matrix cell: two handles and a smaller pill, none in the next cell.
+// closes again. Six on a matrix cell: handles and a smaller pill, none in the next cell.
 void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -10088,7 +10325,7 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove(sourceHandle(2), {});
     check(renderer.save(view, dir / "40h-pill-link.png"), "render a source's line ending at the pill holding its handle");
 
-    // Six on the matrix's B -> C cell: two handles in its corner and a pill, none in the corner of B -> B left of it.
+    // Six on the matrix's B -> C cell: handles along its foot and a pill, none in the corner of B -> B left of it.
     click(view, {160.0f, 116.0f}); // MATRIX
     const Point cell = gridCellCenter(1, 2), left = gridCellCenter(1, 1);
     auto corner = [&] {
@@ -10109,7 +10346,7 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     }
     view.poll();
     const bool cellShot = renderer.save(view, dir / "40j-cell-pill.png");
-    check(cellShot && corner() == plain, "six modulations on a matrix cell show two handles and a pill, none in the next cell");
+    check(cellShot && corner() == plain, "six modulations on a matrix cell show handles and a pill, none in the next cell");
 
     // At the larger handle sizes, the cell's handles and pill are drawn bigger, in the same places (read off the
     // rendered pixels round them), and Small draws them as before.
@@ -12457,6 +12694,20 @@ void run(const std::filesystem::path &dir, float scale) {
     check(layout.view == RoutingView::Matrix, "the Matrix tab switches the routing panel to the grid");
     view.mouseMove(gridCellCenter(0, kOps), {});
     check(renderer.save(view, dir / "6-matrix.png"), "render the matrix view");
+    {
+        // Its cells are as much wider than tall as kCellAspect says, the mouse finding each across its whole width, and
+        // the cells, then the legend, stay inside the panel: nothing is drawn along the panel's right edge.
+        const Rect first = detail::gridCell(0, 0), last = detail::gridCell(kNodes - 1, detail::kGridCols - 1);
+        const bool ratio = std::abs(first.w / first.h - detail::kCellAspect) < 1e-4f;
+        const std::vector<MenuItem> inCell = view.contextMenu({first.right() - 1.0f, first.center().y});
+        const std::vector<MenuItem> inGap = view.contextMenu({first.right() + 0.5f * detail::kCellGap, first.center().y});
+        const float edge = detail::kRouting.right() - 8.0f;
+        bool clear = true;
+        for (float y = detail::kRouting.y + 12.0f; y < detail::kRouting.bottom() - 12.0f; y += 1.0f)
+            clear = clear && renderer.pixel({edge, y}) == renderer.pixel({edge, detail::kRouting.y + 12.0f});
+        check(ratio && !inCell.empty() && inGap.empty() && last.right() < detail::kLegendX && clear,
+              "the matrix's cells keep their ratio, and they and the legend stay inside the panel");
+    }
     // The tab shown opens the panel's top edge under it, the edge running on under the others; one under the mouse
     // shows a tab's shape.
     // (Read above the inspector's lens, which floats 6 px under the panel's top.)
@@ -13741,6 +13992,8 @@ void run(const std::filesystem::path &dir, float scale) {
     testRadarGlow(dir, renderer);
     testOutBend(dir, renderer);
     testModsEmpty(dir, renderer);
+    testModsOpSource(dir, renderer);
+    testOpNameHandle(dir, renderer);
     testNewSources(dir, renderer);
     testMods(dir, renderer);
     testSeq(dir, renderer);

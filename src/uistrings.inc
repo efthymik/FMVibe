@@ -554,6 +554,7 @@ STR(SourceNameNote, "Note")
 STR(SourceNameWheel, "Mod Wheel")
 STR(SourceNameVelocity, "Velocity")
 STR(SourceNameBend, "Pitch Bend")
+STR(SourceNameOp, "Op {1}") // an operator's output as a modulation source
 STR(MacroDefaultName, "Macro {1}") // until it is given a name of its own
 STR(PresetInit, "- Init -") // the preset bar, with no preset loaded
 
@@ -790,7 +791,9 @@ STR(ButtonOverwrite, "Overwrite")
 // --- The editor: hints and notes along the panels
 
 STR(HintRouting, "drag edges to connect")
-STR(HintMatrix, "rows feed columns  ·  drag to adjust  ·  double-click to toggle")
+STR(HintMatrixRows, "rows feed columns")
+STR(HintMatrixDrag, "drag to adjust")
+STR(HintMatrixToggle, "double-click to toggle")
 STR(HintFx, "drag a title to reorder")
 STR(HintFxGraph, "click node: edit  ·  drag node: move  ·  click wire: insert")
 STR(HintFxInspector, "Click a node to edit it") // the graph's inspector, with no node to show
