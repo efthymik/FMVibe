@@ -24,9 +24,6 @@ namespace {
 // How long after the plugin tells the host a param's value it takes none for that param from the host.
 constexpr int64_t kHostEchoMs = 500;
 
-// Velocity of notes played from the virtual keyboard.
-constexpr double kKeyVelocity = 100.0 / 127.0;
-
 } // namespace
 
 int64_t steadyMs() {
@@ -236,8 +233,8 @@ void PluginCore::endBlock() {
 }
 
 // Main thread: the virtual keyboard. The host may be asleep, so ask it to run us.
-void PluginCore::playNote(int note, bool on) {
-    keys_.push({note, on});
+void PluginCore::playNote(int note, bool on, int velocity) {
+    keys_.push({note, on, false, velocity});
     hostRequestProcess();
 }
 
@@ -246,14 +243,14 @@ void PluginCore::auditionNote(int note, bool on) {
     hostRequestProcess();
 }
 
-// Audio thread: notes from the virtual keyboard play like MIDI notes without a note id; those the SEQ view plays to be
+// Audio thread: notes from the virtual keyboard play like MIDI notes without a note id, at their velocity; those the SEQ view plays to be
 // heard on a port of their own, which the sequencer leaves be.
 void PluginCore::playKeys() {
     KeyEvent ev;
     while (keys_.pop(ev)) {
         const NoteRef note{-1, ev.audition ? kAuditionPort : int16_t{0}, 0, static_cast<int16_t>(ev.note)};
         if (ev.on)
-            synth_.noteOn(note, kKeyVelocity);
+            synth_.noteOn(note, std::clamp(ev.velocity, 0, 127) / 127.0);
         else
             synth_.noteOff(note);
     }

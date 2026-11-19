@@ -703,6 +703,12 @@ int View::keyboardBase() const {
     return kBaseNote + 12 * octave_;
 }
 
+int View::keyVelocity(const Rect &key, Point p) {
+    const float along = key.h > 0.0f ? (p.y - key.y) / key.h : 1.0f;
+    // At least 1, so a key struck at its very top still sounds where velocity sets the level.
+    return std::max(1, static_cast<int>(std::lround(std::clamp(along, 0.0f, 1.0f) * 127.0f)));
+}
+
 std::vector<int> View::sources() const {
     if (derived_.sources) // only kept while a scope goes on
         return *derived_.sources;
@@ -5944,11 +5950,12 @@ void View::applyDrag(Point p) {
     };
     switch (drag_.kind) {
     case DragKind::Key: {
-        // Sliding across keys moves the note; off the keys, the last one keeps sounding.
+        // Sliding across keys moves the note, struck as hard as where the mouse enters the key says; off the keys,
+        // the last one keeps sounding.
         const auto hit = hitTest(p);
         if (hit && hit->kind == Kind::Key && hit->a != w.a) {
-            controller_.playNote(keyboardBase() + w.a, false);
-            controller_.playNote(keyboardBase() + hit->a, true);
+            controller_.playNote(keyboardBase() + w.a, false, 0);
+            controller_.playNote(keyboardBase() + hit->a, true, keyVelocity(hit->rect, p));
             drag_.widget.a = hit->a;
         }
         break;
@@ -6495,7 +6502,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         break;
     case Kind::Key:
         drag_.kind = DragKind::Key;
-        controller_.playNote(keyboardBase() + w.a, true);
+        controller_.playNote(keyboardBase() + w.a, true, keyVelocity(w.rect, drag_.start));
         break;
     case Kind::Octave:
         octave_ = std::clamp(octave_ + w.a, -2, 2);
@@ -6793,7 +6800,7 @@ void View::finishDrag() {
             controller_.endEdit(index);
         break;
     case DragKind::Key:
-        controller_.playNote(keyboardBase() + w.a, false);
+        controller_.playNote(keyboardBase() + w.a, false, 0);
         break;
     case DragKind::BendWheel: // springs back to center, in the same gesture
         if (value(paramIndex(GlobalParam::PitchBend)) != 0.0)
