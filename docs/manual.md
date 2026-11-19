@@ -181,8 +181,9 @@ The inspector has a tab for each node: operators A–F, filters F1 and F2, and s
 - A dot in a tab's corner means the node is sent to the output.
 
 Under the tabs, the page title shows the node's letter and a **summary line**, for example
-`A Saw · 1.20 · ×4 · to F1`: the wave, ratio, unison copies and destinations. While a node is off, its page is
-dimmed, but its controls still work.
+`A Saw · 1.20 · ×4 · to F1`: the wave, ratio, unison copies and destinations. On an operator's page, the letter is
+also the operator's modulation handle: drag it onto a control to modulate it with the operator's output (see
+[Operators as sources](#operators-as-sources)). While a node is off, its page is dimmed, but its controls still work.
 
 A switched-off operator is silent and uses no CPU. Its settings and connections are kept for when you switch it on
 again.
@@ -1481,8 +1482,9 @@ click outside).
 ### Automation
 
 Hosts see all automatable parameters: the global controls, play modes, operators, routes and their modes, filters,
-shapers, the macros, the Mod Wheel and Pitch Bend, the Note and Velocity settings, the sequencer's settings, and the
-depth and Amount of every modulation slot. Your host can record edits made in the plugin window as automation.
+shapers, the macros, the Mod Wheel and Pitch Bend, the Note and Velocity settings, the operators' polarity as sources
+(Op A to Op F Bipolar), the sequencer's settings, and the depth and Amount of every modulation slot. Your host can
+record edits made in the plugin window as automation.
 
 The effects, the modulation sources' own controls (LFO rates and so on), modulation targets, drawn shapes and the
 effects routing are set in the plugin window only. They are saved with the project and in presets and can be modulated
@@ -1507,7 +1509,7 @@ In hosts that show CLAP remote control pages (such as Bitwig Studio), FMVibe off
 | Filters | Filter 1 and 2; the filter links |
 | Shapers | Shaper 1 and 2 |
 | Matrix | What each operator, filter and shaper modulates or feeds |
-| Modulation | One page per source: the depths of its first 8 modulations |
+| Modulation | One page per source in the modulation panel: the depths of its first 8 modulations (the macros, Note, Velocity, the wheels and the operators have none) |
 
 ### VST3 specifics
 
@@ -1548,6 +1550,7 @@ the main CPU costs.
 | Mouse wheel | Step a value or switch |
 | Right-click | Context menu |
 | Middle-button drag | Pan a scrolling area |
+| Click a key in the keyboard strip | Play a note: softer near its top, harder near its bottom |
 | Ctrl+Z | Undo |
 | Ctrl+Y, Ctrl+Shift+Z | Redo |
 | Enter / Escape | Confirm / cancel a dialog or typed value |
@@ -1574,6 +1577,8 @@ the main CPU costs.
 | Alt+drag a depth handle | Set the aux depth |
 | Double-click a depth handle | Remove the modulation |
 | Drop a handle on a depth handle | Make that source the modulation's aux |
+| Hold a dragged handle over a view tab | Show that view |
+| Drag an operator's letter (its page's title) | Assign the operator's output as modulation |
 
 ### Shape editors
 
