@@ -290,6 +290,7 @@ if (MSVC)
     target_link_options(fmvibe-uishot PRIVATE /STACK:8388608)
 endif()
 add_test(NAME ui COMMAND fmvibe-uishot ${CMAKE_CURRENT_BINARY_DIR}/ui-shots)
+include(cmake/manual.cmake)
 
 # A small CLAP host for trying the editor by hand: loads the built plugin, opens its editor in a window and plays it
 # through the default output device, with notes from MIDI inputs. Not a test: it waits for the window to close.
