@@ -1894,7 +1894,7 @@ one may have changed since it last did.
   row, taking the wheels, the keys and the octave shift away; the wheels' handles stay, their names (BEND, MOD) then
   under them, so the wheels can still be assigned. Whether it is
   collapsed is kept with the editor, like the modulation panel's, and loading a
-  preset leaves it as it is. A key plays as hard as where it is clicked: velocity 0 at its top, 127 at its bottom
+  preset leaves it as it is. A key plays as hard as where it is clicked: velocity 1 at its top, 127 at its bottom
   (a black key along its own height). Drag across the keys to glide between notes, each key struck as hard as where
   the mouse enters it. Keys light up while they are held, whether clicked here or
   played by the host, rising and fading a moment as the roll's keys do rather than switching. The **Bend** wheel is the Pitch Bend param: it bends the pitch by the Bend Range and springs

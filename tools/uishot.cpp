@@ -7546,7 +7546,7 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
               "the octave shift's buttons under the keys move them an octave up and back");
     }
 
-    // A key plays as hard as where it is clicked: velocity 0 at its top, 127 at its bottom, a black key's along its
+    // A key plays as hard as where it is clicked: velocity 1 at its top, 127 at its bottom, a black key's along its
     // own height; and a drag across the keys strikes each key it enters as hard as where the mouse enters it.
     {
         const float top = detail::keyboardTop(model.ui.sourcesCollapsed) + detail::kKeys.y;
@@ -7567,10 +7567,10 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
         view.mouseUp({d1, bottom - 1.0f}, {});
         std::printf("      key velocities: top %d, middle %d, bottom %d, black key's bottom %d and quarter %d, slid %d\n",
                     atTop.second, atMiddle.second, atBottom.second, black.second, blackTop.second, slid.second);
-        check(atTop == std::pair{24, 0} && atMiddle == std::pair{24, 64} && atBottom == std::pair{24, 127} &&
+        check(atTop == std::pair{24, 1} && atMiddle == std::pair{24, 64} && atBottom == std::pair{24, 127} &&
                   black == std::pair{25, 127} && blackTop == std::pair{25, 32} && pressed == 1 &&
                   slid.first == 26 && slid.second == 126,
-              "a key clicked plays at velocity 0 at its top and 127 at its bottom, a key slid onto as hard as where");
+              "a key clicked plays at velocity 1 at its top and 127 at its bottom, a key slid onto as hard as where");
     }
 
     // Collapsed by its chevron or its title, the keyboard panel keeps its top row and the editor gets 120 px

@@ -24,8 +24,6 @@ namespace {
 // How long after the plugin tells the host a param's value it takes none for that param from the host.
 constexpr int64_t kHostEchoMs = 500;
 
-// Velocity of notes played from the virtual keyboard.
-
 } // namespace
 
 int64_t steadyMs() {
