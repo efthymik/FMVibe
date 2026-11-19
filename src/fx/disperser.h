@@ -35,7 +35,8 @@ constexpr double kDisperserMaxFadeInSeconds = 0.25;
 // for no more than the longer chain costs. Another change while it fades waits for the fade to end.
 //
 // Stretched, each all-pass's two delays wait `stretch` samples rather than one: its response repeats every
-// sampleRate / stretch, so the chirp comes again across the spectrum, each copy as long as one at Freq. The delays are
+// sampleRate / stretch, so the chirp comes again across the spectrum, each copy longer than an unstretched one at Freq
+// (stretch times what the all-pass it is designed as takes, where stretch times Freq folds back). The delays are
 // rings in `rings`, allocated in prepare() for the most it can stretch at the rate, each place along them holding
 // every all-pass's two delays (kRingStride values), so a short stretch only touches the buffer's first pages. A new
 // Stretch fades the effect out to what goes in over kDisperserStretchFadeSeconds, takes the new length with its

@@ -3336,10 +3336,10 @@ void renderDisperserControls(const std::filesystem::path &dir, Renderer &rendere
     view.undo();
     const bool trackUndone = model.value(keyTrack) == 0.0;
     model.live.fxPitch = 60.0f;
-    // Stretch turned up a little, landing on a whole step, and further: its copies across the display.
+    // Stretch turned up, landing on a whole step, its copies across the display, and further.
     const std::vector<uint32_t> plain = displayPixels();
     const Point stretchKnob = fxKnob(model, 0, 1, 3, 266.0f);
-    drag(view, stretchKnob, {stretchKnob.x, stretchKnob.y - 20.0f});
+    drag(view, stretchKnob, {stretchKnob.x, stretchKnob.y - 290.0f});
     const double stepped = model.value(stretch);
     const int stretchMoved = changed(plain, displayPixels());
     const bool stretchShot = renderer.save(view, dir / "27h-disperser-stretch.png");

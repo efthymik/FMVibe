@@ -645,8 +645,9 @@ What the plugin does and how its editor works, in full. Building and installing 
     100 %, a C5 puts it an octave up, so a dispersed bass or kick zaps at the same place in each note. **Stretch**
     (1 to 64, 1 to begin with) makes each all-pass's delays that many samples long (at 48 kHz; as long a time at other
     rates), so its dispersion comes again every 48 kHz / Stretch, either way of each multiple: at 32, a chain at
-    400 Hz also disperses around 1.1, 1.9, 2.6 kHz and on, each copy chirping as long as the one at Freq, the
-    metallic drip of a spring. Freq stays one of the copies (pulled a little toward where two copies meet, close to
+    400 Hz also disperses around 1.1, 1.9, 2.6 kHz and on, each copy chirping longer than an unstretched chain at
+    Freq does (at 30, a chain at 600 Hz comes out up to 39 ms late where unstretched it peaks at 12 ms), the metallic
+    drip of a spring. Freq stays one of the copies (pulled a little toward where two copies meet, close to
     one). A new Stretch can't take over from the old one without a jump, so the effect fades out to what goes in over
     5 ms and back in at the new length over 4 ms a step of it (20 ms to a quarter of a second): a stretched chain
     starting from silence buzzes for a moment at the copies' spacing, as it does on any note, which the slow fade keeps
