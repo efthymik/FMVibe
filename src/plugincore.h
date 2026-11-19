@@ -80,7 +80,7 @@ public:
     void telemetry(Telemetry &out) const override { telemetry_.load(out); }
     gui::UiLayout &layout() override { return layout_; }
     void layoutChanged() override;
-    void playNote(int note, bool on) override;
+    void playNote(int note, bool on, int velocity) override;
     void auditionNote(int note, bool on) override;
     void setScope(int op, int cycles) override {
         scopeOp_.store(op, std::memory_order_relaxed);
@@ -300,6 +300,7 @@ private:
         int note;
         bool on;
         bool audition = false; // heard on its own (see Controller::auditionNote())
+        int velocity = 100;    // MIDI's, 0-127
     };
 
     Synth synth_;

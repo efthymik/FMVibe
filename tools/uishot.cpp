@@ -56,11 +56,14 @@ public:
     void telemetry(Telemetry &out) const override { out = live; }
     UiLayout &layout() override { return ui; }
     void layoutChanged() override {}
-    void playNote(int note, bool on) override {
-        if (on)
+    void playNote(int note, bool on, int velocity) override {
+        if (on) {
             lastNote = note;
+            lastVelocity = velocity;
+        }
     }
-    int lastNote = -1; // the last key played
+    int lastNote = -1;     // the last key played
+    int lastVelocity = -1; // and its velocity
     void auditionNote(int note, bool on) override {
         if (on)
             lastAudition = note;
@@ -7541,6 +7544,33 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
         click(view, firstC);
         check(before == 24 && shifted == 36 && model.lastNote == 24 && upShot,
               "the octave shift's buttons under the keys move them an octave up and back");
+    }
+
+    // A key plays as hard as where it is clicked: velocity 0 at its top, 127 at its bottom, a black key's along its
+    // own height; and a drag across the keys strikes each key it enters as hard as where the mouse enters it.
+    {
+        const float top = detail::keyboardTop(model.ui.sourcesCollapsed) + detail::kKeys.y;
+        const float bottom = top + detail::kKeys.h, blackBottom = top + detail::kBlackH;
+        const float c1 = detail::kKeys.x + 4.0f, cSharp1 = detail::kKeys.x + detail::kWhiteW;
+        const float d1 = detail::kKeys.x + 1.5f * detail::kWhiteW;
+        auto struck = [&](Point p) {
+            click(view, p);
+            return std::pair{model.lastNote, model.lastVelocity};
+        };
+        const auto atTop = struck({c1, top}), atMiddle = struck({c1, (top + bottom) * 0.5f}),
+                   atBottom = struck({c1, bottom - 0.01f}), black = struck({cSharp1, blackBottom - 0.01f}),
+                   blackTop = struck({cSharp1, top + detail::kBlackH * 0.25f});
+        view.mouseDown({c1, top + 1.0f}, {});
+        const int pressed = model.lastVelocity;
+        view.mouseMove({d1, bottom - 1.0f}, {});
+        const auto slid = std::pair{model.lastNote, model.lastVelocity};
+        view.mouseUp({d1, bottom - 1.0f}, {});
+        std::printf("      key velocities: top %d, middle %d, bottom %d, black key's bottom %d and quarter %d, slid %d\n",
+                    atTop.second, atMiddle.second, atBottom.second, black.second, blackTop.second, slid.second);
+        check(atTop == std::pair{24, 0} && atMiddle == std::pair{24, 64} && atBottom == std::pair{24, 127} &&
+                  black == std::pair{25, 127} && blackTop == std::pair{25, 32} && pressed == 1 &&
+                  slid.first == 26 && slid.second == 126,
+              "a key clicked plays at velocity 0 at its top and 127 at its bottom, a key slid onto as hard as where");
     }
 
     // Collapsed by its chevron or its title, the keyboard panel keeps its top row and the editor gets 120 px

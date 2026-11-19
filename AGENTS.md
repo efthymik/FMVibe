@@ -692,7 +692,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     their displays faint until they modulate something (read off the rendered pixels), the mod wheel's
     handle (new modulation starting upward) and the pitch bend's (bipolar), each over its wheel and faint until it
     modulates something (read off the rendered pixels); with no note playing, a knob's dot showing where a macro
-    takes it (read off the rendered pixels); the octave shift's small buttons under the keys; a key the host holds easing up to lit over a few polls (read off the rendered pixels); collapsing the keyboard
+    takes it (read off the rendered pixels); the octave shift's small buttons under the keys; a key clicked playing at
+    velocity 0 at its top and 127 at its bottom (a black key along its own height), and a key slid onto as hard as
+    where the mouse enters it; a key the host holds easing up to lit over a few polls (read off the rendered pixels); collapsing the keyboard
     strip to its top row by its chevron or title, the wheels' handles staying in it and still mapping the wheels; and
     Bend's knob, in the header after Pitch, turning; the bend wheel dragged editing the Pitch Bend param in one
     gesture (the host following it), springing back to the middle and leaving nothing to undo;
@@ -1002,7 +1004,8 @@ version pinned at its top. After that it loads Visual Studio's environment for C
 - Presets are the factory ones, held in memory. Load, Save and the preset folder show a message instead, since the
   demo has no files. The theme, hue, glow, handle size and line strength are kept in the browser's storage.
 - The computer keyboard plays notes: A W S E D … from middle C, with Z and X to shift the octave and C and V to step
-  the velocity (1, 20, 40 … 100, 120, 127; 100 to begin with, as the editor's keyboard always plays).
+  the velocity (1, 20, 40 … 100, 120, 127; 100 to begin with). The editor's keyboard plays as hard as where its keys are
+  clicked.
 - On a touchscreen, `main.js` hands the editor one finger (`View::touchDown()` and on: it drags what drags, pans
   what scrolls, and taps) and two (`View::touchPanBegin()` and on: a pan), with its own slop and double tap.
 - The page stands in for a host's transport: its `Controller` offers the tempo (`hasTempo()`), which the editor's
