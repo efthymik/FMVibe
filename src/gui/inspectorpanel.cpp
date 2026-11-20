@@ -139,32 +139,30 @@ void InspectorPanel::widgets(std::vector<Widget> &list) const {
                  28.0f, kNodeNames[sources[i]]);
     };
     if (isShaperNode(node)) {
-        // The curve's list and the symmetric and link switches, then drive, output and mix, centered under the display
-        // (the Stack curve's Stack knob after its drive, the four across), what goes straight out being its line to OUT's label;
-        // a drawn curve is edited in the display unless its big editor has it.
+        // The curve's list and the symmetric and link switches (the Stack curve's Stack stepper left of LINK, without
+        // a label), then drive, output and mix, centered under the display, what goes straight out being its line to
+        // OUT's label; a drawn curve is edited in the display unless its big editor has it.
         const int shaper = shaperOfNode(node);
-        const bool custom = clipMode(value(paramIndex(shaper, ShaperParam::Mode))) == ClipMode::Custom;
-        add(Kind::ListButton, shaperModeButton(custom), paramIndex(shaper, ShaperParam::Mode));
+        const ClipMode mode = clipMode(value(paramIndex(shaper, ShaperParam::Mode)));
+        const bool custom = mode == ClipMode::Custom, stacked = mode == ClipMode::Stack;
+        add(Kind::ListButton, shaperModeButton(custom, stacked), paramIndex(shaper, ShaperParam::Mode));
         if (custom)
             add(Kind::ClipDisplay, kShaperEditButton, -1, kFxSlots + shaper);
+        if (stacked) { // its rect the knob's place alone, its field placed with the other steppers'
+            knob(paramIndex(shaper, ShaperParam::Stack), kShaperStackCenter, kShaperStackKnob, nullptr);
+            list.back().rect.h = kShaperStackKnob;
+        }
         const size_t switches = list.size();
         if (custom)
             add(Kind::Toggle, kShaperSymButton, paramIndex(shaper, ShaperParam::Symmetric));
         add(Kind::Toggle, kShaperLinkButton, paramIndex(shaper, ShaperParam::Link));
         merge(switches);
-        const bool stacked = clipMode(value(paramIndex(shaper, ShaperParam::Mode))) == ClipMode::Stack;
-        std::vector<int> params = {paramIndex(shaper, ShaperParam::Drive), paramIndex(shaper, ShaperParam::Output),
-                                   paramIndex(shaper, ShaperParam::Mix)};
-        std::vector<Str> labels = {Str::LabelDrive, Str::LabelOutput, Str::LabelMix};
-        if (stacked) {
-            params.insert(params.begin() + 1, paramIndex(shaper, ShaperParam::Stack));
-            labels.insert(labels.begin() + 1, Str::LabelStack);
-        }
+        const int params[] = {paramIndex(shaper, ShaperParam::Drive), paramIndex(shaper, ShaperParam::Output),
+                              paramIndex(shaper, ShaperParam::Mix)};
+        const Str labels[] = {Str::LabelDrive, Str::LabelOutput, Str::LabelMix};
         const float step = (kInspector.w - 32.0f) / 4.0f; // as far apart as four were, the three in the middle
-        const float first = -0.5f * static_cast<float>(params.size() - 1);
-        for (size_t i = 0; i < params.size(); ++i)
-            knob(params[i],
-                 {kInspector.x + 0.5f * kInspector.w + step * (first + static_cast<float>(i)), kInspector.y + 110.0f},
+        for (int i = 0; i < 3; ++i)
+            knob(params[i], {kInspector.x + 0.5f * kInspector.w + step * static_cast<float>(i - 1), kInspector.y + 110.0f},
                  34.0f, tr(labels[i]));
         if (clipMode(value(paramIndex(shaper, ShaperParam::Mode))) == ClipMode::Custom &&
             shapes_.shapeEditing() != shaperCurve(shaper))
@@ -348,7 +346,8 @@ void InspectorPanel::popups(std::vector<Widget> &list) const {
         const Rect button = morphSlope ? morphSlopeButton(kFilterDisplay)
                             : slopeList ? kFilterSlopeButton
                             : typeList  ? kFilterTypeButton
-                                        : shaperModeButton(clipMode(value(open)) == ClipMode::Custom);
+                                        : shaperModeButton(clipMode(value(open)) == ClipMode::Custom,
+                                                           clipMode(value(open)) == ClipMode::Stack);
         const int items = listCount(open);
         add(Kind::ListMenu, {0.0f, 0.0f, View::kWidth, host_.height()}, -1, 0);
         add(Kind::ListMenu, listMenu(button, items), -1, 1);

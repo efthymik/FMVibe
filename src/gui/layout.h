@@ -241,15 +241,23 @@ inline Rect filterTypeIconRect(Rect row) {
 constexpr Rect kFilterDisplay{kInspector.x + 16.0f, kInspector.y + 150.0f, kInspector.w - 32.0f, 90.0f};
 inline const Rect kFilterSlopeButton = slopeButton(kFilterDisplay);
 // A shaper's page: its curve's list and the link switch in the row under the summary, with a Custom curve's edit
-// button (a pencil, opening its big editor) and symmetric switch between them, then its transfer curve where a filter's
-// response shows.
+// button (a pencil, opening its big editor) and symmetric switch between them, or the Stack curve's Stack stepper,
+// then its transfer curve where a filter's response shows.
 constexpr Rect kShaperLinkButton{kInspector.x + kInspector.w - 16.0f - 44.0f, kInspector.y + 62.0f, 44.0f, 22.0f};
 constexpr Rect kShaperSymButton{kShaperLinkButton.x - 50.0f, kShaperLinkButton.y, 44.0f, 22.0f};
 constexpr float kClipEditW = 28.0f; // a Custom curve's edit button beside its list, on a shaper's page and card
 constexpr Rect kShaperEditButton{kShaperSymButton.x - 6.0f - kClipEditW, kShaperLinkButton.y, kClipEditW, 22.0f};
-inline Rect shaperModeButton(bool custom) {
+// The Stack stepper's place: a knob this size, whose field (see View::widgets()) comes out level with LINK and as high
+// (its foot 5.5 px above the knob's), 56 px wide, 6 px clear of LINK's left edge, without a label.
+constexpr float kShaperStackKnob = 32.0f;
+constexpr Point kShaperStackCenter{kShaperLinkButton.x - 6.0f - 28.0f,
+                                   kShaperLinkButton.y + kShaperLinkButton.h + 5.5f - 0.5f * kShaperStackKnob};
+inline Rect shaperModeButton(bool custom, bool stacked = false) {
     return {kInspector.x + 16.0f, kInspector.y + 62.0f,
-            kInspector.w - 32.0f - (custom ? kShaperLinkButton.right() - kShaperEditButton.x + 6.0f : 50.0f), 22.0f};
+            kInspector.w - 32.0f - (custom    ? kShaperLinkButton.right() - kShaperEditButton.x + 6.0f
+                                    : stacked ? 44.0f + 6.0f + 56.0f + 6.0f
+                                              : 50.0f),
+            22.0f};
 }
 constexpr Rect kShaperDisplay{kInspector.x + 16.0f, kInspector.y + 150.0f, kInspector.w - 32.0f, 112.0f};
 // An operator's wave buttons: the common waves, then "..." with a list of the others.
@@ -904,7 +912,8 @@ inline Rect fxMenuNodeItem(Point at, int bands = 2) {
 
 // A shaper card's curve picker: a button with the curve's name across the card, and the list it opens under it (for a
 // Custom curve, the curve's edit button at its right, a pencil opening its big editor); under its display LINK, which
-// ties the Output knob to the drive, centered on the card; for a Custom curve SYM left of it, the two centered together.
+// ties the Output knob to the drive, centered on the card; for a Custom curve SYM left of it, and for the Stack curve
+// its Stack stepper right of it, the two centered together.
 // The reverb's row: its algorithm's button.
 inline Rect clipModeButton(Rect card, bool custom = false) {
     return {card.x + 14.0f, card.y + 44.0f, card.w - 28.0f - (custom ? kClipEditW + 6.0f : 0.0f), 22.0f};
@@ -915,8 +924,14 @@ inline Rect clipEditButton(Rect card) {
 inline Rect clipSymButton(Rect card) {
     return {card.center().x - 47.0f, card.y + 199.0f, 44.0f, 20.0f};
 }
-inline Rect clipLinkButton(Rect card, bool custom) {
-    return {card.center().x + (custom ? 3.0f : -22.0f), card.y + 199.0f, 44.0f, 20.0f};
+inline Rect clipLinkButton(Rect card, bool custom, bool stacked = false) {
+    return {card.center().x + (custom ? 3.0f : stacked ? -53.0f : -22.0f), card.y + 199.0f, 44.0f, 20.0f};
+}
+// The Stack stepper's place: a knob this size, whose field (see View::widgets()) comes out level with LINK and as high
+// (its foot 5.5 px above the knob's), 56 px wide, 6 px clear of LINK's right edge, without a label.
+constexpr float kClipStackKnob = 30.0f;
+inline Point clipStackCenter(Rect card) {
+    return {card.center().x + 25.0f, card.y + 199.0f + 20.0f + 5.5f - 0.5f * kClipStackKnob};
 }
 // The reverb's three rows of knobs, down its card from its top.
 constexpr float kReverbKnobsY[] = {158.0f, 212.0f, 266.0f};

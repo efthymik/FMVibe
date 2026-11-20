@@ -494,7 +494,9 @@ What the plugin does and how its editor works, in full. Building and installing 
     between two stages, and nothing rounding its top off: each stage lifts back what its anti-aliasing's average takes
     off the top, and the shaper effect runs at twice the host rate (the voices' run at their
     oversampling), so stacked eight high at 0 dB, quiet sines to 15 kHz come out within half a dB of their level. The
-    DC blocker follows. Its **Stack** knob (1–8, 1 to begin with), after Drive, where it shows only for the Stack curve, runs
+    DC blocker follows. Its **Stack** (1–8, 1 to begin with), a stepper without a label right of LINK under the
+    display, the two centered together, where it shows only for the Stack curve (on a voice shaper's page, left of
+    LINK in the curve list's row, the list narrowing for it), runs
     that many stages in a row, each driven by Drive and brought back down after it by as much as Link would (whether
     Link is on or not), so a stack plays about as that many linked shapers in a row; the DC blocker, Output (linked
     or not) and Mix come once, after the last, as the stages' high-passes take out what the stages before them put
@@ -515,7 +517,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     what goes into the curve, up to 15 dB above about 700 Hz either way, and tilts what comes out exactly the other
     way: what the curve leaves alone comes out as it went in, while up drives the top harder (a brighter, fizzier
     distortion on bright sounds, and a softer one on a bass, whose harmonics the tilt after takes down) and down
-    drives the lows harder. Its knob comes after Drive (and Stack).
+    drives the lows harder. Its knob comes after Drive.
   - **Amp**: a guitar amp, then a speaker cabinet heard through a mic. **Model** picks the amp: its preamp stages
     (each a coupling high-pass, a gain, a curve with a bias whose lower side is softer, which adds even harmonics, and
     a low-pass), its tone stack and its power amp. **Clean** (one gentle stage, lots of headroom), **Blues** (two
@@ -1928,7 +1930,8 @@ one may have changed since it last did.
     shows as a steady swell rather than a flicker; its matrix cell has a small bar along its bottom with each
     modulation's range, a tick where the amount is set and a white dot where it is now, and its label each
     modulation's range just above it, clear of its solid fill.
-- **Steppers**: the header's Voices, an operator's Unison and Mult (fixed) and a MIDI source's CC show as steppers
+- **Steppers**: the header's Voices, an operator's Unison and Mult (fixed), a shaper's Stack (a voice's and an
+  effect's, without a label) and a MIDI source's CC show as steppers
   rather than knobs: the number in a field, − and + at the field's ends and its steps along the field's foot, a tick
   each where they fit 2.5 px apart or more (the one set lit), else a track with the value's place marked. Every other
   stepped value stays a knob. A stepper takes what a knob takes: a drag up and down a step every 10 px (Voices

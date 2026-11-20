@@ -3372,7 +3372,7 @@ void renderNewerControls(const std::filesystem::path &dir, Renderer &renderer) {
     view.undo();
     check(checked2 && !offers1 && to8 && model.value(oversampling) == 1.0,
           "the shaper's title menu picks its oversampling, 2x to 8x, the one in force checked, undoably");
-    const bool tone = turned(fxKnob(model, 0, 1, 4), 20.0f, paramIndex(0, FxParam::ShaperTone));
+    const bool tone = turned(fxKnob(model, 0, 1, 4, detail::kShaperKnobsY), 20.0f, paramIndex(0, FxParam::ShaperTone));
     const bool duck = turned(fxKnob(model, 1, 1, 4, 266.0f), 20.0f, paramIndex(1, FxParam::DelayDuck));
     const bool detector = turned(fxKnob(model, 2, 3, 4, 211.0f), 20.0f, paramIndex(2, FxParam::CompDetectorHp));
     const bool lowCut = turned(fxKnob(model, 3, 0, 3, detail::kReverbKnobsY[2]), 20.0f, paramIndex(3, FxParam::ReverbLowCut));
@@ -3698,18 +3698,34 @@ void testShapers(const std::filesystem::path &dir, Renderer &renderer) {
     check(mixTurned && at(ShaperParam::Mix) == 1.0 && at(ShaperParam::Out) == outBefore,
           "a shaper's page has Drive, Output and Mix, centered, and no To Out knob");
     {
-        // The Stack curve's Stack knob comes after Drive, the four knobs as far apart as ever, centered: dragged up, it runs
-        // more stages, whole ones, undoably.
+        // The Stack curve's Stack stepper sits left of LINK, its field as high as LINK and level with it, 56 px wide and
+        // 6 px clear of it and of the list, which narrows for it; the three knobs stay. Its + runs a stage more, an undo
+        // step, and dragged up its number runs more stages, whole ones, undoably.
         click(view, kShaperList);
         click(view, shaperListItem(ClipMode::Stack));
         const bool picked = at(ShaperParam::Mode) == static_cast<double>(ClipMode::Stack);
-        const Point stackKnob = ins(884.0f + 150.0f - 268.0f / 4.0f * 0.5f, 242.0f);
+        const Rect link = detail::kShaperLinkButton;
+        const Rect well{link.x - 6.0f - 56.0f, link.y, 56.0f, link.h};
+        const bool placed = std::abs(detail::kShaperStackCenter.x - well.center().x) < 0.5f &&
+                            std::abs(detail::shaperModeButton(false, true).right() + 6.0f - well.x) < 0.5f;
+        const Point plus{well.right() - 7.0f, well.y + 8.0f};
+        click(view, plus);
+        const bool more = at(ShaperParam::Stack) == 2.0;
+        view.undo();
+        const bool fewer = at(ShaperParam::Stack) == 1.0;
+        const double driveBefore = at(ShaperParam::Drive);
+        drag(view, shaperKnob(0), {shaperKnob(0).x, shaperKnob(0).y - 20.0f});
+        const bool driveTurns = at(ShaperParam::Drive) > driveBefore;
+        view.undo();
+        const Point stackKnob = well.center();
         drag(view, stackKnob, {stackKnob.x, stackKnob.y - 40.0f});
         const double stacked = at(ShaperParam::Stack);
-        view.mouseMove(stackKnob, {});
+        view.mouseMove(plus, {});
         const bool shot = renderer.save(view, dir / "30b-shaper-stack.png");
         view.undo();
         const bool undone = at(ShaperParam::Stack) == 1.0;
+        check(picked && placed && more && fewer && driveTurns,
+              "a shaper's Stack curve shows its Stack stepper left of LINK, its + an undo step, the knobs staying");
         // The wheel over the list's button steps along the list: from Fold to Stack, then to Custom, and back.
         model.set(paramIndex(shaper, ShaperParam::Mode), static_cast<double>(ClipMode::Fold));
         view.wheel(kShaperList, 1.0f, {});
@@ -3723,7 +3739,7 @@ void testShapers(const std::filesystem::path &dir, Renderer &renderer) {
         // to the first curve offered and back to Custom, each click an undo step.
         {
             const Rect button = detail::shaperModeButton(false);
-            click(view, listStep(button, 1));
+            click(view, listStep(detail::shaperModeButton(false, true), 1)); // narrower, beside the Stack stepper
             const bool onToCustom = at(ShaperParam::Mode) == static_cast<double>(ClipMode::Custom);
             const Rect custom = detail::shaperModeButton(true); // narrower now, beside SYM
             click(view, listStep(custom, 1));
@@ -3740,7 +3756,7 @@ void testShapers(const std::filesystem::path &dir, Renderer &renderer) {
         click(view, shaperListItem(ClipMode::Hard));
         check(picked && stacked > 1.0 && stacked == std::round(stacked) && shot && undone &&
                   at(ShaperParam::Mode) == static_cast<double>(ClipMode::Hard),
-              "a shaper's Stack curve shows its Stack knob after Drive, which turns in whole stages, undoably");
+              "a shaper's Stack stepper, dragged up, runs more stages, whole ones, undoably");
     }
     model.set(paramIndex(0, OpParam::Enabled), 1.0);
     model.set(paramIndex(1, OpParam::Enabled), 1.0);
@@ -13167,26 +13183,50 @@ void run(const std::filesystem::path &dir, float scale) {
               "the arrows in the shaper card's curve list step the curve along the list");
     }
     {
-        // The Stack curve, before Custom in the list, puts its Stack knob after Drive, five knobs across the card
-        // (Drive, Stack, Tone, Output and Mix): dragged up, it runs more stages, whole ones, undoably, the display
-        // drawing the stages' curve.
+        // The Stack curve, before Custom in the list, puts its Stack stepper right of LINK, the two centered together
+        // under the display (LINK moving left for it), the four knobs staying: its + runs a stage more, each click an
+        // undo step, and dragged up its number runs more stages, whole ones, the display drawing the stages' curve.
+        const Rect card{fxCardX(model, 0), 180.0f, fxCardW(model, 0), 300.0f};
         click(view, clipButton);
         click(view, clipItem(ClipMode::Stack));
         const bool picked =
             std::lround(model.value(paramIndex(0, FxParam::ShaperMode))) == static_cast<long>(ClipMode::Stack);
         const int stack = paramIndex(0, FxParam::ShaperStack);
-        const Point knob = fxKnob(model, 0, 1, 5);
-        drag(view, knob, {knob.x, knob.y - 40.0f});
+        const Rect link = detail::clipLinkButton(card, false, true);
+        const Point center = detail::clipStackCenter(card);
+        // Its field: as high as LINK and level with it, 56 px wide from 6 px right of it, the pair centered.
+        const Rect well{link.right() + 6.0f, link.y, 56.0f, link.h};
+        const bool centered = std::abs((link.x + well.right()) * 0.5f - (card.x + card.w * 0.5f)) < 0.5f &&
+                              std::abs(well.center().x - center.x) < 0.5f;
+        const Point plus{well.right() - 7.0f, well.y + 7.0f};
+        click(view, plus);
+        const bool one = model.value(stack) == 2.0;
+        view.mouseMove({plus.x, plus.y + 300.0f}, {}); // away, so the second click isn't a double-click
+        click(view, plus);
+        const bool two = model.value(stack) == 3.0;
+        view.undo();
+        const bool undoneOne = model.value(stack) == 2.0;
+        view.undo();
+        const bool undoneBoth = model.value(stack) == 1.0;
+        const Point number = well.center();
+        drag(view, number, {number.x, number.y - 40.0f});
         const double stacked = model.value(stack);
-        view.mouseMove(knob, {});
+        view.mouseMove(plus, {});
         const bool shot = renderer.save(view, dir / "8e-clip-stack.png");
         view.undo();
         const bool undone = model.value(stack) == 1.0;
+        // LINK still takes its clicks beside it.
+        click(view, link.center());
+        const bool unlinked = model.value(paramIndex(0, FxParam::ShaperLink)) == 0.0;
+        view.undo();
         click(view, clipButton);
         click(view, clipItem(ClipMode::Asymmetric));
-        check(picked && stacked > 1.0 && stacked == std::round(stacked) && shot && undone &&
+        check(picked && centered && one && two && undoneOne && undoneBoth && unlinked,
+              "the shaper effect's Stack curve shows its Stack stepper right of LINK, centered together, its + an undo "
+              "step a click");
+        check(stacked > 1.0 && stacked == std::round(stacked) && shot && undone &&
                   std::lround(model.value(paramIndex(0, FxParam::ShaperMode))) == static_cast<long>(ClipMode::Asymmetric),
-              "the shaper effect's Stack curve shows its Stack knob after Drive, which turns in whole stages");
+              "the shaper effect's Stack stepper, dragged up, runs more stages, whole ones, undoably");
     }
     // Custom draws the curve in the card, to edit right there: its plot is the display less 8 px all round
     // (the card less 44 px across, 100 down), the full swing 6 px short of its edges. A double-click adds a point, a

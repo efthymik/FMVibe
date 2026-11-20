@@ -539,7 +539,8 @@ A shaper only uses CPU while it has an input and its output is routed somewhere.
   [Shaper effect](#shaper) for what each does.
 - **Drive** (0–36 dB), **Output** and **Mix**.
 - **Link** (on by default): lowers the output as the drive rises, so Drive changes the tone more than the level.
-- **Symmetric** (Custom only) and **Stack** (Stack only).
+- **Symmetric** (Custom only).
+- **Stack** (Stack only): the number left of Link, 1–8 stages. Click its − or +, or drag the number up or down.
 
 The page shows the transfer curve. A Custom curve can be drawn right there, or in the larger curve editor opened with
 the **pencil** button (see [Shape editors](#shape-editors)). Under the curve are the send knobs of the operators and
@@ -939,8 +940,9 @@ A waveshaper for saturation and distortion.
   - **Cubic**: gentle saturation reaching full level.
   - **Gentle**: very soft, never quite reaching full level.
   - **Sine Fold** and **Fold**: what exceeds full level folds back, smoothly or in straight lines.
-  - **Stack**: a tube-like stage, biased for even harmonics. The **Stack** knob (1–8) chains that many stages:
-    denser, not louder, with a thumping low end when driven hard.
+  - **Stack**: a tube-like stage, biased for even harmonics. The number beside Link (1–8) chains that many
+    stages: denser, not louder, with a thumping low end when driven hard. Click its − or +, or drag its number up or
+    down.
   - **Custom**: a curve you draw, from the quietest input to the loudest. Edit it on the card or open the large
     editor with the **pencil** button. **Symmetric** (SYM) mirrors its upper half onto its lower half.
 - **Drive** (0–36 dB), **Output**, **Mix**.

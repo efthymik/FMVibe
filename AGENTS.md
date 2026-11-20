@@ -620,9 +620,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     and running it onto an operator and into a filter, its page's curve list, link switch, symmetric switch (for
     a Custom curve) and knobs (Drive, Output and Mix, centered, with no To Out), its Custom curve drawn on the page and in the big editor, whose pencil sits beside the curve's list (on the
     shaper effect's card too), lit while it is open (read off the rendered pixels);
-  - a shaper's Stack curve, between Fold and Custom in its list, on its page and on the shaper effect's card,
-    showing its Stack knob after Drive, turned in whole stages, undoably, and the wheel over the list's button
-    stepping along the list's order;
+  - a shaper's Stack curve, between Fold and Custom in its list, showing its Stack stepper beside LINK, on its page
+    left of it (the list narrowing for it, the knobs staying) and on the shaper effect's card right of it, the two
+    centered together, its + an undo step a click, dragged in whole stages, undoably, and the wheel over the list's
+    button stepping along the list's order;
   - the shaper effect's SYM switch, hidden but for a Custom curve, putting a point in the middle of its drawn curve, a double-click on the curve's
     mirrored left half doing nothing, the middle point refusing to be deleted, and the switch
     undoing with its point; the big curve editor's SYM (a shaper effect's and a voice shaper's) switching, its

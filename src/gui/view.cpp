@@ -1270,13 +1270,16 @@ bool View::isRatioTarget(int param) {
 }
 
 bool View::isStepperParam(int param) {
-    // The voice limit, an operator's unison count and fixed Mult, and a MIDI source's controller number; every other
-    // stepped value stays a knob.
+    // The voice limit, an operator's unison count and fixed Mult, a shaper's Stack (a voice's and an effect's) and a
+    // MIDI source's controller number; every other stepped value stays a knob.
     if (param < 0)
         return false;
     if (param == paramIndex(GlobalParam::Voices) || opOfField(param, OpParam::Unison) >= 0 ||
-        opOfField(param, OpParam::FixedMult) >= 0)
+        opOfField(param, OpParam::FixedMult) >= 0 || fxFieldOf(param) == FxParam::ShaperStack)
         return true;
+    for (int s = 0; s < kShapers; ++s)
+        if (param == paramIndex(s, ShaperParam::Stack))
+            return true;
     for (int s = 0; s < kMaxSources; ++s)
         if (param == paramIndex(s, SourceParam::CcNumber))
             return true;
@@ -1985,28 +1988,28 @@ void View::effectCardWidgets(std::vector<Widget> &list, int slot, Rect card) con
     };
     switch (type) {
     case FxType::Shaper: {
-        const bool custom = clipMode(value(at(FxParam::ShaperMode))) == ClipMode::Custom;
+        const ClipMode mode = clipMode(value(at(FxParam::ShaperMode)));
+        const bool custom = mode == ClipMode::Custom, stacked = mode == ClipMode::Stack;
         add(Kind::ListButton, clipModeButton(card, custom), at(FxParam::ShaperMode));
         if (custom)
             add(Kind::ClipDisplay, clipEditButton(card), -1, slot);
         const size_t switches = list.size();
         if (custom)
             add(Kind::Toggle, clipSymButton(card), at(FxParam::ShaperSymmetric));
-        add(Kind::Toggle, clipLinkButton(card, custom), at(FxParam::ShaperLink));
+        add(Kind::Toggle, clipLinkButton(card, custom, stacked), at(FxParam::ShaperLink));
         merge(switches);
+        // How many stages a Stack runs: a stepper right of LINK (its field placed with the other steppers'), the two
+        // centered together, without a label (its rect the knob's place alone, clear of the knobs under it).
+        if (stacked) {
+            knob(at(FxParam::ShaperStack), clipStackCenter(card), kClipStackKnob, nullptr);
+            list.back().rect.h = kClipStackKnob;
+        }
         if (custom)
             drawnCurve(slot, fxDisplayIn(card, type));
-        // Drive, how many stages a Stack runs, Tone (which end the curve drives harder), Output and Mix. Its
-        // oversampling is in its title's right-click menu.
-        if (clipMode(value(at(FxParam::ShaperMode))) == ClipMode::Stack)
-            knobs({at(FxParam::ShaperDrive), at(FxParam::ShaperStack), at(FxParam::ShaperTone), at(FxParam::ShaperOutput),
-                   at(FxParam::ShaperMix)},
-                  {tr(Str::LabelDrive), tr(Str::LabelStack), tr(Str::LabelTone), tr(Str::LabelOutput),
-                   tr(Str::LabelMix)},
-                  kShaperKnobsY);
-        else
-            knobs({at(FxParam::ShaperDrive), at(FxParam::ShaperTone), at(FxParam::ShaperOutput), at(FxParam::ShaperMix)},
-                  {tr(Str::LabelDrive), tr(Str::LabelTone), tr(Str::LabelOutput), tr(Str::LabelMix)}, kShaperKnobsY);
+        // Drive, Tone (which end the curve drives harder), Output and Mix. Its oversampling is in its title's
+        // right-click menu.
+        knobs({at(FxParam::ShaperDrive), at(FxParam::ShaperTone), at(FxParam::ShaperOutput), at(FxParam::ShaperMix)},
+              {tr(Str::LabelDrive), tr(Str::LabelTone), tr(Str::LabelOutput), tr(Str::LabelMix)}, kShaperKnobsY);
         break;
     }
     case FxType::Delay: {
