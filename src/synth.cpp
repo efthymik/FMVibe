@@ -329,7 +329,7 @@ void Synth::prepare(double sampleRate, int capacity, int oversampling) {
         Analyzer::prepare(filterAnalyzed_[f], kFxSlots + f, kFxSlots + kFilters); // apart from the effects'
     }
     analyzer_.prepare(sampleRate);
-    effects_.prepare(sampleRate);
+    effects_->prepare(sampleRate);
     noiseColor_.prepare(rate_, sampleRate);
     volumeGlide_ = 1.0 - std::exp(-1.0 / (kVolumeGlide * sampleRate));
     voiceFmRange_ = cutoffFmRange(rate_);
@@ -378,9 +378,9 @@ void Synth::reset() {
         filterDecimators_[f].reset();
         filterAnalyzed_[f].clear();
     }
-    effects_.reset();
+    effects_->reset();
     for (int slot = 0; slot < kFxSlots; ++slot) {
-        effects_.setCutoffFm(slot, nullptr);
+        effects_->setCutoffFm(slot, nullptr);
         fxCutoffFm_[slot] = {};
     }
     fxFmLive_ = false;
@@ -643,7 +643,7 @@ void Synth::allSoundOff(int channel) {
             startFade(v); // its note ends now; its sound in a few milliseconds
     });
     if (match.channel < 0)
-        effects_.flush();
+        effects_->flush();
 }
 
 void Synth::choke(const NoteRef &match) {
@@ -1085,7 +1085,7 @@ void Synth::renderSpan(float *left, float *right, uint32_t frames, const ParamVa
         runSharedLfos(params, newest, n, done + n);
         if (fxFmWanted_ || fxFmLive_)
             runFxCutoffFm(n);
-        effects_.process(left + done, right + done, n, fxParams_, tempo_, fxPitch_);
+        effects_->process(left + done, right + done, n, fxParams_, tempo_, fxPitch_);
         // The tail's modulation stops once the effects have been silent for a while: the params then go back to
         // their knobs where nothing is heard, and the effects can rest.
         if (fxTail_.on) {
@@ -1580,16 +1580,16 @@ void Synth::telemetry(Telemetry &out) const {
         out.keys[keysTaken_[i].key / 32] |= 1u << (keysTaken_[i].key % 32);
     for (int slot = 0; slot < kFxSlots; ++slot) { // effects keep working on echoes after the voices end
         for (int band = 0; band < kMcBands; ++band) {
-            out.fxReduction[slot][band] = effects_.reduction(slot, band);
-            out.fxBandLevel[slot][band] = effects_.bandLevel(slot, band);
-            out.fxBandGain[slot][band] = effects_.bandGain(slot, band);
+            out.fxReduction[slot][band] = effects_->reduction(slot, band);
+            out.fxBandLevel[slot][band] = effects_->bandLevel(slot, band);
+            out.fxBandGain[slot][band] = effects_->bandGain(slot, band);
         }
         for (int band = 0; band < kSpectrumBands; ++band)
-            out.fxSpectrum[slot][band] = effects_.spectrum(slot, band);
-        out.fxPhases[slot] = effects_.sweepPhase(slot);
+            out.fxSpectrum[slot][band] = effects_->spectrum(slot, band);
+        out.fxPhases[slot] = effects_->sweepPhase(slot);
     }
     for (int port = 0; port < kFxPorts; ++port)
-        out.fxPortLevels[port] = effects_.portLevel(port);
+        out.fxPortLevels[port] = effects_->portLevel(port);
     for (int f = 0; f < kFilters; ++f) // and so do the filters' analyzers, as the filters ring out
         out.filterSpectrum[f] = filterAnalyzed_[f].bands;
     const Voice *newest = nullptr;
@@ -1938,7 +1938,7 @@ void Synth::runFxCutoffFm(uint32_t frames) {
         }
         out.on = listed || most > 1e-5f || std::abs(out.jump) > 1e-5;
         fxFmLive_ = fxFmLive_ || out.on;
-        effects_.setCutoffFm(slot, out.on ? out.octaves.data() : nullptr);
+        effects_->setCutoffFm(slot, out.on ? out.octaves.data() : nullptr);
     }
 }
 

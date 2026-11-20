@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <memory>
 #include <span>
 #include <vector>
 
@@ -277,14 +278,14 @@ public:
     // Whether the sequencer's curves take the pitch bend, the mod wheel or a macro's knob anywhere now.
     bool seqCurvesApplied() const { return seqBend_ != 0.0 || seqWheel_ != 0.0 || seqMacroHeld_ != 0; }
     // Effects still sounding after the voices ended (delay echoes).
-    bool effectsRinging() const { return effects_.ringing(); }
+    bool effectsRinging() const { return effects_->ringing(); }
     // Whether the voice filters, parametric EQs and filter effects measure their output for the editor, as do the effects
     // graph's ports, and the output scope captures the output (see kOutScopeBins). Switched off, the scope forgets what it took.
     void setAnalyzing(bool on) {
         if (analyzing_ && !on)
             outScope_ = {};
         analyzing_ = on;
-        effects_.setAnalyzing(on);
+        effects_->setAnalyzing(on);
     }
     void telemetry(Telemetry &out) const;
     // Which operator's output the telemetry's scope captures from the newest voice (-1: none, and nothing is
@@ -954,7 +955,9 @@ private:
     std::array<Decimator, kFilters> filterDecimators_;
     std::array<Analyzed, kFilters> filterAnalyzed_;
     Analyzer analyzer_;
-    Effects effects_;
+    // On the heap: about a megabyte, which would otherwise sit among the members the voices read, moving them with
+    // every change to the effects' size (MSVC's voice loop shifting with them).
+    std::unique_ptr<Effects> effects_ = std::make_unique<Effects>();
     ParamValues fxParams_{}; // effect params with the newest voice's modulation, per control block
     // The effect params as summed for this render() (see render()), from kFxBase on, and those the newest voice's
     // slots moved in the last control block.
