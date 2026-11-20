@@ -157,8 +157,7 @@ sequencer pattern plays as it was made. In a DAW, loading a preset never changes
   so the shape is visible at any volume.
 - **Output meter**: peak level for each side, from −48 dB to full scale. A light above the meter turns red for a moment
   if the output clips.
-- **Volume**: the output level after the effects, −60 to +12 dB (−12 dB by default). Volume does not change how hard the
-  effects are driven.
+- **Volume**: the output level after the effects, −60 to +12 dB (−12 dB by default).
 - **FM Amount**: scales every route in the routing at once, a quick way to make a patch duller or brighter.
 - **Pitch**: transposes the whole instrument by up to ±48 semitones. A useful envelope target for drums.
 - **Bend**: the pitch bend range in semitones for MIDI pitch bend and the Bend wheel. It can't be modulated.
@@ -185,8 +184,7 @@ Under the tabs, the page title shows the node's letter and a **summary line**, f
 its modulation handle (see [Operators as sources](#operators-as-sources)). While a node is off, its page is dimmed,
 but its controls still work.
 
-A switched-off operator is silent and uses no CPU. Its settings and connections are kept for when you switch it on
-again.
+A switched-off operator is silent and uses no CPU, but keeps its settings and connections.
 
 ### Waves
 
@@ -257,8 +255,7 @@ instant attack, full sustain and a 15 ms release.
 On the display, drag the handles for the peak, the end of the hold, the sustain level and the end of the release.
 Drag the small dot halfway along a segment up or down to bend it; double-click it to straighten it.
 
-The display zooms to fit the whole envelope, and zooms out when you drag a handle past its end. While notes play,
-a dashed line and a dot show the most recent voice's envelope level and position.
+The display zooms to fit the whole envelope. While notes play, a dashed line and a dot show the most recent voice's envelope level and position.
 
 ### Unison tab
 
@@ -516,7 +513,7 @@ and assign the **Note** source to it at 100 %, leaving Key Track at 0.
 **Filter FM**: assign an operator's output to Cutoff to move it at audio rate (see
 [Operators as sources](#operators-as-sources)).
 
-A voice ends only once its filters have rung out, so resonant combs and self-oscillating filters fade naturally.
+Resonant combs and self-oscillating filters ring out after a note ends rather than stopping short.
 
 ## 9. Shapers
 
@@ -1437,8 +1434,6 @@ does not contain the instance settings (oversampling and MPE).
 | Warm Pad | Pad | Soft, warm pad that swells in slowly and fades into a long reverb. |
 | Wobble Bass | Bass | Bass that wobbles open and shut in eighth notes. |
 
-Many factory presets have named macros that shape the sound, and several play the sequencer while you hold a key.
-
 ## 15. Settings
 
 The cog in the title bar opens the settings dialog.
@@ -1553,8 +1548,7 @@ In hosts that show CLAP remote control pages (such as Bitwig Studio), FMVibe off
 ### Latency and restarts
 
 FMVibe reports its latency to the host. Raising the voice limit, changing the oversampling, or editing the effects
-in a way that changes the latency asks the host to deactivate and reactivate the plugin, which most hosts do
-automatically and almost instantly.
+in a way that changes the latency has the host restart the plugin briefly. Most hosts do this automatically.
 
 ### What is saved where
 
