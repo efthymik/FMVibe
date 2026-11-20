@@ -1978,6 +1978,11 @@ void View::effectCardWidgets(std::vector<Widget> &list, int slot, Rect card) con
                 knob(params.begin()[i], {card.x + step * (static_cast<float>(i) + 0.5f), card.y + y}, diameter,
                      labels.begin()[i]);
     };
+    // Feedback and Mix as the lower row, kFxPairX in from the card's sides (see there).
+    auto pair = [&](int feedback, int mix) {
+        knob(feedback, {card.x + card.w * kFxPairX, card.y + kFxKnobsY2}, 30.0f, tr(Str::LabelFeedback));
+        knob(mix, {card.right() - card.w * kFxPairX, card.y + kFxKnobsY2}, 30.0f, tr(Str::LabelMix));
+    };
     switch (type) {
     case FxType::Shaper: {
         const bool custom = clipMode(value(at(FxParam::ShaperMode))) == ClipMode::Custom;
@@ -2186,8 +2191,7 @@ void View::effectCardWidgets(std::vector<Widget> &list, int slot, Rect card) con
         }
         knobs({rate, at(FxParam::FlangerDepth), at(FxParam::FlangerDelay)},
               {synced ? nullptr : tr(Str::LabelRate), tr(Str::LabelDepth), tr(Str::LabelDelay)}, kFxKnobsY1);
-        knobs({at(FxParam::FlangerFeedback), -1, at(FxParam::FlangerMix)},
-              {tr(Str::LabelFeedback), nullptr, tr(Str::LabelMix)}, kFxKnobsY2);
+        pair(at(FxParam::FlangerFeedback), at(FxParam::FlangerMix));
         // Through zero, a switch in the place between them.
         add(Kind::Toggle, {card.center().x - 20.0f, card.y + kFxKnobsY2 - 9.0f, 40.0f, 18.0f},
             at(FxParam::FlangerThroughZero));
@@ -2211,8 +2215,7 @@ void View::effectCardWidgets(std::vector<Widget> &list, int slot, Rect card) con
         // The range, then the share of it the shift takes.
         knobs({at(FxParam::ShiftRange), at(FxParam::ShiftAmount), at(FxParam::ShiftSpread)},
               {tr(Str::LabelRange), tr(Str::LabelShift), tr(Str::LabelSpread)}, kFxKnobsY1);
-        knobs({at(FxParam::ShiftFeedback), -1, at(FxParam::ShiftMix)},
-              {tr(Str::LabelFeedback), nullptr, tr(Str::LabelMix)}, kFxKnobsY2);
+        pair(at(FxParam::ShiftFeedback), at(FxParam::ShiftMix));
         break;
     case FxType::Disperser:
         // Where it disperses and how, over what moves it with the note, how often it repeats and how much is heard.

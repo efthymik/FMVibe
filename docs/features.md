@@ -1177,7 +1177,9 @@ one may have changed since it last did.
     that has one), and on a card one place wide, four to a row 26 px across and five 24, leaving room between them
     for their labels (a wider card's keep 32 px); a label stays as wide as a 32 px knob's, so a value still fits
     under a smaller knob. Two rows sit 55 px apart, the lower one at the card's foot, and a reverb's three 54 px apart,
-    so the display above them takes the rest:
+    so the display above them takes the rest. The flanger's and frequency shifter's lower row, Feedback and Mix
+    with TZF or nothing between, sits a little further in from the card's sides than a row of three's ends (21 %
+    of the card), so Feedback's label stays clear of the edge:
     - the shaper's transfer curve; a Custom curve shows its own points and bends instead, to drag right there
       (double-click adds or deletes a point, Ctrl snaps to the grid), with what the drive, output and mix make of
       it faintly behind and the point under the mouse in numbers; its edit button (a pencil, at the right of its curve's

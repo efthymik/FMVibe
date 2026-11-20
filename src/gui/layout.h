@@ -917,6 +917,9 @@ constexpr float kReverbKnobsY[] = {158.0f, 212.0f, 266.0f};
 // under its LINK: down the card from its top, the lower row where it always was, the others moved down toward it as
 // far as the smaller knobs of a row of four let them, the display taking the room.
 constexpr float kFxKnobsY1 = 211.0f, kFxKnobsY2 = 266.0f, kShaperKnobsY = 245.0f;
+// The flanger's and frequency shifter's lower row, Feedback and Mix with TZF or nothing between: this share of the card
+// in from either side, further in than a row of three's ends, so Feedback's label stays clear of the card's edge.
+constexpr float kFxPairX = 0.21f;
 inline Rect reverbTypeButton(Rect card) {
     return {card.x + 14.0f, card.y + 44.0f, card.w - 28.0f, 22.0f};
 }
