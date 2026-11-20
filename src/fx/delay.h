@@ -35,7 +35,7 @@ struct Delay {
     double wet = 0.0;
     double width = 1.0;
     double duck = 0.0;     // Duck, ramped
-    double follower = 0.0; // how loud what goes in is, for Duck: up at once, down over kDuckRelease
+    double follower = 0.0; // how loud what goes in is, for Duck: up over kDuckAttack, down over kDuckRelease
 
     // Allocates the lines. Main thread, while the plugin is inactive.
     void prepare(double sampleRate);
