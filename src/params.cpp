@@ -41,7 +41,7 @@ constexpr bool idsRoundTrip(int from, int to) {
     return true;
 }
 // (MSVC allows an expression 1,048,576 steps, fewer than GCC, so the parts are small.)
-static_assert(kParamCount == 32232 && kParamCount <= 11 * 3000);
+static_assert(kParamCount == 32712 && kParamCount <= 11 * 3000);
 static_assert(idsRoundTrip(0, 1500), "param id layout overlaps");
 static_assert(idsRoundTrip(1500, 3000), "param id layout overlaps");
 static_assert(idsRoundTrip(3000, 4500), "param id layout overlaps");
@@ -140,7 +140,7 @@ constexpr Str kFxNames[] = {Str::FxEmpty,     Str::FxShaper,      Str::FxDelay, 
                             Str::FxParamEq,   Str::FxFilter,      Str::FxCompressor, Str::FxMultiComp,
                             Str::FxReverb,    Str::FxPhaser,      Str::FxFlanger,    Str::FxFreqShifter,
                             Str::FxDisperser, Str::FxWidener,   Str::FxMultiDyn,   Str::FxAmp,
-                            Str::FxUtility,   Str::FxChorus};
+                            Str::FxUtility,   Str::FxChorus,      Str::FxLoFi};
 static_assert(std::size(kFxNames) == static_cast<size_t>(FxType::Count));
 constexpr Str kSourceTypeNames[] = {Str::SourceEmpty, Str::SourceLfo, Str::SourceEnvelope, Str::SourceRandom,
                                     Str::SourceMidi,  Str::SourceCurve};
@@ -872,6 +872,27 @@ void buildTable(ParamTable &t) {
         fx(FxParam::DisperserStages, tr(Str::ParamDisperserStages), ParamKind::Count, 1.0, kMaxDisperserStages, 8.0);
         fx(FxParam::DisperserPinch, tr(Str::ParamDisperserPinch), ParamKind::Percent, 0.0, 1.0, 0.5);
         fx(FxParam::DisperserMix, tr(Str::ParamDisperserMix), ParamKind::Percent, 0.0, 1.0, 1.0);
+        // Its later fields start where they leave it as it came: tracking nothing, each all-pass on every sample.
+        fx(FxParam::DisperserKeyTrack, tr(Str::ParamDisperserKeyTrack), ParamKind::Percent, 0.0, 1.0, 0.0);
+        fx(FxParam::DisperserStretch, tr(Str::ParamDisperserStretch), ParamKind::Count, 1.0, kMaxDisperserStretch, 1.0);
+        // The later fields of the others start where they leave them as they came, but the Lo-Fi's, which is new:
+        // 8 bits at 12 kHz, half smoothed.
+        fx(FxParam::ReverbLowCut, tr(Str::ParamReverbLowCut), ParamKind::CutoffOrOff, 0.0, normFromCutoff(1000.0), 0.0);
+        fx(FxParam::ReverbHighCut, tr(Str::ParamReverbHighCut), ParamKind::Cutoff, normFromCutoff(1000.0), 1.0, 1.0);
+        fx(FxParam::ReverbDiffusion, tr(Str::ParamReverbDiffusion), ParamKind::Percent, 0.0, 1.0, 1.0);
+        fx(FxParam::DelayDuck, tr(Str::ParamDelayDuck), ParamKind::Percent, 0.0, 1.0, 0.0);
+        fx(FxParam::ShaperTone, tr(Str::ParamShaperTone), ParamKind::BipolarPercent, -1.0, 1.0, 0.0);
+        fx(FxParam::ShaperOversampling, tr(Str::ParamShaperOversampling), ParamKind::AmpOversampling, 1.0,
+           kAmpOversamplings - 1.0, 1.0);
+        fx(FxParam::CompDetectorHp, tr(Str::ParamCompDetectorHp), ParamKind::CutoffOrOff, 0.0, normFromCutoff(500.0),
+           0.0);
+        fx(FxParam::FlangerThroughZero, tr(Str::ParamFlangerThroughZero), ParamKind::Toggle, 0.0, 1.0, 0.0);
+        fx(FxParam::PhaserSpread, tr(Str::ParamPhaserSpread), ParamKind::Percent, 0.0, 1.0, 0.0);
+        fx(FxParam::LoFiBits, tr(Str::ParamLoFiBits), ParamKind::Count, 1.0, kMaxLoFiBits, 8.0);
+        fx(FxParam::LoFiRate, tr(Str::ParamLoFiRate), ParamKind::Cutoff, normFromCutoff(200.0), 1.0,
+           normFromCutoff(12000.0));
+        fx(FxParam::LoFiSmooth, tr(Str::ParamLoFiSmooth), ParamKind::Percent, 0.0, 1.0, 0.5);
+        fx(FxParam::LoFiMix, tr(Str::ParamLoFiMix), ParamKind::Percent, 0.0, 1.0, 1.0);
 
         // Wide from the start, the lows left in the middle: the sides above 150 Hz, half in.
         fx(FxParam::WidenerSize, tr(Str::ParamWidenerSize), ParamKind::Percent, 0.0, 1.0, 0.5);

@@ -33,6 +33,8 @@ void Delay::start(const Context &ctx) {
     dry = delayDryLevel(ctx.at(FxParam::DelayMix));
     wet = delayWetLevel(ctx.at(FxParam::DelayMix));
     width = ctx.at(FxParam::DelayWidth);
+    duck = ctx.at(FxParam::DelayDuck);
+    follower = 0.0;
 }
 
 double Delay::run(const Context &ctx, float *const *io, uint32_t n) {
@@ -45,6 +47,11 @@ double Delay::run(const Context &ctx, float *const *io, uint32_t n) {
     const double dryStep = rampStep(dry, delayDryLevel(mix), n, ctx.rampShortest);
     const double wetStep = rampStep(wet, delayWetLevel(mix), n, ctx.rampShortest);
     const double widthStep = rampStep(width, ctx.at(FxParam::DelayWidth), n, ctx.rampShortest);
+    const double duckTo = ctx.at(FxParam::DelayDuck);
+    const double duckStep = rampStep(duck, duckTo, n, ctx.rampShortest);
+    const bool ducking = duck > 0.0 || duckTo > 0.0;
+    const double duckAttack = 1.0 - smoothing(kDuckAttack, sampleRate);
+    const double duckRelease = 1.0 - smoothing(kDuckRelease, sampleRate);
     // The low-pass fades in over the first tenth of its travel, so the tone knob has no step at the middle.
     const double toneValue = ctx.at(FxParam::DelayTone);
     const DelayTone tone = delayTone(toneValue);
@@ -79,6 +86,15 @@ double Delay::run(const Context &ctx, float *const *io, uint32_t n) {
             echo[c] = toned - highPass[c];
         }
         const double x[2] = {io[0][s], io[1][s]};
+        double heard = wet; // the echoes' level as heard, ducked
+        if (ducking) {
+            duck += duckStep;
+            const double loud = std::max(std::abs(x[0]), std::abs(x[1]));
+            follower += (loud - follower) * (loud > follower ? duckAttack : duckRelease);
+            heard = wet * (1.0 - duck * std::min(follower / kDuckFull, 1.0));
+        } else {
+            follower = 0.0;
+        }
         // Ping-pong: the input goes in on the left, and each echo crosses to the other side.
         lines[0][write] = static_cast<float>(pingPong ? 0.5 * (x[0] + x[1]) + feedback * echo[1]
                                                       : x[0] + feedback * echo[0]);
@@ -87,8 +103,8 @@ double Delay::run(const Context &ctx, float *const *io, uint32_t n) {
         // Width narrows what comes out toward the middle; the echoes themselves keep their sides.
         const double middle = 0.5 * (echo[0] + echo[1]);
         const double side = 0.5 * (echo[0] - echo[1]) * width;
-        io[0][s] = static_cast<float>(x[0] * dry + (middle + side) * wet);
-        io[1][s] = static_cast<float>(x[1] * dry + (middle - side) * wet);
+        io[0][s] = static_cast<float>(x[0] * dry + (middle + side) * heard);
+        io[1][s] = static_cast<float>(x[1] * dry + (middle - side) * heard);
         peak = std::max({peak, std::abs(x[0]), std::abs(x[1]), std::abs(echo[0]), std::abs(echo[1])});
     }
     return peak;

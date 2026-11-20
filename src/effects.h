@@ -16,6 +16,7 @@
 #include "fx/compressor.h"
 #include "fx/delay.h"
 #include "fx/disperser.h"
+#include "fx/lofi.h"
 #include "fx/eq.h"
 #include "fx/filterfx.h"
 #include "fx/flanger.h"
@@ -40,7 +41,8 @@ namespace fmvibe {
 
 // The effects on the sum of the voices: kFxSlots slots, each holding a
 // shaper, delay, DJ EQ, parametric EQ, filter, compressor, three-band
-// dynamics, reverb, phaser, flanger, chorus, frequency shifter, phase disperser, widener, amp or utility, or nothing,
+// dynamics, reverb, phaser, flanger, chorus, frequency shifter, phase disperser, widener, amp, utility or Lo-Fi, or
+// nothing,
 // run as the effects graph's wires take them from the input to the output (a chain is the slots one after another). An
 // empty or switched-off slot costs nothing; switching one fades it in or out over a few milliseconds. Audio thread
 // only, apart from construction and prepare().
@@ -111,6 +113,7 @@ private:
         fx::Disperser disperser;
         fx::Widener widener;
         fx::Utility utility;
+        fx::LoFi lofi;
         std::unique_ptr<fx::AmpFx> amp; // on the heap, from prepare(): two amps' state is large
         // The parametric EQ's, filter's or phase disperser's output, for its analyzer.
         Analyzed analyzed;
@@ -240,7 +243,7 @@ private:
     // or stopping, or the graph cleared. Else ordering it every chunk would only find it as it was.
     bool orderStale_ = true;
     static constexpr int kGraphParams = [] {
-        int count = 2 * kFxSlots + kFxSplits + kFxSums; // the types, amps' oversampling and Used switches
+        int count = 3 * kFxSlots + kFxSplits + kFxSums; // the types, amps' and shapers' oversampling, Used switches
         for (int node = 0; node < kFxNodes; ++node)
             count += fxInputCount(node);
         return count;

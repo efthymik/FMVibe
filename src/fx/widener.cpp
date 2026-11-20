@@ -31,6 +31,7 @@ void Widener::start(const Context &ctx) {
     ran = 0;
     write = 0;
     highPass = Biquad{};
+    highPassCoefs = BiquadRamp{};
     phases = {0.0, 0.25, 0.5, 0.75}; // apart from the start, so the sides never sweep together
     size = ctx.at(FxParam::WidenerSize);
     width = ctx.at(FxParam::WidenerWidth);
@@ -42,7 +43,7 @@ double Widener::run(const Context &ctx, float *const *io, uint32_t n) {
     const double sampleRate = ctx.sampleRate;
     const Coefs hp = biquad(BiquadType::HighPass,
                             std::min(cutoffFromNorm(ctx.at(FxParam::WidenerHighPass)), 0.45 * sampleRate), sampleRate);
-    const BiquadCoefs highPassCoefs{hp.b0, hp.b1, hp.b2, hp.a1, hp.a2};
+    highPassCoefs.begin({hp.b0, hp.b1, hp.b2, hp.a1, hp.a2}, n, ctx.rampShortest);
     const double glide = 1.0 - std::exp(-1.0 / (0.05 * sampleRate)); // size changes glide, like tape
     const double sizeTarget = ctx.at(FxParam::WidenerSize);
     const double widthStep = rampStep(width, ctx.at(FxParam::WidenerWidth), n, ctx.rampShortest);
@@ -76,7 +77,8 @@ double Widener::run(const Context &ctx, float *const *io, uint32_t n) {
             taps[k] = readCubic(line, write, std::clamp(widenerTap(k, size, lfo) * sampleRate, 3.0, length - 3.0));
         }
         const double x[2] = {io[0][s], io[1][s]};
-        line[write] = static_cast<float>(highPass.process(0.5 * (x[0] + x[1]), highPassCoefs));
+        highPassCoefs.next();
+        line[write] = static_cast<float>(highPass.process(0.5 * (x[0] + x[1]), highPassCoefs.now));
         write = write + 1 == length ? 0 : write + 1;
         // The sides: what the taps on the left have and those on the right lack, which cancels in a mono sum.
         // The middle: all four together, a chorus.
@@ -86,6 +88,7 @@ double Widener::run(const Context &ctx, float *const *io, uint32_t n) {
         io[1][s] = static_cast<float>(x[1] + (middle - side) * mix);
         peak = std::max({peak, std::abs(x[0]), std::abs(x[1]), std::abs(taps[0]), std::abs(taps[3])});
     }
+    highPassCoefs.end();
     return peak;
 }
 

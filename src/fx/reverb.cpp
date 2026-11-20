@@ -77,6 +77,12 @@ constexpr double kShimmerLoop = 0.7;
 // with Shimmer anywhere (a little longer half way, a little shorter full up).
 constexpr double kShimmerStretch = 0.6;
 constexpr double kMaxPreDelay = 0.25;
+// Where Diffusion is down, the four lines its input favors (see run()): two each side's input goes into, their lengths
+// far apart, and the two sides of the output signing two of them alike and two unalike, so the sides stay unalike.
+// Then the share of their gain the others keep at 0 %.
+constexpr bool kSpreadLines[] = {false, false, true, false, false, true, false, false,
+                                 false, false, false, false, true, true, false, false};
+constexpr double kLeastSpread = 0.7;
 
 // Reads a delay line `delay` samples behind `write`, between samples.
 double readBehind(const ZeroBuffer &line, int write, double delay) {
@@ -101,6 +107,19 @@ void hadamardStage(std::array<double, 16> &x) {
         }
 }
 
+// A stage of the lines' mixing as Diffusion loosens it: each pair turned by an angle (c and s its cosine and sine)
+// and one of them turned over, which keeps their energy at any angle. At 45 degrees, a stage of the transform below;
+// at 0, each line keeps its own.
+template <size_t half>
+void mixStage(std::array<double, 16> &x, double c, double s) {
+    for (size_t i = 0; i < x.size(); i += 2 * half)
+        for (size_t j = i; j < i + half; ++j) {
+            const double a = x[j], b = x[j + half];
+            x[j] = c * a + s * b;
+            x[j + half] = s * a - c * b;
+        }
+}
+
 // The fast Walsh-Hadamard transform of the lines' outputs, scaled to keep their energy.
 void hadamard(std::array<double, 16> &x) {
     hadamardStage<1>(x);
@@ -109,6 +128,22 @@ void hadamard(std::array<double, 16> &x) {
     hadamardStage<8>(x);
     for (double &v : x)
         v *= 0.25;
+}
+
+// The Diffusion knob as it acts, 0..1: its square, so the tail roughens about evenly as the knob turns down (a hit's
+// tail measured a quarter of the knob at a time), where taken as it stands most of it came in the knob's last quarter.
+double reverbDiffusionShape(double knob) {
+    const double d = std::clamp(knob, 0.0, 1.0);
+    return d * d;
+}
+
+// How far Diffusion turns the lines' mixing (see mixStage()): 45 degrees at 100 %, as the Hadamard transform mixes
+// them, down to a tenth of that at 0 %. Nearly unmixed, each line's echoes come back on their own a while, a grainy tail
+// of distinct echoes that fills in only slowly; not quite unmixed, so it does fill in, rather than ringing on as
+// sixteen combs.
+double reverbMixAngle(double diffusion) {
+    constexpr double kLeast = 0.1;
+    return 0.25 * std::numbers::pi * (kLeast + (1.0 - kLeast) * reverbDiffusionShape(diffusion));
 }
 
 } // namespace
@@ -178,6 +213,11 @@ void Reverb::start(const Context &ctx) {
     dry = delayDryLevel(ctx.at(FxParam::ReverbMix));
     wet = delayWetLevel(ctx.at(FxParam::ReverbMix));
     width = ctx.at(FxParam::ReverbWidth);
+    diffusion = ctx.at(FxParam::ReverbDiffusion);
+    mixC = std::cos(reverbMixAngle(diffusion));
+    mixS = std::sin(reverbMixAngle(diffusion));
+    cuts = {};
+    cutCoefs = {};
 }
 
 double Reverb::run(const Context &ctx, const ReverbTables &tables, float *const *io, uint32_t n) {
@@ -201,6 +241,38 @@ double Reverb::run(const Context &ctx, const ReverbTables &tables, float *const 
     const double dryStep = rampStep(dry, delayDryLevel(mix), n, ctx.rampShortest);
     const double wetStep = rampStep(wet, delayWetLevel(mix), n, ctx.rampShortest);
     const double widthStep = rampStep(width, ctx.at(FxParam::ReverbWidth), n, ctx.rampShortest);
+    const double diffusionTarget = ctx.at(FxParam::ReverbDiffusion);
+    const double diffusionStep = rampStep(diffusion, diffusionTarget, n, ctx.rampShortest);
+    // The lines' mixing turns with it, its cosine and sine ramping (a straight line between two turns loses a hair
+    // of energy between, never gains any). At 100 % it is the Hadamard transform exactly.
+    const double mixCTarget = std::cos(reverbMixAngle(diffusionTarget));
+    const double mixSTarget = std::sin(reverbMixAngle(diffusionTarget));
+    const double mixCStep = rampStep(mixC, mixCTarget, n, ctx.rampShortest);
+    const double mixSStep = rampStep(mixS, mixSTarget, n, ctx.rampShortest);
+    const bool mixArrives =
+        rampEnds(mixC, mixCTarget, n, ctx.rampShortest) && rampEnds(mixS, mixSTarget, n, ctx.rampShortest);
+    const bool fullMix = diffusion == 1.0 && diffusionTarget == 1.0;
+    // Low Cut and High Cut, a high-pass and a low-pass of 12 dB an octave on what goes in (into the pre-delay, so a
+    // room's early reflections take them too); at their ends, a filter that lets everything through.
+    const double lowCut = utilityMonoBassHz(ctx.at(FxParam::ReverbLowCut));
+    const double highCutNorm = ctx.at(FxParam::ReverbHighCut);
+    auto cutCoefsOf = [&](BiquadType type, bool on, double hz) {
+        if (!on)
+            return BiquadCoefs{};
+        const Coefs c = biquad(type, std::min(hz, 0.45 * sampleRate), sampleRate);
+        return BiquadCoefs{c.b0, c.b1, c.b2, c.a1, c.a2};
+    };
+    cutCoefs[0].begin(cutCoefsOf(BiquadType::HighPass, lowCut > 0.0, lowCut), n, ctx.rampShortest);
+    cutCoefs[1].begin(cutCoefsOf(BiquadType::LowPass, highCutNorm < 1.0, cutoffFromNorm(highCutNorm)), n,
+                      ctx.rampShortest);
+    const BiquadCoefs through{};
+    auto isThrough = [&](const BiquadRamp &r) {
+        return !r.moving && r.now.b0 == through.b0 && r.now.b1 == through.b1 && r.now.b2 == through.b2 &&
+               r.now.a1 == through.a1 && r.now.a2 == through.a2;
+    };
+    const bool cutting = !isThrough(cutCoefs[0]) || !isThrough(cutCoefs[1]);
+    if (!cutting)
+        cuts = {}; // at rest letting everything through, their states run out to nothing: they start clean
     constexpr double kInGain = 0.35355339059327373; // 1 / sqrt(8): each side goes into half the lines
     constexpr double kOutGain = 0.22; // about 1 / sqrt(16), a little under, for the level a mono sound had before
     // A shimmer feeds its tail back into its lines, band-passed and pitch-shifted, so each time round part of it
@@ -289,10 +361,19 @@ double Reverb::run(const Context &ctx, const ReverbTables &tables, float *const 
         width += widthStep;
         size += (sizeTarget - size) * glide;
         preLength += (preTarget - preLength) * glide;
+        diffusion += diffusionStep;
+        const double shaped = reverbDiffusionShape(diffusion);
         const double x[2] = {io[0][s], io[1][s]};
         double in[2], early[2] = {0.0, 0.0};
+        double going[2] = {x[0], x[1]}; // what goes in, through the cuts
+        if (cutting) {
+            cutCoefs[0].next();
+            cutCoefs[1].next();
+            for (int c = 0; c < 2; ++c)
+                going[c] = cuts[c][1].process(cuts[c][0].process(x[c], cutCoefs[0].now), cutCoefs[1].now);
+        }
         for (int c = 0; c < 2; ++c) {
-            preDelay[c][preWrite] = static_cast<float>(x[c]);
+            preDelay[c][preWrite] = static_cast<float>(going[c]);
             in[c] = readBehind(preDelay[c], preWrite, preLength);
         }
         if (style.early > 0.0) {
@@ -333,7 +414,7 @@ double Reverb::run(const Context &ctx, const ReverbTables &tables, float *const 
                                         : diffuserWrite - tables.diffuserLengths[c][d] + diffuserSize;
         for (int c = 0; c < 2; ++c) {
             for (int d = 0; d < style.diffusers; ++d) {
-                const double g = kDiffuserGains[d];
+                const double g = kDiffuserGains[d] * shaped;
                 const double v = diffusers[c][d][diffuserTap[c][d]]; // a whole number of samples behind
                 const double w = in[c] + g * v;
                 diffusers[c][d][diffuserWrite] = static_cast<float>(w);
@@ -370,10 +451,31 @@ double Reverb::run(const Context &ctx, const ReverbTables &tables, float *const 
             damp[i] += corner * (out[i] - damp[i]);
             back[i] = (damp[i] + highs[i] * (out[i] - damp[i])) * gains[i];
         }
-        hadamard(back);
-        for (int i = 0; i < kReverbLines; ++i)
-            lines[i][lineWrite] = static_cast<float>(
-                back[i] + (in[i % 2] * kReverbInSigns[i] + fed[(i + 1) % 2] * kReverbOutSigns[0][i]) * kInGain);
+        if (fullMix) {
+            hadamard(back);
+        } else {
+            mixC += mixCStep;
+            mixS += mixSStep;
+            mixStage<1>(back, mixC, mixS);
+            mixStage<2>(back, mixC, mixS);
+            mixStage<4>(back, mixC, mixS);
+            mixStage<8>(back, mixC, mixS);
+        }
+        if (fullMix) {
+            for (int i = 0; i < kReverbLines; ++i)
+                lines[i][lineWrite] = static_cast<float>(
+                    back[i] + (in[i % 2] * kReverbInSigns[i] + fed[(i + 1) % 2] * kReverbOutSigns[0][i]) * kInGain);
+        } else {
+            // Lower, the input goes more into four of the lines (two a side, of their lengths far apart) and less
+            // into the others, keeping its energy: their first echoes stand apart before the rest fill in.
+            const double others = kInGain * (kLeastSpread + (1.0 - kLeastSpread) * shaped);
+            const double four = std::sqrt(std::max(0.0, 0.5 * (1.0 - 6.0 * others * others)));
+            for (int i = 0; i < kReverbLines; ++i) {
+                const double g = kSpreadLines[i] ? four : others;
+                lines[i][lineWrite] = static_cast<float>(back[i] + in[i % 2] * kReverbInSigns[i] * g +
+                                                         fed[(i + 1) % 2] * kReverbOutSigns[0][i] * kInGain);
+            }
+        }
         lineWrite = lineWrite + 1 == lineSize ? 0 : lineWrite + 1;
         tail[0] *= kOutGain;
         tail[1] *= kOutGain;
@@ -393,11 +495,26 @@ double Reverb::run(const Context &ctx, const ReverbTables &tables, float *const 
         io[1][s] = static_cast<float>(x[1] * dry + (middle - side) * wet);
         peak = std::max({peak, std::abs(x[0]), std::abs(x[1]), std::abs(tail[0]), std::abs(tail[1])});
     }
-    // What goes in now comes out after the pre-delay, and in a room its last early reflection later still: until
-    // then, the reverb may be silent with more to come.
-    reach = style.early > 0.0
-                ? std::min(preLength + kRoomEchoSeconds[std::size(kRoomEchoSeconds) - 1] * echoScale, echoRoom)
-                : preLength;
+    cutCoefs[0].end();
+    cutCoefs[1].end();
+    if (fullMix || mixArrives) {
+        mixC = mixCTarget;
+        mixS = mixSTarget;
+    }
+    // What goes in now comes out after the pre-delay, and in a room its last early reflection later still; its tail
+    // after the all-passes (at no Diffusion plain delays as long as they are) and the shortest line. Until then, the
+    // reverb may be silent with more to come.
+    int diffuserDelay = 0;
+    for (int c = 0; c < 2; ++c) {
+        int along = 0;
+        for (int d = 0; d < style.diffusers; ++d)
+            along += tables.diffuserLengths[c][d];
+        diffuserDelay = std::max(diffuserDelay, along);
+    }
+    reach = std::max(style.early > 0.0 ? std::min(preLength + kRoomEchoSeconds[std::size(kRoomEchoSeconds) - 1] * echoScale,
+                                                  echoRoom)
+                                       : preLength,
+                     preLength + diffuserDelay + lengths[0] * size);
     // Faded out (over more than one chunk, if events cut them short), turned down or switched to another algorithm:
     // the ramp leaves a hair either side of 0, which would keep it shifting or skip clearing its lines next time.
     if (shimmerTarget == 0.0 && std::abs(shimmer) < 1e-9)

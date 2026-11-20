@@ -6,35 +6,36 @@
 
 namespace fmvibe {
 
-// A buffer of floats for delay lines, which start silent: allocated as zeros the system hands out a page at a time
-// as the buffer is first written (on Windows), so one that is allocated but never used costs address space rather
-// than memory, and allocating it costs no time filling it. The effects allocate every slot's lines for every type
-// ahead of time, since the audio thread can't, and most are never used.
-class ZeroBuffer {
+// A buffer of floats (or doubles, BasicZeroBuffer<double>) for delay lines, which start silent: allocated as zeros
+// the system hands out a page at a time as the buffer is first written (on Windows), so one that is allocated but
+// never used costs address space rather than memory, and allocating it costs no time filling it. The effects allocate
+// every slot's lines for every type ahead of time, since the audio thread can't, and most are never used.
+template <class T>
+class BasicZeroBuffer {
 public:
-    ZeroBuffer() = default;
-    ZeroBuffer(const ZeroBuffer &) = delete;
-    ZeroBuffer &operator=(const ZeroBuffer &) = delete;
-    ZeroBuffer(ZeroBuffer &&other) noexcept { take(other); }
-    ZeroBuffer &operator=(ZeroBuffer &&other) noexcept {
+    BasicZeroBuffer() = default;
+    BasicZeroBuffer(const BasicZeroBuffer &) = delete;
+    BasicZeroBuffer &operator=(const BasicZeroBuffer &) = delete;
+    BasicZeroBuffer(BasicZeroBuffer &&other) noexcept { take(other); }
+    BasicZeroBuffer &operator=(BasicZeroBuffer &&other) noexcept {
         if (this != &other) {
             release();
             take(other);
         }
         return *this;
     }
-    ~ZeroBuffer() { release(); }
+    ~BasicZeroBuffer() { release(); }
 
     // `size` zeros, in place of what it held (the value is always 0, as std::vector's assign() would be given).
     // Main thread.
-    void assign(size_t size, float = 0.0f);
+    void assign(size_t size, T = T{});
     // Silent again, for a new start: nothing to do while it was never handed out since it was allocated, else every
     // value set to 0 (which touches every page). Afterwards it counts as written. `used`: how many values from its
     // start can be other than 0 (a line written a value at a time from its start since it was last silent holds
     // nothing past as many as were written), so only those need setting.
     void zero(size_t used = static_cast<size_t>(-1)) {
         if (!pristine_)
-            std::fill_n(data_, std::min(std::max(used, stale_), size_), 0.0f);
+            std::fill_n(data_, std::min(std::max(used, stale_), size_), T{});
         stale_ = cleanFrom_ = cleanTo_ = 0;
         pristine_ = false;
     }
@@ -57,19 +58,19 @@ public:
             return;
         }
         const size_t next = static_cast<size_t>(written);
-        std::fill(data_ + next, data_ + std::min(next + ahead, stale_), 0.0f);
+        std::fill(data_ + next, data_ + std::min(next + ahead, stale_), T{});
         from = std::max(from, next);
         to = std::min(to, stale_);
         if (from >= to)
             return;
         if (cleanTo_ <= next || to < cleanFrom_ || from > cleanTo_) { // apart from the stretch: a new one
-            std::fill(data_ + from, data_ + to, 0.0f);
+            std::fill(data_ + from, data_ + to, T{});
             cleanFrom_ = from;
             cleanTo_ = to;
             return;
         }
         if (from < cleanFrom_) {
-            std::fill(data_ + from, data_ + cleanFrom_, 0.0f);
+            std::fill(data_ + from, data_ + cleanFrom_, T{});
             cleanFrom_ = from;
         }
         if (to > cleanTo_) {
@@ -78,17 +79,17 @@ public:
         }
     }
 
-    float *data() { return data_; }
-    const float *data() const { return data_; }
+    T *data() { return data_; }
+    const T *data() const { return data_; }
     size_t size() const { return size_; }
-    float &operator[](size_t i) { return data_[i]; }
-    const float &operator[](size_t i) const { return data_[i]; }
-    float *begin() { return data_; }
-    float *end() { return data_ + size_; }
+    T &operator[](size_t i) { return data_[i]; }
+    const T &operator[](size_t i) const { return data_[i]; }
+    T *begin() { return data_; }
+    T *end() { return data_ + size_; }
 
 private:
     void release();
-    void take(ZeroBuffer &other) {
+    void take(BasicZeroBuffer &other) {
         data_ = other.data_;
         size_ = other.size_;
         paged_ = other.paged_;
@@ -100,12 +101,17 @@ private:
         other.size_ = 0;
     }
 
-    float *data_ = nullptr;
+    T *data_ = nullptr;
     size_t size_ = 0;
     bool paged_ = false;   // allocated as pages of their own (see assign())
     bool pristine_ = true; // all zeros as allocated: not handed out since (see zero())
     size_t stale_ = 0;     // after restart(): how far from its start it may still hold what it held before
     size_t cleanFrom_ = 0, cleanTo_ = 0; // a stretch of that cleared since, where reads were (see clearStale())
 };
+
+// Defined in zerobuffer.cpp for these two alone.
+extern template class BasicZeroBuffer<float>;
+extern template class BasicZeroBuffer<double>;
+using ZeroBuffer = BasicZeroBuffer<float>;
 
 } // namespace fmvibe

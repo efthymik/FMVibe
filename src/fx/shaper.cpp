@@ -18,7 +18,29 @@ void Shaper::prepare(double sampleRate) {
     for (auto *bands : {&up, &down})
         for (HalfBand &band : *bands)
             band.design(HalfBand::kMaxCoefs, transition);
+    for (int k = 0; k < 2; ++k)
+        for (int ch = 0; ch < 2; ++ch) {
+            ups[k][ch].prepare(sampleRate, 4 << k);
+            downs[k][ch].prepare(sampleRate, 4 << k);
+        }
+    factor = 0;
 }
+
+namespace {
+
+// Tone's shelves at `rate`: the one before the curve, flat at 0 Hz and `tone` times kShaperToneDb up at the top, and
+// the one after it, exactly its opposite (both from the same bilinear transform, so the one undoes the other).
+std::array<BiquadCoefs, 2> toneShelves(double tone, double rate) {
+    if (tone == 0.0)
+        return {BiquadCoefs{}, BiquadCoefs{}};
+    // The analog (A s + w) / (s + w), w prewarped, through the bilinear transform.
+    const double a = std::pow(10.0, std::clamp(tone, -1.0, 1.0) * kShaperToneDb / 20.0);
+    const double k = std::tan(std::numbers::pi * std::min(kShaperToneHz, 0.45 * rate) / rate); // w / (2 rate)
+    const double b0 = (a + k) / (1.0 + k), b1 = (k - a) / (1.0 + k), a1 = (k - 1.0) / (1.0 + k);
+    return {BiquadCoefs{b0, b1, 0.0, a1, 0.0}, BiquadCoefs{1.0 / b0, a1 / b0, 0.0, b1 / b0, 0.0}};
+}
+
+} // namespace
 
 void Shaper::start(const Context &ctx) {
     const ParamValues &p = ctx.p;
@@ -34,6 +56,10 @@ void Shaper::start(const Context &ctx) {
     between = settings.between;
     ran = false; // its path starts as it is, from silence, fading in from nothing it left
     wasFade = 0.0;
+    factor = 0;
+    heard = 1.0;
+    tones = {};
+    toneCoefs = {};
 }
 
 // The voices' shapers run the same way (see Synth::renderBlock()), on what goes into them, at their oversampling; the
@@ -58,15 +84,24 @@ void Shaper::run(const Context &ctx, float *const *io, uint32_t n) {
         wasSides = sides;
         wasFade = 1.0;
     }
+    // Its oversampling: a new one waits until it has ducked out, then starts from silence (its paths and filters
+    // cleared), and it ducks back in.
+    const int wanted = shaperOversampling(ctx.at(FxParam::ShaperOversampling));
+    if (factor == 0)
+        factor = wanted;
     if (!ran) // from silence, rather than from what they last held
         for (int ch = 0; ch < 2; ++ch) {
             up[ch].reset();
             down[ch].reset();
+            for (int k = 0; k < 2; ++k) {
+                ups[k][ch].reset();
+                downs[k][ch].reset();
+            }
         }
     stacked = isStack;
     ran = true;
     last = {settings.mode, settings.symmetric, settings.stack};
-    const double rate = 2.0 * ctx.sampleRate;
+    const double rate = factor * ctx.sampleRate;
     ClipCurve now = curve.curve(settings.mode, settings.symmetric);
     now.stack(settings.stack, rate);
     const double fadeStep = 1.0 / n;
@@ -81,33 +116,113 @@ void Shaper::run(const Context &ctx, float *const *io, uint32_t n) {
     const double outputStep = rampStep(output, settings.output, n, ctx.rampShortest);
     const double mixStep = rampStep(mix, settings.mix, n, ctx.rampShortest);
     const double betweenStep = rampStep(between, settings.between, n, ctx.rampShortest);
-    for (uint32_t s = 0; s < n; ++s) {
+    // Tone, at the rate it runs at.
+    const std::array<BiquadCoefs, 2> shelves = toneShelves(ctx.at(FxParam::ShaperTone), rate);
+    for (int i = 0; i < 2; ++i)
+        toneCoefs[i].begin(shelves[i], n, ctx.rampShortest);
+    const BiquadCoefs through{};
+    auto rests = [&](const BiquadRamp &r) {
+        return !r.moving && r.now.b0 == through.b0 && r.now.b1 == through.b1 && r.now.a1 == through.a1;
+    };
+    const bool toned = !rests(toneCoefs[0]) || !rests(toneCoefs[1]);
+    if (!toned)
+        tones = {};
+    const double duckStep = 1.0 / (kShaperDuckSeconds * ctx.sampleRate);
+    // One host sample's settings moved on, its curves' fades and the path it left's share (along a raised cosine);
+    // and one sample at the rate through the curve (and the path it left), its Tone around them.
+    double w = 0.0;
+    bool fading = false;
+    auto step = [&](uint32_t s) {
         drive += driveStep;
         output += outputStep;
         mix += mixStep;
         between += betweenStep;
+        if (toned) {
+            toneCoefs[0].next();
+            toneCoefs[1].next();
+        }
         if (now.from)
             now.fade = (s + 1) * fadeStep;
-        const bool fading = wasFade > 0.0;
-        double w = 0.0; // the path it left's share, along a raised cosine
+        fading = wasFade > 0.0;
+        w = 0.0;
         if (fading) {
             if (wasCurve.from)
                 wasCurve.fade = (s + 1) * fadeStep;
             wasFade = std::max(wasFade - wasStep, 0.0);
             w = 0.5 - 0.5 * std::cos(std::numbers::pi * wasFade);
         }
-        for (int ch = 0; ch < 2; ++ch) {
-            double twice[2]; // up to twice the rate, both through the curve (and the path it left), and back down
-            up[ch].processUp(io[ch][s], twice[0], twice[1]);
-            for (double &x : twice) {
-                double y = sides[ch].run(now, x, drive, output, mix, block, pole, between);
-                if (fading)
-                    y = y * (1.0 - w) + w * wasSides[ch].run(wasCurve, x, drive, output, mix, wasBlock, pole, between);
-                x = y;
+    };
+    auto shape = [&](int ch, double x) {
+        if (toned)
+            x = tones[ch][0].process(x, toneCoefs[0].now);
+        double y = sides[ch].run(now, x, drive, output, mix, block, pole, between);
+        if (fading)
+            y = y * (1.0 - w) + w * wasSides[ch].run(wasCurve, x, drive, output, mix, wasBlock, pole, between);
+        if (toned)
+            y = tones[ch][1].process(y, toneCoefs[1].now);
+        return y;
+    };
+    if (factor == 2 && wanted == 2 && heard >= 1.0) {
+        for (uint32_t s = 0; s < n; ++s) {
+            step(s);
+            for (int ch = 0; ch < 2; ++ch) {
+                double twice[2]; // up to twice the rate, both through the curve (and the path it left), and back down
+                up[ch].processUp(io[ch][s], twice[0], twice[1]);
+                for (double &x : twice)
+                    x = shape(ch, x);
+                io[ch][s] = static_cast<float>(down[ch].process(twice[0], twice[1]));
             }
-            io[ch][s] = static_cast<float>(down[ch].process(twice[0], twice[1]));
+        }
+    } else {
+        // Up to its rate a chunk at a time, through the curve, back down, and ducked while its oversampling changes.
+        double buf[2][Upsampler::kMaxSamples];
+        for (int ch = 0; ch < 2; ++ch) {
+            if (factor == 2)
+                for (uint32_t s = 0; s < n; ++s)
+                    up[ch].processUp(io[ch][s], buf[ch][2 * s], buf[ch][2 * s + 1]);
+            else
+                ups[factor == 4 ? 0 : 1][ch].process(io[ch], buf[ch], static_cast<int>(n));
+        }
+        float gains[kChunk];
+        for (uint32_t s = 0; s < n; ++s) {
+            step(s);
+            heard = wanted != factor ? std::max(heard - duckStep, 0.0) : std::min(heard + duckStep, 1.0);
+            gains[s] = static_cast<float>(0.5 - 0.5 * std::cos(std::numbers::pi * heard));
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < factor; ++i) {
+                    double &x = buf[ch][s * factor + i];
+                    x = shape(ch, x);
+                }
+        }
+        for (int ch = 0; ch < 2; ++ch) {
+            if (factor == 2)
+                for (uint32_t s = 0; s < n; ++s)
+                    io[ch][s] = static_cast<float>(down[ch].process(buf[ch][2 * s], buf[ch][2 * s + 1]));
+            else { // the decimator adds into what it is given (as the voices' sum into their mix)
+                std::fill_n(io[ch], n, 0.0f);
+                downs[factor == 4 ? 0 : 1][ch].process(buf[ch], io[ch], static_cast<int>(n));
+            }
+            for (uint32_t s = 0; s < n; ++s)
+                io[ch][s] *= gains[s];
+        }
+        if (heard <= 0.0 && wanted != factor) { // ducked out: the new oversampling, from silence
+            factor = wanted;
+            sides = {};
+            wasSides = {};
+            wasFade = 0.0;
+            tones = {};
+            for (int ch = 0; ch < 2; ++ch) {
+                up[ch].reset();
+                down[ch].reset();
+                for (int k = 0; k < 2; ++k) {
+                    ups[k][ch].reset();
+                    downs[k][ch].reset();
+                }
+            }
         }
     }
+    for (int i = 0; i < 2; ++i)
+        toneCoefs[i].end();
 }
 
 } // namespace fmvibe::fx

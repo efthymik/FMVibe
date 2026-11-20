@@ -156,7 +156,13 @@ What the plugin does and how its editor works, in full. Building and installing 
   itself, a sample late, so filters can feed each other and themselves round in a loop. Once a released note's
   operators have faded, those loops fade away, so they can't ring on, and what a filter hears from itself or a later
   filter is held within +18 dB, so a loop that lifts itself past unity grows loud but never without end. A filter
-  that only modulates can leave its output level at 0. Types:
+  that only modulates can leave its output level at 0. Modulation moves a filter smoothly: its cutoff, key
+  tracking, resonance, drive, vowel and morph ramp over each 32-sample control block, the filter's settings worked
+  out again every 8 samples while they move, and what it scales its outputs by (a morph's shares, a formant's levels,
+  the resonance's share of a high-pass, band-pass or notch) gliding sample by sample, so a fast envelope or LFO on the
+  cutoff sweeps it rather than stepping it every block (which buzzed faintly at the steps' rate, 1.5 kHz at 48 kHz:
+  some 72 dB under an LFO's sweep, 53 dB for a morph's place, now 96 dB and more). Its type, slope and morph mode switch
+  at once. Types:
   - Low-pass, High-pass, Band-pass and Notch: a state-variable filter that stays smooth under fast modulation.
     **Slope** picks 6, 12 (the default), 18 or 24 dB per octave. At 6 dB the filter is a one-pole, taken from the
     state-variable filter so resonance still adds a peak at the cutoff (as high as at 12 dB) while the slope past it
@@ -437,8 +443,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     (an effect removed, a split taken out with its join) keeps playing what goes into it until the wires out of it
     have faded, so the sound moves to its new path without a click or a gap; one coming into it starts from what goes
     into it, as the wires into what follows fade in. A split's slope changed crossfades from its filters at the old
-    slope to fresh ones at the new over 5 ms. **Latency**: the shaper and filter effects run at twice the host rate
-    and the amp at its oversampling, up and back down through half-band filters, which comes out a few samples late
+    slope to fresh ones at the new over 5 ms. **Latency**: the filter effect runs at twice the host rate, the shaper
+    effect at its oversampling (twice to begin with) and the amp at its, up and back down through half-band filters, which comes out a few samples late
     (about 5 at 48 kHz for twice the rate) and later still toward the top. Where paths meet (a join, a node more than
     one wire goes into, the output), each path is put through the same filters up and down as many more times as it
     lacks against the latest one, so they meet in step at every frequency: a split's bands sum back flat whatever runs
@@ -487,7 +493,15 @@ What the plugin does and how its editor works, in full. Building and installing 
     the shaper effect runs every curve at twice the host rate, so high drive stays clean and a quiet sound's top comes
     through (a 15 kHz sine within about a dB of a 1 kHz one, where the anti-aliasing's average at the host rate took
     5 dB off it), though folding at the highest drives gets duller for it. Band-limited so, a hard curve's peaks
-    overshoot its ceiling a little, as the voices' shapers' do.
+    overshoot its ceiling a little, as the voices' shapers' do. Its **oversampling**, 2x (to begin with), 4x or 8x, is
+    picked in its card's right-click menu (the one in force checked; it isn't on the card): a hard-clipped C7 driven
+    18 dB keeps what isn't a harmonic about 58 dB down at 2x, 78 dB at 4x and 89 dB at 8x, for the latency of the
+    voices' oversampling's half-band stages at that factor (see Latency). Changed under sound, the shaper ducks out
+    over 3 ms, starts the new rate from silence and ducks back in. **Tone** (−100 % to +100 %, 0 to begin with) tilts
+    what goes into the curve, up to 15 dB above about 700 Hz either way, and tilts what comes out exactly the other
+    way: what the curve leaves alone comes out as it went in, while up drives the top harder (a brighter, fizzier
+    distortion on bright sounds, and a softer one on a bass, whose harmonics the tilt after takes down) and down
+    drives the lows harder. Its knob comes after Drive (and Stack).
   - **Amp**: a guitar amp, then a speaker cabinet heard through a mic. **Model** picks the amp: its preamp stages
     (each a coupling high-pass, a gain, a curve with a bias whose lower side is softer, which adds even harmonics, and
     a low-pass), its tone stack and its power amp. **Clean** (one gentle stage, lots of headroom), **Blues** (two
@@ -532,7 +546,10 @@ What the plugin does and how its editor works, in full. Building and installing 
     card the time knobs read Time L and Time R, synced Rate L and Rate R, and linked (the left one setting both
     sides) Time or Rate alone, their values showing under the mouse as other knobs' do. Time
     changes glide like tape rather than click, read between samples on a cubic as they do, and the times land on whole
-    samples, so the repeats lose nothing of their top to the reads (only Tone darkens them). The plugin keeps
+    samples, so the repeats lose nothing of their top to the reads (only Tone darkens them). **Duck** (0 to begin with,
+    between Tone and Width) turns the echoes heard down while what goes in is loud, as far as it says times how loud
+    that is against −12 dBFS (at full Duck an input that loud takes them away), following it up over 5 ms and down
+    over 250 ms; the echoes going round stay as they are, so they come back up as the playing stops. The plugin keeps
     processing until the echoes have died away.
   - **DJ EQ**: a three-band isolator with Linkwitz-Riley crossovers (24 dB/octave) at 250 Hz and 2.5 kHz. Each
     band goes from kill to +6 dB, and with all three at 0 dB it is flat.
@@ -555,8 +572,12 @@ What the plugin does and how its editor works, in full. Building and installing 
     the last one left it. Like the Param EQ, its display shows what it puts out behind its response. It runs at
     twice the host rate, as the voice filters run oversampled, so the analog types' saturation and Drive alias far
     less and Drive keeps the top.
-  - **Compressor**: stereo-linked and peak-sensing, with Threshold (−60–0 dB), Ratio (1:1–20:1), a soft Knee
-    (0–24 dB), Attack (1–500 ms), Release (1 ms–2 s), Gain (makeup gain, 0–24 dB) and Mix for parallel compression.
+  - **Compressor**: stereo-linked and peak-sensing, with Threshold (−60–0 dB, **Thresh** on the card), Ratio
+    (1:1–20:1), a soft Knee (0–24 dB), Attack (1–500 ms), Release (1 ms–2 s), Gain (makeup gain, 0–24 dB) and Mix for
+    parallel compression. **SC HP** (Detector HP in the host; Off to begin with, then 20–500 Hz) high-passes what its
+    detector hears at 12 dB an octave, not the sound itself, so the bass doesn't pump the rest: a quiet 2 kHz tone
+    under a loud 50 Hz one comes out about 17 dB louder with it at 300 Hz. Switched on, it rises from letting
+    everything through rather than jumping.
   - **3-Band Dynamics**: upward and downward compression in three bands, which Linkwitz-Riley crossovers (Low X,
     High X) split the mix into; at 0 % mix the bands just sum back up, so nothing combs. Each band is pulled down above its **Above** threshold (−80–0 dB, as Below) by its **Down** ratio, as a compressor does, and
     lifted below its **Below** threshold by its **Up** ratio: the gap under the threshold shrinks by the ratio, so
@@ -614,7 +635,23 @@ What the plugin does and how its editor works, in full. Building and installing 
     within a semitone of no shift the loop fades out, since it would only ring on unshifted. The lines decay
     faster the more comes back, so the tail as a whole still falls 60 dB in about the decay time. In the second
     after an A4 ends (2.5 s decay), its tail holds the octave and the octave above it each about as loud as the
-    note. Size (the
+    note. **Low Cut** (Off to begin with, up to 1 kHz) and **High Cut** (letting everything through at its top, to
+    begin with; down to 1 kHz) are 12 dB an octave on what goes into it, so a room's early reflections take them too:
+    the low end kept out of a long tail, or a dark one; switched on they rise from letting everything through rather
+    than jumping. **Diffusion** (100 % to begin with) sets how much the input's all-passes smear what goes in, how much
+    the lines mix each time round and how evenly what goes in is spread over them (**Diffuse** on the card), all on
+    the square of the knob, so a hit's tail roughens about evenly as it turns down (measured as how far its loudness
+    jumps from one 2 ms stretch to the next: about 1.4 dB at 100 %, 1.7 at 75 %, 2.1 at 50 %, 2.8 at 25 % and 3.1 at
+    0). At 100 % the lines mix through the Hadamard transform and take what goes in alike, as they always did; lower,
+    each stage of the transform turns its pairs by less (down to a tenth of its 45 degrees at 0 %), keeping their
+    energy, and what goes in goes more into four of the lines (two a side, their lengths far apart), the others keeping
+    70 % of their gain at 0 %, its energy kept. At 0 the all-passes are plain delays, those four lines' first echoes
+    stand apart and each line's echoes come back nearly on their own for a while: a grainier tail that fills in over a
+    second or so, where at 100 % it is dense within about 100 ms. Held, tonal sounds change little with it, as in any
+    reverb; hits and plucks show it. The reverb waits for what the all-passes hold back before it sleeps after
+    silence, so a lone click at 0 still rings out. Its card has three rows: Size, Decay and Pre; Damp, Width and Diffuse; and Low Cut, High Cut and Mix, Mix at
+    the bottom right as on the other cards. A shimmer's, four to a row, puts Diffuse after Pre and its Pitch and
+    Shimmer between Damp and Width. Size (the
     lines from a quarter of their length to all of it, gliding when turned, also when the algorithm changes),
     Decay (0.2–20 s to fall 60 dB), Damp (Damping in the host; the corner, from 20 kHz down to 1 kHz, above which the tail falls five
     times as fast, by as much in every line), Pre (the pre-delay, off to 250 ms), Width and Mix (like the delay's: the dry
@@ -628,14 +665,22 @@ What the plugin does and how its editor works, in full. Building and installing 
     shallower again. Its polarity, **+** or **−** (+ to begin with, at the right under its display), picks whether
     the wet sound is added to the dry one or taken from it: negative turns the wet sound over, and the feedback
     with it, so every notch moves to where a peak was (between the positive ones) and Feedback keeps its sense
-    either way. Switched, it fades over 10 ms rather than clicking.
+    either way. Switched, it fades over 10 ms rather than clicking. **Spread** (0 to begin with, at the end of its first
+    row) spaces its stages' corners evenly in octaves about where the sweep puts them, up to 3 octaves from the first
+    to the last, as an analog phaser's parts spread them: its notches unevenly apart, a less regular, more vocal
+    sweep.
   - **Flanger**: a 1–15 ms Delay that an LFO (Rate, 0–20 Hz) sweeps by Depth (from 1 − 0.95 Depth times it to
     1 + 0.95 Depth times it, evenly in octaves, so the notches move as evenly in pitch both ways; its line is read
     between samples on a cubic, so what goes round keeps its top), with Feedback of either sign (a
     negative one gives the hollower sound) and Mix, which runs to 100 %, half wet, like the phaser's (and starts
     there). **Sync** works like the phaser's, two bars a sweep to begin with, and so does **Stereo**, under its
     display, but on to begin with: the right side a quarter cycle ahead. So does its polarity: negative puts a notch
-    at 0 Hz and the others where the positive peaks were, the hollow, thin-bottomed negative flange.
+    at 0 Hz and the others where the positive peaks were, the hollow, thin-bottomed negative flange. **TZF** (through
+    zero, off to begin with, a switch between Feedback and Mix) delays the dry sound by the sweep's middle, so the swept
+    copy passes through it twice a cycle: negative and at the middle, every frequency cancels for a moment, the
+    jet-plane sweep of two tapes. Its output then comes out as late as the sweep's middle (up to about 15 ms), which
+    the plugin doesn't report to the host or make up in the effects graph's other paths. Switched, the dry sound fades
+    between on time and delayed over 10 ms.
   - **Chorus**: **Voices** copies of the sound (2, 3, 4 or 6; 3 to begin with), each waiting about a 1–40 ms
     **Delay** (12 ms to begin with): each voice a little shorter or longer than it, up to a fifth either way, so the
     voices don't comb alike (the first the shortest, the second the longest, the others between, interleaved so the
@@ -656,7 +701,19 @@ What the plugin does and how its editor works, in full. Building and installing 
     voice between the sides over 10 ms too. A host or modulation can set 5 voices, which the card doesn't offer.
   - **Phase Disp** (phase disperser): 1–64 second-order all-passes in a row (Stages) at Freq, each as narrow as
     Pinch sets (Q 0.3 to 6): the sound around Freq comes out later than the rest, smeared in time into a chirp,
-    but at full level; Mix blends it with the dry sound.
+    but at full level; Mix blends it with the dry sound. A new Stages fades in from the count before over 10 ms
+    rather than clicking (another change meanwhile waiting for the fade to end), so Stages can be modulated too.
+    **Key Track** (0 to begin with) moves Freq with the newest voice's pitch from C4 on, as the filter's does: at
+    100 %, a C5 puts it an octave up, so a dispersed bass or kick zaps at the same place in each note. **Stretch**
+    (1 to 64, 1 to begin with) makes each all-pass's delays that many samples long (at 48 kHz; as long a time at other
+    rates), so its dispersion comes again every 48 kHz / Stretch, either way of each multiple: at 32, a chain at
+    400 Hz also disperses around 1.1, 1.9, 2.6 kHz and on, each copy chirping longer than an unstretched chain at
+    Freq does (at 30, a chain at 600 Hz comes out up to 39 ms late where unstretched it peaks at 12 ms), the metallic
+    drip of a spring. Freq stays one of the copies (pulled a little toward where two copies meet, close to
+    one). A new Stretch can't take over from the old one without a jump, so the effect fades out to what goes in over
+    5 ms and back in at the new length over 4 ms a step of it (20 ms to a quarter of a second): a stretched chain
+    starting from silence buzzes for a moment at the copies' spacing, as it does on any note, which the slow fade keeps
+    down. Its card has two rows: Freq, Stages and Pinch over Key Track, Stretch and Mix.
   - **Widener** (a dimension expander): the sound above **Cutoff** (a high-pass, 20 Hz–2 kHz, 150 Hz to begin with, 12 dB
     per octave), summed to mono, goes through four short delays, each swept slowly by an LFO of its own
     (0.29–0.53 Hz, 12 % of its delay either way). **Size** sets how long they are: 2–5 ms at 0, a tight doubling,
@@ -683,10 +740,19 @@ What the plugin does and how its editor works, in full. Building and installing 
     the way up), the knob's cube as a gain so it turns evenly through what is heard: about −6 dB at its middle.
     Its levels ramp like the other effects'.
     Its knobs come in two rows, Gain and Pan above Width and Mono Bass.
+  - **Lo-Fi** (under DRIVE in the list of effects): an early digital converter. **Bits** (1–16, 8 to begin with) puts
+    each sample on the nearest of that many bits' levels across full scale; **Rate** (200 Hz–20 kHz, 12 kHz to begin
+    with) holds each side between samples taken that often, the steps between folding the top back down as such
+    converters did; **Smooth** (50 % to begin with) blends in what a 12 dB low-pass just under half Rate makes of it,
+    as a converter's output filter does; **Mix** blends it with the dry sound. Its display draws two cycles of a sine
+    and the steps it makes of them, eased as Smooth takes their edges off, with the bits and the rate over it.
 
   The phaser, flanger and chorus keep their feedback from ringing louder: what they send round is scaled so their level
   across the spectrum stays where it was without it. Effect knobs can be modulated like any other. Their levels and
-  mixes ramp to a new setting sample by sample, however the host splits the block. As the effects are shared by all voices, the LFOs and envelopes
+  mixes ramp to a new setting sample by sample, however the host splits the block, and so do the frequencies their
+  filters are set to (the phase disperser's Freq and Pinch, the filter effect's cutoff and its other knobs, as a voice
+  filter's do, the Param EQ's bands, the phaser's Center and Depth, the widener's Cutoff): an LFO sweeping one glides
+  it rather than stepping it every 32 samples, which buzzed at the steps' rate. As the effects are shared by all voices, the LFOs and envelopes
   reach them through the most recently played voice. Each of the 16 places in the chain has the parameters of
   every effect type. Hosts aren't given the effects' parameters: an effect is set and automated from the editor's
   sources only, and has no remote control page.
@@ -1107,12 +1173,18 @@ one may have changed since it last did.
   - **FX**: takes the place of both the routing panel and the inspector. It shows a card per effect, left to right
     in processing order, each in its type's color (shaper red, delay blue, DJ EQ amber, Param EQ orange, filter
     purple, compressor green, 3-band dynamics teal, reverb indigo, phaser pink, flanger lime, chorus periwinkle,
-    frequency shifter cyan, phase disperser slate, widener fuchsia, amp tweed gold, utility gray) and
+    frequency shifter cyan, phase disperser slate, widener fuchsia, amp tweed gold, utility gray, Lo-Fi dusty rose) and
     with a title row laid out as every card's (the source cards' too): its icon and its name in capitals at the left, then a
     chevron that folds it, its power switch and an × to remove it at the right; and under it a live display, which
     draws the effect as modulation takes its params now (the newest voice's, or the macros' while nothing plays); the
     Param EQ's band handles and the 3-band dynamics' threshold lines stay where they are set, as the filter's handle
-    does:
+    does. Its knobs go in rows across it, under the display: three to a row 30 px across (36 in the one row of a card
+    that has one), and on a card one place wide, four to a row 26 px across and five 24, leaving room between them
+    for their labels (a wider card's keep 32 px); a label stays as wide as a 32 px knob's, so a value still fits
+    under a smaller knob. Two rows sit 55 px apart, the lower one at the card's foot, and a reverb's three 54 px apart,
+    so the display above them takes the rest. The flanger's and frequency shifter's lower row, Feedback and Mix
+    with TZF or nothing between, sits a little further in from the card's sides than a row of three's ends (21 %
+    of the card), so Feedback's label stays clear of the edge:
     - the shaper's transfer curve; a Custom curve shows its own points and bends instead, to drag right there
       (double-click adds or deletes a point, Ctrl snaps to the grid), with what the drive, output and mix make of
       it faintly behind and the point under the mouse in numbers; its edit button (a pencil, at the right of its curve's
@@ -1164,7 +1236,8 @@ one may have changed since it last did.
       along the delays, the dashed middle line Delay, as far either way as Depth swings it, each lane a share of the
       cycle behind the one before and fainter, the first brightest (their slow drifts aren't drawn); while the audio
       runs, a dot on each lane where its sweep is now. Over it, how many voices and the Rate;
-    - the phase disperser's delay across frequency, peaking at Freq, with what it puts out, measured, behind it
+    - the phase disperser's delay across frequency, peaking at Freq (where Key Track moves it with the note, the
+      caption reading where that is) and again at each copy Stretch makes, with what it puts out, measured, behind it
       like the Param EQ's;
     - the frequency shifter's move: a 220 Hz tone's partials, and where it takes them on each side, under the
       shift in Hz and the range it is a share of;
@@ -1217,7 +1290,7 @@ one may have changed since it last did.
     accent, as + SOURCE is) at the panel's top left opens a list of the effect types (beside it, how many of the 32
     places are taken, as in 3/32), and so does a dashed card with a plus after the last effect, at the mouse (moved
     back inside the editor where it would reach past an edge). The list groups the effects by kind in two columns,
-    a little apart, each group under its name in capitals on a darker strip: DRIVE (Shaper, Amp), EQ & FILTER (DJ EQ, Param EQ, Filter) and DYNAMICS
+    a little apart, each group under its name in capitals on a darker strip: DRIVE (Shaper, Amp, Lo-Fi), EQ & FILTER (DJ EQ, Param EQ, Filter) and DYNAMICS
     (Compressor, 3-Band Dynamics) down the left one, SPACE (Delay, Reverb), MODULATION (Phaser, Flanger, Chorus, Freq Shifter)
     and STEREO & PHASE (Widener, Phase Disp, Utility) down the right one. The
     one picked goes at the end of the chain, which scrolls to show it, and so does a copy. An arrow goes before each
@@ -1786,8 +1859,8 @@ one may have changed since it last did.
     is hovered; with an aux, a dotted line runs from the aux's handle too. A source can modulate another source's depth too (drop its handle on
     a depth bar in the MODS view): the bar then has the dot in its top right corner, a strip under it shows
     how far the depth swings, and hovering the handle draws a dashed line to it like to any other target.
-  - **More than fit**: a knob, label, cell or depth bar shows as many depth handles as its width holds (under a 30
-    or 32 px knob 3, under a 34 px one 4; on a wire label 5, a matrix cell 5, a depth bar 11), in the order the
+  - **More than fit**: a knob, label, cell or depth bar shows as many depth handles as its width holds (under a 24 or
+    26 px knob 2, under a 30 or 32 px one 3, under a 34 px one 4; on a wire label 5, a matrix cell 5, a depth bar 11), in the order the
     sources show. Past that, as many as fit beside a **+n** pill (2 under a knob, 3 on a label, 4 on a cell, 9 on
     a depth bar) hold the rest, so nothing runs under the next control. Hovering the pill draws the ranges of the
     modulations it holds wider, and says how many there are; a hovered source whose depth handle the pill holds
@@ -2237,7 +2310,7 @@ activation will make it). An edit, once it is whole, or a state that moves it as
 reports the new one (a CLAP host is told through its latency extension's `changed()`); an edit that leaves it as it was,
 an effect moved along the line say, asks for none.
 
-Hosts are given 1,515 of FMVibe's 32,232 parameters: the globals, the operators, the matrix and the routes' modes,
+Hosts are given 1,515 of FMVibe's 32,712 parameters: the globals, the operators, the matrix and the routes' modes,
 the filters, the shapers, the macros' knobs, the note source's, the mod wheel's, velocity's, the pitch bend's and the
 operators' own as sources, and every modulation's depth and Amount (16 slots for each of the 34 sources, used or not). The rest are set in the editor only:
 the effects, the LFOs', envelopes' and other sources' own knobs, what each modulation targets and its aux, curve and

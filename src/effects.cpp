@@ -36,6 +36,7 @@ void Effects::prepare(double sampleRate) {
         slot.widener.prepare(sampleRate);
         slot.flanger.prepare(sampleRate);
         slot.chorus.prepare(sampleRate);
+        slot.disperser.prepare(sampleRate);
         Analyzer::prepare(slot.analyzed, static_cast<int>(&slot - slots_.data()), kFxSlots + kFilters);
         if (!slot.amp)
             slot.amp = std::make_unique<fx::AmpFx>();
@@ -134,6 +135,9 @@ void Effects::start(int slot, const fx::Context &ctx) {
         break;
     case FxType::Utility:
         s.utility.start(ctx);
+        break;
+    case FxType::LoFi:
+        s.lofi.start(ctx);
         break;
     case FxType::Amp:
         s.amp->start(ctx);
@@ -372,6 +376,9 @@ void Effects::runSlot(int slot, float *const *io, uint32_t n, const ParamValues 
     case FxType::Utility:
         fx.utility.run(ctx, io, n);
         break;
+    case FxType::LoFi:
+        fx.lofi.run(ctx, io, n);
+        break;
     case FxType::Reverb:
     case FxType::Phaser:
     case FxType::Flanger:
@@ -561,6 +568,7 @@ bool Effects::graphParamsChanged(const ParamValues &p) {
     for (int slot = 0; slot < kFxSlots; ++slot) {
         take(p[paramIndex(slot, FxParam::Type)]);
         take(p[paramIndex(slot, FxParam::AmpOversampling)]);
+        take(p[paramIndex(slot, FxParam::ShaperOversampling)]);
     }
     for (int split = 0; split < kFxSplits; ++split)
         take(p[paramIndex(split, SplitParam::Used)]);

@@ -15,22 +15,23 @@
 
 namespace fmvibe {
 
-void ZeroBuffer::assign(size_t size, float) {
+template <class T>
+void BasicZeroBuffer<T>::assign(size_t size, T) {
     release();
     if (size == 0)
         return;
 #ifdef _WIN32
     // Smaller buffers come from the heap, zeroed at once: pages of their own would waste more than they save.
     constexpr size_t kPagedBytes = 64 * 1024;
-    const size_t bytes = size * sizeof(float);
+    const size_t bytes = size * sizeof(T);
     if (bytes >= kPagedBytes) {
         // Committed pages read as zeros, and only take memory once written.
-        data_ = static_cast<float *>(VirtualAlloc(nullptr, bytes, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
+        data_ = static_cast<T *>(VirtualAlloc(nullptr, bytes, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
         paged_ = data_ != nullptr;
     }
 #endif
     if (!data_) {
-        data_ = static_cast<float *>(std::calloc(size, sizeof(float)));
+        data_ = static_cast<T *>(std::calloc(size, sizeof(T)));
         paged_ = false;
     }
     if (!data_) { // as std::vector would
@@ -45,7 +46,8 @@ void ZeroBuffer::assign(size_t size, float) {
     stale_ = cleanFrom_ = cleanTo_ = 0;
 }
 
-void ZeroBuffer::release() {
+template <class T>
+void BasicZeroBuffer<T>::release() {
     if (!data_)
         return;
 #ifdef _WIN32
@@ -62,5 +64,8 @@ void ZeroBuffer::release() {
     pristine_ = true;
     stale_ = cleanFrom_ = cleanTo_ = 0;
 }
+
+template class BasicZeroBuffer<float>;
+template class BasicZeroBuffer<double>;
 
 } // namespace fmvibe

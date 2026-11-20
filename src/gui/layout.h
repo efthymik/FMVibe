@@ -813,7 +813,7 @@ inline Rect fxMenuButton() {
 // The effects the list offers, in its order: every type but None and the retired three-band compressor, whose place
 // the three-band dynamics takes. They go by kind in six groups (kFxMenuGroups), each under its name.
 constexpr FxType kFxOffered[] = {
-    FxType::Shaper,     FxType::Amp,                             // drive
+    FxType::Shaper,     FxType::Amp,       FxType::LoFi,         // drive
     FxType::Eq,         FxType::ParamEq,   FxType::Filter,       // EQ and filter
     FxType::Compressor, FxType::MultiDyn,                        // dynamics
     FxType::Delay,      FxType::Reverb,                          // space
@@ -830,7 +830,7 @@ constexpr int fxOfferedPlace(FxType type) {
 }
 // How many effects each group holds, in the list's order. The first kFxMenuLeftGroups go down its left column, the
 // others down its right one.
-constexpr int kFxMenuGroups[] = {2, 3, 2, 2, 4, 3};
+constexpr int kFxMenuGroups[] = {3, 3, 2, 2, 4, 3};
 constexpr int kFxMenuGroupCount = static_cast<int>(std::size(kFxMenuGroups));
 constexpr int kFxMenuLeftGroups = 3;
 constexpr int fxMenuGroupsTotal() {
@@ -913,11 +913,20 @@ inline Rect clipEditButton(Rect card) {
     return {card.right() - 14.0f - kClipEditW, card.y + 44.0f, kClipEditW, 22.0f};
 }
 inline Rect clipSymButton(Rect card) {
-    return {card.center().x - 47.0f, card.y + 194.0f, 44.0f, 20.0f};
+    return {card.center().x - 47.0f, card.y + 199.0f, 44.0f, 20.0f};
 }
 inline Rect clipLinkButton(Rect card, bool custom) {
-    return {card.center().x + (custom ? 3.0f : -22.0f), card.y + 194.0f, 44.0f, 20.0f};
+    return {card.center().x + (custom ? 3.0f : -22.0f), card.y + 199.0f, 44.0f, 20.0f};
 }
+// The reverb's three rows of knobs, down its card from its top.
+constexpr float kReverbKnobsY[] = {158.0f, 212.0f, 266.0f};
+// A card's two rows of knobs under its display (the delay's, compressor's, phaser's and on), and the shaper's one row
+// under its LINK: down the card from its top, the lower row where it always was, the others moved down toward it as
+// far as the smaller knobs of a row of four let them, the display taking the room.
+constexpr float kFxKnobsY1 = 211.0f, kFxKnobsY2 = 266.0f, kShaperKnobsY = 245.0f;
+// The flanger's and frequency shifter's lower row, Feedback and Mix with TZF or nothing between: this share of the card
+// in from either side, further in than a row of three's ends, so Feedback's label stays clear of the card's edge.
+constexpr float kFxPairX = 0.21f;
 inline Rect reverbTypeButton(Rect card) {
     return {card.x + 14.0f, card.y + 44.0f, card.w - 28.0f, 22.0f};
 }
@@ -992,15 +1001,18 @@ inline Rect fxDisplayIn(Rect card, FxType type) {
     const bool twoRows = type == FxType::Delay || type == FxType::ParamEq || type == FxType::Compressor ||
                          type == FxType::Reverb || type == FxType::Phaser || type == FxType::Flanger ||
                          type == FxType::Chorus || type == FxType::Filter || type == FxType::FreqShifter ||
-                         type == FxType::Utility;
+                         type == FxType::Utility || type == FxType::Disperser;
     // The filter's slope switch, the delay's SYNC, LINK and PING-PONG, the phaser's and flanger's SYNC, STEREO and
     // polarity and the chorus's voices go under their displays.
     const bool switchesUnder = type == FxType::Phaser || type == FxType::Flanger || type == FxType::Chorus ||
                                type == FxType::Filter || type == FxType::Delay;
-    // The shaper's LINK goes between its display and its knobs.
-    const float bottom = switchesUnder               ? 158.0f
-                         : twoRows                   ? 180.0f
-                         : type == FxType::Shaper    ? 190.0f
+    // The shaper's LINK goes between its display and its knobs; the reverb's three rows of knobs (kReverbKnobsY)
+    // take more of it.
+    const float bottom = type == FxType::Reverb      ? 130.0f
+                         : switchesUnder             ? 163.0f
+                         : type == FxType::ParamEq   ? 180.0f // its chips under it (kPeqChipY)
+                         : twoRows                   ? 185.0f
+                         : type == FxType::Shaper    ? 195.0f
                                                      : 198.0f;
     return {card.x + 14.0f, card.y + top, card.w - 28.0f, bottom - top};
 }

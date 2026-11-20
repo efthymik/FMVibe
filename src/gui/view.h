@@ -498,6 +498,7 @@ private:
     void paintDisperser(Canvas &c, Rect r, int slot);
     void paintWidener(Canvas &c, Rect r, int slot);
     void paintUtility(Canvas &c, Rect r, int slot);
+    void paintLoFi(Canvas &c, Rect r, int slot);
     // Where the utility's handle `handle` sits on its display `r`: at the params' values, or (`live`) where modulation
     // has them now.
     Point utilityHandlePoint(Rect r, int handle, bool live, int slot) const;

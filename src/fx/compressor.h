@@ -10,6 +10,10 @@ struct Compressor {
     double reduction = 0.0;
     double makeup = 1.0; // gains, ramped
     double mix = 1.0;
+    // The high-pass on what the detector hears (Detector HP), a side each: ramping from letting everything through
+    // (as it rests at Off, where it doesn't run) to its cut, so switching it on doesn't jump.
+    std::array<Biquad, 2> detector{};
+    BiquadRamp detectorCoefs{};
 
     void start(const Context &ctx);
     // Returns whether its gain is still on its way to where the curve puts it (a release running out). Its reduction

@@ -5174,6 +5174,26 @@ void latencyChecks() {
     const Response nine = measure(*long9);
     const double nineLate = fxLagSamples(lagOf(*long9), delays);
 
+    // The input straight out beside a shaper at Mix 0 run at 4x, and at 8x: in step and flat, as late as fxlag.h
+    // says a path at its oversampling is.
+    auto shaperBeside = [&](int factorValue) {
+        auto p = fresh();
+        (*p)[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+        (*p)[paramIndex(0, FxParam::ShaperMix)] = 0.0;
+        (*p)[paramIndex(0, FxParam::ShaperOversampling)] = factorValue; // 1 << it
+        (*p)[from(0, 0)] = port(kFxPortIn);
+        (*p)[from(kFxOutNode, 0)] = port(fxSlotPort(0));
+        (*p)[from(kFxOutNode, 1)] = port(kFxPortIn);
+        (*p)[level(kFxOutNode, 0)] = 0.5;
+        (*p)[level(kFxOutNode, 1)] = 0.5;
+        return std::make_pair(measure(*p), fxLagSamples(lagOf(*p), delays));
+    };
+    const auto [shaper4, shaper4Late] = shaperBeside(2);
+    const auto [shaper8, shaper8Late] = shaperBeside(3);
+    std::printf("      in beside a shaper at 4x: within %.3f dB, %.2f late (said %.2f); at 8x: within %.3f dB, %.2f "
+                "late (said %.2f)\n",
+                shaper4.flatDb, shaper4.centroid, shaper4Late, shaper8.flatDb, shaper8.centroid, shaper8Late);
+
     // Nothing oversampled: on time.
     auto plain = fresh();
     (*plain)[from(kFxOutNode, 0)] = port(kFxPortIn);
@@ -5199,11 +5219,403 @@ void latencyChecks() {
           "a path beside an oversampled effect meets it in step, switched on or off");
     check(nine.flatDb < 0.05 && near(nine.centroid, nineLate),
           "a path beside nine oversampled effects in a row meets them in step");
+    check(shaper4.flatDb < 0.05 && shaper8.flatDb < 0.05 && near(shaper4.centroid, shaper4Late) &&
+              near(shaper8.centroid, shaper8Late) && shaper8Late > shaper4Late,
+          "a path beside a shaper oversampled 4x or 8x meets it in step, as late as its oversampling says");
     check(bands.flatDb < 0.05 && kinds.flatDb < 0.05,
           "a split's bands through effects oversampled differently sum back flat, and so do paths that meet");
     check(near(bands.centroid - crossover.centroid, bandsLate) && near(kinds.centroid, kindsLate) && none.flatDb < 1e-6 &&
               std::abs(none.centroid) < 1e-6,
           "the output is as late as its latest path, as the plugin reports, and on time with none oversampled");
+}
+
+// The effects' newer controls, each on its own in the chain, on what `input(t, side)` gives (t in samples).
+void newerEffectChecks() {
+    std::printf("the effects' newer controls:\n");
+    struct Run {
+        std::vector<float> left, right;
+    };
+    auto run = [](FxType type, const std::vector<std::pair<FxParam, double>> &set, size_t frames, auto &&input,
+                  double rate = kSampleRate) {
+        Effects fx;
+        fx.prepare(rate);
+        ParamValues p;
+        for (int i = 0; i < kParamCount; ++i)
+            p[i] = paramTable()[i].def;
+        p[paramIndex(0, FxParam::Type)] = static_cast<double>(type);
+        for (const auto &[field, value] : set)
+            p[paramIndex(0, field)] = value;
+        chain(p, {0});
+        Run out;
+        std::vector<float> left(kBlock), right(kBlock);
+        for (size_t t = 0; t < frames; t += kBlock) {
+            for (uint32_t s = 0; s < kBlock; ++s) {
+                left[s] = static_cast<float>(input(t + s, 0));
+                right[s] = static_cast<float>(input(t + s, 1));
+            }
+            fx.process(left.data(), right.data(), kBlock, p, 120.0, 60.0);
+            out.left.insert(out.left.end(), left.begin(), left.end());
+            out.right.insert(out.right.end(), right.begin(), right.end());
+        }
+        return out;
+    };
+    auto noise = [](size_t t, int side) {
+        uint32_t x = static_cast<uint32_t>(t * 2 + side) * 2654435761u;
+        x ^= x >> 15;
+        x *= 2246822519u;
+        x ^= x >> 13;
+        return ((x & 0xffff) / 65535.0 - 0.5) * 0.5;
+    };
+    // Energy below `below` Hz or above `above` (one of them 0) in `x` from `from` on, a kFftSize long stretch.
+    auto bandEnergy = [](const std::vector<float> &x, size_t from, double low, double high) {
+        std::vector<float> part(x.begin() + static_cast<long>(from), x.begin() + static_cast<long>(from + kFftSize));
+        const std::vector<double> power = powerSpectrum(part);
+        double sum = 1e-30;
+        for (size_t b = 1; b < power.size(); ++b) {
+            const double hz = b * kSampleRate / kFftSize;
+            if (hz >= low && hz < high)
+                sum += power[b];
+        }
+        return sum;
+    };
+
+    // The reverb's Low Cut at 1 kHz takes its tail's bass away (below 200 Hz), High Cut at 2 kHz its top (above
+    // 8 kHz); Diffusion at 0 leaves its first 125 ms spikier (its crest factor higher) than at 100 %, and its tail
+    // sparser for longer.
+    {
+        const size_t frames = static_cast<size_t>(kSampleRate) + kFftSize;
+        auto burst = [&](size_t t, int side) { return t < 4800 ? noise(t, side) : 0.0; };
+        const std::vector<std::pair<FxParam, double>> wet{{FxParam::ReverbMix, 1.0}, {FxParam::ReverbDecay, normFromTime(4.0)}};
+        auto with = [&](std::vector<std::pair<FxParam, double>> more) {
+            more.insert(more.begin(), wet.begin(), wet.end());
+            return run(FxType::Reverb, more, frames, burst).left;
+        };
+        const std::vector<float> plain = with({}), lowCut = with({{FxParam::ReverbLowCut, normFromCutoff(1000.0)}}),
+                                 highCut = with({{FxParam::ReverbHighCut, normFromCutoff(2000.0)}});
+        const double bassDb = 10.0 * std::log10(bandEnergy(lowCut, 9600, 20.0, 200.0) / bandEnergy(plain, 9600, 20.0, 200.0));
+        const double topDb =
+            10.0 * std::log10(bandEnergy(highCut, 9600, 8000.0, 20000.0) / bandEnergy(plain, 9600, 8000.0, 20000.0));
+        // A click after a moment's silence (the effect fading in meanwhile), all wet, and the 125 ms after it: at 0 the
+        // all-passes are plain delays, so it comes later.
+        auto click = [](size_t t, int) { return t == 4800 ? 1.0 : 0.0; };
+        auto earlyCrest = [&](double diffusion) {
+            const std::vector<float> x =
+                run(FxType::Reverb,
+                    {{FxParam::ReverbMix, 1.0}, {FxParam::ReverbPreDelay, 0.0}, {FxParam::ReverbDiffusion, diffusion}},
+                    4800 + 6000, click)
+                    .left;
+            double peak = 0.0, power = 0.0;
+            for (size_t i = 4800; i < 4800 + 6000; ++i) {
+                peak = std::max(peak, static_cast<double>(std::abs(x[i])));
+                power += x[i] * x[i];
+            }
+            return peak / std::sqrt(power / 6000.0 + 1e-30);
+        };
+        const double spiky = earlyCrest(0.0), diffuse = earlyCrest(1.0);
+        std::printf("      reverb: low cut at 1 kHz takes %.1f dB off its tail under 200 Hz, high cut at 2 kHz %.1f dB "
+                    "over 8 kHz; its first 125 ms' crest factor %.1f at 0 %% diffusion, %.1f at 100 %%\n",
+                    -bassDb, -topDb, spiky, diffuse);
+        check(bassDb < -15.0 && topDb < -15.0, "the reverb's Low Cut and High Cut take its tail's ends away");
+        check(spiky > 1.3 * diffuse, "the reverb's Diffusion at 0 leaves its early echoes spikier");
+
+        // A click into a hall and a plate (4 s decay), at Diffusion 0, 50 and 100 %: how dense its echoes are 200 to
+        // 300 ms on (the share of samples further out than the window's RMS, against noise's 31.7 %), how loud the
+        // tail is, how alike its sides are and how smooth its spectrum from 0.3 to 1.5 s (as the reverbs' tails are
+        // measured further down). At 0 the lines' mixing is loosened as well as the input's all-passes: its echoes stay
+        // apart for longer, and fill in as Diffusion rises. The all-passes are plain delays at 0, holding a click back
+        // longer than the effect would ring on after silence did it not wait for it: it still comes out.
+        auto density = [](const std::vector<float> &x, size_t from, size_t to) {
+            double power = 0.0;
+            for (size_t i = from; i < to; ++i)
+                power += x[i] * x[i];
+            const double rms = std::sqrt(power / (to - from));
+            size_t out = 0;
+            for (size_t i = from; i < to; ++i)
+                out += std::abs(x[i]) > rms;
+            return out / static_cast<double>(to - from) / 0.3173;
+        };
+        auto lumps = [](const std::vector<float> &tail, size_t from) {
+            constexpr size_t kN = 4096;
+            std::vector<double> power(kN / 2, 0.0);
+            for (size_t start = from + static_cast<size_t>(0.3 * kSampleRate);
+                 start + kN < from + static_cast<size_t>(1.5 * kSampleRate); start += kN / 2) {
+                std::vector<std::complex<double>> x(kN);
+                for (size_t i = 0; i < kN; ++i)
+                    x[i] = tail[start + i] * (0.5 - 0.5 * std::cos(2.0 * std::numbers::pi * i / kN));
+                fft(x);
+                for (size_t k = 0; k < kN / 2; ++k)
+                    power[k] += std::norm(x[k]);
+            }
+            const double binHz = kSampleRate / kN;
+            double stray = 0.0;
+            int bins = 0;
+            for (size_t k = static_cast<size_t>(200.0 / binHz); k < static_cast<size_t>(5000.0 / binHz); ++k) {
+                double around = 0.0;
+                int count = 0;
+                for (size_t j = static_cast<size_t>(k / 1.122); j <= static_cast<size_t>(k * 1.122); ++j, ++count)
+                    around += power[j];
+                stray += std::abs(10.0 * std::log10(power[k] * count / around));
+                ++bins;
+            }
+            return stray / bins;
+        };
+        bool spreads = true, rings = true, smooth = true;
+        for (ReverbType type : {ReverbType::Hall, ReverbType::Plate}) {
+            double dense[3], energy[3];
+            for (int k = 0; k < 3; ++k) {
+                const Run out = run(FxType::Reverb,
+                                    {{FxParam::ReverbType, static_cast<double>(type)},
+                                     {FxParam::ReverbMix, 1.0},
+                                     {FxParam::ReverbPreDelay, 0.0},
+                                     {FxParam::ReverbDecay, normFromTime(4.0)},
+                                     {FxParam::ReverbDiffusion, 0.5 * k}},
+                                    4800 + static_cast<size_t>(1.6 * kSampleRate), click);
+                const size_t at = 4800;
+                dense[k] = density(out.left, at + 9600, at + 14400);
+                double ll = 0.0, rr = 0.0, lr = 0.0;
+                for (size_t i = at + 4800; i < at + static_cast<size_t>(1.5 * kSampleRate); ++i) {
+                    ll += out.left[i] * out.left[i];
+                    rr += out.right[i] * out.right[i];
+                    lr += out.left[i] * out.right[i];
+                }
+                energy[k] = ll;
+                const double stray = lumps(out.left, at), correlation = lr / std::sqrt(ll * rr + 1e-30);
+                std::printf("      reverb %s at %3.0f %% diffusion: echo density %.2f at 200-300 ms, tail %.1f dB, its "
+                            "spectrum straying %.2f dB, sides correlating %+.2f\n",
+                            type == ReverbType::Hall ? "hall " : "plate", 50.0 * k, dense[k],
+                            10.0 * std::log10(ll + 1e-30), stray, correlation);
+                smooth = smooth && stray < 2.5 && std::abs(correlation) < 0.15;
+            }
+            spreads = spreads && dense[0] < 0.5 && dense[0] < dense[1] - 0.1 && dense[2] > 0.85;
+            rings = rings && energy[0] > 0.5 * energy[2];
+        }
+        check(spreads, "the reverb's Diffusion at 0 keeps its tail's echoes apart for longer, filling in as it rises");
+        check(rings, "a click into a reverb at 0 % Diffusion comes out of it, its all-passes' delay waited for");
+        check(smooth, "the reverb's tail is smooth and its sides unalike at any Diffusion");
+    }
+
+    // The delay's Duck: a sine at -6 dB for half a second with Duck full up takes the echoes away while it plays
+    // (what comes out within 0.1 % of the dry sine past its first echo), and they come back once it stops.
+    {
+        auto sine = [](size_t t, int) {
+            return t < 24000 ? 0.5 * std::sin(2.0 * std::numbers::pi * 440.0 * t / kSampleRate) : 0.0;
+        };
+        const std::vector<std::pair<FxParam, double>> base{{FxParam::DelayTimeL, normFromTime(0.1)},
+                                                           {FxParam::DelayTimeR, normFromTime(0.1)},
+                                                           {FxParam::DelayFeedback, 0.6},
+                                                           {FxParam::DelayMix, 0.5}};
+        std::vector<std::pair<FxParam, double>> ducked = base;
+        ducked.push_back({FxParam::DelayDuck, 1.0});
+        const std::vector<float> plain = run(FxType::Delay, base, 48000, sine).left,
+                                 duck = run(FxType::Delay, ducked, 48000, sine).left;
+        double during = 0.0, plainAfter = 0.0, duckAfter = 0.0;
+        for (size_t t = 9600; t < 24000; ++t)
+            during = std::max(during, std::abs(duck[t] - sine(t, 0)));
+        for (size_t t = 40000; t < 48000; ++t) {
+            plainAfter = std::max(plainAfter, static_cast<double>(std::abs(plain[t])));
+            duckAfter = std::max(duckAfter, static_cast<double>(std::abs(duck[t])));
+        }
+        std::printf("      delay duck: %.4f off the dry sine while it plays; after it, echoes at %.3f (%.3f unducked)\n",
+                    during, duckAfter, plainAfter);
+        check(during < 0.0005 && duckAfter > 0.5 * plainAfter,
+              "the delay's Duck takes its echoes away while what goes in is loud, and lets them back after");
+    }
+
+    // The shaper's Tone: a quiet sine the curve leaves straight (a Hard curve, below its ceiling) comes out as at 0
+    // either way (its shelves undoing each other), while a loud one comes out unlike at 0. Its oversampling: a C7
+    // through a hard curve aliases less at 4x and 8x than at 2x.
+    {
+        const double c7 = keyHz(96);
+        auto quiet = [](size_t t, int) {
+            return 0.1 * std::sin(2.0 * std::numbers::pi * 300.0 * t / kSampleRate) +
+                   0.1 * std::sin(2.0 * std::numbers::pi * 5000.0 * t / kSampleRate);
+        };
+        auto loud = [](size_t t, int) { return 0.9 * std::sin(2.0 * std::numbers::pi * 300.0 * t / kSampleRate); };
+        auto shaped = [&](double tone, auto &&input, double drive) {
+            return run(FxType::Shaper,
+                       {{FxParam::ShaperMode, static_cast<double>(ClipMode::Hard)},
+                        {FxParam::ShaperDrive, drive},
+                        {FxParam::ShaperLink, 0.0},
+                        {FxParam::ShaperTone, tone}},
+                       24000, input)
+                .left;
+        };
+        auto most = [](const std::vector<float> &a, const std::vector<float> &b) {
+            double m = 0.0;
+            for (size_t i = 4800; i < a.size(); ++i)
+                m = std::max(m, static_cast<double>(std::abs(a[i] - b[i])));
+            return m;
+        };
+        const std::vector<float> quiet0 = shaped(0.0, quiet, 0.0);
+        const double quietUp = most(shaped(1.0, quiet, 0.0), quiet0), quietDown = most(shaped(-1.0, quiet, 0.0), quiet0);
+        const std::vector<float> loud0 = shaped(0.0, loud, 12.0);
+        const double loudUp = most(shaped(1.0, loud, 12.0), loud0);
+        std::printf("      shaper tone: a quiet sound %.1e / %.1e off at +/-100 %%, a loud one %.3f\n", quietUp,
+                    quietDown, loudUp);
+        check(quietUp < 1e-4 && quietDown < 1e-4 && loudUp > 0.05,
+              "the shaper's Tone leaves what its curve leaves straight alone, and changes what it drives");
+        auto aliasing = [&](double oversampling) {
+            auto high = [c7](size_t t, int) { return 0.9 * std::sin(2.0 * std::numbers::pi * c7 * t / kSampleRate); };
+            const std::vector<float> out = run(FxType::Shaper,
+                                               {{FxParam::ShaperMode, static_cast<double>(ClipMode::Hard)},
+                                                {FxParam::ShaperDrive, 18.0},
+                                                {FxParam::ShaperOversampling, oversampling}},
+                                               4800 + kFftSize, high)
+                                           .left;
+            return unexpectedDb(std::vector<float>(out.begin() + 4800, out.end()), harmonics(c7));
+        };
+        // Its oversampling changed under a quiet sine (which the curve leaves alone), in whole blocks and in single
+        // frames: it ducks out and back in rather than clicking, no sample stepping further than the sine's own do.
+        auto steepest = [&](uint32_t piece) {
+            Effects fx;
+            fx.prepare(kSampleRate);
+            ParamValues p;
+            for (int i = 0; i < kParamCount; ++i)
+                p[i] = paramTable()[i].def;
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+            p[paramIndex(0, FxParam::ShaperMode)] = static_cast<double>(ClipMode::Hard);
+            p[paramIndex(0, FxParam::ShaperDrive)] = 0.0;
+            p[paramIndex(0, FxParam::ShaperLink)] = 0.0;
+            chain(p, {0});
+            std::vector<float> left(piece), right(piece);
+            double most = 0.0, last = 0.0;
+            uint32_t t = 0;
+            for (double value : {1.0, 2.0, 3.0, 1.0}) {
+                p[paramIndex(0, FxParam::ShaperOversampling)] = value;
+                for (uint32_t done = 0; done < 12000; done += piece, t += piece) {
+                    for (uint32_t s = 0; s < piece; ++s)
+                        left[s] = right[s] =
+                            static_cast<float>(0.5 * std::sin(2.0 * std::numbers::pi * 440.0 * (t + s) / kSampleRate));
+                    fx.process(left.data(), right.data(), piece, p, 120.0, 60.0);
+                    for (uint32_t s = 0; s < piece; ++s) {
+                        if (t + s > 4800)
+                            most = std::max(most, static_cast<double>(std::abs(left[s] - last)));
+                        last = left[s];
+                    }
+                }
+            }
+            return most / (0.5 * 2.0 * std::numbers::pi * 440.0 / kSampleRate);
+        };
+        const double switchBlocks = steepest(kBlock), switchFrames = steepest(1);
+        std::printf("      shaper oversampling 2x, 4x, 8x, 2x under a sine: steepest step x%.3f in whole blocks, x%.3f "
+                    "in single frames\n",
+                    switchBlocks, switchFrames);
+        check(switchBlocks < 1.15 && switchFrames < 1.15,
+              "the shaper's oversampling changed under a sine ducks out and back rather than clicking");
+        const double at2 = aliasing(1.0), at4 = aliasing(2.0), at8 = aliasing(3.0);
+        std::printf("      shaper aliasing on a hard-clipped C7: %.1f dB at 2x, %.1f at 4x, %.1f at 8x\n", at2, at4, at8);
+        check(at4 < at2 - 6.0 && at8 < at4 - 3.0, "the shaper aliases less at 4x and 8x than at 2x");
+    }
+
+    // The compressor's detector high-pass: a loud 50 Hz sine under a quiet 2 kHz one pulls the 2 kHz down less with
+    // it at 300 Hz.
+    {
+        auto bassy = [](size_t t, int) {
+            return 0.7 * std::sin(2.0 * std::numbers::pi * 50.0 * t / kSampleRate) +
+                   0.05 * std::sin(2.0 * std::numbers::pi * 2000.0 * t / kSampleRate);
+        };
+        auto treble = [&](double hp) {
+            const std::vector<float> out =
+                run(FxType::Compressor,
+                    {{FxParam::CompThreshold, -24.0}, {FxParam::CompRatio, 8.0}, {FxParam::CompDetectorHp, hp}},
+                    9600 + kFftSize, bassy)
+                    .left;
+            return 10.0 * std::log10(bandEnergy(out, 9600, 1900.0, 2100.0));
+        };
+        const double off = treble(0.0), on = treble(normFromCutoff(300.0));
+        std::printf("      compressor detector HP at 300 Hz: a quiet 2 kHz under loud bass %.1f dB louder than without\n",
+                    on - off);
+        check(on - off > 6.0, "the compressor's detector high-pass keeps the bass from pulling the rest down");
+    }
+
+    // The flanger through zero, held still at its sweep's middle, negative and half wet: the swept copy as late as
+    // the dry sound, so noise cancels to nothing; without it, the comb leaves most of it.
+    {
+        auto flanged = [&](double throughZero) {
+            const std::vector<float> out = run(FxType::Flanger,
+                                               {{FxParam::FlangerRate, 0.0},
+                                                {FxParam::FlangerFeedback, 0.0},
+                                                {FxParam::FlangerNegative, 1.0},
+                                                {FxParam::FlangerStereo, 0.0},
+                                                {FxParam::FlangerThroughZero, throughZero}},
+                                               24000, noise)
+                                           .left;
+            double power = 0.0, in = 0.0;
+            for (size_t t = 9600; t < 24000; ++t) {
+                power += out[t] * out[t];
+                in += noise(t, 0) * noise(t, 0);
+            }
+            return 10.0 * std::log10(power / in + 1e-30);
+        };
+        const double zero = flanged(1.0), plain = flanged(0.0);
+        std::printf("      flanger at its sweep's middle, negative: %.1f dB through zero, %.1f dB without\n", zero, plain);
+        check(zero < -60.0 && plain > -10.0, "the flanger through zero cancels everything where its sweep meets the dry sound");
+    }
+
+    // The phaser's Spread moves its notches: held still, four stages, its deepest notch between 100 Hz and 10 kHz
+    // more than a sixth of an octave (four steps of the 1/24-octave grid it is looked for on) from where it is
+    // unspread.
+    {
+        auto deepest = [&](double spread) {
+            double lowest = 1e9, at = 0.0;
+            for (double hz = 100.0; hz < 10000.0; hz *= std::exp2(1.0 / 24.0)) {
+                auto sine = [hz](size_t t, int) { return 0.5 * std::sin(2.0 * std::numbers::pi * hz * t / kSampleRate); };
+                const std::vector<float> out =
+                    run(FxType::Phaser, {{FxParam::PhaserRate, 0.0}, {FxParam::PhaserFeedback, 0.0},
+                                         {FxParam::PhaserSpread, spread}},
+                        4800, sine)
+                        .left;
+                double peak = 0.0;
+                for (size_t t = 2400; t < 4800; ++t)
+                    peak = std::max(peak, static_cast<double>(std::abs(out[t])));
+                if (peak < lowest) {
+                    lowest = peak;
+                    at = hz;
+                }
+            }
+            return at;
+        };
+        const double plain = deepest(0.0), spread = deepest(1.0);
+        std::printf("      phaser's deepest notch: %.0f Hz unspread, %.0f Hz spread\n", plain, spread);
+        check(std::abs(std::log2(spread / plain)) > 1.0 / 6.0, "the phaser's Spread moves its notches");
+    }
+
+    // Lo-Fi: at 4 bits and the top rate, unsmoothed, every sample on a level 1/8 apart; at 1 kHz, a new sample about
+    // 1000 times a second; Smooth taking the steps' edges down; Mix at 0 the dry sound exactly.
+    {
+        auto ramp = [](size_t t, int) { return std::sin(2.0 * std::numbers::pi * 3.0 * t / kSampleRate) * 0.9; };
+        const std::vector<float> coarse = run(FxType::LoFi,
+                                              {{FxParam::LoFiBits, 4.0}, {FxParam::LoFiRate, 1.0},
+                                               {FxParam::LoFiSmooth, 0.0}},
+                                              24000, ramp)
+                                          .left;
+        double offGrid = 0.0;
+        for (size_t t = 4800; t < coarse.size(); ++t)
+            offGrid = std::max(offGrid, std::abs(coarse[t] * 8.0 - std::round(coarse[t] * 8.0)));
+        auto held = [&](double smooth) {
+            return run(FxType::LoFi,
+                       {{FxParam::LoFiBits, 16.0}, {FxParam::LoFiRate, normFromCutoff(1000.0)}, {FxParam::LoFiSmooth, smooth}},
+                       48000 + 4800, noise)
+                .left;
+        };
+        const std::vector<float> raw = held(0.0), smoothed = held(1.0);
+        int changes = 0;
+        double rawStep = 0.0, smoothStep = 0.0;
+        for (size_t t = 4801; t < 4800 + 48000; ++t) {
+            changes += raw[t] != raw[t - 1];
+            rawStep = std::max(rawStep, static_cast<double>(std::abs(raw[t] - raw[t - 1])));
+            smoothStep = std::max(smoothStep, static_cast<double>(std::abs(smoothed[t] - smoothed[t - 1])));
+        }
+        const std::vector<float> dry = run(FxType::LoFi, {{FxParam::LoFiMix, 0.0}}, 9600, noise).left;
+        bool same = true;
+        for (size_t t = 0; t < dry.size(); ++t)
+            same = same && dry[t] == static_cast<float>(noise(t, 0));
+        std::printf("      lo-fi: 4 bits %.1e off its levels; at 1 kHz %d new samples a second, its steps %.3f, smoothed "
+                    "%.3f; Mix 0 %s\n",
+                    offGrid, changes, rawStep, smoothStep, same ? "dry" : "not dry");
+        check(offGrid < 1e-6 && std::abs(changes - 1000) <= 2 && smoothStep < 0.25 * rawStep && same,
+              "the Lo-Fi holds Bits' levels at Rate, Smooth takes the steps' edges off, and Mix at 0 is dry");
+    }
 }
 
 int main() {
@@ -5374,6 +5786,7 @@ int main() {
     }
 
     syncWarpChecks(factors);
+    newerEffectChecks();
     unisonModeChecks();
 
     // --- Zipper: modulation stepping once per control block leaves partials
@@ -5466,6 +5879,109 @@ int main() {
         const double wire = unexpectedDb(steadyTone(1, key, wireMod), {f0, f0 - lfo, f0 + lfo});
         std::printf("      %-30s %7.1f\n", "LFO on an effects graph wire", wire);
         check(wire < -70.0, "LFO on a wire of the effects graph doesn't zipper");
+    }
+    // --- The same for the effects' frequencies and the voice filters', which they take once per control block: an LFO on each, the
+    // effect alone in the chain, puts out a sine's sidebands from its movement alone (all of them the sine's frequency
+    // and the LFO's multiples), and nothing around the control rate's multiples, where steps would put them. At 7 Hz,
+    // the LFO's sidebands keep clear of those.
+    std::printf("zipper in the effects (energy off the sine's sidebands, dB; held still in brackets):\n");
+    {
+        const int key = 57;
+        const double f0 = keyHz(key), lfo = 7.0;
+        std::vector<double> sidebands;
+        for (int k = -60; k <= 60; ++k)
+            sidebands.push_back(f0 + k * lfo);
+        struct Swept {
+            const char *name;
+            FxType type;
+            FxParam param;
+            double amount;
+            std::vector<std::pair<FxParam, double>> set;
+        };
+        const Swept swept[] = {
+            {"phase disperser Freq", FxType::Disperser, FxParam::DisperserFreq, 0.05,
+             {{FxParam::DisperserFreq, normFromCutoff(f0)},
+              {FxParam::DisperserStages, 16.0},
+              {FxParam::DisperserPinch, 0.3},
+              {FxParam::DisperserMix, 1.0}}},
+            {"filter effect cutoff", FxType::Filter, FxParam::FilterCutoff, 0.1,
+             {{FxParam::FilterType, static_cast<double>(FilterType::LowPass)},
+              {FxParam::FilterCutoff, normFromCutoff(2.0 * f0)},
+              {FxParam::FilterResonance, 0.5}}},
+            {"filter effect formant vowel", FxType::Filter, FxParam::FilterVowel, 0.1,
+             {{FxParam::FilterType, static_cast<double>(FilterType::Formant)}, {FxParam::FilterVowel, 0.375}}},
+            {"filter effect morph place", FxType::Filter, FxParam::FilterMorph, 0.2,
+             {{FxParam::FilterType, static_cast<double>(FilterType::Morph)},
+              {FxParam::FilterCutoff, normFromCutoff(2.0 * f0)},
+              {FxParam::FilterResonance, 0.3},
+              {FxParam::FilterMorph, 0.25}}},
+            {"param EQ band frequency", FxType::ParamEq, FxParam::PeqFreq1, 0.1,
+             {{FxParam::PeqFreq1, normFromCutoff(2.0 * f0)}, {FxParam::PeqGain1, 12.0}, {FxParam::PeqQ1, 0.5}}},
+            {"phaser center", FxType::Phaser, FxParam::PhaserCenter, 0.1,
+             {{FxParam::PhaserRate, 0.0}, {FxParam::PhaserCenter, normFromCutoff(2.0 * f0)}}},
+            {"widener cutoff", FxType::Widener, FxParam::WidenerHighPass, 0.2,
+             {{FxParam::WidenerHighPass, normFromCutoff(f0)}, {FxParam::WidenerWidth, 1.0}}},
+        };
+        // The voice filters the same way: an LFO on a resonant low-pass's and ladder's cutoff, a formant's vowel and a
+        // morph's place, the operator going out through the filter alone.
+        // The ladder quietly, so its saturation's harmonics stay under what is measured.
+        struct VoiceSwept {
+            const char *name;
+            FilterType type;
+            FilterParam param;
+            double amount, resonance, send;
+        };
+        const VoiceSwept voiceSwept[] = {
+            {"voice filter cutoff", FilterType::LowPass, FilterParam::Cutoff, 0.1, 0.5, 1.0},
+            {"voice ladder cutoff", FilterType::Ladder, FilterParam::Cutoff, 0.1, 0.5, 0.01},
+            {"voice formant vowel", FilterType::Formant, FilterParam::Vowel, 0.1, 0.0, 1.0},
+            {"voice morph place", FilterType::Morph, FilterParam::Morph, 0.2, 0.3, 1.0},
+        };
+        for (const VoiceSwept &sweep : voiceSwept) {
+            auto setup = [&](ParamValues &p) {
+                p[paramIndex(0, OpParam::Out)] = 0.0;
+                p[sendIndex(0, 0)] = sweep.send;
+                p[paramIndex(0, FilterParam::Enabled)] = 1.0;
+                p[paramIndex(0, FilterParam::Out)] = 1.0;
+                p[paramIndex(0, FilterParam::Type)] = static_cast<double>(sweep.type);
+                p[paramIndex(0, FilterParam::Cutoff)] =
+                    sweep.type == FilterType::Formant ? kDefaultCutoff : normFromCutoff(2.0 * f0);
+                p[paramIndex(0, FilterParam::KeyTrack)] = 0.0;
+                p[paramIndex(0, FilterParam::Resonance)] = sweep.resonance;
+                p[paramIndex(0, FilterParam::Vowel)] = 0.375;
+                p[paramIndex(0, FilterParam::Morph)] = 0.25;
+                lfoOn(p, paramIndex(0, sweep.param), sweep.amount, lfo);
+            };
+            auto still = [&](ParamValues &p) {
+                setup(p);
+                p[slotAmountIndex(0, 0)] = 0.0;
+            };
+            const double db = unexpectedDb(steadyTone(1, key, setup), sidebands);
+            const double held = unexpectedDb(steadyTone(1, key, still), sidebands);
+            std::printf("      %-30s %7.1f  (%.1f)\n", sweep.name, db, held);
+            char what[128];
+            std::snprintf(what, sizeof(what), "an LFO on a %s doesn't zipper", sweep.name);
+            check(db < -90.0, what);
+        }
+        for (const Swept &sweep : swept) {
+            auto setup = [&](ParamValues &p) {
+                p[paramIndex(0, FxParam::Type)] = static_cast<double>(sweep.type);
+                chain(p, {0});
+                for (const auto &[field, value] : sweep.set)
+                    p[paramIndex(0, field)] = value;
+                lfoOn(p, paramIndex(0, sweep.param), sweep.amount, lfo);
+            };
+            auto still = [&](ParamValues &p) {
+                setup(p);
+                p[slotAmountIndex(0, 0)] = 0.0;
+            };
+            const double db = unexpectedDb(steadyTone(1, key, setup), sidebands);
+            const double held = unexpectedDb(steadyTone(1, key, still), sidebands);
+            std::printf("      %-30s %7.1f  (%.1f)\n", sweep.name, db, held);
+            char what[128];
+            std::snprintf(what, sizeof(what), "an LFO on the %s doesn't zipper", sweep.name);
+            check(db < -90.0, what);
+        }
     }
 
     // --- The random LFO: how far its steps go with chaos, and how smoothing glides between them.
@@ -5845,6 +6361,213 @@ int main() {
         std::printf("      voices 2, 6, 3, 2: x%.3f   spread 0, 100, 0 %%: x%.3f\n", voices, spread);
         check(voices < 1.15 && spread < 1.15,
               "the chorus's Voices and Spread changed under a sine glide rather than click");
+    }
+
+    // --- The phase disperser's Stages changed under a sine, all wet: the count it played fades out as the new one
+    // fades in (see fx::Disperser), in whole blocks and in single frames alike. A switch from one count to another
+    // would step as far as the two chains' phases differ, a click: its third difference (which passes the sine and
+    // the chains' ringing at Freq at under a thousandth of their level, and a step almost whole) stays small.
+    std::printf("phase disperser stages changed under a sine (largest third difference):\n");
+    {
+        auto roughest = [](uint32_t piece) {
+            Effects fx;
+            fx.prepare(kSampleRate);
+            ParamValues p;
+            for (int i = 0; i < kParamCount; ++i)
+                p[i] = paramTable()[i].def;
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Disperser);
+            p[paramIndex(0, FxParam::DisperserFreq)] = normFromCutoff(600.0);
+            p[paramIndex(0, FxParam::DisperserPinch)] = 0.5;
+            p[paramIndex(0, FxParam::DisperserMix)] = 1.0;
+            chain(p, {0});
+            constexpr double kHz = 220.0;
+            const uint32_t each = static_cast<uint32_t>(kSampleRate / 4);
+            std::vector<float> left(piece), right(piece);
+            double most = 0.0;
+            std::array<double, 3> last{};
+            uint32_t t = 0;
+            for (double stages : {8.0, 9.0, 24.0, 4.0, 16.0, 1.0, 64.0}) {
+                p[paramIndex(0, FxParam::DisperserStages)] = stages;
+                for (uint32_t done = 0; done < each; done += piece, t += piece) {
+                    for (uint32_t s = 0; s < piece; ++s)
+                        left[s] = right[s] = static_cast<float>(
+                            0.5 * std::sin(2.0 * std::numbers::pi * kHz * (t + s) / kSampleRate));
+                    fx.process(left.data(), right.data(), piece, p, 120.0, 60.0);
+                    for (uint32_t s = 0; s < piece; ++s) {
+                        const double third = left[s] - 3.0 * last[0] + 3.0 * last[1] - last[2];
+                        if (t + s > kSampleRate / 10) // past the first chain's own start
+                            most = std::max(most, std::abs(third));
+                        last = {left[s], last[0], last[1]};
+                    }
+                }
+            }
+            return most;
+        };
+        const double blocks = roughest(kBlock), frames = roughest(1);
+        std::printf("      stages 8, 9, 24, 4, 16, 1, 64: %.5f in whole blocks, %.5f in single frames\n", blocks, frames);
+        check(blocks < 0.002 && frames < 0.002, "the phase disperser's Stages changed under a sine fade rather than click");
+    }
+
+    // --- The phase disperser's Key Track and Stretch, each against the chain they make, worked out from the same
+    // coefficients: an impulse through the effect, after a moment's silence while it fades in, comes out as through
+    // that chain (to within the float it is kept in between effects).
+    std::printf("phase disperser key track and stretch (impulse against the chain they make, largest difference):\n");
+    {
+        // What the effect puts out for an impulse, `pitch` the newest note's, at `rate`.
+        auto impulse = [](double freqHz, double keyTrack, double stretch, double pitch, double rate) {
+            Effects fx;
+            fx.prepare(rate);
+            ParamValues p;
+            for (int i = 0; i < kParamCount; ++i)
+                p[i] = paramTable()[i].def;
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Disperser);
+            p[paramIndex(0, FxParam::DisperserFreq)] = normFromCutoff(freqHz);
+            p[paramIndex(0, FxParam::DisperserStages)] = 8.0;
+            p[paramIndex(0, FxParam::DisperserPinch)] = 0.6;
+            p[paramIndex(0, FxParam::DisperserMix)] = 1.0;
+            p[paramIndex(0, FxParam::DisperserKeyTrack)] = keyTrack;
+            p[paramIndex(0, FxParam::DisperserStretch)] = stretch;
+            chain(p, {0});
+            const uint32_t settle = static_cast<uint32_t>(0.05 * rate) / kBlock * kBlock;
+            std::vector<float> out;
+            std::vector<float> left(kBlock), right(kBlock);
+            for (uint32_t t = 0; t < settle + 16384; t += kBlock) {
+                std::fill(left.begin(), left.end(), 0.0f);
+                if (t == settle)
+                    left[0] = 1.0f;
+                right = left;
+                fx.process(left.data(), right.data(), kBlock, p, 120.0, pitch);
+                if (t >= settle)
+                    out.insert(out.end(), left.begin(), left.end());
+            }
+            return out;
+        };
+        // The plain chain of 8 at `hz`, its delays `stretch` samples long: the unstretched one's impulse response
+        // spread out, every stretch-th sample, silence between.
+        auto expected = [](double hz, int stretch, double rate, size_t length) {
+            const std::array<double, 5> b = disperserCoefs(hz, 0.6, rate, stretch);
+            const fx::BiquadCoefs c{b[0], b[1], b[2], b[3], b[4]};
+            std::array<fx::Biquad, 8> chain{};
+            std::vector<double> out(length, 0.0);
+            for (size_t m = 0; m * stretch < length; ++m) {
+                double y = m == 0 ? 1.0 : 0.0;
+                for (fx::Biquad &stage : chain)
+                    y = stage.process(y, c);
+                out[m * stretch] = y;
+            }
+            return out;
+        };
+        auto difference = [](const std::vector<float> &got, const std::vector<double> &want) {
+            double most = 0.0;
+            for (size_t i = 0; i < want.size(); ++i)
+                most = std::max(most, std::abs(got[i] - want[i]));
+            return most;
+        };
+        const double c4 = difference(impulse(500.0, 1.0, 1.0, 60.0, kSampleRate), expected(500.0, 1, kSampleRate, 16384));
+        const double c5 = difference(impulse(500.0, 1.0, 1.0, 72.0, kSampleRate), expected(1000.0, 1, kSampleRate, 16384));
+        const double half = difference(impulse(500.0, 0.5, 1.0, 84.0, kSampleRate), expected(1000.0, 1, kSampleRate, 16384));
+        std::printf("      key track 100 %%: a C4 at Freq %.1e, a C5 an octave up %.1e; 50 %% and a C6 an octave up %.1e\n",
+                    c4, c5, half);
+        check(c4 < 1e-6 && c5 < 1e-6 && half < 1e-6,
+              "the phase disperser's Key Track moves Freq with the note from C4 on, as the filter's does");
+        const double by4 = difference(impulse(700.0, 0.0, 4.0, 60.0, kSampleRate), expected(700.0, 4, kSampleRate, 16384));
+        const double by37 =
+            difference(impulse(700.0, 0.0, 37.0, 60.0, kSampleRate), expected(700.0, 37, kSampleRate, 16384));
+        const double by8At96 = difference(impulse(700.0, 0.0, 4.0, 60.0, 96000.0), expected(700.0, 8, 96000.0, 16384));
+        std::printf("      stretch 4 %.1e, 37 %.1e, 4 at 96 kHz (8 samples) %.1e\n", by4, by37, by8At96);
+        check(by4 < 1e-6 && by37 < 1e-6 && by8At96 < 1e-6 && disperserStretch(4.0, 96000.0) == 8 &&
+                  disperserStretch(4.0, 44100.0) == 4 && disperserStretch(64.0, 192000.0) == 256,
+              "the phase disperser's Stretch makes each all-pass's delays as many samples long at 48 kHz, as long a "
+              "time at other rates");
+        // Stretched, its delay peaks at Freq and again every 48 kHz / Stretch either way: at 32, 1.5 kHz apart, a
+        // 400 Hz one's copies at 1.1 and 1.9 kHz.
+        auto peakNear = [](double hz) {
+            double best = 0.0, at = hz;
+            for (double f = hz * 0.9; f < hz * 1.1; f += hz * 0.0002)
+                if (const double d = disperserDelay(f, 400.0, 0.6, 8, kSampleRate, 32); d > best) {
+                    best = d;
+                    at = f;
+                }
+            return at;
+        };
+        const double first = peakNear(400.0), mirror = peakNear(1100.0), copy = peakNear(1900.0);
+        std::printf("      stretch 32 at 400 Hz: its delay peaks at %.0f Hz, %.0f Hz and %.0f Hz\n", first, mirror, copy);
+        check(std::abs(first / 400.0 - 1.0) < 0.01 && std::abs(mirror / 1100.0 - 1.0) < 0.01 &&
+                  std::abs(copy / 1900.0 - 1.0) < 0.01,
+              "stretched, the phase disperser's delay peaks at Freq and again every 48 kHz / Stretch, either way");
+    }
+    // Its Stretch changed under a sine, all wet: it fades out to the sine and back in at the new length, so its third
+    // difference stays far under an instant switch's (1 to 1.6 here). A stretched chain starting from silence buzzes
+    // at the rate over its stretch, as it does on any note, which the fade back in keeps down rather than takes away.
+    // And the longest stretch, the most stages and the narrowest pinch stay finite and ring out.
+    {
+        auto roughest = [](uint32_t piece) {
+            Effects fx;
+            fx.prepare(kSampleRate);
+            ParamValues p;
+            for (int i = 0; i < kParamCount; ++i)
+                p[i] = paramTable()[i].def;
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Disperser);
+            p[paramIndex(0, FxParam::DisperserFreq)] = normFromCutoff(600.0);
+            p[paramIndex(0, FxParam::DisperserMix)] = 1.0;
+            chain(p, {0});
+            const uint32_t each = static_cast<uint32_t>(kSampleRate / 4);
+            std::vector<float> left(piece), right(piece);
+            double most = 0.0;
+            std::array<double, 3> last{};
+            uint32_t t = 0;
+            for (double stretch : {1.0, 4.0, 16.0, 64.0, 2.0, 1.0}) {
+                p[paramIndex(0, FxParam::DisperserStretch)] = stretch;
+                for (uint32_t done = 0; done < each; done += piece, t += piece) {
+                    for (uint32_t s = 0; s < piece; ++s)
+                        left[s] = right[s] = static_cast<float>(
+                            0.5 * std::sin(2.0 * std::numbers::pi * 220.0 * (t + s) / kSampleRate));
+                    fx.process(left.data(), right.data(), piece, p, 120.0, 60.0);
+                    for (uint32_t s = 0; s < piece; ++s) {
+                        const double third = left[s] - 3.0 * last[0] + 3.0 * last[1] - last[2];
+                        if (t + s > kSampleRate / 10)
+                            most = std::max(most, std::abs(third));
+                        last = {left[s], last[0], last[1]};
+                    }
+                }
+            }
+            return most;
+        };
+        const double blocks = roughest(kBlock), frames = roughest(1);
+        std::printf("      stretch 1, 4, 16, 64, 2, 1 under a sine: third difference %.5f in whole blocks, %.5f in single "
+                    "frames\n", blocks, frames);
+        check(blocks < 0.05 && frames < 0.05, "the phase disperser's Stretch changed under a sine fades rather than clicks");
+
+        Effects fx;
+        fx.prepare(kSampleRate);
+        ParamValues p;
+        for (int i = 0; i < kParamCount; ++i)
+            p[i] = paramTable()[i].def;
+        p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Disperser);
+        p[paramIndex(0, FxParam::DisperserStages)] = 64.0;
+        p[paramIndex(0, FxParam::DisperserPinch)] = 1.0;
+        p[paramIndex(0, FxParam::DisperserStretch)] = 64.0;
+        p[paramIndex(0, FxParam::DisperserKeyTrack)] = 1.0;
+        chain(p, {0});
+        std::vector<float> left(kBlock), right(kBlock);
+        bool finite = true;
+        double loud = 0.0, end = 0.0;
+        for (uint32_t t = 0; t < 30 * static_cast<uint32_t>(kSampleRate); t += kBlock) {
+            const bool sounding = t < kSampleRate / 2;
+            for (uint32_t s = 0; s < kBlock; ++s)
+                left[s] = right[s] = sounding ? static_cast<float>(((t + s) * 2654435761u >> 16 & 1023) / 1023.0 - 0.5) : 0.0f;
+            fx.process(left.data(), right.data(), kBlock, p, 120.0, 96.0); // a C7, its tracked Freq high up
+            for (uint32_t s = 0; s < kBlock; ++s) {
+                finite = finite && std::isfinite(left[s]) && std::isfinite(right[s]);
+                loud = std::max(loud, static_cast<double>(std::abs(left[s])));
+                if (t > 29 * static_cast<uint32_t>(kSampleRate))
+                    end = std::max(end, static_cast<double>(std::abs(left[s])));
+            }
+        }
+        std::printf("      64 stages, full pinch and stretch, noise for half a second: loudest %.2f, after 29 s %.1e\n",
+                    loud, end);
+        check(finite && loud < 4.0 && end < 1e-4,
+              "the phase disperser at its longest stretch, most stages and narrowest pinch stays finite and rings out");
     }
 
     // --- The chorus's voices, held still (no Depth), all wet and in the middle: an impulse comes out once a voice,

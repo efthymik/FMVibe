@@ -40,7 +40,7 @@ FMVibe works in the spirit of classic and modern FM synthesizers. Its main featu
 - **Flexible modulation**: up to 16 sources (LFOs, envelopes, drawn curves, random and MIDI sources), plus eight
   macros, the mod wheel, pitch bend, note pitch, velocity and the operators' outputs, which also give filter FM. Each
   modulation has its own depth, curve, amount and an optional auxiliary source that scales it.
-- **Effects**: up to 32 effects from 16 types, in a chain that can be split into frequency bands.
+- **Effects**: up to 32 effects from 17 types, in a chain that can be split into frequency bands.
 - **A step sequencer** with a piano roll, four patterns per preset and automation curves.
 - **Presets** with a browser, categories, favorites and search, and a library of factory presets.
 - MPE support, CLAP per-voice modulation, and a resizable UI with four themes.
@@ -939,7 +939,11 @@ A waveshaper for saturation and distortion.
   - **Custom**: a curve you draw, from the quietest input to the loudest. Edit it on the card or open the large
     editor with the **pencil** button. **Symmetric** (SYM) mirrors its upper half onto its lower half.
 - **Drive** (0–36 dB), **Output**, **Mix**.
+- **Tone** (−100 % to +100 %): turn it left for a warmer distortion, right for a brighter one. It changes only what
+  the curve drives; a quiet sound passes unchanged.
 - **Link** (on by default): keeps the level roughly constant as Drive rises.
+- **Oversampling** (right-click menu): 2x (default), 4x or 8x. Higher values reduce aliasing at high drive and cost
+  more CPU.
 
 The shaper stays clean even at high drive.
 
@@ -973,6 +977,7 @@ A stereo delay.
 - **Ping-Pong**: echoes start on the left and bounce across.
 - **Feedback** (up to 95 %).
 - **Tone**: turn it left to darken the repeats, right to thin them out.
+- **Duck**: turns the echoes down while you play, and brings them back as the sound stops.
 - **Width**: from full stereo to mono echoes.
 - **Mix**: the dry signal stays at full level up to 50 %.
 
@@ -1005,8 +1010,9 @@ the output spectrum behind it. See [Filters](#8-filters).
 #### Compressor
 
 A stereo-linked, peak-sensing compressor: **Threshold** (−60–0 dB), **Ratio** (1:1–20:1), **Knee** (0–24 dB),
-**Attack** (1–500 ms), **Release** (1 ms–2 s), **Gain** (makeup, 0–24 dB) and **Mix** for parallel compression. The
-display shows the transfer curve and gain reduction.
+**Attack** (1–500 ms), **Release** (1 ms–2 s), **Gain** (makeup, 0–24 dB) and **Mix** for parallel compression.
+**SC HP** (Off, or 20–500 Hz) keeps the bass below it from pumping the rest: the compressor stops reacting to it,
+though it still hears it. The display shows the transfer curve and gain reduction.
 
 #### 3-Band Dynamics
 
@@ -1036,13 +1042,16 @@ A dense algorithmic reverb with four algorithms:
   sets the interval (±24 semitones, an octave up by default) and **Shimmer** how much comes back.
 
 Controls: **Size**, **Decay** (0.2–20 s), **Damp** (the frequency above which the tail decays faster), **Pre**
-(pre-delay, up to 250 ms), **Width** and **Mix** (dry signal at full level up to 50 %). The display sketches the
-tail's shape.
+(pre-delay, up to 250 ms), **Diffuse** (how quickly the echoes blend into a smooth tail: turn it down for distinct,
+grainy echoes that fill in slowly; heard best on drums and plucks), **Width**, **Low Cut** (Off, or up to 1 kHz) and **High Cut** (from 1 kHz up) to
+thin out and darken the reverb without touching the dry sound, and **Mix** (dry signal at full level up to 50 %). The
+display sketches the tail's shape.
 
 #### Phaser
 
 - **Stages** (2–12), **Center**, **Depth** (sweep range), **Rate** (0–20 Hz; 0 stands still) or with **Sync** a note
   value, **Feedback** (positive or negative) and **Mix** (deepest notches at 100 %).
+- **Spread**: moves the notches unevenly apart, for a less regular, more vocal sound.
 - **Stereo**: offsets the right side's sweep by a quarter cycle.
 - **+ | −**: polarity. Negative moves the notches to where the peaks were.
 
@@ -1051,6 +1060,8 @@ tail's shape.
 - **Delay** (1–15 ms), **Depth**, **Rate** or **Sync**, **Feedback** (negative for a hollower sound) and **Mix**.
 - **Stereo** (on by default) and **+ | −** polarity, as on the phaser. Negative gives the thin-bottomed negative
   flange.
+- **TZF** (through-zero): the sweep passes through the dry sound, cancelling it at its middle, for the deep,
+  tape-style jet sweep. Best with Mix at 100 %.
 
 #### Chorus
 
@@ -1064,6 +1075,11 @@ The bass below about 200 Hz bypasses the voices, staying steady and centered. Th
 
 A phase disperser: a chain of 1–64 all-pass filters (**Stages**) at **Freq**, with **Pinch** setting their width.
 The sound around Freq is delayed and smeared into a chirp, at full level. **Mix** blends with the dry sound.
+
+- **Key Track**: moves Freq with the note you play. At 100 %, a note an octave up moves Freq an octave up, so each
+  note zaps at the same place.
+- **Stretch** (1–64): repeats the dispersion higher up the spectrum, each copy a longer chirp, for metallic, springy
+  and laser-like sounds.
 
 #### Widener
 
@@ -1079,6 +1095,17 @@ Moves every partial by the same number of Hz, turning harmonic sounds bell-like 
 - **Spread**: shifts the right side the other way.
 - **Feedback**: for spiraling sweeps.
 - **Mix**.
+
+#### Lo-Fi
+
+An early digital converter.
+
+- **Bits** (1–16): fewer bits make the sound grainier and noisier.
+- **Rate** (200 Hz–20 kHz): lower rates make it duller and add metallic, out-of-tune overtones.
+- **Smooth**: rounds off the steps, as an old converter's output filter does.
+- **Mix**.
+
+The display shows a sine and the steps the effect makes of it.
 
 #### Utility
 

@@ -2823,11 +2823,14 @@ bool FxPanel::contextMenu(const std::optional<Widget> &hit, Point, std::vector<M
         items.push_back({kMenuReset, tr(Str::MenuResetSettings)});
         if (fx_.slotType(menuFx_) == FxType::MultiDyn)
             items.push_back({kOttCommand, tr(Str::MenuOtt)});
-        // An amp's: how many times the host rate its stages run at, the one in force checked.
-        if (fx_.slotType(menuFx_) == FxType::Amp) {
+        // An amp's: how many times the host rate its stages run at, the one in force checked; a shaper's likewise,
+        // from 2x (here only, not on its card).
+        if (fx_.slotType(menuFx_) == FxType::Amp || fx_.slotType(menuFx_) == FxType::Shaper) {
             items.push_back({0, ""});
-            const long now = std::lround(value(paramIndex(menuFx_, FxParam::AmpOversampling)));
-            for (int i = 0; i < kAmpOversamplings; ++i)
+            const bool amp = fx_.slotType(menuFx_) == FxType::Amp;
+            const long now =
+                std::lround(value(paramIndex(menuFx_, amp ? FxParam::AmpOversampling : FxParam::ShaperOversampling)));
+            for (int i = amp ? 0 : 1; i < kAmpOversamplings; ++i)
                 items.push_back({kAmpOversamplingCommand + i, trf(Str::MenuOversampling, {std::to_string(1 << i) + "x"}),
                                  now == i});
         }
@@ -2875,6 +2878,9 @@ bool FxPanel::menuCommand(int command) {
     } else if (command >= kAmpOversamplingCommand && command < kAmpOversamplingCommand + kAmpOversamplings &&
                menuFx_ >= 0 && fx_.slotType(menuFx_) == FxType::Amp) {
         edit(paramIndex(menuFx_, FxParam::AmpOversampling), command - kAmpOversamplingCommand);
+    } else if (command > kAmpOversamplingCommand && command < kAmpOversamplingCommand + kAmpOversamplings &&
+               menuFx_ >= 0 && fx_.slotType(menuFx_) == FxType::Shaper) {
+        edit(paramIndex(menuFx_, FxParam::ShaperOversampling), command - kAmpOversamplingCommand);
     } else {
         return false;
     }

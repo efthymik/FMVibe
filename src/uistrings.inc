@@ -164,6 +164,7 @@ STR(FxMultiDyn, "3-Band Dynamics")
 STR(FxAmp, "Amp")
 STR(FxUtility, "Utility")
 STR(FxChorus, "Chorus")
+STR(FxLoFi, "Lo-Fi")
 
 // What a modulation place holds.
 STR(SourceEmpty, "Empty")
@@ -421,6 +422,21 @@ STR(ParamDisperserFreq, "Phase Disp Freq")
 STR(ParamDisperserStages, "Phase Disp Stages")
 STR(ParamDisperserPinch, "Phase Disp Pinch")
 STR(ParamDisperserMix, "Phase Disp Mix")
+STR(ParamDisperserKeyTrack, "Phase Disp Key Track")
+STR(ParamDisperserStretch, "Phase Disp Stretch")
+STR(ParamReverbLowCut, "Reverb Low Cut")
+STR(ParamReverbHighCut, "Reverb High Cut")
+STR(ParamReverbDiffusion, "Reverb Diffusion")
+STR(ParamDelayDuck, "Delay Duck")
+STR(ParamShaperTone, "Shaper Tone")
+STR(ParamShaperOversampling, "Shaper Oversampling")
+STR(ParamCompDetectorHp, "Comp Detector HP")
+STR(ParamFlangerThroughZero, "Flanger Through Zero")
+STR(ParamPhaserSpread, "Phaser Spread")
+STR(ParamLoFiBits, "Lo-Fi Bits")
+STR(ParamLoFiRate, "Lo-Fi Rate")
+STR(ParamLoFiSmooth, "Lo-Fi Smooth")
+STR(ParamLoFiMix, "Lo-Fi Mix")
 STR(ParamWidenerSize, "Widener Size")
 STR(ParamWidenerWidth, "Widener Width")
 STR(ParamWidenerHighPass, "Widener Cutoff")
@@ -633,6 +649,7 @@ STR(FxTitleWidener, "WIDENER")
 STR(FxTitleAmp, "AMP")
 STR(FxTitleUtility, "UTILITY")
 STR(FxTitleChorus, "CHORUS")
+STR(FxTitleLoFi, "LO-FI")
 
 // The big editors' titles.
 STR(TitleShape, "{1} SHAPE")
@@ -708,6 +725,16 @@ STR(LabelBelow, "Below")
 STR(LabelUp, "Up")
 STR(LabelShift, "Shift")
 STR(LabelSpread, "Spread")
+STR(LabelStretch, "Stretch") // the phase disperser's knob that repeats its dispersion across the spectrum
+STR(LabelLowCut, "Low Cut")
+STR(LabelHighCut, "High Cut")
+STR(LabelDiffusion, "Diffuse") // the reverb's Diffusion, short to fit four knobs in a row
+STR(LabelDuck, "Duck")
+STR(LabelThresh, "Thresh") // the compressor's Threshold, short beside three more knobs in its row
+STR(LabelDetectorHp, "SC HP") // the compressor's high-pass on what its detector hears (its side chain)
+STR(LabelBits, "Bits")
+STR(SwitchThroughZero, "TZF") // the flanger's through-zero switch, between its Feedback and Mix
+STR(TipThroughZero, "Through zero: the dry sound waits the sweep's middle, so the sweep passes through it")
 STR(LabelFreq, "Freq")
 STR(LabelPinch, "Pinch")
 STR(LabelHighPass, "Cutoff") // the widener's high-pass, above which it widens
@@ -969,6 +996,7 @@ STR(CaptionShimmer, "{1}  ·  shift {2}")
 STR(CaptionStages, "{1} stages")
 STR(CaptionVoices, "{1} voices")
 STR(CaptionDispersion, "{1}  ·  up to {2} ms")
+STR(CaptionLoFi, "{1} bits  ·  {2}") // the Lo-Fi's display: its bits and its rate
 STR(CaptionWidener, "HP {1}  ·  {2}–{3} ms")
 STR(CaptionAmpDrive, "drive {1} dB") // how far the amp's stages saturate now
 STR(CaptionAmpMic, "{1}  ·  {2}") // the amp's mic and its distance
@@ -1211,7 +1239,7 @@ STR(MenuFxModulation, "MODULATION") // the phaser, the flanger, the chorus and t
 STR(MenuFxStereo, "STEREO & PHASE") // the widener, the phase disperser and the utility
 STR(MenuFxSplit, "SPLIT") // from the main line: a split in two bands and in three (MenuSplitBands, MenuSplitThree)
 STR(MenuResetSettings, "Reset settings")
-STR(MenuOversampling, "Oversampling {1}") // an amp's, {1} the factor ("4x"), the one in force checked
+STR(MenuOversampling, "Oversampling {1}") // an amp's or a shaper's, {1} the factor ("4x"), the one in force checked
 STR(MenuOtt, "OTT") // a 3-band dynamics' settings set after the well-known OTT multiband preset
 STR(MenuRemove, "Remove")
 STR(MenuMoveToBand, "Move to {1}") // an effect on a split's band moved to the end of another band of it, {1} its name

@@ -1543,7 +1543,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     // Taking an effect out is one step, its modulation included.
     click(view, kFxTab);
     addFx(view, FxType::Delay);
-    drag(view, sourceHandle(0), fxKnob(model, 0, 2, 3, 266.0f));
+    drag(view, sourceHandle(0), fxKnob(model, 0, 3, 4, 266.0f)); // Mix, after Tone, Duck and Width
     const int mix = paramIndex(0, FxParam::DelayMix);
     click(view, fxRemove(model, 0));
     const bool removed = model.value(paramIndex(0, FxParam::Type)) == 0.0;
@@ -1571,7 +1571,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     // The frequency shifter's Shift, the second knob, after its Range: a share of it.
     model.set(paramIndex(4, FxParam::ShiftRange), normFromShiftRange(1000.0));
     const double shift = model.value(paramIndex(4, FxParam::ShiftAmount));
-    const Point shiftKnob = fxKnob(model, 4, 1, 3, 206.0f);
+    const Point shiftKnob = fxKnob(model, 4, 1, 3, 211.0f);
     drag(view, shiftKnob, {shiftKnob.x, shiftKnob.y - 20.0f});
     check(added && model.value(paramIndex(4, FxParam::ShiftAmount)) > shift + 0.1,
           "the newer effects join the chain, and their knobs work");
@@ -2164,7 +2164,7 @@ void testTouchPan(const std::filesystem::path &dir, Renderer &renderer) {
         on.touchUp(p);
     };
     fxScrolled = 2.0f; // the phaser's Rate, first on the first card shown
-    const Point rate = fxKnob(model, 2, 0, 3, 205.0f);
+    const Point rate = fxKnob(model, 2, 0, 3, 211.0f);
     fxScrolled = 0.0f;
     view.touchDown(rate, false, kSlop);
     view.touchMove({rate.x + 1.0f, rate.y - 15.0f});
@@ -3315,7 +3315,7 @@ void testChorus(const std::filesystem::path &dir, Renderer &renderer) {
     // Rate, the first knob of the first row, turned up; Spread, the second of the second row, wide to begin with,
     // turned down.
     const double rateBefore = model.value(at(FxParam::ChorusRate));
-    const Point rateKnob = fxKnob(model, 0, 0, 3, 206.0f);
+    const Point rateKnob = fxKnob(model, 0, 0, 3, 211.0f);
     drag(view, rateKnob, {rateKnob.x, rateKnob.y - 20.0f});
     const Point spreadKnob = fxKnob(model, 0, 1, 3, 266.0f);
     drag(view, spreadKnob, {spreadKnob.x, spreadKnob.y + 20.0f});
@@ -3333,6 +3333,157 @@ void testChorus(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove({601.0f, 628.0f}, {});
     check(midnight && renderer.save(view, dir / "27f-chorus-spectrum.png"),
           "render a chorus mid-sweep, three voices, in Midnight and Spectrum");
+}
+
+// The effects' newer controls: the shaper's oversampling in its title's menu only (2x checked to begin with, 4x and 8x
+// offered, 1x not), its Tone; the delay's Duck, the compressor's detector high-pass, the reverb's Diffusion in its
+// second row and Low Cut, High Cut and Mix in its third (Mix at the bottom right), the phaser's Spread and the flanger's TZF switch between its Feedback and Mix; then the
+// Lo-Fi, added from the list of effects (under DRIVE), its knobs, and its display following Bits (read off the rendered
+// pixels).
+void renderNewerControls(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    setChain(model, {0, 1, 2, 3, 4, 5});
+    const FxType types[] = {FxType::Shaper, FxType::Delay, FxType::Compressor, FxType::Reverb, FxType::Phaser,
+                            FxType::Flanger};
+    for (int slot = 0; slot < 6; ++slot)
+        model.values[paramIndex(slot, FxParam::Type)] = static_cast<double>(types[slot]);
+    view.poll();
+    click(view, kFxTab);
+    auto turned = [&](Point knob, float by, int param) {
+        const double before = model.value(param);
+        drag(view, knob, {knob.x, knob.y - by});
+        return model.value(param) != before;
+    };
+    // The shaper's title menu.
+    const int oversampling = paramIndex(0, FxParam::ShaperOversampling);
+    bool checked2 = false, offers1 = false;
+    int eight = -1;
+    for (const MenuItem &item : view.contextMenu({fxCardX(model, 0) + 80.0f, 197.0f})) {
+        if (item.label == trf(Str::MenuOversampling, {"2x"}))
+            checked2 = item.checked;
+        if (item.label == trf(Str::MenuOversampling, {"1x"}))
+            offers1 = true;
+        if (item.label == trf(Str::MenuOversampling, {"8x"}))
+            eight = item.command;
+    }
+    view.menuCommand(eight);
+    const bool to8 = model.value(oversampling) == 3.0;
+    view.undo();
+    check(checked2 && !offers1 && to8 && model.value(oversampling) == 1.0,
+          "the shaper's title menu picks its oversampling, 2x to 8x, the one in force checked, undoably");
+    const bool tone = turned(fxKnob(model, 0, 1, 4), 20.0f, paramIndex(0, FxParam::ShaperTone));
+    const bool duck = turned(fxKnob(model, 1, 1, 4, 266.0f), 20.0f, paramIndex(1, FxParam::DelayDuck));
+    const bool detector = turned(fxKnob(model, 2, 3, 4, 211.0f), 20.0f, paramIndex(2, FxParam::CompDetectorHp));
+    const bool lowCut = turned(fxKnob(model, 3, 0, 3, detail::kReverbKnobsY[2]), 20.0f, paramIndex(3, FxParam::ReverbLowCut));
+    const bool highCut = turned(fxKnob(model, 3, 1, 3, detail::kReverbKnobsY[2]), -20.0f, paramIndex(3, FxParam::ReverbHighCut));
+    const bool diffusion =
+        turned(fxKnob(model, 3, 2, 3, detail::kReverbKnobsY[1]), -20.0f, paramIndex(3, FxParam::ReverbDiffusion));
+    // Its Mix at the bottom right, as on the other cards.
+    const bool reverbMix =
+        turned(fxKnob(model, 3, 2, 3, detail::kReverbKnobsY[2]), 20.0f, paramIndex(3, FxParam::ReverbMix));
+    const bool spread = turned(fxKnob(model, 4, 3, 4, 211.0f), 20.0f, paramIndex(4, FxParam::PhaserSpread));
+    const Point tzf{fxCardX(model, 5) + fxCardW(model, 5) * 0.5f, 180.0f + 266.0f};
+    click(view, tzf);
+    const bool throughZero = model.value(paramIndex(5, FxParam::FlangerThroughZero)) == 1.0;
+    view.mouseMove(tzf, {});
+    check(tone && duck && detector && lowCut && highCut && diffusion && reverbMix && spread && throughZero &&
+              renderer.save(view, dir / "28-newer-controls.png"),
+          "the shaper's Tone, the delay's Duck, the compressor's detector high-pass, the reverb's Low Cut, High Cut, "
+          "Diffusion and Mix (at its bottom right) and the phaser's Spread turn, and the flanger's TZF switches");
+
+    // The Lo-Fi from the list of effects, after the flanger.
+    addFx(view, FxType::LoFi);
+    const std::vector<int> chain = fxChain(model);
+    const int lofi = chain.back();
+    const bool added = chain.size() == 7 && fxType(model.value(paramIndex(lofi, FxParam::Type))) == FxType::LoFi;
+    fxScrolled = 1.0f; // the row scrolled to show it at its right end
+    view.poll();
+    renderer.save(view, dir / "28b-lofi-scratch.png");
+    const Rect shown = detail::fxDisplay((fxCardX(model, 6) - 46.0f) / kFxStep, FxType::LoFi);
+    auto pixels = [&] {
+        view.poll();
+        renderer.save(view, dir / "28b-lofi-scratch.png");
+        std::vector<uint32_t> out;
+        for (float y = shown.y + 22.0f; y < shown.bottom() - 4.0f; y += 1.0f)
+            for (float x = shown.x + 4.0f; x < shown.right() - 4.0f; x += 1.0f)
+                out.push_back(renderer.pixel({x, y}));
+        return out;
+    };
+    const std::vector<uint32_t> eightBits = pixels();
+    const bool bits = turned(fxKnob(model, 6, 0, 4), -30.0f, paramIndex(lofi, FxParam::LoFiBits));
+    const std::vector<uint32_t> fewer = pixels();
+    int moved = 0;
+    for (size_t i = 0; i < eightBits.size(); ++i)
+        moved += eightBits[i] != fewer[i];
+    const bool rate = turned(fxKnob(model, 6, 1, 4), -15.0f, paramIndex(lofi, FxParam::LoFiRate));
+    view.poll();
+    std::filesystem::remove(dir / "28b-lofi-scratch.png");
+    std::printf("      Lo-Fi: %d pixels of its display move as Bits turns\n", moved);
+    check(added && bits && rate && moved > 100 && renderer.save(view, dir / "28b-lofi.png"),
+          "the Lo-Fi comes from the list of effects, its knobs turn and its display follows Bits");
+    fxScrolled = 0.0f;
+}
+
+// The phase disperser's Key Track and Stretch, the second row's first two knobs: each turned as one undo step, Stretch
+// in whole steps, and its display following them, its peak moving with the note Key Track follows and coming again
+// across the spectrum stretched (read off the rendered pixels: how many pixels of the display change).
+void renderDisperserControls(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    setChain(model, {0});
+    model.values[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Disperser);
+    view.poll();
+    click(view, kFxTab);
+    auto displayPixels = [&] {
+        view.poll();
+        const Rect shown = detail::fxDisplay((fxCardX(model, 0) - 46.0f) / kFxStep, FxType::Disperser);
+        renderer.save(view, dir / "27g-disperser-scratch.png");
+        std::vector<uint32_t> pixels;
+        for (float y = shown.y + 20.0f; y < shown.bottom() - 4.0f; y += 1.0f)
+            for (float x = shown.x + 4.0f; x < shown.right() - 4.0f; x += 1.0f)
+                pixels.push_back(renderer.pixel({x, y}));
+        return pixels;
+    };
+    auto changed = [](const std::vector<uint32_t> &a, const std::vector<uint32_t> &b) {
+        int n = 0;
+        for (size_t i = 0; i < a.size(); ++i)
+            n += a[i] != b[i];
+        return n;
+    };
+    const int keyTrack = paramIndex(0, FxParam::DisperserKeyTrack), stretch = paramIndex(0, FxParam::DisperserStretch);
+    // Key Track turned all the way up, then a C6 taking the peak two octaves up from where a C4 puts it.
+    const Point trackKnob = fxKnob(model, 0, 0, 3, 266.0f);
+    drag(view, trackKnob, {trackKnob.x, trackKnob.y - 200.0f});
+    const bool tracked = model.value(keyTrack) == 1.0;
+    model.live.fxPitch = 60.0f;
+    const std::vector<uint32_t> atC4 = displayPixels();
+    model.live.fxPitch = 84.0f;
+    const int trackMoved = changed(atC4, displayPixels());
+    const bool trackShot = renderer.save(view, dir / "27g-disperser-key-track.png");
+    view.undo();
+    const bool trackUndone = model.value(keyTrack) == 0.0;
+    model.live.fxPitch = 60.0f;
+    // Stretch turned up, landing on a whole step, its copies across the display, and further.
+    const std::vector<uint32_t> plain = displayPixels();
+    const Point stretchKnob = fxKnob(model, 0, 1, 3, 266.0f);
+    drag(view, stretchKnob, {stretchKnob.x, stretchKnob.y - 290.0f});
+    const double stepped = model.value(stretch);
+    const int stretchMoved = changed(plain, displayPixels());
+    const bool stretchShot = renderer.save(view, dir / "27h-disperser-stretch.png");
+    drag(view, stretchKnob, {stretchKnob.x, stretchKnob.y - 200.0f});
+    const double full = model.value(stretch);
+    view.undo();
+    const bool oneStep = model.value(stretch) == stepped;
+    std::filesystem::remove(dir / "27g-disperser-scratch.png");
+    std::printf("      key track: %d pixels of the display move from a C4 to a C6; stretch %.0f then %.0f: %d move\n",
+                trackMoved, stepped, full, stretchMoved);
+    check(tracked && trackUndone && trackShot && trackMoved > 100,
+          "the phase disperser's Key Track turns, undoably, and moves its display's peak with the note");
+    check(stepped > 1.0 && stepped == std::round(stepped) && full > stepped && full == std::round(full) && oneStep &&
+              stretchShot &&
+              stretchMoved > 100,
+          "the phase disperser's Stretch turns in whole steps, each drag one undo step, its copies drawn on its display");
 }
 
 // A stereo phaser and a flanger mid-sweep (their LFOs where the audio left them), a phase disperser and a filter,
@@ -3365,7 +3516,7 @@ void renderNewEffects(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, {fxCardX(model, 0) + 31.0f, 180.0f + 171.0f});
     const int division = paramIndex(0, FxParam::PhaserDivision), rate = paramIndex(0, FxParam::PhaserRate);
     const double divisionBefore = model.value(division), rateBefore = model.value(rate);
-    drag(view, fxKnob(model, 0, 0, 3, 206.0f), {fxKnob(model, 0, 0, 3, 206.0f).x, fxKnob(model, 0, 0, 3, 206.0f).y - 20.0f});
+    drag(view, fxKnob(model, 0, 0, 4, 211.0f), {fxKnob(model, 0, 0, 4, 211.0f).x, fxKnob(model, 0, 0, 4, 211.0f).y - 20.0f});
     check(model.value(paramIndex(0, FxParam::PhaserSync)) == 1.0 && model.value(division) != divisionBefore &&
               model.value(rate) == rateBefore,
           "the phaser's SYNC turns its Rate knob into a note value");
@@ -3394,7 +3545,7 @@ void renderNewEffects(const std::filesystem::path &dir, Renderer &renderer) {
           "the flanger's + and - pick its polarity");
     // The filter's Key Track, the third knob of its first row.
     const int keyTrack = paramIndex(3, FxParam::FilterKeyTrack);
-    drag(view, fxKnob(model, 3, 2, 3, 206.0f), {fxKnob(model, 3, 2, 3, 206.0f).x, fxKnob(model, 3, 2, 3, 206.0f).y - 20.0f});
+    drag(view, fxKnob(model, 3, 2, 3, 211.0f), {fxKnob(model, 3, 2, 3, 211.0f).x, fxKnob(model, 3, 2, 3, 211.0f).y - 20.0f});
     check(model.value(keyTrack) > 0.0, "the filter effect's Key Track knob turns");
     view.mouseMove({600.0f, 328.0f}, {});
     check(turned && renderer.save(view, dir / "27-new-effects.png") && fxChain(model).size() == 5,
@@ -10264,7 +10415,7 @@ void testDelayTimeLabels(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, kFxTab);
     addFx(view, FxType::Delay);
     const int slot = fxChain(model).front();
-    const Point left = fxKnob(model, 0, 0, 3, 206.0f), right = fxKnob(model, 0, 1, 3, 206.0f);
+    const Point left = fxKnob(model, 0, 0, 3, 211.0f), right = fxKnob(model, 0, 1, 3, 211.0f);
     const Point away{600.0f, 700.0f};
     auto label = [&](Point knob) { // the name or value under a knob, 30 px across
         std::vector<uint32_t> pixels;
@@ -13016,14 +13167,15 @@ void run(const std::filesystem::path &dir, float scale) {
               "the arrows in the shaper card's curve list step the curve along the list");
     }
     {
-        // The Stack curve, before Custom in the list, puts its Stack knob after Drive, four knobs across the card:
-        // dragged up, it runs more stages, whole ones, undoably, the display drawing the stages' curve.
+        // The Stack curve, before Custom in the list, puts its Stack knob after Drive, five knobs across the card
+        // (Drive, Stack, Tone, Output and Mix): dragged up, it runs more stages, whole ones, undoably, the display
+        // drawing the stages' curve.
         click(view, clipButton);
         click(view, clipItem(ClipMode::Stack));
         const bool picked =
             std::lround(model.value(paramIndex(0, FxParam::ShaperMode))) == static_cast<long>(ClipMode::Stack);
         const int stack = paramIndex(0, FxParam::ShaperStack);
-        const Point knob{fxCardX(model, 0) + fxCardW(model, 0) / 4.0f * 1.5f, 180.0f + 240.0f};
+        const Point knob = fxKnob(model, 0, 1, 5);
         drag(view, knob, {knob.x, knob.y - 40.0f});
         const double stacked = model.value(stack);
         view.mouseMove(knob, {});
@@ -13206,7 +13358,7 @@ void run(const std::filesystem::path &dir, float scale) {
 
     // A new Env 2 onto the delay's Mix knob; the delay leads the chain now.
     addSource(view, SourceType::Env);
-    drag(view, sourceHandle(3), fxKnob(model, 0, 2, 3, 266.0f));
+    drag(view, sourceHandle(3), fxKnob(model, 0, 3, 4, 266.0f));
     check(slotTarget(model.value(slotTargetIndex(3, 0))) == paramIndex(1, FxParam::DelayMix),
           "an envelope can modulate an effect knob");
 
@@ -13892,6 +14044,8 @@ void run(const std::filesystem::path &dir, float scale) {
     testMeter(dir, renderer);
     testOutScope(dir, renderer);
     renderNewEffects(dir, renderer);
+    renderDisperserControls(dir, renderer);
+    renderNewerControls(dir, renderer);
     testChorus(dir, renderer);
     testShapers(dir, renderer);
     testShapePick(dir, renderer);

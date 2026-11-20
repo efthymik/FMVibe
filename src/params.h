@@ -490,6 +490,7 @@ enum class FxType {
     Amp,      // a guitar amp: preamp stages, a tone stack and a power amp, then a cabinet (see src/amp.h)
     Utility,  // gain, balance, stereo width and the bass in mono
     Chorus,   // a few voices of the sound, each a short delay swept a share of a cycle apart from the next
+    LoFi,     // fewer bits and a lower rate, as an early digital converter
     Count
 };
 // Stored in projects by number: only append. Cubic is x - x^3/3 scaled to reach 1 at 1;
@@ -521,6 +522,10 @@ inline E storedEnum(double value) { // a stored list's member, the first for a v
 }
 inline int ampOversampling(double value) { // the factor
     return 1 << static_cast<int>(std::clamp(std::lround(value), 0L, kAmpOversamplings - 1L));
+}
+// The shaper effect's oversampling: stored as an amp's is, but from 2x (its value 1, to begin with) up to 8x.
+inline int shaperOversampling(double value) {
+    return 1 << static_cast<int>(std::clamp(std::lround(value), 1L, kAmpOversamplings - 1L));
 }
 // The mic's distance from the speaker: 0..1 on a log curve from 1 cm to 1 m.
 constexpr double kMinAmpDistanceCm = 1.0, kMaxAmpDistanceCm = 100.0;
@@ -770,6 +775,34 @@ enum class FxParam {
     FilterVowel,
     FilterMorph,
     FilterMorphMode,
+    // The phase disperser's, past the fields it came with (see fx::Disperser). Key Track moves Freq with the newest
+    // voice's pitch from C4 on, as the filter's does; Stretch makes each all-pass's delays so many samples long (as
+    // many at 48 kHz, as long a time at other rates), so its dispersion repeats every 48 kHz / Stretch.
+    DisperserKeyTrack,
+    DisperserStretch,
+    // The reverb's, past its first: Low Cut (Off at its bottom) and High Cut (letting everything through at its top)
+    // on what goes into its tail, and Diffusion, how much of the input all-passes' gains it takes (all at 1).
+    ReverbLowCut,
+    ReverbHighCut,
+    ReverbDiffusion,
+    // The delay's Duck: how far the echoes come down while what goes in is loud (see fx::Delay).
+    DelayDuck,
+    // The shaper's Tone, a tilt before its curve and the opposite one after (either way, none at 0), and how far it
+    // runs oversampled (as an amp's oversampling is stored, 2x to 8x; see shaperOversampling()).
+    ShaperTone,
+    ShaperOversampling,
+    // The compressor's high-pass on what its detector hears (Off at its bottom), so the bass doesn't pump it.
+    CompDetectorHp,
+    // The flanger through zero: the dry sound waits the sweep's middle, so the swept copy passes it.
+    FlangerThroughZero,
+    // The phaser's stages spread apart about where the sweep puts them, up to kPhaserSpreadOctaves.
+    PhaserSpread,
+    // Lo-Fi: Bits of resolution, held at Rate (Hz) between samples, Smooth taking the steps off as a converter's
+    // output filter does, and Mix.
+    LoFiBits,
+    LoFiRate,
+    LoFiSmooth,
+    LoFiMix,
     Count
 };
 // A split in the effects graph: Used puts it in the graph; Bands (2 or 3) cuts what goes in at Low, and at High too
@@ -837,6 +870,9 @@ inline double chorusOffset(int voice, int voices) {
     return static_cast<double>(voice) / voices;
 }
 constexpr int kMaxDisperserStages = 64;
+constexpr double kPhaserSpreadOctaves = 3.0; // how far apart the phaser's stages go at full Spread
+constexpr int kMaxLoFiBits = 16;
+constexpr int kMaxDisperserStretch = 64; // at 48 kHz: the disperser's copies 750 Hz apart
 constexpr double kMaxWidenerHighPass = 2000.0; // Hz, the top of the widener's Cutoff knob
 constexpr double kMaxUtilityWidth = 2.0;       // the utility's Width at its top: the sides twice as loud
 constexpr double kMaxUtilityMonoBass = 500.0;  // Hz, the top of the utility's Mono Bass knob
@@ -1252,6 +1288,14 @@ constexpr FxFieldRun kFxFieldRuns[] = {
     {FxParam::ChorusRate, FxParam::ChorusVoices, FxType::Chorus},
     {FxParam::ShaperStack, FxParam::ShaperStack, FxType::Shaper},
     {FxParam::FilterVowel, FxParam::FilterMorphMode, FxType::Filter},
+    {FxParam::DisperserKeyTrack, FxParam::DisperserStretch, FxType::Disperser},
+    {FxParam::ReverbLowCut, FxParam::ReverbDiffusion, FxType::Reverb},
+    {FxParam::DelayDuck, FxParam::DelayDuck, FxType::Delay},
+    {FxParam::ShaperTone, FxParam::ShaperOversampling, FxType::Shaper},
+    {FxParam::CompDetectorHp, FxParam::CompDetectorHp, FxType::Compressor},
+    {FxParam::FlangerThroughZero, FxParam::FlangerThroughZero, FxType::Flanger},
+    {FxParam::PhaserSpread, FxParam::PhaserSpread, FxType::Phaser},
+    {FxParam::LoFiBits, FxParam::LoFiMix, FxType::LoFi},
 };
 // Whether the runs take every field once, in order, up to the last.
 constexpr bool fxFieldRunsCoverAll() {
@@ -1811,7 +1855,16 @@ static_assert(idOfIndex(paramIndex(0, FxParam::Type)) == 1400 &&
                   idOfIndex(paramIndex(kFxSlots - 1, FxParam::ChorusVoices)) == 29160 &&
                   idOfIndex(paramIndex(0, FxParam::ShaperStack)) == 36401 &&
                   idOfIndex(paramIndex(kFirstFxSlots - 1, FxParam::ShaperStack)) == 37001 &&
-                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::ShaperStack)) == 29161,
+                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::ShaperStack)) == 29161 &&
+                  idOfIndex(paramIndex(0, FxParam::DisperserKeyTrack)) == 36405 &&
+                  idOfIndex(paramIndex(kFirstFxSlots - 1, FxParam::DisperserStretch)) == 37006 &&
+                  idOfIndex(paramIndex(kFirstFxSlots, FxParam::DisperserKeyTrack)) == 26165 &&
+                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::DisperserStretch)) == 29166 &&
+                  idOfIndex(paramIndex(0, FxParam::ReverbLowCut)) == 36407 &&
+                  idOfIndex(paramIndex(0, FxParam::LoFiMix)) == 36419 &&
+                  idOfIndex(paramIndex(kFirstFxSlots - 1, FxParam::LoFiMix)) == 37019 &&
+                  idOfIndex(paramIndex(kFirstFxSlots, FxParam::ReverbLowCut)) == 26167 &&
+                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::LoFiMix)) == 29179,
               "effect slot param ids moved");
 static_assert(idOfIndex(shapeCountIndex(0)) == 4000 &&
                   idOfIndex(shapePointIndex(kMaxSources - 1, 32, PointField::Curve)) == 5599 &&
@@ -1942,7 +1995,8 @@ static_assert(numberedInOrder({MorphMode::Band, MorphMode::Notch, MorphMode::Cou
 static_assert(numberedInOrder({FxType::None, FxType::Shaper, FxType::Delay, FxType::Eq, FxType::ParamEq,
                                FxType::Filter, FxType::Compressor, FxType::MultiComp, FxType::Reverb, FxType::Phaser,
                                FxType::Flanger, FxType::FreqShifter, FxType::Disperser, FxType::Widener,
-                               FxType::MultiDyn, FxType::Amp, FxType::Utility, FxType::Chorus, FxType::Count}),
+                               FxType::MultiDyn, FxType::Amp, FxType::Utility, FxType::Chorus, FxType::LoFi,
+                               FxType::Count}),
               "FxType is stored by number: only append");
 static_assert(numberedInOrder({AmpModel::Clean, AmpModel::Blues, AmpModel::Crunch, AmpModel::Lead, AmpModel::Heavy,
                                AmpModel::Bass, AmpModel::Fuzz, AmpModel::Count}),

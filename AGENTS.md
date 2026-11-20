@@ -209,13 +209,19 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - aliasing (the energy off the harmonics, 20 Hz–20 kHz) of a high saw, bright FM (phase, linear and ring),
     feedback, a driven filter and a driven, resonant ladder, diode and Sallen-Key;
   - zipper noise from an LFO on an operator's level and Pan, a matrix amount, a filter cutoff, a resonant ladder's
-    cutoff, a formant's vowel, a morph's place and a wire of the effects graph;
+    cutoff, a formant's vowel, a morph's place and a wire of the effects graph; and on the voice filters (a resonant
+    low-pass's and a quiet ladder's cutoff, a formant's vowel and a morph's place, each within one stretch of its curve)
+    and the effects' frequencies (a phase disperser's Freq, a filter effect's cutoff, formant vowel and morph place, a
+    Param EQ band's frequency, a phaser's Center and a widener's Cutoff), nothing but the sine's own sidebands at 7 Hz
+    apart coming out, where control-block steps would put energy near the control rate's multiples (held still in
+    brackets);
   - clicks when a voice is stolen (and six at once by a chord), when a note joins a held one in poly legato
     (fading in over 5 ms, its Random LFOs carrying on with the held one's step), and when a param (Volume, and an effect's: a compressor's Makeup, a delay's and a
     reverb's Mix, a DJ EQ band, a three-band dynamics' Output, an amp's Output, Mix and Gain, a utility's Gain (0 to
     +12 dB), Pan and Width, a wire's Level) jumps while events split the block into single frames (and a delay's Mix
     and a wire's Level ramping no faster at 96 and 192 kHz than at 48),
-    when a Param EQ band is switched on and off, when a utility's Mono Bass is turned on from Off and off again, and
+    when a Param EQ band is switched on and off, when a utility's Mono Bass is turned on from Off and off again, when
+    a phase disperser's Stages changes under a sine (fading from one count to the other, in single frames too), and
     when a wire of the effects graph is connected and taken away;
   - editing the effects graph as a note plays, neither clicking nor dipping (each period's peak kept within 10 %):
     an effect added at the line's end and one taken out, a split taken out with its join, a split's slope
@@ -253,6 +259,12 @@ the plain CMake commands and installing into a host are in the [README](README.m
     Alternate, the pan a new operator starts with, and its depth on a source's Division loading 26/28 as deep, as it
     grew two note values slower, a version 13 state's as saved; and a version 13 state's sequencer curves loading with
     points that hold their ends as they played, a version 14 state's as saved, wrapping around;
+  - the phase disperser's Key Track and Stretch against the chain they make, from the same coefficients: an impulse
+    through Key Track with a C4, a C5 and (at 50 %) a C6 coming out as through the chain at Freq and an octave up, and
+    through Stretch 4, 37 and 4 at 96 kHz (eight samples) as the plain chain's impulse response spread that far apart,
+    silence between; Stretch 32 at 400 Hz peaking at 400 Hz, 1.1 and 1.9 kHz; Stretch changed under a sine fading out
+    and back in, its third difference far under an instant switch's, in single frames too; and 64 stages at full
+    Pinch and Stretch, tracking a C7, staying finite and ringing out;
   - the chorus's Voices (2, 6, 3, 2) and Spread (0, 100, 0 %) changed under a sine, all wet, gliding rather than
     clicking: no sample stepping further than the sine's own do; held still, an impulse coming out once a voice, at
     its place along Delay and as loud as 1 / sqrt(voices) (2 and 6); and swept, its voices together playing a sine at
@@ -395,8 +407,17 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the effects' latency, on an impulse through effects that run oversampled and leave the sound as it is (a filter
     and an amp at Mix 0): the input straight out beside a filter, the filter on and off, a split with an amp at 4x on
     one band and a filter on the other, two filters beside an amp at 8x, and nine filters in a row beside the input
-    (a pad of nine paths), each flat within 0.05 dB from 20 Hz to
+    (a pad of nine paths), and a shaper at 4x and at 8x beside the input, each flat within 0.05 dB from 20 Hz to
     18 kHz (the paths meeting in step) and as late as fxlag.h works out, and nothing oversampled on time;
+  - the effects' newer controls: the reverb's Low Cut and High Cut taking its tail's ends away and Diffusion at 0
+    leaving its first echoes spikier, its tail's echoes apart for longer (filling in as it rises, smooth and its sides
+    unalike) and a click into it still ringing out; the delay's Duck taking its echoes away under a loud sine and
+    letting them back after; the shaper's Tone leaving what its curve leaves straight alone and changing what it
+    drives, its oversampling changed under a sine ducking rather than clicking, and a hard-clipped C7 aliasing less at
+    4x and 8x than at 2x; the compressor's detector high-pass keeping a loud bass from pulling a quiet treble down;
+    the flanger through zero, held at its sweep's middle and negative, cancelling noise to nothing; the phaser's
+    Spread moving its notches; and the Lo-Fi holding Bits' levels at Rate, Smooth taking the steps' edges off and Mix
+    at 0 dry;
   - the CPU cost of each factor.
 - **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`, in Midnight,
   the theme its pixel checks were written in, but for the checks and examples that pick another (the README's
@@ -696,6 +717,12 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - a filter's and the filter effect's responses moving with the note their key tracking follows, and the filter
     effect's with its Mix (read off the rendered pixels);
   - the disperser's and widener's displays following their params as modulation takes them (read off the rendered
+    pixels); the shaper's oversampling picked in its title's menu (2x to 8x, the one in force checked, undoably), its
+    Tone, the delay's Duck, the compressor's SC HP, the reverb's Diffusion (its second row), Low Cut and High Cut (its third) and the
+    phaser's Spread turning, the reverb's Mix at its card's bottom right, the flanger's TZF switching, and the Lo-Fi added from the list of effects, its knobs
+    turning and its display following Bits (read off the rendered pixels); and the disperser's Key Track and Stretch
+    knobs turning, each one undo step, Stretch in whole steps, its
+    display's peak moving with the note Key Track follows and its copies drawn stretched (read off the rendered
     pixels);
   - switching effects with their cards' power switches and icons (a switched-off one's staying grey under the mouse,
     read off the rendered pixels), dragging cards by them, and folding cards, the icon staying put, one in a slot past the 16th
@@ -1119,11 +1146,11 @@ breakpoints in `src/` then hit.
 | `src/synth.cpp` | FM voices, matrix, filter routing, LFOs and mod envelopes, telemetry; independent of the plugin formats |
 | `src/sequencer.h`, `src/sequencer.cpp` | The sequencer: plans the notes of its pattern for each stretch the synth renders, from the host's transport or a key |
 | `src/wavetable.cpp` | Band-limited operator wavetables, one per octave |
-| `src/zerobuffer.h`, `src/zerobuffer.cpp` | Delay lines allocated as zero pages that only take memory once written |
+| `src/zerobuffer.h`, `src/zerobuffer.cpp` | Delay lines (floats, or doubles for the phase disperser's stretched all-passes) allocated as zero pages that only take memory once written |
 | `src/filter.h` | State-variable and comb filters, plus their response curves for the editor |
 | `src/clipcurve.h` | The shapers' curves, anti-aliasing and running, shared by the shaper effect and the voices' shapers |
 | `src/effects.h`, `src/effects.cpp` | The effects on the voices' sum: `Effects`, its slots (each holding every effect type's state, so it switches type without allocating, and running its type through a static dispatch in `runSlot()`) and the effects graph that runs them (wires, splits, sums, the paths kept in step) |
-| `src/fx/` | Each effect type a slot runs, in a module of its own (`shaper`, `delay`, `eq`, `parameq`, `filterfx`, `compressor`, `multidyn`, `reverb`, `phaser`, `flanger`, `chorus`, `shifter`, `disperser`, `widener`, `utility`, `ampfx`): its state, its `prepare()`, `start()` and `run()`, and the responses the editor draws of it; `common.h` what they share (the `fx::Context` a slot hands its effect, the `fx::Meters` it writes, biquads and crossovers, ramps, delay line reads) |
+| `src/fx/` | Each effect type a slot runs, in a module of its own (`shaper`, `delay`, `eq`, `parameq`, `filterfx`, `compressor`, `multidyn`, `reverb`, `phaser`, `flanger`, `chorus`, `shifter`, `disperser`, `widener`, `utility`, `ampfx`, `lofi`): its state, its `prepare()`, `start()` and `run()`, and the responses the editor draws of it; `common.h` what they share (the `fx::Context` a slot hands its effect, the `fx::Meters` it writes, biquads and crossovers, ramps, delay line reads) |
 | `src/amp.h`, `src/amp.cpp` | The Amp effect's sound: its models (preamp stages, tone stack, power amp), cabinets and mics, its oversampling, and the responses the editor draws (`src/fx/ampfx.h` runs it in a slot) |
 | `src/analyzer.cpp` | The spectrum analyzer (FFT) behind the Param EQ's, filter effect's, phase disperser's and voice filters' displays |
 | `src/envelope.h` | AHDSR used by operators and mod envelopes |
@@ -1266,7 +1293,7 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 1,515 of the 32,232 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 1,515 of the 32,712 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 1,088 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain's retired order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'

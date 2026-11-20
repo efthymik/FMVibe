@@ -48,12 +48,14 @@ struct FxLag {
     }
 };
 
-// How far an effect in `slot` runs oversampled, by its params: 2 for a shaper or filter, an amp's oversampling, else 1
-// (none). By its type, whether it is switched on or not, so switching it doesn't move the paths through it.
+// How far an effect in `slot` runs oversampled, by its params: a shaper's oversampling (2x to begin with), 2 for a
+// filter, an amp's oversampling, else 1 (none). By its type, whether it is switched on or not, so switching it doesn't
+// move the paths through it.
 template <class Get>
 int fxSlotFactor(const Get &get, int slot) {
     switch (fxType(get(paramIndex(slot, FxParam::Type)))) {
     case FxType::Shaper:
+        return shaperOversampling(get(paramIndex(slot, FxParam::ShaperOversampling)));
     case FxType::Filter:
         return 2;
     case FxType::Amp:
@@ -148,10 +150,11 @@ bool fxNodeSet(const Get &get, int node) {
     return get(paramIndex(node - kFxSlots, SplitParam::Used)) >= 0.5;
 }
 
-// Whether a param can make the output later or sooner: an effect's type, an amp's oversampling, the graph's wires,
-// splits and joins.
+// Whether a param can make the output later or sooner: an effect's type, an amp's or a shaper's oversampling, the
+// graph's wires, splits and joins.
 constexpr bool fxLagParam(int index) {
-    return isFxGraphParam(index) || fxFieldOf(index) == FxParam::Type || fxFieldOf(index) == FxParam::AmpOversampling;
+    return isFxGraphParam(index) || fxFieldOf(index) == FxParam::Type || fxFieldOf(index) == FxParam::AmpOversampling ||
+           fxFieldOf(index) == FxParam::ShaperOversampling;
 }
 
 // How late the output is by the params, as fxGraphLags() works it out.

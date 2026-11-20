@@ -43,7 +43,7 @@ constexpr Str kFxTitles[] = {Str::FxTitleShaper, Str::FxTitleDelay, Str::FxTitle
                              Str::FxTitleFilter, Str::FxTitleCompressor, Str::FxTitleMultiComp, Str::FxTitleReverb,
                              Str::FxTitlePhaser, Str::FxTitleFlanger, Str::FxTitleFreqShifter, Str::FxTitleDisperser,
                              Str::FxTitleWidener, Str::FxTitleMultiDyn, Str::FxTitleAmp, Str::FxTitleUtility,
-                             Str::FxTitleChorus};
+                             Str::FxTitleChorus, Str::FxTitleLoFi};
 static_assert(std::size(kFxTitles) == static_cast<size_t>(FxType::Count) - 1);
 const char *fxTitle(FxType type) {
     return type == FxType::None ? "" : tr(kFxTitles[static_cast<int>(type) - 1]);
@@ -1965,11 +1965,23 @@ void View::effectCardWidgets(std::vector<Widget> &list, int slot, Rect card) con
     auto knobs = [&](std::initializer_list<int> params, std::initializer_list<const char *> labels,
                      float y = 240.0f) {
         const float step = card.w / static_cast<float>(params.size());
-        const float diameter = params.size() > 3 ? 32.0f : (y == 240.0f ? 36.0f : 30.0f);
+        // Four or more across a card of the usual width take smaller knobs, leaving room between them for their
+        // labels; a wide card's keep their size.
+        const bool narrow = card.w < 1.5f * kFxCardW;
+        const float diameter = params.size() > 4 && narrow   ? 24.0f
+                               : params.size() > 3 && narrow ? 26.0f
+                               : params.size() > 3           ? 32.0f
+                               : y == 240.0f                 ? 36.0f
+                                                             : 30.0f;
         for (size_t i = 0; i < params.size(); ++i)
             if (params.begin()[i] >= 0) // -1 leaves its place empty
                 knob(params.begin()[i], {card.x + step * (static_cast<float>(i) + 0.5f), card.y + y}, diameter,
                      labels.begin()[i]);
+    };
+    // Feedback and Mix as the lower row, kFxPairX in from the card's sides (see there).
+    auto pair = [&](int feedback, int mix) {
+        knob(feedback, {card.x + card.w * kFxPairX, card.y + kFxKnobsY2}, 30.0f, tr(Str::LabelFeedback));
+        knob(mix, {card.right() - card.w * kFxPairX, card.y + kFxKnobsY2}, 30.0f, tr(Str::LabelMix));
     };
     switch (type) {
     case FxType::Shaper: {
@@ -1984,13 +1996,17 @@ void View::effectCardWidgets(std::vector<Widget> &list, int slot, Rect card) con
         merge(switches);
         if (custom)
             drawnCurve(slot, fxDisplayIn(card, type));
-        if (clipMode(value(at(FxParam::ShaperMode))) == ClipMode::Stack) // and how many stages it runs
-            knobs({at(FxParam::ShaperDrive), at(FxParam::ShaperStack), at(FxParam::ShaperOutput),
+        // Drive, how many stages a Stack runs, Tone (which end the curve drives harder), Output and Mix. Its
+        // oversampling is in its title's right-click menu.
+        if (clipMode(value(at(FxParam::ShaperMode))) == ClipMode::Stack)
+            knobs({at(FxParam::ShaperDrive), at(FxParam::ShaperStack), at(FxParam::ShaperTone), at(FxParam::ShaperOutput),
                    at(FxParam::ShaperMix)},
-                  {tr(Str::LabelDrive), tr(Str::LabelStack), tr(Str::LabelOutput), tr(Str::LabelMix)});
+                  {tr(Str::LabelDrive), tr(Str::LabelStack), tr(Str::LabelTone), tr(Str::LabelOutput),
+                   tr(Str::LabelMix)},
+                  kShaperKnobsY);
         else
-            knobs({at(FxParam::ShaperDrive), at(FxParam::ShaperOutput), at(FxParam::ShaperMix)},
-                  {tr(Str::LabelDrive), tr(Str::LabelOutput), tr(Str::LabelMix)});
+            knobs({at(FxParam::ShaperDrive), at(FxParam::ShaperTone), at(FxParam::ShaperOutput), at(FxParam::ShaperMix)},
+                  {tr(Str::LabelDrive), tr(Str::LabelTone), tr(Str::LabelOutput), tr(Str::LabelMix)}, kShaperKnobsY);
         break;
     }
     case FxType::Delay: {
@@ -2011,9 +2027,9 @@ void View::effectCardWidgets(std::vector<Widget> &list, int slot, Rect card) con
         const Str left = synced ? (linked ? Str::LabelRate : Str::LabelRateL)
                                 : (linked ? Str::LabelTime : Str::LabelTimeL);
         knobs({timeL, linked ? -1 : timeR, at(FxParam::DelayFeedback)},
-              {tr(left), tr(synced ? Str::LabelRateR : Str::LabelTimeR), tr(Str::LabelFeedback)}, 206.0f);
-        knobs({at(FxParam::DelayTone), at(FxParam::DelayWidth), at(FxParam::DelayMix)},
-              {tr(Str::LabelTone), tr(Str::LabelWidth), tr(Str::LabelMix)}, 266.0f);
+              {tr(left), tr(synced ? Str::LabelRateR : Str::LabelTimeR), tr(Str::LabelFeedback)}, kFxKnobsY1);
+        knobs({at(FxParam::DelayTone), at(FxParam::DelayDuck), at(FxParam::DelayWidth), at(FxParam::DelayMix)},
+              {tr(Str::LabelTone), tr(Str::LabelDuck), tr(Str::LabelWidth), tr(Str::LabelMix)}, kFxKnobsY2);
         break;
     }
     case FxType::Eq:
@@ -2060,22 +2076,22 @@ void View::effectCardWidgets(std::vector<Widget> &list, int slot, Rect card) con
         add(Kind::FilterPoint, {handle.x - 8.0f, handle.y - 8.0f, 16.0f, 16.0f}, -1, slot, 1);
         const FilterKnobLabels names = filterKnobLabels(filterType, true);
         knobs({at(FxParam::FilterCutoff), at(FxParam::FilterResonance), at(FxParam::FilterKeyTrack)},
-              {tr(names.cutoff), tr(names.resonance), tr(Str::LabelKeyTrack)}, 206.0f);
+              {tr(names.cutoff), tr(names.resonance), tr(Str::LabelKeyTrack)}, kFxKnobsY1);
         const bool formant = filterType == FilterType::Formant, morph = filterType == FilterType::Morph;
         knobs({at(FxParam::FilterDrive),
                formant ? at(FxParam::FilterVowel) : morph ? at(FxParam::FilterMorph) : -1,
                at(FxParam::FilterMix)},
               {tr(Str::LabelDrive), formant ? tr(Str::LabelVowel) : morph ? tr(Str::LabelMorph) : nullptr,
                tr(Str::LabelMix)},
-              266.0f);
+              kFxKnobsY2);
         break;
     }
     case FxType::Compressor:
-        knobs({at(FxParam::CompThreshold), at(FxParam::CompRatio), at(FxParam::CompKnee)},
-              {tr(Str::LabelThreshold), tr(Str::LabelRatio), tr(Str::LabelKnee)}, 206.0f);
+        knobs({at(FxParam::CompThreshold), at(FxParam::CompRatio), at(FxParam::CompKnee), at(FxParam::CompDetectorHp)},
+              {tr(Str::LabelThresh), tr(Str::LabelRatio), tr(Str::LabelKnee), tr(Str::LabelDetectorHp)}, kFxKnobsY1);
         knobs({at(FxParam::CompAttack), at(FxParam::CompRelease), at(FxParam::CompMakeup),
                at(FxParam::CompMix)},
-              {tr(Str::LabelAttack), tr(Str::LabelRelease), tr(Str::LabelMakeup), tr(Str::LabelMix)}, 266.0f);
+              {tr(Str::LabelAttack), tr(Str::LabelRelease), tr(Str::LabelMakeup), tr(Str::LabelMix)}, kFxKnobsY2);
         break;
     case FxType::MultiDyn: {
         // RMS and LINK at the right end of the line over the shared knobs. Each band's row picks the band its knobs set, its threshold lines
@@ -2123,21 +2139,26 @@ void View::effectCardWidgets(std::vector<Widget> &list, int slot, Rect card) con
     }
     case FxType::Reverb:
         add(Kind::ListButton, reverbTypeButton(card), at(FxParam::ReverbType));
+        // Three rows: the space; its tone, spread and diffusion; what goes in and how much is heard, Mix at the bottom
+        // right as on the other cards. A shimmer's, four to a row, puts Diffuse after Pre (the labels' widths allow it
+        // there) and its interval and how much of what goes round it shifts together in the middle of the second.
         if (reverbType(value(at(FxParam::ReverbType))) == ReverbType::Shimmer) {
-            // Its interval and how much of what goes round it shifts, among the others.
             knobs({at(FxParam::ReverbSize), at(FxParam::ReverbDecay), at(FxParam::ReverbPreDelay),
-                   at(FxParam::ReverbShimmerPitch)},
-                  {tr(Str::LabelSize), tr(Str::LabelDecay), tr(Str::LabelPreDelay), tr(Str::LabelPitch)},
-                  206.0f);
-            knobs({at(FxParam::ReverbDamping), at(FxParam::ReverbWidth), at(FxParam::ReverbShimmer),
-                   at(FxParam::ReverbMix)},
-                  {tr(Str::LabelDamp), tr(Str::LabelWidth), tr(Str::LabelShimmer), tr(Str::LabelMix)}, 266.0f);
-            break;
+                   at(FxParam::ReverbDiffusion)},
+                  {tr(Str::LabelSize), tr(Str::LabelDecay), tr(Str::LabelPreDelay), tr(Str::LabelDiffusion)},
+                  kReverbKnobsY[0]);
+            knobs({at(FxParam::ReverbDamping), at(FxParam::ReverbShimmerPitch), at(FxParam::ReverbShimmer),
+                   at(FxParam::ReverbWidth)},
+                  {tr(Str::LabelDamp), tr(Str::LabelPitch), tr(Str::LabelShimmer), tr(Str::LabelWidth)},
+                  kReverbKnobsY[1]);
+        } else {
+            knobs({at(FxParam::ReverbSize), at(FxParam::ReverbDecay), at(FxParam::ReverbPreDelay)},
+                  {tr(Str::LabelSize), tr(Str::LabelDecay), tr(Str::LabelPreDelay)}, kReverbKnobsY[0]);
+            knobs({at(FxParam::ReverbDamping), at(FxParam::ReverbWidth), at(FxParam::ReverbDiffusion)},
+                  {tr(Str::LabelDamp), tr(Str::LabelWidth), tr(Str::LabelDiffusion)}, kReverbKnobsY[1]);
         }
-        knobs({at(FxParam::ReverbSize), at(FxParam::ReverbDecay), at(FxParam::ReverbPreDelay)},
-              {tr(Str::LabelSize), tr(Str::LabelDecay), tr(Str::LabelPreDelay)}, 206.0f);
-        knobs({at(FxParam::ReverbDamping), at(FxParam::ReverbWidth), at(FxParam::ReverbMix)},
-              {tr(Str::LabelDamp), tr(Str::LabelWidth), tr(Str::LabelMix)}, 266.0f);
+        knobs({at(FxParam::ReverbLowCut), at(FxParam::ReverbHighCut), at(FxParam::ReverbMix)},
+              {tr(Str::LabelLowCut), tr(Str::LabelHighCut), tr(Str::LabelMix)}, kReverbKnobsY[2]);
         break;
     case FxType::Phaser:
     case FxType::Flanger: {
@@ -2160,16 +2181,20 @@ void View::effectCardWidgets(std::vector<Widget> &list, int slot, Rect card) con
         const int rate = synced ? at(phaser ? FxParam::PhaserDivision : FxParam::FlangerDivision)
                                 : at(phaser ? FxParam::PhaserRate : FxParam::FlangerRate);
         if (phaser) {
-            knobs({rate, at(FxParam::PhaserDepth), at(FxParam::PhaserCenter)},
-                  {synced ? nullptr : tr(Str::LabelRate), tr(Str::LabelDepth), tr(Str::LabelCenter)}, 206.0f);
+            knobs({rate, at(FxParam::PhaserDepth), at(FxParam::PhaserCenter), at(FxParam::PhaserSpread)},
+                  {synced ? nullptr : tr(Str::LabelRate), tr(Str::LabelDepth), tr(Str::LabelCenter),
+                   tr(Str::LabelSpread)},
+                  kFxKnobsY1);
             knobs({at(FxParam::PhaserStages), at(FxParam::PhaserFeedback), at(FxParam::PhaserMix)},
-                  {tr(Str::LabelStages), tr(Str::LabelFeedback), tr(Str::LabelMix)}, 266.0f);
+                  {tr(Str::LabelStages), tr(Str::LabelFeedback), tr(Str::LabelMix)}, kFxKnobsY2);
             break;
         }
         knobs({rate, at(FxParam::FlangerDepth), at(FxParam::FlangerDelay)},
-              {synced ? nullptr : tr(Str::LabelRate), tr(Str::LabelDepth), tr(Str::LabelDelay)}, 206.0f);
-        knobs({at(FxParam::FlangerFeedback), -1, at(FxParam::FlangerMix)},
-              {tr(Str::LabelFeedback), nullptr, tr(Str::LabelMix)}, 266.0f);
+              {synced ? nullptr : tr(Str::LabelRate), tr(Str::LabelDepth), tr(Str::LabelDelay)}, kFxKnobsY1);
+        pair(at(FxParam::FlangerFeedback), at(FxParam::FlangerMix));
+        // Through zero, a switch in the place between them.
+        add(Kind::Toggle, {card.center().x - 20.0f, card.y + kFxKnobsY2 - 9.0f, 40.0f, 18.0f},
+            at(FxParam::FlangerThroughZero));
         break;
     }
     case FxType::Chorus: {
@@ -2181,27 +2206,32 @@ void View::effectCardWidgets(std::vector<Widget> &list, int slot, Rect card) con
                 kChorusVoiceChoices[i]);
         merge(voices);
         knobs({at(FxParam::ChorusRate), at(FxParam::ChorusDepth), at(FxParam::ChorusDelay)},
-              {tr(Str::LabelRate), tr(Str::LabelDepth), tr(Str::LabelDelay)}, 206.0f);
+              {tr(Str::LabelRate), tr(Str::LabelDepth), tr(Str::LabelDelay)}, kFxKnobsY1);
         knobs({at(FxParam::ChorusFeedback), at(FxParam::ChorusSpread), at(FxParam::ChorusMix)},
-              {tr(Str::LabelFeedback), tr(Str::LabelSpread), tr(Str::LabelMix)}, 266.0f);
+              {tr(Str::LabelFeedback), tr(Str::LabelSpread), tr(Str::LabelMix)}, kFxKnobsY2);
         break;
     }
     case FxType::FreqShifter:
         // The range, then the share of it the shift takes.
         knobs({at(FxParam::ShiftRange), at(FxParam::ShiftAmount), at(FxParam::ShiftSpread)},
-              {tr(Str::LabelRange), tr(Str::LabelShift), tr(Str::LabelSpread)}, 206.0f);
-        knobs({at(FxParam::ShiftFeedback), -1, at(FxParam::ShiftMix)},
-              {tr(Str::LabelFeedback), nullptr, tr(Str::LabelMix)}, 266.0f);
+              {tr(Str::LabelRange), tr(Str::LabelShift), tr(Str::LabelSpread)}, kFxKnobsY1);
+        pair(at(FxParam::ShiftFeedback), at(FxParam::ShiftMix));
         break;
     case FxType::Disperser:
-        knobs({at(FxParam::DisperserFreq), at(FxParam::DisperserStages), at(FxParam::DisperserPinch),
-               at(FxParam::DisperserMix)},
-              {tr(Str::LabelFreq), tr(Str::LabelStages), tr(Str::LabelPinch), tr(Str::LabelMix)});
+        // Where it disperses and how, over what moves it with the note, how often it repeats and how much is heard.
+        knobs({at(FxParam::DisperserFreq), at(FxParam::DisperserStages), at(FxParam::DisperserPinch)},
+              {tr(Str::LabelFreq), tr(Str::LabelStages), tr(Str::LabelPinch)}, kFxKnobsY1);
+        knobs({at(FxParam::DisperserKeyTrack), at(FxParam::DisperserStretch), at(FxParam::DisperserMix)},
+              {tr(Str::LabelKeyTrack), tr(Str::LabelStretch), tr(Str::LabelMix)}, kFxKnobsY2);
         break;
     case FxType::Widener:
         knobs({at(FxParam::WidenerSize), at(FxParam::WidenerWidth), at(FxParam::WidenerHighPass),
                at(FxParam::WidenerMix)},
               {tr(Str::LabelSize), tr(Str::LabelWidth), tr(Str::LabelHighPass), tr(Str::LabelMix)});
+        break;
+    case FxType::LoFi:
+        knobs({at(FxParam::LoFiBits), at(FxParam::LoFiRate), at(FxParam::LoFiSmooth), at(FxParam::LoFiMix)},
+              {tr(Str::LabelBits), tr(Str::LabelRate), tr(Str::LabelSmooth), tr(Str::LabelMix)});
         break;
     case FxType::Utility: {
         // On its display, a handle for each knob: Gain's on the strip at its left, Pan's at the top of the
@@ -2213,9 +2243,9 @@ void View::effectCardWidgets(std::vector<Widget> &list, int slot, Rect card) con
                 slot, handle);
         }
         knobs({at(FxParam::UtilityGain), at(FxParam::UtilityPan)}, {tr(Str::LabelGain), tr(Str::LabelPan)},
-              206.0f);
+              kFxKnobsY1);
         knobs({at(FxParam::UtilityWidth), at(FxParam::UtilityMonoBass)},
-              {tr(Str::LabelWidth), tr(Str::LabelMonoBass)}, 266.0f);
+              {tr(Str::LabelWidth), tr(Str::LabelMonoBass)}, kFxKnobsY2);
         break;
     }
     case FxType::Amp: {
@@ -2810,6 +2840,9 @@ void View::paintFxCard(Canvas &c, int slot, Rect card, bool dragged) {
     case FxType::Utility:
         paintUtility(c, display, slot);
         break;
+    case FxType::LoFi:
+        paintLoFi(c, display, slot);
+        break;
     case FxType::Amp: {
         paintAmp(c, display, slot);
         // The cabinet's display beside it, dimmed while the cabinet is off, and the line between the two sides.
@@ -3383,24 +3416,29 @@ void View::paintChorus(Canvas &c, Rect r, int slot) {
 // The partials of a 220 Hz tone, faint, and where the shifter moves them: the left side above the
 // line, the right below, on a log axis from 50 Hz to 10 kHz.
 // The disperser's delay across frequency: how much later than the rest each part of the sound comes out,
-// rising to its peak at Freq, taller and narrower with more stages and more pinch. Behind it, on the same axis, what
-// it puts out, measured.
+// rising to its peak at Freq (where Key Track moves it with the note), taller and narrower with more stages and more
+// pinch, and coming again across the spectrum when stretched. Behind it, on the same axis, what it puts out, measured.
 void View::paintDisperser(Canvas &c, Rect r, int slot) {
     const Color fx = fxColor(slot);
     const Rect inner{r.x + 8.0f, r.y + 20.0f, r.w - 16.0f, r.h - 28.0f};
     auto at = [&](FxParam f) { return liveValue(paramIndex(slot, f)); }; // as modulation takes them now
     const int stages = static_cast<int>(std::lround(at(FxParam::DisperserStages)));
     constexpr double kRate = 48000.0;
+    const double center = disperserCenter(at(FxParam::DisperserFreq), at(FxParam::DisperserKeyTrack),
+                                          telemetry_.fxPitch);
+    const int stretch = disperserStretch(at(FxParam::DisperserStretch), kRate);
+    // Finer across where it is stretched, so each copy's narrow peak is drawn.
+    const int steps = 160 * std::min(stretch, 4);
     std::vector<double> delays;
     double most = 1e-4;
-    for (int i = 0; i <= 160; ++i) {
-        delays.push_back(disperserDelay(cutoffFromNorm(i / 160.0), at(FxParam::DisperserFreq),
-                                        at(FxParam::DisperserPinch), stages, kRate));
+    for (int i = 0; i <= steps; ++i) {
+        delays.push_back(disperserDelay(cutoffFromNorm(static_cast<double>(i) / steps), center,
+                                        at(FxParam::DisperserPinch), stages, kRate, stretch));
         most = std::max(most, delays.back());
     }
     std::vector<Point> points;
-    for (int i = 0; i <= 160; ++i)
-        points.push_back({inner.x + inner.w * i / 160.0f,
+    for (int i = 0; i <= steps; ++i)
+        points.push_back({inner.x + inner.w * static_cast<float>(i) / static_cast<float>(steps),
                           inner.bottom() - static_cast<float>(delays[i] / (most * 1.1)) * inner.h});
     paintSpectrum(c, inner, telemetry_.fxSpectrum[slot], telemetry_.age);
     c.line({inner.x, inner.bottom()}, {inner.right(), inner.bottom()}, kBorder, 1.0f);
@@ -3409,9 +3447,53 @@ void View::paintDisperser(Canvas &c, Rect r, int slot) {
     area.push_back({inner.x, inner.bottom()});
     c.fillPolygon(area.data(), area.size(), fx.alpha(0.12f * static_cast<float>(at(FxParam::DisperserMix)) + 0.04f));
     plotLine(c, points.data(), points.size(), fx, 1.8f);
+    // Where it centers, as Freq's text reads (moved by Key Track), and how late its peak comes.
     char freq[32], text[80];
-    formatParam(paramIndex(slot, FxParam::DisperserFreq), at(FxParam::DisperserFreq), freq, sizeof(freq));
+    const int freqParam = paramIndex(slot, FxParam::DisperserFreq);
+    formatParam(freqParam, std::clamp(normFromCutoff(center), 0.0, 1.0), freq, sizeof(freq));
     std::snprintf(text, sizeof(text), "%s", trf(Str::CaptionDispersion, {freq, number("%.1f", most * 1000.0)}).c_str());
+    c.text({r.x + 8.0f, r.y + 4.0f, r.w - 16.0f, 14.0f}, text, kTextLabel, kDim, Align::Left);
+}
+
+// The Lo-Fi's steps: two cycles of a sine (faint) and what it makes of it, held between the samples Rate takes (the
+// sine a fiftieth of Rate, as a 240 Hz one is at 12 kHz) at the levels Bits leaves, smoothed as far as Smooth takes
+// it. Over it, how many bits and the rate.
+void View::paintLoFi(Canvas &c, Rect r, int slot) {
+    const Color fx = fxColor(slot);
+    const Rect inner{r.x + 8.0f, r.y + 22.0f, r.w - 16.0f, r.h - 30.0f};
+    auto at = [&](FxParam f) { return liveValue(paramIndex(slot, f)); }; // as modulation takes them now
+    const LoFiSettings set = loFiSettings(at(FxParam::LoFiBits), at(FxParam::LoFiRate), 48000.0);
+    const double smoothing = at(FxParam::LoFiSmooth);
+    constexpr int kSamples = 24; // across the display: two cycles of a twelfth of the rate's samples each, at most
+    const double perCycle = std::clamp(set.rateHz / 240.0, 2.0, 400.0); // samples a cycle of the sine
+    const double cycles = std::min(2.0, kSamples / perCycle * 2.0);
+    auto y = [&](double v) { return inner.center().y - static_cast<float>(v) * 0.45f * inner.h; };
+    std::vector<Point> sine, steps;
+    for (int i = 0; i <= 96; ++i) {
+        const double t = i / 96.0;
+        sine.push_back({inner.x + static_cast<float>(t) * inner.w, y(0.9 * std::sin(2.0 * std::numbers::pi * cycles * t))});
+    }
+    plotLine(c, sine.data(), sine.size(), fx.alpha(0.3f), 1.2f);
+    // Held samples, drawn as steps, their corners eased as far as Smooth takes them toward the smoothed line.
+    const int held = std::max(1, static_cast<int>(std::lround(perCycle * cycles)));
+    for (int k = 0; k <= held; ++k) {
+        const double t0 = static_cast<double>(k) / held, t1 = std::min(1.0, static_cast<double>(k + 1) / held);
+        const double v = loFiLevel(0.9 * std::sin(2.0 * std::numbers::pi * cycles * t0), set.step);
+        const float x0 = inner.x + static_cast<float>(t0) * inner.w, x1 = inner.x + static_cast<float>(t1) * inner.w;
+        const float eased = static_cast<float>(smoothing) * (x1 - x0) * 0.5f;
+        if (k > 0)
+            steps.push_back({x0 + eased, y(v)});
+        else
+            steps.push_back({x0, y(v)});
+        if (k < held)
+            steps.push_back({x1 - eased, y(v)});
+    }
+    plotLine(c, steps.data(), steps.size(), fx, 1.8f);
+    char rate[32], text[80];
+    formatParam(paramIndex(slot, FxParam::LoFiRate), at(FxParam::LoFiRate), rate, sizeof(rate));
+    std::snprintf(text, sizeof(text), "%s",
+                  trf(Str::CaptionLoFi, {std::to_string(static_cast<int>(std::lround(at(FxParam::LoFiBits)))), rate})
+                      .c_str());
     c.text({r.x + 8.0f, r.y + 4.0f, r.w - 16.0f, 14.0f}, text, kTextLabel, kDim, Align::Left);
 }
 
@@ -4123,6 +4205,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                                ? tr(Str::SwitchStereo)
                            : field == FxParam::AmpMic ? tr(kMicShortNames[std::clamp(w.b, 0, 2)])
                            : field == FxParam::MdRms                                            ? tr(Str::SwitchRms)
+                           : field == FxParam::FlangerThroughZero ? tr(Str::SwitchThroughZero)
                            : opOfField(w.param, OpParam::Sync) >= 0                     ? tr(Str::SwitchHardSync)
                            : isJoinSolo(w.param)                                                ? tr(Str::SwitchSolo)
                                                                                                : tr(Str::SwitchAlways);
@@ -5132,7 +5215,9 @@ void View::paintKnob(Canvas &c, const Widget &w) {
         c.text({w.rect.x + textX, w.rect.y + labelY, textWidth, 16.0f}, w.label, kTextLabel, kDim, Align::Left);
         c.text({w.rect.x + textX, w.rect.y + valueY, textWidth, 18.0f}, shown, kTextValue, kText, Align::Left, true);
     } else {
-        const Rect label{w.rect.x - 14.0f, w.rect.y + w.rect.w + 2.0f, w.rect.w + 28.0f, 16.0f};
+        // As wide as a 32 px knob's at the least, so a smaller knob's value still fits under it.
+        const float labelW = std::max(w.rect.w + 28.0f, 60.0f);
+        const Rect label{center.x - labelW * 0.5f, w.rect.y + w.rect.w + 2.0f, labelW, 16.0f};
         c.text(label, focused || !w.label ? shown : std::string(w.label), kTextLabel,
                focused ? kText : kDim);
     }
@@ -5564,6 +5649,8 @@ void View::paintTooltip(Canvas &c) {
         text = tr(Str::TipRms);
     else if (field == FxParam::PhaserStereo || field == FxParam::FlangerStereo)
         text = tr(Str::TipStereo);
+    else if (field == FxParam::FlangerThroughZero)
+        text = tr(Str::TipThroughZero);
     else if (isMorphMode(param))
         text = tr(Str::TipMorphNotch);
     else if (field == FxParam::PhaserNegative || field == FxParam::FlangerNegative)
