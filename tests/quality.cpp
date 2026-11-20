@@ -140,30 +140,30 @@ std::vector<float> joined(std::vector<float> a, const std::vector<float> &b) {
 class Engine {
 public:
     explicit Engine(int oversampling, int voices = 16) {
-        synth_.prepare(kSampleRate, voices, oversampling);
+        synth_->prepare(kSampleRate, voices, oversampling);
         for (int i = 0; i < kParamCount; ++i)
             p[i] = paramTable()[i].def;
         p[paramIndex(GlobalParam::Volume)] = 0.0; // full level, rather than the 12 dB of room it starts with
     }
 
-    void noteOn(int key, int id = -1) { synth_.noteOn({id, 0, 0, static_cast<int16_t>(key)}, 1.0); }
-    void noteOff(int key) { synth_.noteOff({-1, 0, 0, static_cast<int16_t>(key)}); }
+    void noteOn(int key, int id = -1) { synth_->noteOn({id, 0, 0, static_cast<int16_t>(key)}, 1.0); }
+    void noteOff(int key) { synth_->noteOff({-1, 0, 0, static_cast<int16_t>(key)}); }
 
     // Renders `frames` in host-sized blocks, or in pieces of `piece` frames; returns the left channel.
     std::vector<float> render(size_t frames, uint32_t piece = kBlock) {
         std::vector<float> left(frames), right(frames);
         for (size_t done = 0; done < frames; done += piece) {
             const uint32_t n = static_cast<uint32_t>(std::min<size_t>(piece, frames - done));
-            synth_.render(left.data() + done, right.data() + done, n, p);
+            synth_->render(left.data() + done, right.data() + done, n, p);
         }
         return left;
     }
 
-    Synth &synth() { return synth_; }
+    Synth &synth() { return *synth_; }
     ParamValues p{};
 
 private:
-    Synth synth_;
+    std::unique_ptr<Synth> synth_ = std::make_unique<Synth>(); // over a megabyte: not on the stack
 };
 
 // Plays `key` for a moment, then records kFftSize samples of it.
@@ -429,6 +429,64 @@ void ampChecks() {
     }
 }
 
+// --- A ramp that gates a cheaper path ends exactly where its knob is: a reverb's Diffusion turned away from 100 % and
+// back, and a delay's Duck from 0 and back, at every rate and in short pieces, where each chunk goes a share of the
+// way and its steps' sum may land a hair off. Off by any, the reverb would go on mixing its lines the long way, and the
+// delay ducking, for good.
+void rampEndChecks() {
+    std::printf("ramps ending on their knobs:\n");
+    int turns = 0, reverbOff = 0, delayOff = 0;
+    for (const double rate : {44100.0, 48000.0, 96000.0, 192000.0})
+        for (const uint32_t piece : {32u, 7u}) {
+            auto reverb = std::make_unique<fx::Reverb>();
+            auto tables = std::make_unique<fx::ReverbTables>();
+            auto delay = std::make_unique<fx::Delay>();
+            reverb->prepare(rate);
+            tables->prepare(rate);
+            delay->prepare(rate);
+            auto p = std::make_unique<ParamValues>();
+            for (int i = 0; i < kParamCount; ++i)
+                (*p)[i] = paramTable()[i].def;
+            const fx::Context ctx{*p, 0, rate, fx::rampShortest(rate), 120.0, 60.0};
+            (*p)[paramIndex(0, FxParam::ReverbDiffusion)] = 1.0;
+            (*p)[paramIndex(0, FxParam::DelayDuck)] = 0.0;
+            reverb->start(ctx);
+            delay->start(ctx);
+            std::vector<float> left(piece), right(piece);
+            uint64_t done = 0;
+            auto play = [&](double seconds) {
+                for (const uint64_t end = done + static_cast<uint64_t>(seconds * rate); done < end; done += piece) {
+                    for (uint32_t s = 0; s < piece; ++s)
+                        left[s] = right[s] =
+                            static_cast<float>(0.1 * std::sin(2.0 * std::numbers::pi * 220.0 * (done + s) / rate));
+                    float *io[2] = {left.data(), right.data()};
+                    reverb->run(ctx, *tables, io, piece);
+                    for (uint32_t s = 0; s < piece; ++s)
+                        left[s] = right[s] =
+                            static_cast<float>(0.1 * std::sin(2.0 * std::numbers::pi * 220.0 * (done + s) / rate));
+                    delay->run(ctx, io, piece);
+                }
+            };
+            play(0.05);
+            for (const double away : {0.73, 0.5, 0.37, 0.21, 0.05, 0.9, 0.333}) {
+                (*p)[paramIndex(0, FxParam::ReverbDiffusion)] = away;
+                (*p)[paramIndex(0, FxParam::DelayDuck)] = 1.0 - away;
+                play(0.05);
+                (*p)[paramIndex(0, FxParam::ReverbDiffusion)] = 1.0;
+                (*p)[paramIndex(0, FxParam::DelayDuck)] = 0.0;
+                play(0.05);
+                reverbOff += reverb->diffusion != 1.0;
+                delayOff += delay->duck != 0.0;
+                ++turns;
+            }
+        }
+    std::printf("      of %d turns back, the reverb's Diffusion off 100 %% after %d, the delay's Duck off 0 after %d\n",
+                turns, reverbOff, delayOff);
+    const bool reverbBack = reverbOff == 0, delayBack = delayOff == 0;
+    check(reverbBack, "a reverb's Diffusion turned back to 100 % lands on it exactly, at every rate and piece size");
+    check(delayBack, "a delay's Duck turned back to 0 lands on it exactly, at every rate and piece size");
+}
+
 // --- The effects chain: a reverb rings on while what went in still waits in its pre-delay; a jump in an effect's
 // param ramps however the host's events split the block; a drawn shaper curve passes a quiet, slow sine as drawn.
 void effectsChainChecks() {
@@ -442,7 +500,8 @@ void effectsChainChecks() {
     {
         // A 10 ms burst into a reverb with a 200 ms pre-delay, in the synth's 32-sample pieces: the reverb tells the
         // host it rings on until its tail has been heard, and stops after that.
-        Effects fx;
+        const auto fxHeap = std::make_unique<Effects>();
+        Effects &fx = *fxHeap;
         fx.prepare(kSampleRate);
         ParamValues p = defaults();
         p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Reverb);
@@ -477,7 +536,8 @@ void effectsChainChecks() {
         // longest and the shortest, reading anywhere along its lines (which it clears only as they are read).
         bool clean = true;
         for (double played : {0.5, 5.0}) {
-            Effects fx;
+            const auto fxHeap = std::make_unique<Effects>();
+            Effects &fx = *fxHeap;
             fx.prepare(kSampleRate);
             ParamValues p = defaults();
             p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Delay);
@@ -521,7 +581,8 @@ void effectsChainChecks() {
         // and on again after a sine, then at its largest size and longest pre-delay, it plays back nothing it held.
         bool clean = true;
         for (double played : {0.05, 3.0}) {
-            Effects fx;
+            const auto fxHeap = std::make_unique<Effects>();
+            Effects &fx = *fxHeap;
             fx.prepare(kSampleRate);
             ParamValues p = defaults();
             p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Reverb);
@@ -571,7 +632,8 @@ void effectsChainChecks() {
         // and a sine after them comes out as it should.
         bool fine = true;
         for (const float bad : {std::numeric_limits<float>::quiet_NaN(), 3e38f}) {
-            Effects fx;
+            const auto fxHeap = std::make_unique<Effects>();
+            Effects &fx = *fxHeap;
             fx.prepare(kSampleRate);
             ParamValues p = defaults();
             p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Delay);
@@ -614,7 +676,8 @@ void effectsChainChecks() {
         // A loop, which only params make: the input into a DJ EQ, which feeds a shaper that feeds it back, at half
         // level, and goes out. The shaper's effect taken away (as a host or a state can, leaving its wires): once it
         // has faded out, the output plays the EQ on, rather than ducking out for good.
-        Effects fx;
+        const auto fxHeap = std::make_unique<Effects>();
+        Effects &fx = *fxHeap;
         fx.prepare(kSampleRate);
         ParamValues p = defaults();
         p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
@@ -659,7 +722,8 @@ void effectsChainChecks() {
     {
         // A compressor pulling a loud sine down, then silence: it keeps going while its release runs out, rather than
         // stopping where it was, and a quiet sine after it comes out as it goes in.
-        Effects fx;
+        const auto fxHeap = std::make_unique<Effects>();
+        Effects &fx = *fxHeap;
         fx.prepare(kSampleRate);
         ParamValues p = defaults();
         p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Compressor);
@@ -694,7 +758,8 @@ void effectsChainChecks() {
         // rings on between its pulses, however they fall in the pieces, and once it has rung out, a quiet sound after
         // it brings none of its ring back.
         for (int at : {0, 31}) {
-            Effects fx;
+            const auto fxHeap = std::make_unique<Effects>();
+            Effects &fx = *fxHeap;
             fx.prepare(kSampleRate);
             ParamValues p = defaults();
             p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Filter);
@@ -735,7 +800,8 @@ void effectsChainChecks() {
     {
         // Effects with nothing to do: once every tail has rung out, silence costs a small share of what a sound
         // through them does, and comes out as silence; a sound after it comes through again.
-        Effects fx;
+        const auto fxHeap = std::make_unique<Effects>();
+        Effects &fx = *fxHeap;
         fx.prepare(kSampleRate);
         ParamValues p = defaults();
         p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Reverb);
@@ -783,7 +849,8 @@ void effectsChainChecks() {
 
         // So with the editor open, analyzing (a parametric EQ after them, whose analyzer takes in the silence as
         // running it would): the plugin then keeps processing with nothing sounding while a free LFO shows.
-        Effects open;
+        const auto openHeap = std::make_unique<Effects>();
+        Effects &open = *openHeap;
         open.prepare(kSampleRate);
         open.setAnalyzing(true);
         p[paramIndex(3, FxParam::Type)] = static_cast<double>(FxType::ParamEq);
@@ -824,7 +891,8 @@ void effectsChainChecks() {
               "silence through effects that have rung out costs little while the editor analyzes them too");
 
         // The EQ alone, rung out at once: its spectrum goes on falling through the silence that goes by idle.
-        Effects eqOnly;
+        const auto eqOnlyHeap = std::make_unique<Effects>();
+        Effects &eqOnly = *eqOnlyHeap;
         eqOnly.prepare(kSampleRate);
         eqOnly.setAnalyzing(true);
         ParamValues q = defaults();
@@ -920,7 +988,8 @@ void effectsChainChecks() {
         // At a high rate, a jump ramps over as long a time as at 48 kHz, not as few samples: a delay's Mix taken from
         // 0 to 100 % and a wire's level to a quarter, on a steady level, change no faster in time at 96 or 192 kHz.
         auto steepest = [&](double rate, bool wire) { // the most the output moves in a second, at its steepest
-            Effects fx;
+            const auto fxHeap = std::make_unique<Effects>();
+            Effects &fx = *fxHeap;
             fx.prepare(rate);
             ParamValues p = defaults();
             p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Delay);
@@ -975,7 +1044,8 @@ void effectsChainChecks() {
         for (double rate : {44100.0, 48000.0, 96000.0, 192000.0}) {
             double rateWorst = 1e9;
             for (double hz : {50.0, 100.0, 1000.0, 10000.0}) {
-                Effects fx;
+                const auto fxHeap = std::make_unique<Effects>();
+                Effects &fx = *fxHeap;
                 fx.prepare(rate);
                 ParamValues p = defaults();
                 p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::FreqShifter);
@@ -1005,7 +1075,8 @@ void effectsChainChecks() {
         // What a shift takes past 0 Hz or past half the rate is gone, rather than coming back the other way, and what
         // it leaves between them plays at the level it went in.
         auto shifted = [&](double rate, double hz, double shift, double feedback) { // a settled second of a sine at 0.5
-            Effects fx;
+            const auto fxHeap = std::make_unique<Effects>();
+            Effects &fx = *fxHeap;
             fx.prepare(rate);
             ParamValues p = defaults();
             p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::FreqShifter);
@@ -1076,7 +1147,8 @@ void effectsChainChecks() {
         // The effects keep the top of what goes through them where their knobs don't take it away: a quiet sine at
         // 1 kHz and one at 12 or 15 kHz come out of each within 1.5 dB of each other (the figures printed).
         auto through = [](ParamValues p, double hz) { // the RMS out over the RMS in of a -30 dB sine, settled
-            Effects fx;
+            const auto fxHeap = std::make_unique<Effects>();
+            Effects &fx = *fxHeap;
             fx.prepare(kSampleRate);
             chain(p, {0});
             constexpr uint32_t kPiece = 64;
@@ -1144,7 +1216,8 @@ void effectsChainChecks() {
 
         // A delay's echoes keep their top: a 10 kHz burst, at a time between two samples (214.3 ms), its sixth echo at
         // Feedback 50 % the fifth power of a half under its first (-30.1 dB), within 0.5 dB.
-        Effects fx;
+        const auto fxHeap = std::make_unique<Effects>();
+        Effects &fx = *fxHeap;
         fx.prepare(kSampleRate);
         ParamValues p = defaults();
         p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Delay);
@@ -1401,7 +1474,8 @@ void effectsChainChecks() {
     {
         // An effect the output doesn't hear doesn't run: a delay fed from IN with nothing reading it neither lights its
         // port nor keeps the effects ringing on after its echoes would; read by OUT, it runs.
-        Effects fx;
+        const auto fxHeap = std::make_unique<Effects>();
+        Effects &fx = *fxHeap;
         fx.prepare(kSampleRate);
         fx.setAnalyzing(true); // as while the editor is open, which reads the ports
         ParamValues p = defaults();
@@ -1441,7 +1515,8 @@ void effectsChainChecks() {
         // through a DJ EQ at its middle to OUT reads half scale at IN and out of the EQ, an effect not in the graph 0;
         // a second of silence after, every port has fallen about 90 dB. With nothing analyzing (no editor open), the
         // ports aren't measured and read nothing.
-        Effects fx;
+        const auto fxHeap = std::make_unique<Effects>();
+        Effects &fx = *fxHeap;
         fx.prepare(kSampleRate);
         fx.setAnalyzing(true);
         ParamValues p = defaults();
@@ -1476,7 +1551,8 @@ void effectsChainChecks() {
         // at unity gain: each sample comes out as the curve has it, through the DC blocker every drawn curve has, a few
         // samples late (the shaper runs at twice the rate, through half-band filters up and down, which a 50 Hz sine
         // passes at its level, delayed).
-        Effects fx;
+        const auto fxHeap = std::make_unique<Effects>();
+        Effects &fx = *fxHeap;
         fx.prepare(kSampleRate);
         ParamValues p = defaults();
         p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
@@ -1527,7 +1603,8 @@ void effectsChainChecks() {
         // A drawn curve's points moved (here every one halfway down to the middle, the curve halved): the curve
         // glides there rather than stepping what comes out, in whole blocks and in single frames.
         auto roughMove = [&defaults](uint32_t piece) {
-            Effects fx;
+            const auto fxHeap = std::make_unique<Effects>();
+            Effects &fx = *fxHeap;
             fx.prepare(kSampleRate);
             ParamValues p = defaults();
             p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
@@ -1563,7 +1640,8 @@ void effectsChainChecks() {
         // plays the new curve from its start, as a shaper that never ran with the old one does, rather than gliding
         // in from the old one.
         auto play = [&defaults](bool before) {
-            Effects fx;
+            const auto fxHeap = std::make_unique<Effects>();
+            Effects &fx = *fxHeap;
             fx.prepare(kSampleRate);
             ParamValues p = defaults();
             p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
@@ -1611,7 +1689,8 @@ void effectsChainChecks() {
         // silence comes out at), under a sound that spends longer above 0 than below: what comes out puts out nothing
         // below the tone, as plain and made symmetric (which then jumps at the middle).
         auto worstDc = [&defaults](bool symmetric) {
-            Effects fx;
+            const auto fxHeap = std::make_unique<Effects>();
+            Effects &fx = *fxHeap;
             fx.prepare(kSampleRate);
             ParamValues p = defaults();
             p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
@@ -1679,7 +1758,8 @@ void effectsChainChecks() {
         // Below -40 dB at 2:1, 12 dB of Range), a quiet sine comes out louder, by half its RMS level's distance under
         // Below, and a loud one quieter, its RMS level's distance over Above shrunk to a third.
         auto settled = [&](ParamValues &p, double level) { // the gain (dB) once the detector has settled, and the band's
-            Effects fx;
+            const auto fxHeap = std::make_unique<Effects>();
+            Effects &fx = *fxHeap;
             fx.prepare(kSampleRate);
             std::vector<float> left(kBlock), right(kBlock);
             double power = 0.0; // the output's mean square over the last quarter second, against the input's
@@ -1775,7 +1855,8 @@ void effectsChainChecks() {
             // A band-limited saw (40 harmonics, or a sine for 1 kHz) after silence, rising over `ramp` seconds: the
             // loudest sample in its first 50 ms, its peak and RMS level over its 0.5 s to 0.75 s, and the RMS level of
             // the loudest 5 ms of its first 100 ms, each in dB.
-            Effects fx;
+            const auto fxHeap = std::make_unique<Effects>();
+            Effects &fx = *fxHeap;
             fx.prepare(kSampleRate);
             const int harmonics = hz > 500.0 ? 1 : 40;
             const size_t start = static_cast<size_t>(0.5 * kSampleRate), end = static_cast<size_t>(1.25 * kSampleRate);
@@ -1837,7 +1918,8 @@ void effectsChainChecks() {
         for (const auto &[index, value] : mdOttSettings(0))
             p[index] = value;
         auto steadySine = [&](double hz, double rmsDb) { // the output's RMS level (dB) once settled
-            Effects fx;
+            const auto fxHeap = std::make_unique<Effects>();
+            Effects &fx = *fxHeap;
             fx.prepare(kSampleRate);
             const double amplitude = std::sqrt(2.0) * std::pow(10.0, rmsDb / 20.0);
             std::vector<float> left(kBlock), right(kBlock);
@@ -1891,7 +1973,8 @@ void effectsChainChecks() {
         // by much of its Range while the level meter, held, falls only about 26 dB a second; drawn as that held level
         // plus the lift, the meter's far end shot up past 0 dB. It stays where the note had it, or under, falling.
         {
-            Effects fx;
+            const auto fxHeap = std::make_unique<Effects>();
+            Effects &fx = *fxHeap;
             fx.prepare(kSampleRate);
             std::vector<float> left(kBlock), right(kBlock);
             double during = -1e9, after = -1e9;
@@ -2175,7 +2258,8 @@ void effectsChainChecks() {
         // The filter effect switched to another type or slope and back: the stage it left out starts from silence,
         // rather than playing back what it held then.
         auto stale = [&](FilterType first, int firstSlope, FilterType second, int secondSlope) {
-            Effects fx;
+            const auto fxHeap = std::make_unique<Effects>();
+            Effects &fx = *fxHeap;
             fx.prepare(kSampleRate);
             ParamValues p = defaults();
             p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Filter);
@@ -2214,7 +2298,8 @@ void effectsChainChecks() {
     }
     {
         // A plate (six diffusers a side) switched to a hall (four) and back, after the hall's tail: silence.
-        Effects fx;
+        const auto fxHeap = std::make_unique<Effects>();
+        Effects &fx = *fxHeap;
         fx.prepare(kSampleRate);
         ParamValues p = defaults();
         p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Reverb);
@@ -2233,7 +2318,8 @@ void effectsChainChecks() {
     {
         // An asymmetric shaper driven hard, then silence: the effects keep running while its DC blocker settles,
         // and stop only once what comes out is too quiet to hear, rather than stepping to silence.
-        Effects fx;
+        const auto fxHeap = std::make_unique<Effects>();
+        Effects &fx = *fxHeap;
         fx.prepare(kSampleRate);
         ParamValues p = defaults();
         p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
@@ -2708,6 +2794,35 @@ void noteAndVoiceChecks() {
         }
         check(finite && ended, "an operator on its own pitch, level and phase, and on many params at once at full "
                                "depth, stays finite and ends with its note");
+
+        // B on a filter's Cutoff (filter FM) and on its Resonance, which has the filter worked out every sample, then
+        // its depth on the Resonance taken to 0: the cutoff's sidebands carry on as with B on the Cutoff alone.
+        auto cutoffSidebands = [&](bool resonanceToo) {
+            Engine e(2);
+            throughFilter(e.p);
+            setUp(e.p, 3000.0, paramIndex(0, FilterParam::Cutoff), 0.3);
+            if (resonanceToo) {
+                e.p[slotTargetIndex(source, 1)] = slotTargetValue(paramIndex(0, FilterParam::Resonance));
+                e.p[slotAmountIndex(source, 1)] = 0.3;
+            }
+            e.noteOn(69);
+            e.render(4800);
+            e.p[slotAmountIndex(source, 1)] = 0.0;
+            e.render(4800);
+            const std::vector<double> power = powerSpectrum(e.render(kFftSize));
+            auto around = [&](double hz) {
+                const long center = std::lround(hz * kFftSize / kSampleRate);
+                double sum = 1e-30;
+                for (long n = center - 6; n <= center + 6; ++n)
+                    sum += power[static_cast<size_t>(n)];
+                return sum;
+            };
+            return 10.0 * std::log10((around(2560.0) + around(3440.0)) / around(440.0));
+        };
+        const double alone = cutoffSidebands(false), after = cutoffSidebands(true);
+        std::printf("      filter FM: sidebands %.1f dB, %.1f dB once an operator on the Resonance stops\n", alone, after);
+        check(alone > -60.0 && std::abs(after - alone) < 1.0,
+              "filter FM carries on once the filter's other settings stop being moved at audio rate");
     }
     {
         // Filter FM: A through a filter, a voice's or the filter effect, whose Cutoff B moves, B fixed and heard by
@@ -4252,7 +4367,8 @@ ParamValues stackParams(int slots, int stack, double driveDb, bool linkedRow = f
 template <class Change>
 std::vector<float> throughEffects(ParamValues p, const std::vector<float> &in, uint32_t piece, const Change &change,
                                   bool *ringing = nullptr) {
-    Effects fx;
+    const auto fxHeap = std::make_unique<Effects>();
+    Effects &fx = *fxHeap;
     fx.prepare(kSampleRate);
     std::vector<float> left = in, right = in;
     for (size_t t = 0; t < in.size(); t += piece) {
@@ -4405,7 +4521,8 @@ void stackChecks() {
         // A shaper effect switched from Soft to Stack and back under a quiet sine, which either curve passes about as
         // it is: the Stack path, at twice the rate, its half-bands a few samples late, fades in and out over the other
         // rather than jumping to it, so no sample steps further than the sine's own do.
-        Effects fx;
+        const auto fxHeap = std::make_unique<Effects>();
+        Effects &fx = *fxHeap;
         fx.prepare(kSampleRate);
         ParamValues p;
         for (int i = 0; i < kParamCount; ++i)
@@ -5428,7 +5545,8 @@ void newerEffectChecks() {
     };
     auto run = [](FxType type, const std::vector<std::pair<FxParam, double>> &set, size_t frames, auto &&input,
                   double rate = kSampleRate) {
-        Effects fx;
+        const auto fxHeap = std::make_unique<Effects>();
+        Effects &fx = *fxHeap;
         fx.prepare(rate);
         ParamValues p;
         for (int i = 0; i < kParamCount; ++i)
@@ -5658,7 +5776,8 @@ void newerEffectChecks() {
         // Its oversampling changed under a quiet sine (which the curve leaves alone), in whole blocks and in single
         // frames: it ducks out and back in rather than clicking, no sample stepping further than the sine's own do.
         auto steepest = [&](uint32_t piece) {
-            Effects fx;
+            const auto fxHeap = std::make_unique<Effects>();
+            Effects &fx = *fxHeap;
             fx.prepare(kSampleRate);
             ParamValues p;
             for (int i = 0; i < kParamCount; ++i)
@@ -6115,21 +6234,33 @@ int main() {
         };
         // The voice filters the same way: an LFO on a resonant low-pass's and ladder's cutoff, a formant's vowel and a
         // morph's place, the operator going out through the filter alone.
-        // The ladder quietly, so its saturation's harmonics stay under what is measured.
+        // The ladder quietly, so its saturation's harmonics stay under what is measured. And the low-pass again with an
+        // operator, silent, on its Resonance, which has the filter's settings worked out every sample (see
+        // Synth::audioSample()): still along the cutoff's ramp.
         struct VoiceSwept {
             const char *name;
             FilterType type;
             FilterParam param;
             double amount, resonance, send;
+            bool opOnResonance = false;
         };
         const VoiceSwept voiceSwept[] = {
             {"voice filter cutoff", FilterType::LowPass, FilterParam::Cutoff, 0.1, 0.5, 1.0},
             {"voice ladder cutoff", FilterType::Ladder, FilterParam::Cutoff, 0.1, 0.5, 0.01},
             {"voice formant vowel", FilterType::Formant, FilterParam::Vowel, 0.1, 0.0, 1.0},
             {"voice morph place", FilterType::Morph, FilterParam::Morph, 0.2, 0.3, 1.0},
+            {"voice cutoff, op on Resonance", FilterType::LowPass, FilterParam::Cutoff, 0.1, 0.5, 1.0, true},
         };
         for (const VoiceSwept &sweep : voiceSwept) {
             auto setup = [&](ParamValues &p) {
+                if (sweep.opOnResonance) { // B, faded out at once, on it
+                    p[paramIndex(1, OpParam::Enabled)] = 1.0;
+                    p[paramIndex(1, OpParam::Out)] = 0.0;
+                    p[paramIndex(1, OpParam::Decay)] = normFromTime(0.001);
+                    p[paramIndex(1, OpParam::Sustain)] = 0.0;
+                    p[slotTargetIndex(kOpSource + 1, 0)] = slotTargetValue(paramIndex(0, FilterParam::Resonance));
+                    p[slotAmountIndex(kOpSource + 1, 0)] = 0.1;
+                }
                 p[paramIndex(0, OpParam::Out)] = 0.0;
                 p[sendIndex(0, 0)] = sweep.send;
                 p[paramIndex(0, FilterParam::Enabled)] = 1.0;
@@ -6426,7 +6557,8 @@ int main() {
     std::printf("parametric EQ and phase disperser analyzers:\n");
     for (FxType type : {FxType::ParamEq, FxType::Disperser}) {
         const bool eq = type == FxType::ParamEq;
-        Effects fx;
+        const auto fxHeap = std::make_unique<Effects>();
+        Effects &fx = *fxHeap;
         fx.prepare(kSampleRate);
         fx.setAnalyzing(true);
         ParamValues p;
@@ -6482,7 +6614,8 @@ int main() {
     std::printf("synced sweeps (cycles after 0.25 s of a 1/4):\n");
     {
         auto phaseAfter = [](FxType type, double tempo) {
-            Effects fx;
+            const auto fxHeap = std::make_unique<Effects>();
+            Effects &fx = *fxHeap;
             fx.prepare(kSampleRate);
             ParamValues p;
             for (int i = 0; i < kParamCount; ++i)
@@ -6515,7 +6648,8 @@ int main() {
     std::printf("chorus voices and spread changed under a sine (steepest step against a sine's at its peak):\n");
     {
         auto steepest = [](FxParam param, std::initializer_list<double> values) {
-            Effects fx;
+            const auto fxHeap = std::make_unique<Effects>();
+            Effects &fx = *fxHeap;
             fx.prepare(kSampleRate);
             ParamValues p;
             for (int i = 0; i < kParamCount; ++i)
@@ -6561,7 +6695,8 @@ int main() {
     std::printf("phase disperser stages changed under a sine (largest third difference):\n");
     {
         auto roughest = [](uint32_t piece) {
-            Effects fx;
+            const auto fxHeap = std::make_unique<Effects>();
+            Effects &fx = *fxHeap;
             fx.prepare(kSampleRate);
             ParamValues p;
             for (int i = 0; i < kParamCount; ++i)
@@ -6606,7 +6741,8 @@ int main() {
     {
         // What the effect puts out for an impulse, `pitch` the newest note's, at `rate`.
         auto impulse = [](double freqHz, double keyTrack, double stretch, double pitch, double rate) {
-            Effects fx;
+            const auto fxHeap = std::make_unique<Effects>();
+            Effects &fx = *fxHeap;
             fx.prepare(rate);
             ParamValues p;
             for (int i = 0; i < kParamCount; ++i)
@@ -6693,7 +6829,8 @@ int main() {
     // And the longest stretch, the most stages and the narrowest pinch stay finite and ring out.
     {
         auto roughest = [](uint32_t piece) {
-            Effects fx;
+            const auto fxHeap = std::make_unique<Effects>();
+            Effects &fx = *fxHeap;
             fx.prepare(kSampleRate);
             ParamValues p;
             for (int i = 0; i < kParamCount; ++i)
@@ -6729,7 +6866,8 @@ int main() {
                     "frames\n", blocks, frames);
         check(blocks < 0.05 && frames < 0.05, "the phase disperser's Stretch changed under a sine fades rather than clicks");
 
-        Effects fx;
+        const auto fxHeap = std::make_unique<Effects>();
+        Effects &fx = *fxHeap;
         fx.prepare(kSampleRate);
         ParamValues p;
         for (int i = 0; i < kParamCount; ++i)
@@ -6781,7 +6919,8 @@ int main() {
         };
         bool placed = true;
         for (int voices : {2, 6}) {
-            Effects fx;
+            const auto fxHeap = std::make_unique<Effects>();
+            Effects &fx = *fxHeap;
             ParamValues p;
             chorusFx(fx, p, voices, 0.0);
             const uint32_t total = static_cast<uint32_t>(0.02 * kSampleRate);
@@ -6810,7 +6949,8 @@ int main() {
         for (double hz : {440.0, 5000.0}) {
             std::printf("      %4.0f Hz:", hz);
             for (int voices : {2, 3, 4, 6}) {
-                Effects fx;
+                const auto fxHeap = std::make_unique<Effects>();
+                Effects &fx = *fxHeap;
                 ParamValues p;
                 chorusFx(fx, p, voices, 0.5);
                 const uint32_t total = static_cast<uint32_t>(2.0 * kSampleRate);
@@ -6839,7 +6979,8 @@ int main() {
         // which moves its resonances; grown out of hand, they would be orders of magnitude louder.
         bool steady = true;
         for (double feedback : {1.0, -1.0}) {
-            Effects fx;
+            const auto fxHeap = std::make_unique<Effects>();
+            Effects &fx = *fxHeap;
             ParamValues p;
             chorusFx(fx, p, 6, 0.5);
             p[paramIndex(0, FxParam::ChorusFeedback)] = feedback;
@@ -6882,7 +7023,8 @@ int main() {
     std::printf("polarity (level of a sine, in dB, positive and negative):\n");
     {
         auto run = [](FxType type, double hz, bool negative, bool turnOver, double *steepest) {
-            Effects fx;
+            const auto fxHeap = std::make_unique<Effects>();
+            Effects &fx = *fxHeap;
             fx.prepare(kSampleRate);
             ParamValues p;
             for (int i = 0; i < kParamCount; ++i)
@@ -6959,7 +7101,8 @@ int main() {
     std::printf("reverb tails (an impulse, 2.5 s decay):\n");
     {
         auto impulse = [](ReverbType type, double damping) {
-            Effects fx;
+            const auto fxHeap = std::make_unique<Effects>();
+            Effects &fx = *fxHeap;
             fx.prepare(kSampleRate);
             ParamValues p;
             for (int i = 0; i < kParamCount; ++i)
@@ -7065,7 +7208,8 @@ int main() {
     std::printf("shimmer tails (an A4 sine, 4 s decay):\n");
     {
         auto shimmer = [](double amount, double decay, double damping, double seconds) {
-            Effects fx;
+            const auto fxHeap = std::make_unique<Effects>();
+            Effects &fx = *fxHeap;
             fx.prepare(kSampleRate);
             ParamValues p;
             for (int i = 0; i < kParamCount; ++i)
@@ -7159,7 +7303,8 @@ int main() {
         // again: its shifters start from silence, so nothing of the tail before comes back.
         double worst = 0.0;
         for (int trial = 0; trial < 8; ++trial) {
-            Effects fx;
+            const auto fxHeap = std::make_unique<Effects>();
+            Effects &fx = *fxHeap;
             fx.prepare(kSampleRate);
             fx.setAnalyzing(true); // as with the editor open, so silence still runs the effects
             ParamValues p;
@@ -7382,6 +7527,7 @@ int main() {
     }
 
     effectsChainChecks();
+    rampEndChecks();
     latencyChecks();
     stackChecks();
     ampChecks();

@@ -243,6 +243,9 @@ double Reverb::run(const Context &ctx, const ReverbTables &tables, float *const 
     const double widthStep = rampStep(width, ctx.at(FxParam::ReverbWidth), n, ctx.rampShortest);
     const double diffusionTarget = ctx.at(FxParam::ReverbDiffusion);
     const double diffusionStep = rampStep(diffusion, diffusionTarget, n, ctx.rampShortest);
+    // Snapped to its target where the ramp ends, as the steps' sum may land a hair off it: at 100 %, off by any, the
+    // lines would go on mixing the long way below for good.
+    const bool diffusionArrives = rampEnds(diffusion, diffusionTarget, n, ctx.rampShortest);
     // The lines' mixing turns with it, its cosine and sine ramping (a straight line between two turns loses a hair
     // of energy between, never gains any). At 100 % it is the Hadamard transform exactly.
     const double mixCTarget = std::cos(reverbMixAngle(diffusionTarget));
@@ -501,6 +504,8 @@ double Reverb::run(const Context &ctx, const ReverbTables &tables, float *const 
         mixC = mixCTarget;
         mixS = mixSTarget;
     }
+    if (diffusionArrives)
+        diffusion = diffusionTarget;
     // What goes in now comes out after the pre-delay, and in a room its last early reflection later still; its tail
     // after the all-passes (at no Diffusion plain delays as long as they are) and the shortest line. Until then, the
     // reverb may be silent with more to come.

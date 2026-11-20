@@ -284,9 +284,9 @@ target_link_libraries(fmvibe-uishot PRIVATE fmvibe-core windowscodecs ole32)
 fmvibe_options(fmvibe-uishot)
 
 # Both keep whole engines or editors (models and views) on the stack, a few at a time, which an unoptimized
-# build doesn't overlap: room for them beyond Windows' default megabyte. The quality test's effects checks hold a
-# dozen effects (about 300 KB each, the graph's buffers) and twice as many param sets in one function, which even
-# an optimized MSVC build doesn't overlap: main()'s frame and the effects checks' together come to over 32 MB.
+# build doesn't overlap: room for them beyond Windows' default megabyte. The quality test's functions hold dozens of
+# engines and param sets (a quarter of a megabyte each), which even an optimized MSVC build doesn't overlap; its
+# engines' synths and its effects checks' effects (about a megabyte each) go on the heap.
 if (MSVC)
     target_link_options(fmvibe-quality PRIVATE /STACK:67108864)
     target_link_options(fmvibe-uishot PRIVATE /STACK:8388608)

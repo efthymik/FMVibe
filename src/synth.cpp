@@ -1801,6 +1801,7 @@ FMVIBE_NOINLINE void Synth::runOpSources(Voice &v, const ParamValues &params) {
     voiceFmCount_ = 0;
     audioModCount_ = 0;
     audioLaneCount_ = 0;
+    audioFilterMask_ = 0; // startAudioMods() sets it, and runs only for a voice with lanes: not the last voice's
     for (int op = 0; op < kOps; ++op) {
         if (!(opSourceMask_ >> op & 1u))
             continue;
@@ -1964,7 +1965,6 @@ FMVIBE_NOINLINE bool Synth::startAudioMods(Voice &v, const double *p, double pit
     run.savedCount = 0;
     audioReach_ = {};
     audioFmReach_ = 0.0;
-    audioFilterMask_ = 0;
     const std::span<double> reach = values(audioReach_);
     for (int i = 0; i < kOps; ++i) {
         run.fixed[i] = p[paramIndex(i, OpParam::Fixed)] >= 0.5;
@@ -2297,15 +2297,19 @@ FMVIBE_NOINLINE void Synth::audioSample(Voice &v, uint32_t sample) {
             break;
         case AudioKind::Filter:
             if (!(filterMask & bit)) {
-                const double keyTrack = p[paramIndex(a, FilterParam::KeyTrack)];
-                filterIn[a] = {p[paramIndex(a, FilterParam::Cutoff)],    keyTrack,
-                               run.pitch,                                p[paramIndex(a, FilterParam::Type)],
-                               p[paramIndex(a, FilterParam::Slope)],     p[paramIndex(a, FilterParam::Resonance)],
-                               p[paramIndex(a, FilterParam::Drive)],     p[paramIndex(a, FilterParam::Vowel)],
-                               p[paramIndex(a, FilterParam::Morph)],     p[paramIndex(a, FilterParam::MorphMode)]};
+                // Its inputs where renderBlock()'s ramp has them at this sample (see kFilterSmooth), so what the
+                // control blocks move still glides; the operators move them from there.
+                const std::array<double, 10> &from = run.filterFrom[a], &to = run.filterTo[a];
+                const double along = run.filterShare * std::min(1.0, (sample + 1.0) / run.frames);
+                filterIn[a] = to;
+                for (size_t i = 0; i < to.size(); ++i)
+                    if (kFilterSmooth[i] && along < 1.0)
+                        filterIn[a][i] = from[i] + (to[i] - from[i]) * along;
+                if (to[2] == 0.0) // left out without key tracking, which an operator may bring in
+                    filterIn[a][2] = run.pitch;
                 filterMask |= bit;
             }
-            filterIn[a][lane.at.b] = value;
+            filterIn[a][lane.at.b] += value - lane.set;
             break;
         case AudioKind::Shaper:
             if (!(shaperMask & bit)) {
@@ -3521,12 +3525,17 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             else if (now[i] != inputs[i])
                 filterMoving[f] = true;
         }
+        filterFrom[f] = now;
+        filterTo[f] = inputs;
         if (filterMoving[f]) {
-            filterFrom[f] = now;
-            filterTo[f] = inputs;
             for (size_t i = 0; i < inputs.size(); ++i) // where the block leaves them
                 if (kFilterSmooth[i])
                     now[i] = filterShare >= 1.0 ? inputs[i] : now[i] + (inputs[i] - now[i]) * filterShare;
+            // An operator moving one of its settings has audioSample() work them out every sample, along the ramp.
+            if (audioOn && (audioFilterMask_ >> f & 1u))
+                filterMoving[f] = false;
+        }
+        if (filterMoving[f]) {
             gainsFrom[f] = filterGains(filterSettingsOf(filterFrom[f])); // as it was left
             filterStepped[f] = filterSettingsOf(filterInputsAt(f, 0));
             gainsTo[f] = filterGains(filterStepped[f]);
@@ -3635,8 +3644,13 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     const uint32_t fxOps = &v == fxFmVoice_ ? fxFmOps_ : 0u; // those the filter effects' FM hears, from the newest voice
     // Operators moving this voice's filters' cutoffs, sample by sample.
     const bool cutoffFm = opSourceMask_ != 0 && voiceFmCount_ > 0 && startCutoffFm(filter);
-    if (audioOn)
+    if (audioOn) {
         audioRun_.filter = filter.data();
+        audioRun_.filterFrom = filterFrom.data();
+        audioRun_.filterTo = filterTo.data();
+        audioRun_.filterShare = filterShare;
+        audioRun_.frames = frames;
+    }
     for (uint32_t s = 0; s < frames; ++s) {
         v.fmScale += fmStep;
         v.gainL += gainLStep;

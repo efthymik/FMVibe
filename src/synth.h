@@ -817,6 +817,10 @@ private:
         double *noiseMid = nullptr, *noiseSide = nullptr;
         const UnisonGains **copyGains = nullptr;
         const FilterSettings **filter = nullptr;
+        // The voice filters' inputs as the block ramps them (from, to, its share of a control block, over its frames).
+        const std::array<double, 10> *filterFrom = nullptr, *filterTo = nullptr;
+        double filterShare = 1.0;
+        uint32_t frames = 1;
         const int *copies = nullptr;
         const bool *opOn = nullptr;
         const bool *noise = nullptr;

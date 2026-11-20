@@ -764,8 +764,8 @@ the operator's letter at the top of its page in the inspector, which is its hand
   unison, warp, envelope and noise; the depths of the routes into an operator; a voice filter's and shaper's knobs and
   routes; and the voice's Pitch, FM Amount and Pan. An operator can modulate its own pitch, level or phase too.
 - Everything else (an effect's knobs, another source's settings, a macro's knob, a modulation's depth) is updated
-  every 32 samples. There, a slow operator (a fixed one at a few Hz, say) moves it along its wave and envelope; a
-  fast one averages out.
+  every 32 samples. An effect glides smoothly from one update to the next. There, a slow operator (a fixed one at a
+  few Hz, say) moves it along its wave and envelope; a fast one averages out.
 - **Bipolar** (the default) swings its targets both ways around their setting. **Unipolar** pushes them one way, as
   far as the operator's envelope has risen, so a silent operator moves nothing.
 

@@ -158,9 +158,10 @@ What the plugin does and how its editor works, in full. Building and installing 
   filter is held within +18 dB, so a loop that lifts itself past unity grows loud but never without end. A filter
   that only modulates can leave its output level at 0. Modulation moves a filter smoothly: its cutoff, key
   tracking, resonance, drive, vowel and morph ramp over each 32-sample control block, the filter's settings worked
-  out again every 8 samples while they move, and what it scales its outputs by (a morph's shares, a formant's levels,
-  the resonance's share of a high-pass, band-pass or notch) gliding sample by sample, so a fast envelope or LFO on the
-  cutoff sweeps it rather than stepping it every block (which buzzed faintly at the steps' rate, 1.5 kHz at 48 kHz:
+  out again every 8 samples while they move (every sample, from where the ramp has them, while an operator moves one
+  of them at audio rate), and what it scales its outputs by (a morph's shares, a formant's levels, the resonance's
+  share of a high-pass, band-pass or notch) gliding sample by sample, so a fast envelope or LFO on the cutoff sweeps
+  it rather than stepping it every block (which buzzed faintly at the steps' rate, 1.5 kHz at 48 kHz:
   some 72 dB under an LFO's sweep, 53 dB for a morph's place, now 96 dB and more). Its type, slope and morph mode switch
   at once. Types:
   - Low-pass, High-pass, Band-pass and Notch: a state-variable filter that stays smooth under fast modulation.
@@ -371,9 +372,10 @@ What the plugin does and how its editor works, in full. Building and installing 
     pitch, level or phase. Its Amount, aux and depth are read once per 32-sample block. An operator's table suits the
     highest pitch the modulation can take it to, so moving its pitch stays clear of aliasing as FM does, and a route,
     send or Out at 0 that the modulation opens runs. Every other target (an effect's, a source's own param, a macro's
-    knob, a slot's depth and Amount) takes modulation at the control rate, once every 32 samples, from the operator's
-    output averaged over the last such block: a slow operator (a fixed one at a few Hz, say) moves it along its wave
-    and envelope, and one far above that rate averages away rather than aliasing. So does an operator as an aux. The
+    knob, a slot's depth and Amount) takes modulation at the control rate, once every 32 samples (an effect gliding
+    between, as its other modulation does), from the operator's output averaged over the last such block: a slow
+    operator (a fixed one at a few Hz, say) moves it along its wave and envelope, and one far above that rate averages
+    away rather than aliasing. So does an operator as an aux. The
     MODS view's rows and the knobs' rings show the average.
     **Filter FM**: on a voice filter's **Cutoff**, the cutoff moves every sample, by as many octaves as the depth takes
     the knob (100 % at full swing being the knob's 10 octaves). A voice's filter follows that voice's own operator. A

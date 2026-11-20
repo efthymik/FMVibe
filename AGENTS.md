@@ -210,7 +210,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     feedback, a driven filter and a driven, resonant ladder, diode and Sallen-Key;
   - zipper noise from an LFO on an operator's level and Pan, a matrix amount, a filter cutoff, a resonant ladder's
     cutoff, a formant's vowel, a morph's place and a wire of the effects graph; and on the voice filters (a resonant
-    low-pass's and a quiet ladder's cutoff, a formant's vowel and a morph's place, each within one stretch of its curve)
+    low-pass's and a quiet ladder's cutoff, a formant's vowel and a morph's place, each within one stretch of its curve,
+    and the low-pass's cutoff again with a silent operator on its Resonance, which works the filter out every sample)
     and the effects' frequencies (a phase disperser's Freq, a filter effect's cutoff, formant vowel and morph place, a
     Param EQ band's frequency, a phaser's Center and a widener's Cutoff), nothing but the sine's own sidebands at 7 Hz
     apart coming out, where control-block steps would put energy near the control rate's multiples (held still in
@@ -337,7 +338,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     Unison Detune, Spread and Blend, Warp Amount and send, a route's depth, FM Amount, the voice's Pitch and Pan, a
     filter's Resonance, Drive, Morph and Out and a shaper's Drive and Output), and none without it; one swinging a
     Ratio an octave at 7 kHz aliasing 40 dB down at 2x; and one on its own pitch, level and phase, and one on many
-    params at once at full depth, staying finite and ending with its note;
+    params at once at full depth, staying finite and ending with its note; and filter FM carrying on once an operator
+    on the filter's Resonance stops (its depth taken to 0);
   - filter FM, an operator on the Cutoff of a voice's filter and of the filter effect: sidebands from a modulator at
     3 kHz (two whole cycles a control block), every filter type finite at full depth and resonance in both places and
     a voice ending with its note, the aliasing at each oversampling factor, a slow operator moving a cutoff as far as an
@@ -418,7 +420,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the effects' newer controls: the reverb's Low Cut and High Cut taking its tail's ends away and Diffusion at 0
     leaving its first echoes spikier, its tail's echoes apart for longer (filling in as it rises, smooth and its sides
     unalike) and a click into it still ringing out; the delay's Duck taking its echoes away under a loud sine and
-    letting them back after; the shaper's Tone leaving what its curve leaves straight alone and changing what it
+    letting them back after; Diffusion turned back to 100 % and Duck back to 0 landing on them exactly, at 44.1 to
+    192 kHz and in pieces of 32 and 7 samples, so the reverb's mixing and the delay's ducking take their plain paths
+    again; the shaper's Tone leaving what its curve leaves straight alone and changing what it
     drives, its oversampling changed under a sine ducking rather than clicking, and a hard-clipped C7 aliasing less at
     4x and 8x than at 2x; the compressor's detector high-pass keeping a loud bass from pulling a quiet treble down;
     the flanger through zero, held at its sweep's middle and negative, cancelling noise to nothing; the phaser's

@@ -50,6 +50,7 @@ double Delay::run(const Context &ctx, float *const *io, uint32_t n) {
     const double duckTo = ctx.at(FxParam::DelayDuck);
     const double duckStep = rampStep(duck, duckTo, n, ctx.rampShortest);
     const bool ducking = duck > 0.0 || duckTo > 0.0;
+    const bool duckArrives = rampEnds(duck, duckTo, n, ctx.rampShortest);
     const double duckAttack = 1.0 - smoothing(kDuckAttack, sampleRate);
     const double duckRelease = 1.0 - smoothing(kDuckRelease, sampleRate);
     // The low-pass fades in over the first tenth of its travel, so the tone knob has no step at the middle.
@@ -107,6 +108,8 @@ double Delay::run(const Context &ctx, float *const *io, uint32_t n) {
         io[1][s] = static_cast<float>(x[1] * dry + (middle - side) * heard);
         peak = std::max({peak, std::abs(x[0]), std::abs(x[1]), std::abs(echo[0]), std::abs(echo[1])});
     }
+    if (duckArrives) // where the steps' sum lands a hair off: back at 0, off by any, it would go on ducking for good
+        duck = duckTo;
     return peak;
 }
 
