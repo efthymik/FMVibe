@@ -2165,15 +2165,15 @@ void View::effectCardWidgets(std::vector<Widget> &list, int slot, Rect card) con
         break;
     case FxType::Phaser:
     case FxType::Flanger: {
-        // Under the display: at the left, over the Rate knob, SYNC (the delay's metronome), then STEREO, two
-        // switches of their own; at the right the polarity, + and - as one choice. Synced, the Rate knob
+        // Under the display: at the left, over the Rate knob, SYNC (the delay's metronome), in the middle STEREO (two
+        // speakers facing apart), two switches of their own; at the right the polarity, + and - as one choice. Synced, the Rate knob
         // picks a note value and shows it as its label.
         const bool phaser = type == FxType::Phaser;
         const int sync = at(phaser ? FxParam::PhaserSync : FxParam::FlangerSync);
         const Rect display = fxDisplayIn(card, type);
         const float under = display.bottom() + 4.0f;
         add(Kind::Toggle, {display.x, under, 32.0f, 18.0f}, sync);
-        add(Kind::Toggle, {display.x + 36.0f, under, 60.0f, 18.0f},
+        add(Kind::Toggle, {display.center().x - 22.0f, under, 44.0f, 18.0f},
             at(phaser ? FxParam::PhaserStereo : FxParam::FlangerStereo));
         const int negative = at(phaser ? FxParam::PhaserNegative : FxParam::FlangerNegative);
         const size_t polarity = list.size();
@@ -4203,13 +4203,9 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                            : w.param == paramIndex(GlobalParam::Mono) ? tr(w.b == 0 ? Str::SwitchPoly : Str::SwitchMono)
                            : w.param == paramIndex(GlobalParam::Legato) ? tr(Str::SwitchLegato)
                            : field == FxParam::ShaperMode               ? tr(clipModes[std::clamp(w.b, 0, 2)])
-                           : field == FxParam::PhaserStereo || field == FxParam::FlangerStereo ||
-                                     field == FxParam::AmpStereo
-                               ? tr(Str::SwitchStereo)
                            : field == FxParam::AmpMic ? tr(kMicShortNames[std::clamp(w.b, 0, 2)])
                            : field == FxParam::MdRms                                            ? tr(Str::SwitchRms)
                            : field == FxParam::FlangerThroughZero ? tr(Str::SwitchThroughZero)
-                           : opOfField(w.param, OpParam::Sync) >= 0                     ? tr(Str::SwitchHardSync)
                            : isJoinSolo(w.param)                                                ? tr(Str::SwitchSolo)
                                                                                                : tr(Str::SwitchAlways);
         // LFO switches take their LFO's color, effect switches the effects' color.
@@ -4260,6 +4256,10 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                          on ? litInk(color) : (hovered ? kText : kDim), switchIconScale());
         else if (sourceFieldOf(w.param) == SourceParam::Bipolar) // a Random card's: either one, as a MODS row's
             polarityIcon(c, w.rect.center(), w.b == 1, on ? litInk(color) : (hovered ? kText : kDim), switchIconScale());
+        else if (field == FxParam::PhaserStereo || field == FxParam::FlangerStereo || field == FxParam::AmpStereo)
+            stereoIcon(c, w.rect.center(), on ? litInk(color) : (hovered ? kText : kDim)); // named in its tooltip
+        else if (opOfField(w.param, OpParam::Sync) >= 0) // NOTE, named in its tooltip
+            noteIcon(c, w.rect.center(), on ? litInk(color) : (hovered ? kText : kDim));
         else
             c.text(w.rect, text, kTextLabel, on ? litInk(kText) : kDim, Align::Center, on);
         break;
@@ -5623,6 +5623,8 @@ void View::paintTooltip(Canvas &c) {
         text = tr(Str::TipRms);
     else if (field == FxParam::PhaserStereo || field == FxParam::FlangerStereo)
         text = tr(Str::TipStereo);
+    else if (field == FxParam::AmpStereo) // its icon's name, as the param's
+        text = tr(Str::ParamAmpStereo);
     else if (field == FxParam::FlangerThroughZero)
         text = tr(Str::TipThroughZero);
     else if (isMorphMode(param))

@@ -178,7 +178,7 @@ inline Rect warpButton(int warp) {
     return {kInspector.x + 16.0f + warp * 26.0f, kOpControlsY - 11.0f, 26.0f, 22.0f};
 }
 constexpr Point kWarpAmountKnob{kInspector.x + 210.0f, kOpControlsY};
-constexpr Rect kSyncButton{kInspector.x + kInspector.w - 16.0f - 46.0f, kOpControlsY - 11.0f, 46.0f, 22.0f};
+constexpr Rect kSyncButton{kInspector.x + kInspector.w - 16.0f - 32.0f, kOpControlsY - 11.0f, 32.0f, 22.0f};
 // Inputs: a row per route into the operator, its source's name, its mode's buttons, the mode's name and its depth,
 // with room under the depth for its modulations' handles, inside the tall well. Past the rows the tab holds, they
 // scroll, with a bar at their right; drawn and hit within kInputsList, which leaves room for the ranges on the first
@@ -1084,7 +1084,7 @@ inline Rect ampCabDisplay(Rect card) {
     return {right.x, card.y + 72.0f, right.w, 76.0f};
 }
 inline Rect ampStereoButton(Rect card) {
-    return {ampLeft(card).x, card.y + 154.0f, 64.0f, 18.0f};
+    return {ampLeft(card).center().x - 22.0f, card.y + 154.0f, 44.0f, 18.0f}; // centered under the amp's display
 }
 inline Rect ampMicChoice(Rect card, int mic) {
     const Rect right = ampRight(card);

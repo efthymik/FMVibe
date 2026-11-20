@@ -326,6 +326,34 @@ void polaritySign(Canvas &c, Point m, bool minus, Color color) {
         c.line({m.x, m.y - 4.5f}, {m.x, m.y + 4.5f}, color, 1.6f);
 }
 
+void stereoIcon(Canvas &c, Point m, Color color) {
+    for (const float side : {-1.0f, 1.0f}) { // a speaker each side, its cone opening outward
+        const float back = m.x + side * 9.0f, mouth = m.x + side * 5.5f;
+        const Point body[] = {{back, m.y - 2.0f}, {m.x + side * 11.5f, m.y - 2.0f}, {m.x + side * 11.5f, m.y + 2.0f},
+                              {back, m.y + 2.0f}};
+        const Point cone[] = {{back, m.y - 2.0f}, {mouth, m.y - 5.0f}, {mouth, m.y + 5.0f}, {back, m.y + 2.0f}};
+        c.fillPolygon(body, std::size(body), color);
+        c.fillPolygon(cone, std::size(cone), color);
+    }
+}
+
+void noteIcon(Canvas &c, Point m, Color color) {
+    // Its head an ellipse tilted up to the right, low and left of the middle; its stem up from the head's right; its
+    // flag curling down to the right from the stem's top.
+    const Point head{m.x - 1.8f, m.y + 3.8f};
+    constexpr float kTilt = -0.35f, kRx = 3.2f, kRy = 2.2f;
+    Point ellipse[16];
+    for (int i = 0; i < 16; ++i) {
+        const float a = i * 2.0f * kPi / 16.0f, x = kRx * std::cos(a), y = kRy * std::sin(a);
+        ellipse[i] = {head.x + x * std::cos(kTilt) - y * std::sin(kTilt), head.y + x * std::sin(kTilt) + y * std::cos(kTilt)};
+    }
+    c.fillPolygon(ellipse, std::size(ellipse), color);
+    const float stem = head.x + 2.8f;
+    c.line({stem, head.y - 0.8f}, {stem, m.y - 6.0f}, color, 1.4f);
+    const Point flag[] = {{stem, m.y - 6.0f}, {stem + 2.2f, m.y - 4.2f}, {stem + 3.6f, m.y - 2.4f}, {stem + 3.0f, m.y - 0.2f}};
+    c.polyline(flag, std::size(flag), color, 1.4f);
+}
+
 void polarityIcon(Canvas &c, Point m, bool bipolar, Color color, float scale) {
     const std::vector<double> key{static_cast<double>(Curve::PolarityIcon), m.x, m.y, bipolar ? 1.0 : 0.0, scale};
     const std::vector<Point> points = icons.get(key, [&] {

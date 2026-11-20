@@ -1295,14 +1295,14 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     the right end of its line over the shared knobs), centered on the card under its display; for a Custom curve the shaper's Symmetric shows left of it, a curve
     rising to level off, its left half the right one turned over, the two centered together. The shaper's curve's list takes the whole row above the display. Every effect with a Sync
     has that metronome: the phaser and flanger at the left under their displays (a button of its own, STEREO
-    another beside it, and their polarity's + | − at the right), over their Rate knob, which, synced, picks a note
+    another in the middle, two speakers facing apart, and their polarity's + | − at the right), over their Rate knob, which, synced, picks a note
     value and shows it as its label, as the delay's time knobs do. The chorus has its voices, 2 | 3 | 4 | 6, in the
     middle under its display, and its knobs in two rows, Rate, Depth and Delay above Feedback, Spread and Mix. The filter's slope is a list under its display, like a voice filter's (see the inspector) and a split's. The filter's
     knobs come in two rows, Cutoff, Reso and Key Track above Drive and Mix, and so do the
     frequency shifter's, Range, Shift and Spread above Feedback and Mix.
 
     The amp's card is 1.85 places wide, the amp on the left and the cabinet on the right with a faint line between, in
-    the order the sound goes through them. The amp's side: the model's list, its display, STEREO under it, and Gain,
+    the order the sound goes through them. The amp's side: the model's list, its display, STEREO centered under it (the phaser's two speakers), and Gain,
     Volume and Presence over Bass, Mid and Treble. The cabinet's side: its
     power symbol, then the cabinets' list, its display, the mic's three (DYN, CND, RIB) under it, and Position and
     Distance over Output and Mix. With the cabinet off, its display, the mic's switch and Position and Distance dim,
@@ -1734,7 +1734,7 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
       With no note playing, the wave's plain shape shows faintly; warped or synced, the wave as they make
       it (synced, the note's cycles, the operator's own restarting in each) shows in the accent over the plain one.
       The warp's name and amount, and NOTE SYNC while synced to the note, run along the display's bottom. Under it,
-      the warps as buttons, each a sine as it warps it (named in its tooltip), the Amount knob and the NOTE switch
+      the warps as buttons, each a sine as it warps it (named in its tooltip), the Amount knob and the NOTE switch, an eighth note,
       (Note Sync, named in its tooltip). The audio thread captures only while the tab is shown. The summary line names the warp and says "note
       sync" while either is on. (The scope and the warp had a tab each before; a layout saved on the scope's opens
       this one.)

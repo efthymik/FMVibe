@@ -3579,6 +3579,12 @@ void renderNewEffects(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove({600.0f, 328.0f}, {});
     check(turned && renderer.save(view, dir / "27-new-effects.png") && fxChain(model).size() == 5,
           "render a synced stereo phaser and a flanger mid-sweep, a phase disperser, a filter's spectrum and an widener");
+    // The flanger's STEREO is two speakers facing apart, not a word: the left one's cone drawn in the lit ink over the
+    // lit face, and nothing in the middle between them (read off the rendered pixels).
+    const Point speakers{stereo.x, stereo.y + 5.0f}; // the button's middle, a little under where it was clicked
+    const uint32_t stereoFace = renderer.pixel({speakers.x - 18.0f, speakers.y + 4.0f});
+    check(renderer.pixel({speakers.x - 7.0f, speakers.y}) != stereoFace && renderer.pixel(speakers) == stereoFace,
+          "the flanger's STEREO shows two speakers");
     // Its response follows the note its key tracking does, like a voice filter's: at 100 %, a C7 takes a 2 kHz
     // low-pass three octaves up, so 7 kHz, 22 dB down at C4, is filled down from -12 dB.
     model.set(paramIndex(3, FxParam::FilterCutoff), normFromCutoff(2000.0));
@@ -12121,7 +12127,14 @@ void run(const std::filesystem::path &dir, float scale) {
         click(view, detail::kSyncButton.center());
         const bool synced = model.value(sync) == 1.0;
         view.mouseMove({600.0f, 328.0f}, {});
-        check(renderer.save(view, dir / "3w-warp-sync.png") && synced, "the NOTE switch turns note sync on");
+        // Its button an eighth note, not a word: the note's head, low and left of the middle, drawn in the lit ink
+        // over the lit face (read off the rendered pixels).
+        const Rect note = detail::kSyncButton;
+        const bool noteShot = renderer.save(view, dir / "3w-warp-sync.png");
+        const uint32_t head = noteShot ? renderer.pixel({note.center().x - 1.8f, note.center().y + 3.8f}) : 0u;
+        const uint32_t face = noteShot ? renderer.pixel({note.x + 4.0f, note.y + 4.0f}) : 0u;
+        check(noteShot && synced, "the NOTE switch turns note sync on");
+        check(head != 0u && face != 0u && head != face, "the NOTE switch shows an eighth note");
         view.undo(); // sync
         const bool syncUndone = model.value(sync) == 0.0;
         model.set(paramIndex(0, OpParam::Ratio), normFromRatio(1.0));

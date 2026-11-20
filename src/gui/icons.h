@@ -113,6 +113,11 @@ void lfoClockIcon(Canvas &c, Point m, LfoClock clock, Color color, float scale =
 void polarityIcon(Canvas &c, Point m, bool bipolar, Color color, float scale = 1.0f);
 // A plus, or a minus: the phaser's and flanger's polarity.
 void polaritySign(Canvas &c, Point m, bool minus, Color color);
+// Two speakers facing apart, about 23 x 10 around `m`: STEREO, the phaser's and flanger's sides swept apart and the
+// amp's two sides played apart.
+void stereoIcon(Canvas &c, Point m, Color color);
+// An eighth note, about 9 x 12 around `m`: an operator's NOTE switch, its wave restarted with each cycle of the note.
+void noteIcon(Canvas &c, Point m, Color color);
 // How a route acts on the operator it goes into, about 10 x 10 around `m` (times `scale`): Phase a phi (a ring with a stroke through
 // it), Linear FM a straight rising line, Exp FM a curve rising ever faster, Ring a ring with a cross in it.
 void routeModeIcon(Canvas &c, Point m, RouteMode mode, Color color, float scale = 1.0f);

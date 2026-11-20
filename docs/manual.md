@@ -307,7 +307,7 @@ The **warp** buttons choose how the operator's waveform is reshaped, and **Amoun
 Amount can be modulated, for example an LFO on Squeeze for PWM. Changing
 warps never clicks.
 
-**NOTE** switches on **Note Sync** (hard sync to the note). Each cycle of the note's pitch restarts the operator's
+The **note** button (an eighth note) switches on **Note Sync** (hard sync to the note). Each cycle of the note's pitch restarts the operator's
 wave, so the operator's ratio sets the timbre while the pitch stays on the note. Sweep the ratio with an envelope or
 LFO for the classic sync sweep. Any operator can sync, carriers and modulators alike. Warp and Note Sync can be
 combined.
@@ -951,7 +951,7 @@ A guitar amp followed by a speaker cabinet and a microphone.
 - **Gain**: preamp drive. **Bass**, **Mid**, **Treble**: the tone stack, interacting as on a real amp (the Bass model
   has an active EQ instead). **Presence**: a high shelf into the power amp. **Volume**: power amp drive, with sag.
   These knobs read 0 to 10.
-- **Stereo** (off by default): one amp per side instead of one on the mono sum.
+- **Stereo** (the two-speakers button, off by default): one amp per side instead of one on the mono sum.
 - **Cabinet** (on by default): **1x12 Open**, **2x12 Open**, **4x12 Closed** (default), **4x10 Bass** or
   **1x15 Bass**.
 - **Mic**: **Dynamic** (default), **Condenser** or **Ribbon**. **Position** moves it from the cone's center (bright) to
@@ -1052,7 +1052,7 @@ The display sketches the tail's shape.
 - **Stages** (2–12), **Center**, **Depth** (sweep range), **Rate** (0–20 Hz; 0 stands still) or with **Sync** a note
   value, **Feedback** (positive or negative) and **Mix** (deepest notches at 100 %).
 - **Spread**: moves the notches unevenly apart, for a less regular, more vocal sound.
-- **Stereo**: offsets the right side's sweep by a quarter cycle.
+- **Stereo** (the two-speakers button): offsets the right side's sweep by a quarter cycle.
 - **+ | −**: polarity. Negative moves the notches to where the peaks were.
 
 #### Flanger
