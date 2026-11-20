@@ -825,8 +825,9 @@ private:
         double *noiseMid = nullptr, *noiseSide = nullptr;
         const UnisonGains **copyGains = nullptr;
         const FilterSettings **filter = nullptr;
-        // The voice filters' inputs as the block ramps them (from, to, its share of a control block, over its frames).
-        const FilterInputs *filterFrom = nullptr, *filterTo = nullptr;
+        // The voice filters' inputs as the block ramps them (from, to, its share of a control block, over its frames):
+        // copies, so renderBlock()'s own stay its alone.
+        std::array<FilterInputs, kFilters> filterFrom{}, filterTo{};
         double filterShare = 1.0;
         uint32_t frames = 1;
         // The filters that follow the voice's Pitch as the operators move it (key-tracked), and those whose cutoff

@@ -19,16 +19,17 @@ struct FilterFx {
     // Its settings, and the params (and pitch, while it tracks the key) they were worked out from: NaN until the
     // first chunk, so worked out again only when one moves (see run()).
     FilterSettings settings;
-    std::array<double, 10> settingsFor{std::numeric_limits<double>::quiet_NaN()};
+    FilterInputs settingsFor{std::numeric_limits<double>::quiet_NaN()};
     // Those inputs as they ramp to the chunk's, the continuous ones as a gain does (see rampStep()), so modulation
     // doesn't step the filter every control block: NaN until the first chunk, which takes them as they are. And the
     // chunk's ramp: where they go from and to, how far each moves a sample, whether they get there, whether they move
     // at all, the chunk's length, and what the settings scale the outputs by at the step's start and end (see
     // FilterGains), and the step's length.
-    std::array<double, 10> inputsNow{std::numeric_limits<double>::quiet_NaN()};
+    FilterInputs inputsNow{std::numeric_limits<double>::quiet_NaN()};
     struct Ramp {
-        std::array<double, 10> from{}, to{}, step{};
+        FilterInputs from{}, to{}, step{};
         bool arrives = true, moving = false;
+        bool movedLast = false; // whether the last chunk's moved, leaving the outputs scaled by gainsTo
         uint32_t n = 0, length = 1;
         FilterGains gainsFrom{}, gainsTo{};
     } ramp;
@@ -45,9 +46,8 @@ struct FilterFx {
     double run(const Context &ctx, float *const *io, uint32_t n);
 
 private:
-    // Its settings from its inputs; and taken up when they differ from those last taken.
-    FilterSettings make(const std::array<double, 10> &inputs) const;
-    void settle(const std::array<double, 10> &inputs);
+    // Its settings from its inputs (see filterSettingsFrom()), taken up when they differ from those last taken.
+    void settle(const FilterInputs &inputs);
     // The ramp at the chunk's sample `s`: its settings worked out anew at a step's start (returning true), what they
     // scale the outputs by glided on (see Ramp).
     bool rampStepAt(uint32_t s);

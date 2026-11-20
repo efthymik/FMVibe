@@ -3645,8 +3645,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     const bool cutoffFm = opSourceMask_ != 0 && voiceFmCount_ > 0 && startCutoffFm(filter);
     if (audioOn) {
         audioRun_.filter = filter.data();
-        audioRun_.filterFrom = filterFrom.data();
-        audioRun_.filterTo = filterTo.data();
+        audioRun_.filterFrom = filterFrom;
+        audioRun_.filterTo = filterTo;
         audioRun_.filterShare = filterShare;
         audioRun_.frames = frames;
         for (int f = 0; f < kFilters && cutoffFm; ++f)
