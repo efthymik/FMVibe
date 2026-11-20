@@ -87,9 +87,7 @@ void View::paintSettings(Canvas &c) {
            Align::Left, true);
     c.text({panel.x + 24.0f, mpeY + 66.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsMpeWhat), kTextLabel, kDim,
            Align::Left);
-    c.text({panel.x + 24.0f, mpeY + 84.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsMpeWhy), kTextLabel, kDim,
-           Align::Left);
-    c.text({panel.x + 24.0f, mpeY + 102.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsMpeSaved), kTextLabel, kFaint,
+    c.text({panel.x + 24.0f, mpeY + 84.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsMpeSaved), kTextLabel, kFaint,
            Align::Left);
     // LOOK: the themes, their main color's hue, the glow, the sources' lines and the depth handles' size.
     const float lookY = panel.y + kSettingsLookY;

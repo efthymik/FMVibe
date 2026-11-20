@@ -834,8 +834,7 @@ STR(SettingsOversamplingSaved, "Not stored in presets.")
 STR(SettingsMpe, "MPE")
 STR(SettingsMpeBend, "BEND") // the member channels' bend range, beside its buttons
 STR(SettingsMpeRange, "{1} st") // a bend range in semitones, on its button
-STR(SettingsMpeWhat, "Requires MPE in the host,")
-STR(SettingsMpeWhy, "unless it sends CLAP note expressions.")
+STR(SettingsMpeWhat, "Requires MPE in the host, unless it sends CLAP note expressions.")
 STR(SettingsMpeSaved, "Not stored in presets.")
 STR(SettingsLook, "LOOK")
 STR(SettingsHue, "HUE") // the theme's main color, beside its slider

@@ -1423,9 +1423,9 @@ inline double partialBarFromLevel(double level) {
 // The settings dialog, centered over the editor: OVERSAMPLING, then MPE (kSettingsMpeY down), then LOOK
 // (kSettingsLookY down), each with its heading, its buttons and its lines under them.
 constexpr float kSettingsW = 380.0f;
-constexpr float kSettingsH = 626.0f;
+constexpr float kSettingsH = 608.0f;
 constexpr float kSettingsMpeY = 184.0f;  // the divider above MPE
-constexpr float kSettingsLookY = 312.0f; // and above LOOK
+constexpr float kSettingsLookY = 294.0f; // and above LOOK
 constexpr int kOversamplingFactors[] = {1, 2, 4, 8};
 constexpr int kMpeBendRanges[] = {12, 24, 48, 96}; // semitones
 inline Rect settingsPanel(float viewHeight) {

@@ -13888,7 +13888,7 @@ void run(const std::filesystem::path &dir, float scale) {
     auto mpeRange = [&](int i) { return Point{dialog.x + 190.0f + i * 42.0f + 19.0f, dialog.y + 228.0f}; };
     auto theme = [&](int i) {
         const float w = (dialog.w - 48.0f + 6.0f) / View::themeCount();
-        return Point{dialog.x + 24.0f + i * w + (w - 6.0f) * 0.5f, dialog.y + 357.0f};
+        return Point{dialog.x + 24.0f + i * w + (w - 6.0f) * 0.5f, dialog.y + detail::kSettingsLookY + 45.0f};
     };
     const Point closeDialog{dialog.right() - 26.0f, dialog.y + 26.0f};
     click(view, cog);
@@ -13954,7 +13954,7 @@ void run(const std::filesystem::path &dir, float scale) {
     // The GLOW slider sets how strongly the graphs' curves glow, on both pages, once it is let go.
     auto glowAt = [&](float amount) {
         const Rect track = detail::settingsGlow(dialog);
-        return Point{track.x + track.w * amount, dialog.y + 429.0f};
+        return Point{track.x + track.w * amount, dialog.y + detail::kSettingsLookY + 117.0f};
     };
     view.mouseDown(glowAt(0.2f), {});
     view.mouseMove(glowAt(0.75f), {});
@@ -13980,7 +13980,7 @@ void run(const std::filesystem::path &dir, float scale) {
     // LINES, under GLOW, sets how strongly a source's dashed lines are drawn, 75 % to begin with, once it is let go.
     auto linesAt = [&](float amount) {
         const Rect track = detail::settingsLinks(dialog);
-        return Point{track.x + track.w * amount, dialog.y + 312.0f + 149.0f};
+        return Point{track.x + track.w * amount, dialog.y + detail::kSettingsLookY + 149.0f};
     };
     const bool linesStart = model.links == 0.75;
     view.mouseDown(linesAt(0.75f), {});
@@ -13997,7 +13997,7 @@ void run(const std::filesystem::path &dir, float scale) {
     // GRID, under LINES: at 50 % to begin with, dragged to its end, double-clicked back to 50 %.
     auto gridAt = [&](float amount) {
         const Rect track = detail::settingsGrid(dialog);
-        return Point{track.x + track.w * amount, dialog.y + 312.0f + 181.0f};
+        return Point{track.x + track.w * amount, dialog.y + detail::kSettingsLookY + 181.0f};
     };
     const bool gridStart = model.grid == EditorSettings::kDefaultGridIntensity;
     view.mouseDown(gridAt(0.5f), {});
@@ -14012,7 +14012,7 @@ void run(const std::filesystem::path &dir, float scale) {
     // begin with; the accent then takes it (read off the rendered pixels: the slider's knob, in the accent).
     auto hueAt = [&](float hue) {
         const Rect track = detail::settingsHue(dialog);
-        return Point{track.x + track.w * hue, dialog.y + 312.0f + 85.0f};
+        return Point{track.x + track.w * hue, dialog.y + detail::kSettingsLookY + 85.0f};
     };
     const bool hueStarts = model.hue < 0.0;
     view.mouseDown(hueAt(0.2f), {});
@@ -14040,8 +14040,8 @@ void run(const std::filesystem::path &dir, float scale) {
                                   "14k-settings-grid-tip.png"};
         bool tips = true;
         for (int i = 0; i < 4; ++i) {
-            const Point under{dialog.x + 176.0f, dialog.y + 312.0f + sliderBottoms[i] + 7.0f};
-            const Point on{dialog.x + 176.0f, dialog.y + 312.0f + sliderYs[i]};
+            const Point under{dialog.x + 176.0f, dialog.y + detail::kSettingsLookY + sliderBottoms[i] + 7.0f};
+            const Point on{dialog.x + 176.0f, dialog.y + detail::kSettingsLookY + sliderYs[i]};
             view.mouseMove({dialog.x + 24.0f, dialog.y + 30.0f}, {});
             renderer.save(view, dir / "14k-settings-no-tip.png");
             const uint32_t bare = renderer.pixel(under);
@@ -14062,7 +14062,7 @@ void run(const std::filesystem::path &dir, float scale) {
     model.links = 0.75;
     // HANDLES picks the depth handles' size, Small to begin with, leaving the patch alone.
     auto handlesButton = [&](int size) {
-        return Point{detail::settingsHandles(dialog, size).center().x, dialog.y + 312.0f + 216.0f};
+        return Point{detail::settingsHandles(dialog, size).center().x, dialog.y + detail::kSettingsLookY + 216.0f};
     };
     const ParamValues handlesBefore = model.values;
     const bool startsSmall = model.handles == 0;
