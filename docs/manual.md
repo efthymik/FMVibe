@@ -378,7 +378,7 @@ that are on, or as a grid, which lists every node.
 - **OUT**, to send it to the output;
 - the node itself, for feedback.
 
-Dragging from inside a node moves it; a click selects it. Every node can feed every other one, and itself.
+Dragging from inside a node moves it; a click selects it.
 
 **Moving connections**:
 
@@ -410,8 +410,7 @@ together with its modulation.
 **Switching nodes on and off**: use the inspector's tabs, the **×** in a circle at a node's upper right (visible
 under the mouse), or the node's right-click menu.
 
-A modulated wire swells and thins with its modulation while notes
-play. Node positions and wire bends are saved with the patch.
+A modulated wire swells and thins with its modulation while notes play.
 
 ### Route modes
 
@@ -530,8 +529,6 @@ effect.
 - A shaper can feed the filters, to distort a sound before or after a filter.
 - A shaper can **modulate operators**, so a modulator can be folded or squared off before it reaches its carrier.
 - Its **To Out** level, set by the label on its line to OUT, sends it to the output (0 by default).
-
-A shaper only uses CPU while it has an input and its output is routed somewhere.
 
 ### Shaper controls
 
@@ -760,13 +757,11 @@ the operator's letter at the top of its page in the inspector, which is its hand
 
 - It follows what the operator plays, after its envelope. The operator doesn't need to be heard: one with its Out at
   0 still modulates. A switched-off operator modulates nothing.
-- **At audio rate**: on anything that shapes a voice's sound, an operator moves it every sample, so a fast one gives
-  sidebands the way FM does. That covers an operator's pitch (Ratio, Pitch, Detune, Freq), Out, Pan, Phase, sends,
-  unison, warp, envelope and noise; the depths of the routes into an operator; a voice filter's and shaper's knobs and
-  routes; and the voice's Pitch, FM Amount and Pan. An operator can modulate its own pitch, level or phase too.
-- Everything else (an effect's knobs, another source's settings, a macro's knob, a modulation's depth) follows the
-  operator more slowly: a slow operator (a fixed one at a few Hz, say) moves it along its wave and envelope; a fast
-  one averages out.
+- **At audio rate**: on the controls inside a voice (the operators', the routes', the voice filters' and shapers',
+  and the global Pitch, FM Amount and Pan), a fast operator gives sidebands the way FM does. An operator can
+  modulate its own pitch, level or phase too.
+- On everything else (an effect's knobs, another source's settings, a macro's knob, a modulation's depth), a slow
+  operator (a fixed one at a few Hz, say) moves it along its wave and envelope; a fast one averages out.
 - **Bipolar** (the default) swings its targets both ways around their setting. **Unipolar** pushes them one way, as
   far as the operator's envelope has risen, so a silent operator moves nothing.
 
@@ -866,7 +861,7 @@ The **FX** tab shows the effects as a **row of cards**, left to right in process
 **A card** has a title row with the effect's icon and name, a fold chevron, a power switch and an **×**, then a live
 display, then its controls. The display reflects modulation as it happens.
 
-- **Power** (or a click on the icon) switches the effect off; a switched-off effect uses no CPU.
+- **Power** (or a click on the icon) switches the effect off.
 - **Drag** the title or icon to move the card along the chain. Hold **Ctrl** as you start dragging to place a copy.
   Dragging to either end of the row scrolls it.
 - **Fold** shrinks the card to a narrow strip.
@@ -901,7 +896,7 @@ main chain. Switching from three bands to two asks where the middle band's effec
 ### The graph view
 
 The switch at the panel's top right shows the effects as a **graph**, with the selected node's card on the right.
-Both views show the same chain; switching changes nothing about the sound.
+Both views show the same chain.
 
 ![FX graph](fx-graph.png)
 
@@ -918,12 +913,11 @@ Both views show the same chain; switching changes nothing about the sound.
 
 ### Seamless editing and latency
 
-Editing the effects while sound plays never clicks: wires fade in and out, moved effects crossfade, and removed
-effects fade out. The Shaper, Filter and Amp effects add a little latency, and a Flanger with TZF on adds 6.5 ms.
-FMVibe keeps all paths through the effects time-aligned and reports the latency to your host.
+Editing the effects while sound plays never clicks: added, moved and removed effects fade in and out. The Shaper,
+Filter and Amp effects add a little latency, and a Flanger with TZF on adds 6.5 ms. FMVibe reports it to your host,
+which makes up for it.
 
-Effects that are switched off, or whose output isn't used, cost no CPU, and the effects rest once everything has rung
-out.
+A switched-off effect uses no CPU.
 
 ### Effect reference
 
@@ -951,8 +945,6 @@ A waveshaper for saturation and distortion.
 - **Link** (on by default): keeps the level roughly constant as Drive rises.
 - **Oversampling** (right-click menu): 2x (default), 4x or 8x. Higher values reduce aliasing at high drive and cost
   more CPU.
-
-The shaper stays clean even at high drive.
 
 #### Amp
 
@@ -1095,7 +1087,7 @@ The sound around Freq is delayed and smeared into a chirp, at full level. **Mix*
 
 #### Widener
 
-A dimension-style stereo expander. The sound above **Cutoff** (20 Hz–2 kHz) goes through four slowly modulated short
+A dimension-style stereo expander. The sound above **Cutoff** (20 Hz–2 kHz) goes through slowly moving short
 delays. **Size** sets their length, from a tight doubling to a wide chorus; **Width** sets how much becomes stereo
 sides; **Mix** sets how much is added. The lows stay centered.
 
@@ -1260,7 +1252,7 @@ Delete, Select All, Slide, Mute and **Quantize** (moves the selected notes onto 
 
 ### Sequencer behavior
 
-Sequenced notes play with exact timing and use voices like any other notes (stealing, mono, legato and glide). The
+Sequenced notes use voices like any other notes (stealing, mono, legato and glide). The
 keyboard strip lights only the keys you play, not the sequencer's notes. Jumping the transport or changing Rate while
 playing restarts from the new position. The sequencer's settings, except Root and Scale, can be automated by your
 host; patterns, notes and curves are edited in the plugin only.
@@ -1293,10 +1285,9 @@ host; patterns, notes and curves are edited in the plugin only.
 
 ### Voices
 
-**Voices** sets the polyphony limit (1–512, 16 by default). When voices run out, the quietest or oldest voice is
-stolen, fading out quickly so it doesn't click. Lowering the limit takes effect at once. Raising it can ask the
-host to restart the plugin briefly (most hosts do this automatically). For the same reason, Voices cannot be
-automated.
+**Voices** sets the polyphony limit. When voices run out, the quietest or oldest voice is stolen, fading out quickly
+so it doesn't click. Lowering the limit takes effect at once; raising it restarts the plugin briefly (see
+[Latency and restarts](#latency-and-restarts)). Voices can't be automated.
 
 ### Sustain pedal and MIDI panic
 
@@ -1524,15 +1515,13 @@ An open list or menu, such as a filter's type list, the list of effects or the l
 
 ### Automation
 
-Hosts see all automatable parameters: the global controls, play modes, operators, routes and their modes, filters,
-shapers, the macros, the Mod Wheel and Pitch Bend, the Note and Velocity settings, the operators' polarity as sources
-(Op A to Op F Bipolar), the sequencer's settings, and the depth and Amount of every modulation slot. Your host can
-record edits made in the plugin window as automation.
+Your host can automate the global controls, play modes, operators, routes, filters, shapers, macros, the wheels, the
+Note and Velocity settings, the sequencer's settings, and the depth and Amount of every modulation. It can record edits
+made in the plugin window as automation.
 
-The effects, the modulation sources' own controls (LFO rates and so on), modulation targets, drawn shapes and the
-effects routing are set in the plugin window only. They are saved with the project and in presets and can be modulated
-by the plugin's modulation sources, but not automated directly. **To automate any of these from your DAW, assign a macro
-to it and automate the macro.**
+The effects, the modulation sources' own controls (LFO rates and so on), modulation targets and drawn shapes are set
+in the plugin window only. They can be modulated inside FMVibe, but not automated directly. **To automate any of these
+from your DAW, assign a macro to it and automate the macro.**
 
 Loading a preset does not create automation or host undo steps; your host only marks the project as changed.
 
@@ -1558,7 +1547,7 @@ In hosts that show CLAP remote control pages (such as Bitwig Studio), FMVibe off
 
 - MIDI controllers, pressure, pitch bend, MIDI sources and MPE work as in the CLAP version.
 - Note expressions: Volume, Pan, Tuning, Brightness (a note's slide) and Pressure.
-- Parameters are grouped in units (Operators, Op A, Filters and so on).
+- Parameters are grouped (Operators, Op A, Filters and so on).
 - VST3 has no per-voice host modulation and no remote control pages; automate parameters instead.
 
 ### Latency and restarts
