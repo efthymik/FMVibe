@@ -1176,9 +1176,7 @@ one may have changed since it last did.
     does. Its knobs go in rows across it, under the display: three to a row 30 px across (36 in the one row of a card
     that has one), and on a card one place wide, four to a row 26 px across and five 24, leaving room between them
     for their labels (a wider card's keep 32 px); a label stays as wide as a 32 px knob's, so a value still fits
-    under a smaller knob. A row's labels are spread out together: each as near its knob as keeps it 6 px from its
-    neighbors' and 7 px inside the card's sides (a long one at a row's end moves in, and the one beside it along),
-    the value shown under the mouse in its label's place:
+    under a smaller knob:
     - the shaper's transfer curve; a Custom curve shows its own points and bends instead, to drag right there
       (double-click adds or deletes a point, Ctrl snaps to the grid), with what the drive, output and mix make of
       it faintly behind and the point under the mouse in numbers; its edit button (a pencil, at the right of its curve's

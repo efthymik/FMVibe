@@ -7,7 +7,6 @@
 #include "canvas.h"
 
 #include <algorithm>
-#include <array>
 #include <cstddef>
 #include <string>
 #include <string_view>
@@ -294,16 +293,6 @@ struct Widget {
     // A stepper's field (see isStepper()): drawn in place of its knob, and hit as its rect is. It may reach past the
     // rect's sides, as far as the widgets beside it leave room.
     Rect well{};
-    // Where a knob's label may reach, its sides (an effect card's inside), and the row of knobs it is one of there:
-    // their params, labels and centers across, left to right, and its place among them. The row's labels are spread
-    // out together, each as near its knob as keeps it clear of its neighbors' and inside the room (see
-    // View::knobLabelX()). labelRoom.w is 0 for none.
-    static constexpr int kLabelRowMax = 6;
-    Rect labelRoom{};
-    int labelRowCount = 0, labelRowIndex = 0;
-    std::array<int, kLabelRowMax> labelRowParams{};
-    std::array<const char *, kLabelRowMax> labelRowLabels{};
-    std::array<float, kLabelRowMax> labelRowCenters{};
 
     bool same(const Widget &o) const { return kind == o.kind && param == o.param && a == o.a && b == o.b; }
 };

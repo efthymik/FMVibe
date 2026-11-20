@@ -1953,33 +1953,9 @@ std::vector<View::Widget> View::widgets() const {
 void View::effectCardWidgets(std::vector<Widget> &list, int slot, Rect card) const {
     const WidgetAdder add{list};
     auto merge = [&list](size_t from) { mergeButtons(list, from); };
-    // A knob's label keeps 7 px clear of the card's sides.
-    const Rect labelRoom{card.x + 7.0f, card.y, card.w - 14.0f, card.h};
     auto knob = [&](int param, Point center, float diameter, const char *label) {
         add(Kind::Knob, knobRect(center, diameter), param);
         list.back().label = label;
-        list.back().labelRoom = labelRoom;
-    };
-    // The knobs added since `from`, a row across the card: each told of the others, so their labels spread out
-    // together.
-    auto joinRow = [&list](size_t from) {
-        std::vector<size_t> row;
-        for (size_t k = from; k < list.size(); ++k)
-            if (list[k].kind == Kind::Knob && list[k].labelRoom.w > 0.0f)
-                row.push_back(k);
-        if (row.size() < 2 || row.size() > static_cast<size_t>(Widget::kLabelRowMax))
-            return;
-        for (size_t i = 0; i < row.size(); ++i) {
-            Widget &w = list[row[i]];
-            w.labelRowCount = static_cast<int>(row.size());
-            w.labelRowIndex = static_cast<int>(i);
-            for (size_t j = 0; j < row.size(); ++j) {
-                const Widget &o = list[row[j]];
-                w.labelRowParams[j] = o.param;
-                w.labelRowLabels[j] = o.label;
-                w.labelRowCenters[j] = o.rect.center().x;
-            }
-        }
     };
     // A drawn shaper curve is edited right in its display, as in the big editor its edit button (beside its curve's
     // list, ClipDisplay) opens.
@@ -1992,7 +1968,6 @@ void View::effectCardWidgets(std::vector<Widget> &list, int slot, Rect card) con
         // Four or more across a card of the usual width take smaller knobs, leaving room between them for their
         // labels; a wide card's keep their size.
         const bool narrow = card.w < 1.5f * kFxCardW;
-        const size_t from = list.size();
         const float diameter = params.size() > 4 && narrow   ? 24.0f
                                : params.size() > 3 && narrow ? 26.0f
                                : params.size() > 3           ? 32.0f
@@ -2002,7 +1977,6 @@ void View::effectCardWidgets(std::vector<Widget> &list, int slot, Rect card) con
             if (params.begin()[i] >= 0) // -1 leaves its place empty
                 knob(params.begin()[i], {card.x + step * (static_cast<float>(i) + 0.5f), card.y + y}, diameter,
                      labels.begin()[i]);
-        joinRow(from);
     };
     switch (type) {
     case FxType::Shaper: {
@@ -2140,11 +2114,9 @@ void View::effectCardWidgets(std::vector<Widget> &list, int slot, Rect card) con
         auto row = [&](std::initializer_list<int> params, std::initializer_list<const char *> labels, float y,
                        float diameter) {
             const float step = card.w / static_cast<float>(params.size());
-            const size_t from = list.size();
             for (size_t i = 0; i < params.size(); ++i)
                 knob(params.begin()[i], {card.x + step * (static_cast<float>(i) + 0.5f), card.y + y}, diameter,
                      labels.begin()[i]);
-            joinRow(from);
         };
         row({mdBelowIndex(slot, band), mdUpIndex(slot, band), mdAboveIndex(slot, band), mdDownIndex(slot, band),
              mdGainIndex(slot, band)},
@@ -5148,53 +5120,6 @@ Color View::knobColor(int param) const {
     return kAccent;
 }
 
-float View::knobLabelX(Canvas &c, const Widget &w) const {
-    const int n = w.labelRowCount;
-    if (n < 2) // alone: its own label, moved in from the room's sides
-        return w.rect.center().x;
-    // Each label (or the value of a knob without one) at its knob, then pushed apart where two come nearer than
-    // kGap, half each way, and in from the room's sides, until they settle: each as near its knob as the others let
-    // it. Where they don't fit with kGap between, the gap is what there is.
-    constexpr float kGap = 6.0f;
-    std::array<float, Widget::kLabelRowMax> x{}, half{};
-    float total = 0.0f;
-    for (int i = 0; i < n; ++i) {
-        char text[64];
-        const char *label = w.labelRowLabels[i];
-        if (!label) {
-            formatParam(w.labelRowParams[i], value(w.labelRowParams[i]), text, sizeof(text));
-            label = text;
-        }
-        half[i] = 0.5f * c.textWidth(label, kTextLabel);
-        x[i] = w.labelRowCenters[i];
-        total += 2.0f * half[i];
-    }
-    const float left = w.labelRoom.x, right = w.labelRoom.right();
-    const float gap = std::clamp((right - left - total) / static_cast<float>(n - 1), 0.0f, kGap);
-    for (int pass = 0; pass < 64; ++pass) {
-        bool moved = false;
-        for (int i = 0; i + 1 < n; ++i) {
-            const float short_ = half[i] + half[i + 1] + gap - (x[i + 1] - x[i]);
-            if (short_ > 0.01f) {
-                x[i] -= 0.5f * short_;
-                x[i + 1] += 0.5f * short_;
-                moved = true;
-            }
-        }
-        if (x[0] - half[0] < left) {
-            x[0] = left + half[0];
-            moved = true;
-        }
-        if (x[n - 1] + half[n - 1] > right) {
-            x[n - 1] = right - half[n - 1];
-            moved = true;
-        }
-        if (!moved)
-            break;
-    }
-    return x[w.labelRowIndex];
-}
-
 void View::paintKnob(Canvas &c, const Widget &w) {
     const ParamDef &def = table_[w.param];
     const bool focused = isHovered(w) || isActive(w);
@@ -5286,21 +5211,11 @@ void View::paintKnob(Canvas &c, const Widget &w) {
         c.text({w.rect.x + textX, w.rect.y + labelY, textWidth, 16.0f}, w.label, kTextLabel, kDim, Align::Left);
         c.text({w.rect.x + textX, w.rect.y + valueY, textWidth, 18.0f}, shown, kTextValue, kText, Align::Left, true);
     } else {
-        // As wide as a 32 px knob's at the least, so a smaller knob's value still fits under it; centered under the
-        // knob, but moved in from the sides of the room it has, where it would reach past them.
-        const std::string words = focused || !w.label ? shown : std::string(w.label);
-        float labelW = std::max(w.rect.w + 28.0f, 60.0f);
-        float labelX = center.x;
-        if (w.labelRoom.w > 0.0f) {
-            // Where its row puts its label; the value shown instead under the mouse goes there too, kept inside.
-            labelX = knobLabelX(c, w);
-            const float half = 0.5f * std::min(c.textWidth(words, kTextLabel), w.labelRoom.w);
-            labelX += std::max(0.0f, w.labelRoom.x - (labelX - half)) -
-                      std::max(0.0f, labelX + half - w.labelRoom.right());
-            labelW = std::max(labelW, 2.0f * half + 2.0f);
-        }
-        const Rect label{labelX - labelW * 0.5f, w.rect.y + w.rect.w + 2.0f, labelW, 16.0f};
-        c.text(label, words, kTextLabel, focused ? kText : kDim);
+        // As wide as a 32 px knob's at the least, so a smaller knob's value still fits under it.
+        const float labelW = std::max(w.rect.w + 28.0f, 60.0f);
+        const Rect label{center.x - labelW * 0.5f, w.rect.y + w.rect.w + 2.0f, labelW, 16.0f};
+        c.text(label, focused || !w.label ? shown : std::string(w.label), kTextLabel,
+               focused ? kText : kDim);
     }
 }
 
