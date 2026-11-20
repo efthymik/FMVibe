@@ -161,8 +161,7 @@ sequencer pattern plays as it was made. In a DAW, loading a preset never changes
   effects are driven.
 - **FM Amount**: scales every route in the routing at once, a quick way to make a patch duller or brighter.
 - **Pitch**: transposes the whole instrument by up to ±48 semitones. A useful envelope target for drums.
-- **Bend**: the pitch bend range in semitones for MIDI pitch bend and the Bend wheel. It is a setting, so it takes no
-  modulation.
+- **Bend**: the pitch bend range in semitones for MIDI pitch bend and the Bend wheel. It can't be modulated.
 - **Pan**: the stereo position of the whole instrument.
 - **Poly | Mono**, **Legato**, **Glide** and **Always**: the play modes. See [Play modes](#play-modes).
 - **Voices**: the polyphony limit, 1–512 (16 by default), with the number of voices playing beside it.
@@ -183,8 +182,8 @@ The inspector has a tab for each node: operators A–F, filters F1 and F2, and s
 
 Under the tabs, the page title shows the node's letter and a **summary line**, for example
 `A Saw · 1.20 · ×4 · to F1`: the wave, ratio, unison copies and destinations. On an operator's page, the letter is
-also the operator's modulation handle: drag it onto a control to modulate it with the operator's output (see
-[Operators as sources](#operators-as-sources)). While a node is off, its page is dimmed, but its controls still work.
+its modulation handle (see [Operators as sources](#operators-as-sources)). While a node is off, its page is dimmed,
+but its controls still work.
 
 A switched-off operator is silent and uses no CPU. Its settings and connections are kept for when you switch it on
 again.
@@ -583,7 +582,7 @@ a stepper or the Ratio readout. A new modulation starts at +30 %.
 
 While you drag a handle, hold it over a view tab (ROUTING, MATRIX, FX, SEQ or MODS) for half a second to show that
 view, then drop it on a control there. Hold it over a node in ROUTING, or over a node's name in MATRIX, for half a
-second, or over its tab at the top of the inspector, to show that node's page in the inspector. Passing over a tab or a node on the way shows nothing.
+second, or over its tab at the top of the inspector, to show that node's page in the inspector.
 
 The target then shows:
 
@@ -764,9 +763,9 @@ the operator's letter at the top of its page in the inspector, which is its hand
   sidebands the way FM does. That covers an operator's pitch (Ratio, Pitch, Detune, Freq), Out, Pan, Phase, sends,
   unison, warp, envelope and noise; the depths of the routes into an operator; a voice filter's and shaper's knobs and
   routes; and the voice's Pitch, FM Amount and Pan. An operator can modulate its own pitch, level or phase too.
-- Everything else (an effect's knobs, another source's settings, a macro's knob, a modulation's depth) is updated
-  every 32 samples. An effect glides smoothly from one update to the next. There, a slow operator (a fixed one at a
-  few Hz, say) moves it along its wave and envelope; a fast one averages out.
+- Everything else (an effect's knobs, another source's settings, a macro's knob, a modulation's depth) follows the
+  operator more slowly: a slow operator (a fixed one at a few Hz, say) moves it along its wave and envelope; a fast
+  one averages out.
 - **Bipolar** (the default) swings its targets both ways around their setting. **Unipolar** pushes them one way, as
   far as the operator's envelope has risen, so a silent operator moves nothing.
 
@@ -945,8 +944,8 @@ A waveshaper for saturation and distortion.
   - **Custom**: a curve you draw, from the quietest input to the loudest. Edit it on the card or open the large
     editor with the **pencil** button. **Symmetric** (SYM) mirrors its upper half onto its lower half.
 - **Drive** (0–36 dB), **Output**, **Mix**.
-- **Tone** (−100 % to +100 %): turn it left for a warmer distortion, right for a brighter one. It changes only what
-  the curve drives; a quiet sound passes unchanged.
+- **Tone** (−100 % to +100 %): turn it left for a warmer distortion, right for a brighter one. Quiet sounds pass
+  unchanged.
 - **Link** (on by default): keeps the level roughly constant as Drive rises.
 - **Oversampling** (right-click menu): 2x (default), 4x or 8x. Higher values reduce aliasing at high drive and cost
   more CPU.
@@ -1017,8 +1016,8 @@ the output spectrum behind it. See [Filters](#8-filters).
 
 A stereo-linked, peak-sensing compressor: **Threshold** (−60–0 dB), **Ratio** (1:1–20:1), **Knee** (0–24 dB),
 **Attack** (1–500 ms), **Release** (1 ms–2 s), **Gain** (makeup, 0–24 dB) and **Mix** for parallel compression.
-**SC HP** (Off, or 20–500 Hz) keeps the bass below it from pumping the rest: the compressor stops reacting to it,
-though it still hears it. The display shows the transfer curve and gain reduction.
+With **SC HP** (Off, or 20–500 Hz), the compressor ignores the bass below it, so a loud bass doesn't pump the rest.
+The bass itself still passes through. The display shows the transfer curve and gain reduction.
 
 #### 3-Band Dynamics
 
@@ -1048,10 +1047,14 @@ A dense algorithmic reverb with four algorithms:
   sets the interval (±24 semitones, an octave up by default) and **Shimmer** how much comes back.
 
 Controls: **Size**, **Decay** (0.2–20 s), **Damp** (the frequency above which the tail decays faster), **Pre**
-(pre-delay, up to 250 ms), **Diffuse** (how quickly the echoes blend into a smooth tail: turn it down for distinct,
-grainy echoes that fill in slowly; heard best on drums and plucks), **Width**, **Low Cut** (Off, or up to 1 kHz) and **High Cut** (from 1 kHz up) to
-thin out and darken the reverb without touching the dry sound, and **Mix** (dry signal at full level up to 50 %). The
-display sketches the tail's shape.
+(pre-delay, up to 250 ms), **Width** and **Mix** (dry signal at full level up to 50 %).
+
+- **Diffuse** sets how quickly the echoes blend into a smooth tail. Turn it down for distinct, grainy echoes, heard
+  best on drums and plucks.
+- **Low Cut** (Off, or up to 1 kHz) and **High Cut** (from 1 kHz up) thin out and darken the reverb without touching
+  the dry sound.
+
+The display sketches the tail's shape.
 
 #### Phaser
 
@@ -1067,8 +1070,8 @@ display sketches the tail's shape.
 - **Stereo** (on by default) and **+ | −** polarity, as on the phaser. Negative gives the thin-bottomed negative
   flange.
 - **TZF** (through-zero): the sweep passes through the dry sound, cancelling it at its middle, for the deep,
-  tape-style jet sweep. Best with Mix at 100 %. It delays the flanger's whole sound by 6.5 ms, whatever the knobs
-  say. FMVibe keeps other paths in step with it and reports the delay to your host.
+  tape-style jet sweep. Best with Mix at 100 %. It delays the flanger's sound by 6.5 ms (see
+  [Seamless editing and latency](#seamless-editing-and-latency)).
 
 #### Chorus
 
