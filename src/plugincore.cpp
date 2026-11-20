@@ -83,8 +83,7 @@ bool PluginCore::activate(double sampleRate) {
         return false;
     }
     outOfMemory_.store(false);
-    for (int kind = 0; kind < FxLag::kKinds; ++kind)
-        pathDelays_[kind] = upDownDelay(sampleRate, FxLag::factorOf(kind));
+    pathDelays_ = fxLagDelays(sampleRate);
     voicesDelay_ = decimatorDelay(sampleRate, synth_.oversampling());
     latency_.store(latencyNow());
     restartAskedFor_.store(0);
@@ -100,9 +99,7 @@ void PluginCore::onMainThread() {
 }
 
 int PluginCore::latencyAt(double sampleRate) const {
-    std::array<double, FxLag::kKinds> paths{};
-    for (int kind = 0; kind < FxLag::kKinds; ++kind)
-        paths[kind] = upDownDelay(sampleRate, FxLag::factorOf(kind));
+    const std::array<double, FxLag::kKinds> paths = fxLagDelays(sampleRate);
     const FxLag lag = fxOutputLag([this](int i) { return values_[i].load(std::memory_order_relaxed); });
     return static_cast<int>(std::lround(decimatorDelay(sampleRate, oversampling_.load()) + fxLagSamples(lag, paths)));
 }

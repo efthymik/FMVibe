@@ -918,8 +918,8 @@ Both views show the same chain; switching changes nothing about the sound.
 ### Seamless editing and latency
 
 Editing the effects while sound plays never clicks: wires fade in and out, moved effects crossfade, and removed
-effects fade out. The Shaper, Filter and Amp effects add a little latency; FMVibe keeps all paths through the
-effects time-aligned and reports the latency to your host.
+effects fade out. The Shaper, Filter and Amp effects add a little latency, and a Flanger with TZF on adds 6.5 ms.
+FMVibe keeps all paths through the effects time-aligned and reports the latency to your host.
 
 Effects that are switched off, or whose output isn't used, cost no CPU, and the effects rest once everything has rung
 out.
@@ -1066,7 +1066,8 @@ display sketches the tail's shape.
 - **Stereo** (on by default) and **+ | −** polarity, as on the phaser. Negative gives the thin-bottomed negative
   flange.
 - **TZF** (through-zero): the sweep passes through the dry sound, cancelling it at its middle, for the deep,
-  tape-style jet sweep. Best with Mix at 100 %.
+  tape-style jet sweep. Best with Mix at 100 %. It delays the flanger's whole sound by 6.5 ms, whatever the knobs
+  say. FMVibe keeps other paths in step with it and reports the delay to your host.
 
 #### Chorus
 

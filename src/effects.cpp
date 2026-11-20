@@ -47,11 +47,28 @@ void Effects::prepare(double sampleRate) {
     eqCrossovers_ = fx::Eq::crossovers(sampleRate);
     if (!lags_)
         lags_ = std::make_unique<Lags>();
-    for (int kind = 0; kind < FxLag::kKinds; ++kind)
+    for (int kind = 0; kind < FxLag::kUpDowns; ++kind)
         for (UpDown &side : lags_->fresh[kind])
             side.prepare(sampleRate, FxLag::factorOf(kind));
-    for (SlotDry &dry : lags_->dry) // none, to take one designed for this rate (see slotDry())
+    // The waits' lines, two for each pool path and four for each slot's dry sound.
+    const int wait = throughZeroWaitSamples(sampleRate);
+    lags_->waitLines.assign(static_cast<size_t>(wait) * 2 * (kPoolPaths + 2 * kFxSlots));
+    float *line = &lags_->waitLines[0];
+    auto place = [&](Wait &w) {
+        w = {line, wait, 0};
+        line += wait;
+    };
+    for (auto &path : lags_->poolWait)
+        for (Wait &side : path)
+            place(side);
+    for (SlotDry &dry : lags_->dry) { // none, to take one designed for this rate (see slotDry())
         dry.now = dry.was = {};
+        dry.lag = dry.wasLag = {};
+        for (Wait &side : dry.nowWait)
+            place(side);
+        for (Wait &side : dry.wasWait)
+            place(side);
+    }
     reset();
 }
 
@@ -485,7 +502,13 @@ void Effects::setEnd(WireEnd &e, int port, double level, double fade, const FxLa
         for (int j = 0; j < e.pad.paths[kind]; ++j) {
             const int i = e.path[k++];
             lags_->taken[i] = true;
-            lags_->pool[i] = lags_->fresh[kind]; // cleared, at that factor
+            lags_->kind[i] = static_cast<uint8_t>(kind);
+            if (kind == FxLag::kWait) {
+                for (Wait &side : lags_->poolWait[i])
+                    side.reset();
+            } else {
+                lags_->pool[i] = lags_->fresh[kind]; // cleared, at that factor
+            }
         }
     e.paths = found;
 }
@@ -496,8 +519,13 @@ void Effects::padEnd(const WireEnd &e, const float *const *from, float (*out)[kC
             std::copy_n(from[c], n, out[c]);
         else
             std::fill_n(out[c], n, 0.0f); // a node not running: its silence, through the pad as anything else
-        for (int k = 0; k < e.paths; ++k)
-            lags_->pool[e.path[k]][c].run(out[c], static_cast<int>(n));
+        for (int k = 0; k < e.paths; ++k) {
+            const int i = e.path[k];
+            if (lags_->kind[i] == FxLag::kWait)
+                lags_->poolWait[i][c].run(out[c], static_cast<int>(n));
+            else
+                lags_->pool[i][c].run(out[c], static_cast<int>(n));
+        }
     }
 }
 
@@ -506,11 +534,18 @@ void Effects::slotDry(int slot, const float *const *io, float (*dry)[kChunk], ui
     std::copy_n(io[0], n, dry[0]);
     std::copy_n(io[1], n, dry[1]);
     SlotDry &d = lags_->dry[slot];
-    const int factor = fxSlotFactor([&p](int i) { return p[i]; }, slot);
-    if (factor != d.now[0].factor() && d.wasFade <= 0.0) { // another path: the one it had fades out
+    const auto get = [&p](int i) { return p[i]; };
+    // Another path: the one it had fades out.
+    if (const FxLag lag = fxSlotLag(get, slot); lag != d.lag && d.wasFade <= 0.0) {
         d.was = d.now;
+        std::swap(d.wasWait, d.nowWait);
+        d.wasLag = d.lag;
+        d.lag = lag;
+        const int factor = fxSlotFactor(get, slot);
         for (int c = 0; c < 2; ++c)
             d.now[c] = factor >= 2 ? lags_->fresh[FxLag::kindOf(factor)][c] : UpDown{};
+        for (Wait &side : d.nowWait)
+            side.reset();
         d.wasFade = d.live ? 1.0 : 0.0;
     }
     if (!needed) { // the effect fully in: its dry sound isn't heard, and starts again from silence when it is
@@ -521,6 +556,8 @@ void Effects::slotDry(int slot, const float *const *io, float (*dry)[kChunk], ui
     if (!d.live) {
         for (UpDown &side : d.now)
             side.reset();
+        for (Wait &side : d.nowWait)
+            side.reset();
         d.live = true;
     }
     float was[2][kChunk];
@@ -529,8 +566,12 @@ void Effects::slotDry(int slot, const float *const *io, float (*dry)[kChunk], ui
         if (crossing) {
             std::copy_n(dry[c], n, was[c]);
             d.was[c].run(was[c], static_cast<int>(n));
+            if (d.wasLag.paths[FxLag::kWait])
+                d.wasWait[c].run(was[c], static_cast<int>(n));
         }
         d.now[c].run(dry[c], static_cast<int>(n));
+        if (d.lag.paths[FxLag::kWait])
+            d.nowWait[c].run(dry[c], static_cast<int>(n));
     }
     if (!crossing)
         return;
@@ -569,6 +610,7 @@ bool Effects::graphParamsChanged(const ParamValues &p) {
         take(p[paramIndex(slot, FxParam::Type)]);
         take(p[paramIndex(slot, FxParam::AmpOversampling)]);
         take(p[paramIndex(slot, FxParam::ShaperOversampling)]);
+        take(p[paramIndex(slot, FxParam::FlangerThroughZero)]);
     }
     for (int split = 0; split < kFxSplits; ++split)
         take(p[paramIndex(split, SplitParam::Used)]);
