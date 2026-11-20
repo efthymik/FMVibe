@@ -154,8 +154,9 @@ void ParamEq::run(const Context &ctx, float *const *io, uint32_t n) {
             heardShare = target;
             continue;
         }
-        const Coefs b = peqCoefs(type, p[peqFreqIndex(slot, band)], gain, p[peqQIndex(slot, band)], ctx.sampleRate);
-        ramp.begin({b.b0, b.b1, b.b2, b.a1, b.a2}, n, ctx.rampShortest);
+        ramp.begin(biquadCoefs(peqCoefs(type, p[peqFreqIndex(slot, band)], gain, p[peqQIndex(slot, band)],
+                                        ctx.sampleRate)),
+                   n, ctx.rampShortest);
         if (heardShare == target && !ramp.moving) {
             const BiquadCoefs &c = ramp.now;
             for (int ch = 0; ch < 2; ++ch) {

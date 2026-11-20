@@ -20,10 +20,7 @@ double eqResponse(double hz, double low, double mid, double high) {
 namespace fx {
 
 CrossoverCoefs Eq::crossovers(double sampleRate) {
-    auto set = [&](BiquadCoefs &c, BiquadType type, double hz) {
-        const Coefs b = biquad(type, hz, sampleRate);
-        c = {b.b0, b.b1, b.b2, b.a1, b.a2};
-    };
+    auto set = [&](BiquadCoefs &c, BiquadType type, double hz) { c = biquadCoefs(biquad(type, hz, sampleRate)); };
     CrossoverCoefs out;
     set(out.lp1, BiquadType::LowPass, kEqLowHz);
     set(out.hp1, BiquadType::HighPass, kEqLowHz);

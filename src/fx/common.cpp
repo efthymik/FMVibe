@@ -41,10 +41,7 @@ CrossoverCoefs crossoverCoefs(double lowHz, double highHz, double sampleRate) {
     // Kept below where the biquads hold up, the high crossover at least a third of an octave above the low one.
     lowHz = std::min(lowHz, 0.3 * sampleRate);
     highHz = std::clamp(highHz, lowHz * 1.26, 0.45 * sampleRate);
-    auto coefs = [&](BiquadType type, double hz) {
-        const Coefs b = biquad(type, hz, sampleRate);
-        return BiquadCoefs{b.b0, b.b1, b.b2, b.a1, b.a2};
-    };
+    auto coefs = [&](BiquadType type, double hz) { return biquadCoefs(biquad(type, hz, sampleRate)); };
     return {coefs(BiquadType::LowPass, lowHz), coefs(BiquadType::HighPass, lowHz), coefs(BiquadType::LowPass, highHz),
             coefs(BiquadType::HighPass, highHz), coefs(BiquadType::AllPass, highHz)};
 }

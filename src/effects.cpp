@@ -873,10 +873,8 @@ void Effects::splitCoefs(SplitFilters &f, double lowNorm, double highNorm) const
     }
     const double low = std::min(hz[0], 0.3 * sampleRate_); // as crossoverCoefs() keeps it
     if (f.mode == 24) {
-        const Coefs lp = biquad(BiquadType::LowPass, low, sampleRate_);
-        const Coefs hp = biquad(BiquadType::HighPass, low, sampleRate_);
-        f.coefs.lp1 = {lp.b0, lp.b1, lp.b2, lp.a1, lp.a2};
-        f.coefs.hp1 = {hp.b0, hp.b1, hp.b2, hp.a1, hp.a2};
+        f.coefs.lp1 = biquadCoefs(biquad(BiquadType::LowPass, low, sampleRate_));
+        f.coefs.hp1 = biquadCoefs(biquad(BiquadType::HighPass, low, sampleRate_));
         return;
     }
     onePoles(low, f.onePoleLow, f.onePoleHigh, nullptr);

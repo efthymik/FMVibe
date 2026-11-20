@@ -84,6 +84,10 @@ enum class BiquadType { LowPass, HighPass, AllPass };
 struct Coefs {
     double b0, b1, b2, a1, a2;
 };
+// The same coefficients, for a Biquad or a BiquadRamp.
+inline BiquadCoefs biquadCoefs(const Coefs &c) {
+    return {c.b0, c.b1, c.b2, c.a1, c.a2};
+}
 
 // Butterworth-Q biquads (RBJ cookbook): two in a row make a Linkwitz-Riley crossover.
 Coefs biquad(BiquadType type, double hz, double sampleRate);
@@ -188,6 +192,11 @@ struct BiquadRamp {
         now.b2 += step.b2;
         now.a1 += step.a1;
         now.a2 += step.a2;
+    }
+    // Whether it rests letting everything through: not moving, and at BiquadCoefs{}'s pass-through, where a filter
+    // needn't run (and its state, run out to nothing, can start clean).
+    bool passesThrough() const {
+        return !moving && now.b0 == 1.0 && now.b1 == 0.0 && now.b2 == 0.0 && now.a1 == 0.0 && now.a2 == 0.0;
     }
     // After the chunk: there exactly once the ramp has arrived, rather than a rounding away.
     void end() {

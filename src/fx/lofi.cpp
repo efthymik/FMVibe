@@ -23,8 +23,7 @@ void LoFi::run(const Context &ctx, float *const *io, uint32_t n) {
     const LoFiSettings set =
         loFiSettings(ctx.at(FxParam::LoFiBits), ctx.at(FxParam::LoFiRate), ctx.sampleRate);
     const double advance = set.rateHz / ctx.sampleRate; // of a sample's time, each host sample
-    const Coefs low = biquad(BiquadType::LowPass, set.smoothHz, ctx.sampleRate);
-    smoothCoefs.begin({low.b0, low.b1, low.b2, low.a1, low.a2}, n, ctx.rampShortest);
+    smoothCoefs.begin(biquadCoefs(biquad(BiquadType::LowPass, set.smoothHz, ctx.sampleRate)), n, ctx.rampShortest);
     const double smoothStep = rampStep(smoothMix, ctx.at(FxParam::LoFiSmooth), n, ctx.rampShortest);
     const double mixStep = rampStep(mix, ctx.at(FxParam::LoFiMix), n, ctx.rampShortest);
     for (uint32_t s = 0; s < n; ++s) {

@@ -41,9 +41,8 @@ void Widener::start(const Context &ctx) {
 double Widener::run(const Context &ctx, float *const *io, uint32_t n) {
     ran += n; // counted ahead of what this chunk writes (see start())
     const double sampleRate = ctx.sampleRate;
-    const Coefs hp = biquad(BiquadType::HighPass,
-                            std::min(cutoffFromNorm(ctx.at(FxParam::WidenerHighPass)), 0.45 * sampleRate), sampleRate);
-    highPassCoefs.begin({hp.b0, hp.b1, hp.b2, hp.a1, hp.a2}, n, ctx.rampShortest);
+    const double highPassHz = std::min(cutoffFromNorm(ctx.at(FxParam::WidenerHighPass)), 0.45 * sampleRate);
+    highPassCoefs.begin(biquadCoefs(biquad(BiquadType::HighPass, highPassHz, sampleRate)), n, ctx.rampShortest);
     const double glide = 1.0 - std::exp(-1.0 / (0.05 * sampleRate)); // size changes glide, like tape
     const double sizeTarget = ctx.at(FxParam::WidenerSize);
     const double widthStep = rampStep(width, ctx.at(FxParam::WidenerWidth), n, ctx.rampShortest);

@@ -120,11 +120,7 @@ void Shaper::run(const Context &ctx, float *const *io, uint32_t n) {
     const std::array<BiquadCoefs, 2> shelves = toneShelves(ctx.at(FxParam::ShaperTone), rate);
     for (int i = 0; i < 2; ++i)
         toneCoefs[i].begin(shelves[i], n, ctx.rampShortest);
-    const BiquadCoefs through{};
-    auto rests = [&](const BiquadRamp &r) {
-        return !r.moving && r.now.b0 == through.b0 && r.now.b1 == through.b1 && r.now.a1 == through.a1;
-    };
-    const bool toned = !rests(toneCoefs[0]) || !rests(toneCoefs[1]);
+    const bool toned = !toneCoefs[0].passesThrough() || !toneCoefs[1].passesThrough();
     if (!toned)
         tones = {};
     const double duckStep = 1.0 / (kShaperDuckSeconds * ctx.sampleRate);
