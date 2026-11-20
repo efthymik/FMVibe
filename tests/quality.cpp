@@ -5406,10 +5406,10 @@ void dcChecks() {
 }
 
 // The effects that run oversampled (the shaper and filter effects at twice the rate, an amp at its oversampling) are a
-// few samples late, later toward the top: paths that meet beside them are put through as much up and down, so they
-// meet in step (see fxlag.h). Measured on an impulse once the effects have settled, through effects that leave the
-// sound as it is (a filter and an amp at Mix 0), across 20 Hz to 18 kHz: flat where they meet, and as late as the
-// plugin says.
+// few samples late, later toward the top, and a flanger through zero waits its dry sound: paths that meet beside them
+// are put through as much up and down, and as long a wait, so they meet in step (see fxlag.h). Measured on an impulse
+// once the effects have settled, through effects that leave the sound as it is (a filter, an amp and a flanger at
+// Mix 0), across 20 Hz to 18 kHz: flat where they meet, and as late as the plugin says.
 void latencyChecks() {
     std::printf("effects latency:\n");
     auto from = [](int node, int input) { return fxInputIndex(node, input, FxInputField::From); };
@@ -5472,9 +5472,7 @@ void latencyChecks() {
         }
         return r;
     };
-    std::array<double, FxLag::kKinds> delays;
-    for (int kind = 0; kind < FxLag::kKinds; ++kind)
-        delays[kind] = upDownDelay(kSampleRate, FxLag::factorOf(kind));
+    const std::array<double, FxLag::kKinds> delays = fxLagDelays(kSampleRate);
     auto lagOf = [](const ParamValues &p) { return fxOutputLag([&p](int i) { return p[i]; }); };
 
     // The input straight out beside a filter at Mix 0, at half each: in step, flat, where unaligned they'd cancel
@@ -5562,6 +5560,31 @@ void latencyChecks() {
     };
     const auto [shaper4, shaper4Late] = shaperBeside(2);
     const auto [shaper8, shaper8Late] = shaperBeside(3);
+
+    // The input straight out beside a flanger through zero at Mix 0, its Delay at its shortest and its longest, and
+    // switched off: in step and flat, as late as its wait whatever its Delay, which turning it doesn't move.
+    auto flangerBeside = [&](double delayNorm, bool enabled) {
+        auto p = fresh();
+        (*p)[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Flanger);
+        (*p)[paramIndex(0, FxParam::FlangerMix)] = 0.0;
+        (*p)[paramIndex(0, FxParam::FlangerThroughZero)] = 1.0;
+        (*p)[paramIndex(0, FxParam::FlangerDelay)] = delayNorm;
+        (*p)[paramIndex(0, FxParam::Enabled)] = enabled ? 1.0 : 0.0;
+        (*p)[from(0, 0)] = port(kFxPortIn);
+        (*p)[from(kFxOutNode, 0)] = port(fxSlotPort(0));
+        (*p)[from(kFxOutNode, 1)] = port(kFxPortIn);
+        (*p)[level(kFxOutNode, 0)] = 0.5;
+        (*p)[level(kFxOutNode, 1)] = 0.5;
+        return std::make_pair(measure(*p), fxLagSamples(lagOf(*p), delays));
+    };
+    const ParamDef &flangerDelay = paramTable()[paramIndex(0, FxParam::FlangerDelay)];
+    const auto [flangerShort, flangerLate] = flangerBeside(flangerDelay.min, true);
+    const auto [flangerLong, flangerLongLate] = flangerBeside(flangerDelay.max, true);
+    const auto [flangerOff, flangerOffLate] = flangerBeside(flangerDelay.max, false);
+    std::printf("      in beside a flanger through zero: within %.3f dB, %.2f late at its shortest Delay, within %.3f "
+                "dB, %.2f late at its longest, within %.3f dB, %.2f late off (said %.2f)\n",
+                flangerShort.flatDb, flangerShort.centroid, flangerLong.flatDb, flangerLong.centroid, flangerOff.flatDb,
+                flangerOff.centroid, flangerLate);
     std::printf("      in beside a shaper at 4x: within %.3f dB, %.2f late (said %.2f); at 8x: within %.3f dB, %.2f "
                 "late (said %.2f)\n",
                 shaper4.flatDb, shaper4.centroid, shaper4Late, shaper8.flatDb, shaper8.centroid, shaper8Late);
@@ -5594,6 +5617,11 @@ void latencyChecks() {
     check(shaper4.flatDb < 0.05 && shaper8.flatDb < 0.05 && near(shaper4.centroid, shaper4Late) &&
               near(shaper8.centroid, shaper8Late) && shaper8Late > shaper4Late,
           "a path beside a shaper oversampled 4x or 8x meets it in step, as late as its oversampling says");
+    check(flangerShort.flatDb < 0.05 && flangerLong.flatDb < 0.05 && flangerOff.flatDb < 0.05 &&
+              near(flangerShort.centroid, flangerLate) && near(flangerLong.centroid, flangerLate) &&
+              near(flangerOff.centroid, flangerLate) && flangerLongLate == flangerLate &&
+              flangerOffLate == flangerLate && flangerLate == throughZeroWaitSamples(kSampleRate),
+          "a path beside a flanger through zero meets it in step, its wait the same whatever its Delay, on or off");
     check(bands.flatDb < 0.05 && kinds.flatDb < 0.05,
           "a split's bands through effects oversampled differently sum back flat, and so do paths that meet");
     check(near(bands.centroid - crossover.centroid, bandsLate) && near(kinds.centroid, kindsLate) && none.flatDb < 1e-6 &&

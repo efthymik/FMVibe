@@ -1,31 +1,44 @@
 #pragma once
 
-// How late each path through the effects graph is, from the effects that run oversampled: the shaper and the filter
-// effect at twice the rate, an amp at its oversampling. Each goes up and back down through half-band filters (see
-// UpDown in oversampler.h), a few samples late and later still toward the top. Where paths meet, each is put through as
-// many more such paths up and down as it lacks against the latest (see Effects::orderGraph()), so they meet in step at
-// every frequency; the output is then as late as its latest path, which the plugin reports to the host as its latency.
-// Independent of the plugin formats.
+// How late each path through the effects graph is, from the effects that run oversampled and the flangers through
+// zero. The shaper and the filter effect run at twice the rate, an amp at its oversampling: each goes up and back down
+// through half-band filters (see UpDown in oversampler.h), a few samples late and later still toward the top. A flanger
+// through zero waits its dry sound kThroughZeroWait (see fx::Flanger), whatever its knobs say. Where paths meet, each
+// is put through as many more such paths up and down, and waits, as it lacks against the latest (see
+// Effects::orderGraph()), so they meet in step at every frequency; the output is then as late as its latest path, which
+// the plugin reports to the host as its latency. Independent of the plugin formats.
 
+#include "oversampler.h"
 #include "params.h"
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 
 namespace fmvibe {
 
-// How many paths up and down a path holds, at 2, 4 and 8 times the rate. Paths at the same factor are alike and add up
-// in any order, so two paths holding as many of each are in step.
+// How long a flanger through zero waits its dry sound, the most its sweep's middle can need to pass through it (see
+// fx::Flanger): the swept copy runs at most 0.414 times its longest Delay (15 ms) ahead of the sweep's middle, at a
+// Depth of 74 %, and this leaves it a few samples more. Fixed, so turning the flanger's knobs never moves it.
+constexpr double kThroughZeroWait = 0.0065; // seconds
+inline int throughZeroWaitSamples(double sampleRate) {
+    return std::max(1, static_cast<int>(std::lround(kThroughZeroWait * sampleRate)));
+}
+
+// How many paths up and down a path holds, at 2, 4 and 8 times the rate, and how many flangers' waits through zero.
+// Paths of the same kind are alike and add up in any order, so two paths holding as many of each are in step.
 struct FxLag {
-    static constexpr int kKinds = 3;
-    static constexpr int kMost = 64; // of each, past which a path counts no more (a graph holds far fewer)
+    static constexpr int kKinds = 4;
+    static constexpr int kUpDowns = 3; // the kinds that go up and down, 0 .. 2
+    static constexpr int kWait = 3;    // a flanger's wait through zero
+    static constexpr int kMost = 64;   // of each, past which a path counts no more (a graph holds far fewer)
     std::array<uint8_t, kKinds> paths{};
 
     static constexpr int kindOf(int factor) { return factor >= 8 ? 2 : factor >= 4 ? 1 : 0; }
-    static constexpr int factorOf(int kind) { return 2 << kind; }
+    static constexpr int factorOf(int kind) { return 2 << kind; } // of a kind that goes up and down
     bool operator==(const FxLag &) const = default;
-    int count() const { return paths[0] + paths[1] + paths[2]; }
+    int count() const { return paths[0] + paths[1] + paths[2] + paths[3]; }
     bool none() const { return count() == 0; }
     FxLag plus(const FxLag &o) const {
         FxLag r;
@@ -65,11 +78,21 @@ int fxSlotFactor(const Get &get, int slot) {
     }
 }
 
+// Whether an effect in `slot` is a flanger through zero, which waits its dry sound kThroughZeroWait. By its type and
+// switch, whether it is switched on or not, as fxSlotFactor().
+template <class Get>
+bool fxSlotWaits(const Get &get, int slot) {
+    return fxType(get(paramIndex(slot, FxParam::Type))) == FxType::Flanger &&
+           get(paramIndex(slot, FxParam::FlangerThroughZero)) >= 0.5;
+}
+
 template <class Get>
 FxLag fxSlotLag(const Get &get, int slot) {
     FxLag lag;
     if (const int factor = fxSlotFactor(get, slot); factor >= 2)
         lag.paths[FxLag::kindOf(factor)] = 1;
+    if (fxSlotWaits(get, slot))
+        lag.paths[FxLag::kWait] = 1;
     return lag;
 }
 
@@ -128,8 +151,18 @@ FxLag fxGraphLags(const Get &get, const Wanted &wanted, FxPads *pads) {
     return lag[kFxOutNode];
 }
 
-// How late, in host samples, low frequencies come out of a path holding `lag`, from how late one path up and down at
-// each factor is (`delays`, see upDownDelay()).
+// How late, in host samples, low frequencies come out of one path of each kind at `sampleRate`: up and down at each
+// factor (see upDownDelay()), and a flanger's wait.
+inline std::array<double, FxLag::kKinds> fxLagDelays(double sampleRate) {
+    std::array<double, FxLag::kKinds> delays{};
+    for (int kind = 0; kind < FxLag::kUpDowns; ++kind)
+        delays[kind] = upDownDelay(sampleRate, FxLag::factorOf(kind));
+    delays[FxLag::kWait] = throughZeroWaitSamples(sampleRate);
+    return delays;
+}
+
+// How late, in host samples, low frequencies come out of a path holding `lag`, from how late one path of each kind is
+// (`delays`, see fxLagDelays()).
 inline double fxLagSamples(const FxLag &lag, const std::array<double, FxLag::kKinds> &delays) {
     double samples = 0.0;
     for (int k = 0; k < FxLag::kKinds; ++k)
@@ -150,11 +183,11 @@ bool fxNodeSet(const Get &get, int node) {
     return get(paramIndex(node - kFxSlots, SplitParam::Used)) >= 0.5;
 }
 
-// Whether a param can make the output later or sooner: an effect's type, an amp's or a shaper's oversampling, the
-// graph's wires, splits and joins.
+// Whether a param can make the output later or sooner: an effect's type, an amp's or a shaper's oversampling, a
+// flanger's through zero switch, the graph's wires, splits and joins.
 constexpr bool fxLagParam(int index) {
     return isFxGraphParam(index) || fxFieldOf(index) == FxParam::Type || fxFieldOf(index) == FxParam::AmpOversampling ||
-           fxFieldOf(index) == FxParam::ShaperOversampling;
+           fxFieldOf(index) == FxParam::ShaperOversampling || fxFieldOf(index) == FxParam::FlangerThroughZero;
 }
 
 // How late the output is by the params, as fxGraphLags() works it out.

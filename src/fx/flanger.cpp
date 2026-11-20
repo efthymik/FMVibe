@@ -1,5 +1,7 @@
 #include "flanger.h"
 
+#include "../fxlag.h"
+
 #include <complex>
 
 namespace fmvibe {
@@ -25,7 +27,9 @@ namespace fx {
 
 namespace {
 
-constexpr double kMaxFlangerDelay = 0.032; // the longest center delay at full depth, with room
+// The longest a line's read reaches: the sweep's longest end (1.95 times the longest Delay, 15 ms), or through zero
+// the dry sound's wait on top of the most the sweep runs past its middle (1.64 times it), with room.
+constexpr double kMaxFlangerDelay = 0.034;
 
 } // namespace
 
@@ -33,7 +37,7 @@ void Flanger::prepare(double sampleRate) {
     for (ZeroBuffer &line : lines)
         line.assign(static_cast<size_t>(std::ceil(kMaxFlangerDelay * sampleRate)) + 4, 0.0f);
     for (ZeroBuffer &line : dryLines)
-        line.assign(static_cast<size_t>(std::ceil(kMaxFlangerDelay * sampleRate)) + 4, 0.0f);
+        line.assign(static_cast<size_t>(throughZeroWaitSamples(sampleRate)), 0.0f);
 }
 
 void Flanger::start(const Context &ctx) {
@@ -42,9 +46,8 @@ void Flanger::start(const Context &ctx) {
     for (ZeroBuffer &line : dryLines)
         line.zero(ran);
     ran = 0;
-    write = 0;
+    write = dryWrite = 0;
     last = {};
-    dryDelay = 0.0; // taken as it is, below
     throughZero = ctx.at(FxParam::FlangerThroughZero) >= 0.5 ? 1.0 : 0.0;
     phase = 0.0;
     delayKnown = false;
@@ -72,25 +75,24 @@ double Flanger::run(const Context &ctx, float *const *io, uint32_t n) {
     const double polarityStep = 2.0 / (kPolaritySeconds * sampleRate);
     const double spread = ctx.at(FxParam::FlangerStereo) >= 0.5 ? 0.25 : 0.0; // the right side's head start
     const int size = static_cast<int>(lines[0].size());
-    // Through zero: the dry sound as late as the sweep's middle, gliding there like a tape's (and, starting, there
-    // at once), and how far it has gone over to it.
-    const double dryTarget = std::clamp(middleSamples, 3.0, size - 3.0);
-    if (dryDelay <= 0.0)
-        dryDelay = dryTarget;
-    const double dryGlide = 1.0 - std::exp(-1.0 / (0.02 * sampleRate));
+    const int wait = static_cast<int>(dryLines[0].size()); // read before it is written over, `wait` samples on
     const double zeroTo = ctx.at(FxParam::FlangerThroughZero) >= 0.5 ? 1.0 : 0.0;
     const double zeroStep = 1.0 / (kThroughZeroFadeSeconds * sampleRate);
-    // The delay in samples where the sweep is at `phase`, on each side: worked out every kSweepStep samples, as the
-    // phaser's coefficient is (see Phaser::run()). 3 samples at the least, for its cubic.
-    auto delayAt = [&](double at, int ch) {
+    // The delay in samples where the sweep is at `phase`, on each side, and through zero where the swept copy is read
+    // (the dry sound's wait, then as far off the sweep's middle as the sweep is): worked out every kSweepStep samples,
+    // as the phaser's coefficient is (see Phaser::run()). 3 samples at the least, for its cubic.
+    auto sweepAt = [&](double at, int ch, double &zeroAt) {
         const double lfo = std::sin(2.0 * std::numbers::pi * (at + spread * ch));
-        return std::clamp(middleSamples * std::exp(sweep.reach * lfo), 3.0, size - 3.0); // flangerDelay()
+        const double swept = middleSamples * std::exp(sweep.reach * lfo); // flangerDelay()
+        zeroAt = std::clamp(wait + swept - middleSamples, 3.0, size - 3.0);
+        return std::clamp(swept, 3.0, size - 3.0);
     };
     if (!delayKnown) {
-        delay = {delayAt(phase, 0), delayAt(phase, 1)};
+        for (int ch = 0; ch < 2; ++ch)
+            delay[ch] = sweepAt(phase, ch, zeroDelay[ch]);
         delayKnown = true;
     }
-    std::array<double, 2> delayTo{}, delayStep{};
+    std::array<double, 2> delayTo{}, delayStep{}, zeroDelayTo{}, zeroDelayStep{};
     uint32_t stepLeft = 0;
     double peak = 0.0;
     for (uint32_t s = 0; s < n; ++s) {
@@ -102,8 +104,9 @@ double Flanger::run(const Context &ctx, float *const *io, uint32_t n) {
                 ahead -= std::floor(ahead);
             }
             for (int ch = 0; ch < 2; ++ch) {
-                delayTo[ch] = delayAt(ahead, ch);
+                delayTo[ch] = sweepAt(ahead, ch, zeroDelayTo[ch]);
                 delayStep[ch] = (delayTo[ch] - delay[ch]) / stepLeft;
+                zeroDelayStep[ch] = (zeroDelayTo[ch] - zeroDelay[ch]) / stepLeft;
             }
         }
         --stepLeft;
@@ -112,25 +115,31 @@ double Flanger::run(const Context &ctx, float *const *io, uint32_t n) {
         phase += step;
         phase -= std::floor(phase);
         throughZero = moveToward(throughZero, zeroTo, zeroStep);
-        const bool zeroing = throughZero > 0.0;
-        if (zeroing)
-            dryDelay += (dryTarget - dryDelay) * dryGlide;
-        // The dry sound's share as it goes over to the delayed one, along a raised cosine.
-        const double late = zeroing ? 0.5 - 0.5 * std::cos(std::numbers::pi * throughZero) : 0.0;
+        // The share of the sound through zero as it goes over to it, along a raised cosine.
+        const double late = throughZero >= 1.0 ? 1.0 : 0.5 - 0.5 * std::cos(std::numbers::pi * throughZero);
         for (int ch = 0; ch < 2; ++ch) {
             delay[ch] = stepLeft == 0 ? delayTo[ch] : delay[ch] + delayStep[ch];
+            zeroDelay[ch] = stepLeft == 0 ? zeroDelayTo[ch] : zeroDelay[ch] + zeroDelayStep[ch];
             // On a cubic: through a straight line between two samples, what goes round would lose its top and come
             // back grainy as the sweep moves.
             const double delayed = readCubic(lines[ch], write, delay[ch]);
             const double in = io[ch][s];
-            dryLines[ch][write] = static_cast<float>(in); // always, so through zero starts with what came before
-            const double x = zeroing ? in + (readCubic(dryLines[ch], write, dryDelay) - in) * late : in;
+            // The dry sound always goes through its line, so through zero starts with what came before.
+            const double waited = dryLines[ch][dryWrite];
+            dryLines[ch][dryWrite] = static_cast<float>(in);
+            double x = in, wet = delayed;
+            if (late > 0.0) {
+                const double zeroed = readCubic(lines[ch], write, zeroDelay[ch]);
+                x = in + (waited - in) * late;
+                wet = delayed + (zeroed - delayed) * late;
+            }
             lines[ch][write] = static_cast<float>(in + polarity * feedback * delayed);
             last[ch] = delayed;
-            io[ch][s] = static_cast<float>(x + (polarity * delayed * gain - x) * mix);
-            peak = std::max({peak, std::abs(in), std::abs(delayed)});
+            io[ch][s] = static_cast<float>(x + (polarity * wet * gain - x) * mix);
+            peak = std::max({peak, std::abs(in), std::abs(delayed), std::abs(waited)});
         }
         write = write + 1 == size ? 0 : write + 1;
+        dryWrite = dryWrite + 1 == wait ? 0 : dryWrite + 1;
     }
     return peak;
 }

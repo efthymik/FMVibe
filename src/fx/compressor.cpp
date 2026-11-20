@@ -51,16 +51,12 @@ bool Compressor::run(const Context &ctx, float *const *io, uint32_t n, const Met
     // logarithm.
     const double quiet = dbToGain(threshold - 0.5 * std::max(knee, 0.0));
     // Detector HP: a high-pass of 12 dB an octave on what the detector hears, so the bass doesn't pull the rest down.
-    const double hpHz = utilityMonoBassHz(ctx.at(FxParam::CompDetectorHp));
+    const double hpHz = cutoffOrOffHz(ctx.at(FxParam::CompDetectorHp));
     BiquadCoefs hp{};
-    if (hpHz > 0.0) {
-        const Coefs c = biquad(BiquadType::HighPass, std::min(hpHz, 0.45 * ctx.sampleRate), ctx.sampleRate);
-        hp = {c.b0, c.b1, c.b2, c.a1, c.a2};
-    }
+    if (hpHz > 0.0)
+        hp = biquadCoefs(biquad(BiquadType::HighPass, std::min(hpHz, 0.45 * ctx.sampleRate), ctx.sampleRate));
     detectorCoefs.begin(hp, n, ctx.rampShortest);
-    const BiquadCoefs &rest = detectorCoefs.now;
-    const bool filtering = detectorCoefs.moving || rest.b0 != 1.0 || rest.b1 != 0.0 || rest.b2 != 0.0 ||
-                           rest.a1 != 0.0 || rest.a2 != 0.0;
+    const bool filtering = !detectorCoefs.passesThrough();
     if (!filtering)
         detector = {}; // resting at Off, its states run out to nothing: it starts clean
     double most = 0.0;

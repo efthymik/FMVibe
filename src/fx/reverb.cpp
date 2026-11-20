@@ -257,23 +257,17 @@ double Reverb::run(const Context &ctx, const ReverbTables &tables, float *const 
     const bool fullMix = diffusion == 1.0 && diffusionTarget == 1.0;
     // Low Cut and High Cut, a high-pass and a low-pass of 12 dB an octave on what goes in (into the pre-delay, so a
     // room's early reflections take them too); at their ends, a filter that lets everything through.
-    const double lowCut = utilityMonoBassHz(ctx.at(FxParam::ReverbLowCut));
+    const double lowCut = cutoffOrOffHz(ctx.at(FxParam::ReverbLowCut));
     const double highCutNorm = ctx.at(FxParam::ReverbHighCut);
     auto cutCoefsOf = [&](BiquadType type, bool on, double hz) {
         if (!on)
             return BiquadCoefs{};
-        const Coefs c = biquad(type, std::min(hz, 0.45 * sampleRate), sampleRate);
-        return BiquadCoefs{c.b0, c.b1, c.b2, c.a1, c.a2};
+        return biquadCoefs(biquad(type, std::min(hz, 0.45 * sampleRate), sampleRate));
     };
     cutCoefs[0].begin(cutCoefsOf(BiquadType::HighPass, lowCut > 0.0, lowCut), n, ctx.rampShortest);
     cutCoefs[1].begin(cutCoefsOf(BiquadType::LowPass, highCutNorm < 1.0, cutoffFromNorm(highCutNorm)), n,
                       ctx.rampShortest);
-    const BiquadCoefs through{};
-    auto isThrough = [&](const BiquadRamp &r) {
-        return !r.moving && r.now.b0 == through.b0 && r.now.b1 == through.b1 && r.now.b2 == through.b2 &&
-               r.now.a1 == through.a1 && r.now.a2 == through.a2;
-    };
-    const bool cutting = !isThrough(cutCoefs[0]) || !isThrough(cutCoefs[1]);
+    const bool cutting = !cutCoefs[0].passesThrough() || !cutCoefs[1].passesThrough();
     if (!cutting)
         cuts = {}; // at rest letting everything through, their states run out to nothing: they start clean
     constexpr double kInGain = 0.35355339059327373; // 1 / sqrt(8): each side goes into half the lines
@@ -328,11 +322,10 @@ double Reverb::run(const Context &ctx, const ReverbTables &tables, float *const 
     // climbs past the top stops there), which the damping takes down to 2 kHz. For a shift up the top comes
     // down so it stays well under Nyquist shifted, and for a shift down the bottom goes up as far, so it stays above
     // 200 Hz.
-    const Coefs low = biquad(BiquadType::LowPass,
-                             std::min(8000.0 * std::pow(0.25, ctx.at(FxParam::ReverbDamping)),
-                                      0.25 * sampleRate / std::max(ratio, 1.0)),
-                             sampleRate);
-    const BiquadCoefs lowCoefs{low.b0, low.b1, low.b2, low.a1, low.a2};
+    const BiquadCoefs lowCoefs = biquadCoefs(biquad(BiquadType::LowPass,
+                                                    std::min(8000.0 * std::pow(0.25, ctx.at(FxParam::ReverbDamping)),
+                                                             0.25 * sampleRate / std::max(ratio, 1.0)),
+                                                    sampleRate));
     const double bassCoef = onePole(200.0 / std::min(ratio, 1.0), sampleRate);
     const int shiftSize = static_cast<int>(shifter[0].size());
     const double wander = kReverbWander * style.wander * sampleRate;

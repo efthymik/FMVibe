@@ -415,11 +415,12 @@ the plain CMake commands and installing into a host are in the [README](README.m
     wheels what both add as they play and nothing once the key is let go or the sequencer is switched off; and a macro's
     curve taking the place of its knob wherever the knob is set, moving what the macro modulates and no other macro, the
     telemetry saying how far it moves the knob from where it is set and nothing once it stops;
-  - the effects' latency, on an impulse through effects that run oversampled and leave the sound as it is (a filter
-    and an amp at Mix 0): the input straight out beside a filter, the filter on and off, a split with an amp at 4x on
-    one band and a filter on the other, two filters beside an amp at 8x, and nine filters in a row beside the input
-    (a pad of nine paths), and a shaper at 4x and at 8x beside the input, each flat within 0.05 dB from 20 Hz to
-    18 kHz (the paths meeting in step) and as late as fxlag.h works out, and nothing oversampled on time;
+  - the effects' latency, on an impulse through effects that run oversampled or wait and leave the sound as it is (a
+    filter, an amp and a flanger at Mix 0): the input straight out beside a filter, the filter on and off, a split with
+    an amp at 4x on one band and a filter on the other, two filters beside an amp at 8x, and nine filters in a row
+    beside the input (a pad of nine paths), a shaper at 4x and at 8x beside the input, and a flanger through zero
+    beside it at its shortest and longest Delay and switched off (as late each time), each flat within 0.05 dB from
+    20 Hz to 18 kHz (the paths meeting in step) and as late as fxlag.h works out, and nothing oversampled on time;
   - the effects' newer controls: the reverb's Low Cut and High Cut taking its tail's ends away and Diffusion at 0
     leaving its first echoes spikier, its tail's echoes apart for longer (filling in as it rises, smooth and its sides
     unalike) and a click into it still ringing out; the delay's Duck taking its echoes away under a loud sine and

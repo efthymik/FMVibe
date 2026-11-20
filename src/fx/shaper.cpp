@@ -120,19 +120,25 @@ void Shaper::run(const Context &ctx, float *const *io, uint32_t n) {
     const std::array<BiquadCoefs, 2> shelves = toneShelves(ctx.at(FxParam::ShaperTone), rate);
     for (int i = 0; i < 2; ++i)
         toneCoefs[i].begin(shelves[i], n, ctx.rampShortest);
-    const BiquadCoefs through{};
-    auto rests = [&](const BiquadRamp &r) {
-        return !r.moving && r.now.b0 == through.b0 && r.now.b1 == through.b1 && r.now.a1 == through.a1;
-    };
-    const bool toned = !rests(toneCoefs[0]) || !rests(toneCoefs[1]);
+    const bool toned = !toneCoefs[0].passesThrough() || !toneCoefs[1].passesThrough();
     if (!toned)
         tones = {};
     const double duckStep = 1.0 / (kShaperDuckSeconds * ctx.sampleRate);
-    // One host sample's settings moved on, its curves' fades and the path it left's share (along a raised cosine);
-    // and one sample at the rate through the curve (and the path it left), its Tone around them.
-    double w = 0.0;
-    bool fading = false;
-    auto step = [&](uint32_t s) {
+    const bool ducking = wanted != factor || heard < 1.0;
+    // Up to its rate a chunk at a time, through the curve, back down, and ducked while its oversampling changes; at
+    // every factor alike, written out in the loop rather than through lambdas, which MSVC runs slower here (at 2x, a
+    // fifth faster than a loop of its own interleaving up, curve and down sample by sample through two lambdas).
+    double buf[2][Upsampler::kMaxSamples];
+    for (int ch = 0; ch < 2; ++ch) {
+        if (factor == 2)
+            for (uint32_t s = 0; s < n; ++s)
+                up[ch].processUp(io[ch][s], buf[ch][2 * s], buf[ch][2 * s + 1]);
+        else
+            ups[factor == 4 ? 0 : 1][ch].process(io[ch], buf[ch], static_cast<int>(n));
+    }
+    float gains[kChunk];
+    for (uint32_t s = 0; s < n; ++s) {
+        // One host sample's settings moved on, its curves' fades and the path it left's share (along a raised cosine).
         drive += driveStep;
         output += outputStep;
         mix += mixStep;
@@ -143,81 +149,56 @@ void Shaper::run(const Context &ctx, float *const *io, uint32_t n) {
         }
         if (now.from)
             now.fade = (s + 1) * fadeStep;
-        fading = wasFade > 0.0;
-        w = 0.0;
+        const bool fading = wasFade > 0.0;
+        double w = 0.0;
         if (fading) {
             if (wasCurve.from)
                 wasCurve.fade = (s + 1) * fadeStep;
             wasFade = std::max(wasFade - wasStep, 0.0);
             w = 0.5 - 0.5 * std::cos(std::numbers::pi * wasFade);
         }
-    };
-    auto shape = [&](int ch, double x) {
-        if (toned)
-            x = tones[ch][0].process(x, toneCoefs[0].now);
-        double y = sides[ch].run(now, x, drive, output, mix, block, pole, between);
-        if (fading)
-            y = y * (1.0 - w) + w * wasSides[ch].run(wasCurve, x, drive, output, mix, wasBlock, pole, between);
-        if (toned)
-            y = tones[ch][1].process(y, toneCoefs[1].now);
-        return y;
-    };
-    if (factor == 2 && wanted == 2 && heard >= 1.0) {
-        for (uint32_t s = 0; s < n; ++s) {
-            step(s);
-            for (int ch = 0; ch < 2; ++ch) {
-                double twice[2]; // up to twice the rate, both through the curve (and the path it left), and back down
-                up[ch].processUp(io[ch][s], twice[0], twice[1]);
-                for (double &x : twice)
-                    x = shape(ch, x);
-                io[ch][s] = static_cast<float>(down[ch].process(twice[0], twice[1]));
-            }
-        }
-    } else {
-        // Up to its rate a chunk at a time, through the curve, back down, and ducked while its oversampling changes.
-        double buf[2][Upsampler::kMaxSamples];
-        for (int ch = 0; ch < 2; ++ch) {
-            if (factor == 2)
-                for (uint32_t s = 0; s < n; ++s)
-                    up[ch].processUp(io[ch][s], buf[ch][2 * s], buf[ch][2 * s + 1]);
-            else
-                ups[factor == 4 ? 0 : 1][ch].process(io[ch], buf[ch], static_cast<int>(n));
-        }
-        float gains[kChunk];
-        for (uint32_t s = 0; s < n; ++s) {
-            step(s);
+        if (ducking) {
             heard = wanted != factor ? std::max(heard - duckStep, 0.0) : std::min(heard + duckStep, 1.0);
             gains[s] = static_cast<float>(0.5 - 0.5 * std::cos(std::numbers::pi * heard));
-            for (int ch = 0; ch < 2; ++ch)
-                for (int i = 0; i < factor; ++i) {
-                    double &x = buf[ch][s * factor + i];
-                    x = shape(ch, x);
-                }
         }
-        for (int ch = 0; ch < 2; ++ch) {
-            if (factor == 2)
-                for (uint32_t s = 0; s < n; ++s)
-                    io[ch][s] = static_cast<float>(down[ch].process(buf[ch][2 * s], buf[ch][2 * s + 1]));
-            else { // the decimator adds into what it is given (as the voices' sum into their mix)
-                std::fill_n(io[ch], n, 0.0f);
-                downs[factor == 4 ? 0 : 1][ch].process(buf[ch], io[ch], static_cast<int>(n));
+        // Its samples at the rate through the curve (and the path it left), its Tone around them.
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < factor; ++i) {
+                double &x = buf[ch][s * factor + i];
+                if (toned)
+                    x = tones[ch][0].process(x, toneCoefs[0].now);
+                double y = sides[ch].run(now, x, drive, output, mix, block, pole, between);
+                if (fading)
+                    y = y * (1.0 - w) + w * wasSides[ch].run(wasCurve, x, drive, output, mix, wasBlock, pole, between);
+                if (toned)
+                    y = tones[ch][1].process(y, toneCoefs[1].now);
+                x = y;
             }
+    }
+    for (int ch = 0; ch < 2; ++ch) {
+        if (factor == 2)
+            for (uint32_t s = 0; s < n; ++s)
+                io[ch][s] = static_cast<float>(down[ch].process(buf[ch][2 * s], buf[ch][2 * s + 1]));
+        else { // the decimator adds into what it is given (as the voices' sum into their mix)
+            std::fill_n(io[ch], n, 0.0f);
+            downs[factor == 4 ? 0 : 1][ch].process(buf[ch], io[ch], static_cast<int>(n));
+        }
+        if (ducking)
             for (uint32_t s = 0; s < n; ++s)
                 io[ch][s] *= gains[s];
-        }
-        if (heard <= 0.0 && wanted != factor) { // ducked out: the new oversampling, from silence
-            factor = wanted;
-            sides = {};
-            wasSides = {};
-            wasFade = 0.0;
-            tones = {};
-            for (int ch = 0; ch < 2; ++ch) {
-                up[ch].reset();
-                down[ch].reset();
-                for (int k = 0; k < 2; ++k) {
-                    ups[k][ch].reset();
-                    downs[k][ch].reset();
-                }
+    }
+    if (heard <= 0.0 && wanted != factor) { // ducked out: the new oversampling, from silence
+        factor = wanted;
+        sides = {};
+        wasSides = {};
+        wasFade = 0.0;
+        tones = {};
+        for (int ch = 0; ch < 2; ++ch) {
+            up[ch].reset();
+            down[ch].reset();
+            for (int k = 0; k < 2; ++k) {
+                ups[k][ch].reset();
+                downs[k][ch].reset();
             }
         }
     }

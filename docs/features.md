@@ -458,12 +458,13 @@ What the plugin does and how its editor works, in full. Building and installing 
     into it, as the wires into what follows fade in. A split's slope changed crossfades from its filters at the old
     slope to fresh ones at the new over 5 ms. **Latency**: the filter effect runs at twice the host rate, the shaper
     effect at its oversampling (twice to begin with) and the amp at its, up and back down through half-band filters, which comes out a few samples late
-    (about 5 at 48 kHz for twice the rate) and later still toward the top. Where paths meet (a join, a node more than
-    one wire goes into, the output), each path is put through the same filters up and down as many more times as it
-    lacks against the latest one, so they meet in step at every frequency: a split's bands sum back flat whatever runs
-    on them, and a path beside one of these effects doesn't comb with it. Such an effect is as late switched off as on
-    (what it passes then, and what it fades from, goes up and down too), so switching it moves nothing; a new effect,
-    another oversampling or a wire moved that changes how late a path is crossfades that path over 5 ms. The output is
+    (about 5 at 48 kHz for twice the rate) and later still toward the top; a flanger with TZF on comes out 6.5 ms late.
+    Where paths meet (a join, a node more than one wire goes into, the output), each path is put through the same
+    filters up and down, and the same 6.5 ms waits, as many more times as it lacks against the latest one, so they meet
+    in step at every frequency: a split's bands sum back flat whatever runs on them, and a path beside one of these
+    effects doesn't comb with it. Such an effect is as late switched off as on (what it passes then, and what it fades
+    from, goes up and down or waits too), so switching it moves nothing; a new effect, another oversampling, TZF
+    switched or a wire moved that changes how late a path is crossfades that path over 5 ms. The output is
     then as late as its latest path, which, with the voices' decimator's couple of samples, is the latency the plugin
     reports to the host; a change that moves it asks the host to restart the plugin, which takes up the new one (see
     Restarting, under CLAP and VST3). Only what the output hears runs: an effect no wire takes on to the
@@ -689,11 +690,13 @@ What the plugin does and how its editor works, in full. Building and installing 
     there). **Sync** works like the phaser's, two bars a sweep to begin with, and so does **Stereo**, under its
     display, but on to begin with: the right side a quarter cycle ahead. So does its polarity: negative puts a notch
     at 0 Hz and the others where the positive peaks were, the hollow, thin-bottomed negative flange. **TZF** (through
-    zero, off to begin with, a switch between Feedback and Mix) delays the dry sound by the sweep's middle, so the swept
-    copy passes through it twice a cycle: negative and at the middle, every frequency cancels for a moment, the
-    jet-plane sweep of two tapes. Its output then comes out as late as the sweep's middle (up to about 15 ms), which
-    the plugin doesn't report to the host or make up in the effects graph's other paths. Switched, the dry sound fades
-    between on time and delayed over 10 ms.
+    zero, off to begin with, a switch between Feedback and Mix) delays the dry sound by a fixed 6.5 ms, the most the
+    sweep's middle can need, and reads the swept copy as much later less the sweep's middle, so it passes through the
+    dry sound twice a cycle: negative and at the middle, every frequency cancels for a moment, the jet-plane sweep of
+    two tapes. Its feedback still goes round the swept delay alone. Its output then comes out 6.5 ms late whatever its
+    knobs say (turning Delay or Depth moves only the swept copy), which counts in the effects' latency (see Latency,
+    under the effects graph): on or off, so switching the flanger moves nothing, while switching TZF moves the
+    latency, as a shaper's oversampling does. Switched, the sound fades between the two over 10 ms.
   - **Chorus**: **Voices** copies of the sound (2, 3, 4 or 6; 3 to begin with), each waiting about a 1–40 ms
     **Delay** (12 ms to begin with): each voice a little shorter or longer than it, up to a fifth either way, so the
     voices don't comb alike (the first the shortest, the second the longest, the others between, interleaved so the

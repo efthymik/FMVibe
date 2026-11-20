@@ -138,10 +138,10 @@ private:
     // its level (see mixInputs()), then runs into a buffer of its own, in the order orderGraph() works out once a
     // process(). A wire from a node that hasn't run yet in a chunk, which only a loop makes, reads what it put out the
     // chunk before.
-    // A wire end's pad, its paths up and down (see fxlag.h): as many as it lacks against the latest path into its node,
-    // each a stereo UpDown taken from the pool (see Lags), the 2x ones first: as many as a path can hold, one for each
-    // slot. While the pool hasn't enough (a graph of nearly every slot's effect oversampled), it goes without, out of
-    // step, and takes them as soon as the pool has them again (see mixInputs()).
+    // A wire end's pad, its paths up and down and flangers' waits (see fxlag.h): as many as it lacks against the latest
+    // path into its node, each a stereo UpDown or Wait taken from the pool (see Lags), the 2x ones first: as many as a
+    // path can hold, one for each slot. While the pool hasn't enough (a graph of nearly every slot's effect
+    // oversampled), it goes without, out of step, and takes them as soon as the pool has them again (see mixInputs()).
     static constexpr int kEndPaths = kFxSlots;
     struct WireEnd {
         int port = -1;      // what it comes from
@@ -178,8 +178,9 @@ private:
     // use, the output.
     bool nodeWanted(int node, const ParamValues &p) const;
     void orderGraph(const ParamValues &p, bool asSet);
-    // Whether the params orderGraph() reads (every wire's From, the slots' types and amps' oversampling, which set how
-    // late each path is, the splits' and sums' Used) differ from the last call's, which it keeps.
+    // Whether the params orderGraph() reads (every wire's From, the slots' types, amps' and shapers' oversampling and
+    // flangers' through zero, which set how late each path is, the splits' and sums' Used) differ from the last call's,
+    // which it keeps.
     bool graphParamsChanged(const ParamValues &p);
     // Whether a chunk of `n` samples of `io` can go by without running the graph: exact silence going in, nothing
     // ringing, and every effect, wire and split where its params put it, with no fade under way.
@@ -243,7 +244,8 @@ private:
     // or stopping, or the graph cleared. Else ordering it every chunk would only find it as it was.
     bool orderStale_ = true;
     static constexpr int kGraphParams = [] {
-        int count = 3 * kFxSlots + kFxSplits + kFxSums; // the types, amps' and shapers' oversampling, Used switches
+        // The types, amps' and shapers' oversampling, flangers' through zero, Used switches.
+        int count = 4 * kFxSlots + kFxSplits + kFxSums;
         for (int node = 0; node < kFxNodes; ++node)
             count += fxInputCount(node);
         return count;
@@ -255,11 +257,32 @@ private:
     std::array<bool, kFxNodes> frozen_{};    // those only a wire fading out reads: their wires stay as they were
     std::array<bool, kFxNodes> ranBefore_{}; // the nodes it ran the process() before
 
+    // A flanger's wait through zero (see fxlag.h), a side: a line exactly as many samples late, in Lags::waitLines.
+    struct Wait {
+        float *line = nullptr;
+        int size = 0;
+        int at = 0;
+        void reset() {
+            std::fill_n(line, size, 0.0f);
+            at = 0;
+        }
+        void run(float *x, int frames) {
+            for (int i = 0; i < frames; ++i) {
+                const float y = line[at];
+                line[at] = x[i];
+                x[i] = y;
+                at = at + 1 == size ? 0 : at + 1;
+            }
+        }
+    };
     // Keeping the graph's paths in step (see fxlag.h). An oversampled effect's own dry sound (what it fades from as it
-    // is switched, what it passes while off, an amp's Mix) goes up and down as its wet sound does, so the slot is as
-    // late whatever it does; it crossfades over 5 ms, from the path it had, when its type or oversampling changes.
+    // is switched, what it passes while off, an amp's Mix) goes up and down as its wet sound does, and a flanger's
+    // through zero waits as its sound does, so the slot is as late whatever it does; it crossfades over 5 ms, from the
+    // path it had, when its type, oversampling or through zero switch changes.
     struct SlotDry {
         std::array<UpDown, 2> now, was;
+        std::array<Wait, 2> nowWait, wasWait; // used while `lag`, `wasLag` hold a wait
+        FxLag lag, wasLag;                    // the slot's (see fxSlotLag()) that `now` and `was` are
         double wasFade = 0.0; // 1 .. 0
         bool live = false;    // whether the last chunk ran it (else it starts again from silence)
     };
@@ -267,10 +290,13 @@ private:
     static constexpr int kPoolPaths = 96;
     static_assert(kPoolPaths <= 256, "a wire end keeps its paths' numbers in bytes");
     struct Lags {
-        std::array<std::array<UpDown, 2>, FxLag::kKinds> fresh; // a path at each factor, cleared, designed for the rate
-        std::array<std::array<UpDown, 2>, kPoolPaths> pool;     // the wire ends' pads take theirs from here
+        std::array<std::array<UpDown, 2>, FxLag::kUpDowns> fresh; // a path at each factor, cleared, for the rate
+        std::array<std::array<UpDown, 2>, kPoolPaths> pool;       // the wire ends' pads take theirs from here
+        std::array<std::array<Wait, 2>, kPoolPaths> poolWait;     // or, for a wait, from here
+        std::array<uint8_t, kPoolPaths> kind{};                   // the kind each pool path was taken as
         std::array<bool, kPoolPaths> taken{};
         std::array<SlotDry, kFxSlots> dry;
+        ZeroBuffer waitLines; // every Wait's line, the pool's then the slots' (only those used taking memory)
     };
     std::unique_ptr<Lags> lags_;
     FxPads pads_{}; // each wire's pad as set (see orderGraph())

@@ -16,7 +16,7 @@ void Utility::start(const Context &ctx) {
     gainL = g.left;
     gainR = g.right;
     width = ctx.at(FxParam::UtilityWidth);
-    hz = utilityMonoBassHz(ctx.at(FxParam::UtilityMonoBass));
+    hz = cutoffOrOffHz(ctx.at(FxParam::UtilityMonoBass));
     mono = hz > 0.0 ? 1.0 : 0.0;
 }
 
@@ -24,14 +24,14 @@ void Utility::run(const Context &ctx, float *const *io, uint32_t n) {
     const double sampleRate = ctx.sampleRate;
     // Switched off, the high-pass keeps the corner it had while it fades out; switched on from silence, it starts
     // cleared, at the corner asked for.
-    const double asked = utilityMonoBassHz(ctx.at(FxParam::UtilityMonoBass));
+    const double asked = cutoffOrOffHz(ctx.at(FxParam::UtilityMonoBass));
     if (asked > 0.0) {
         if (mono <= 0.0)
             highPass = Biquad{};
         hz = asked;
     }
-    const Coefs hp = biquad(BiquadType::HighPass, std::clamp(hz, kMinCutoff, 0.45 * sampleRate), sampleRate);
-    const BiquadCoefs highPassCoefs{hp.b0, hp.b1, hp.b2, hp.a1, hp.a2};
+    const BiquadCoefs highPassCoefs =
+        biquadCoefs(biquad(BiquadType::HighPass, std::clamp(hz, kMinCutoff, 0.45 * sampleRate), sampleRate));
     const UtilityGains g = utilityGains(ctx.at(FxParam::UtilityGain), ctx.at(FxParam::UtilityPan));
     const double leftStep = rampStep(gainL, g.left, n, ctx.rampShortest),
                  rightStep = rampStep(gainR, g.right, n, ctx.rampShortest);

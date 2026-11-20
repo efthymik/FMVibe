@@ -752,7 +752,7 @@ enum class FxParam {
     AmpOversampling,
     // Utility: Gain from silence up to +12 dB (see utilityGain()), Pan a balance that turns the other side down, Width
     // the sides against the middle (0 mono, 1 as it was, 2 twice as wide), and MonoBass a 12 dB per octave high-pass on
-    // the sides, so the bass below it is mono; at 0 it is off (see utilityMonoBassHz()).
+    // the sides, so the bass below it is mono; at 0 it is off (see cutoffOrOffHz()).
     UtilityGain,
     UtilityPan,
     UtilityWidth,
@@ -2094,8 +2094,9 @@ inline double normFromRate(double hz) { return std::log(hz / kMinRate) / std::lo
 inline double sweepRateHz(double norm) { return norm <= 0.0 ? 0.0 : rateFromNorm(norm); }
 inline double cutoffFromNorm(double x) { return kMinCutoff * std::pow(kMaxCutoff / kMinCutoff, x); }
 inline double normFromCutoff(double hz) { return std::log(hz / kMinCutoff) / std::log(kMaxCutoff / kMinCutoff); }
-// The utility's Mono Bass knob: off at its bottom, else on the cutoff curve, up to kMaxUtilityMonoBass.
-inline double utilityMonoBassHz(double norm) { return norm <= 0.0 ? 0.0 : cutoffFromNorm(norm); }
+// A cutoff that can be Off (ParamKind::CutoffOrOff: the utility's Mono Bass, the reverb's Low Cut, the compressor's
+// Detector HP): off (0) at its bottom, else on the cutoff curve.
+inline double cutoffOrOffHz(double norm) { return norm <= 0.0 ? 0.0 : cutoffFromNorm(norm); }
 // A split's crossovers in Hz from its Low and High params, High kept a third of an octave above Low, as the three-band
 // dynamics' are.
 inline std::array<double, 2> splitCrossovers(double lowNorm, double highNorm) {
@@ -2675,7 +2676,7 @@ enum class ParamKind {
     AmpDial,      // 0..1, shown as 0.0 to 10.0, as an amp's knobs are numbered
     AmpDistance,  // 0..1 on a log curve, shown in cm or m; see ampDistanceCm()
     Fader,        // 0..1, a gain from silence to +12 dB, shown in dB down to -inf dB; see utilityGain()
-    CutoffOrOff,  // like Cutoff, but 0 is Off; see utilityMonoBassHz()
+    CutoffOrOff,  // like Cutoff, but 0 is Off; see cutoffOrOffHz()
     OpWarp,       // stepped: how an operator reads its wave's cycle (see OpWarp)
     UniCurve,     // stepped: how an operator's unison copies spread in pitch (see UniCurve)
     UniPan,       // stepped: where they sit across the stereo field (see UniPan)

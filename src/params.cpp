@@ -1434,7 +1434,7 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
         if (value <= 0.0)
             std::snprintf(out, capacity, "%s", tr(Str::ValueOff));
         else
-            formatHz(utilityMonoBassHz(value), out, capacity);
+            formatHz(cutoffOrOffHz(value), out, capacity);
         break;
     case ParamKind::Fader: {
         const double gain = utilityGain(value);
