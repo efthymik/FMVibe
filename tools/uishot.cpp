@@ -13132,14 +13132,15 @@ void run(const std::filesystem::path &dir, float scale) {
               "the arrows in the shaper card's curve list step the curve along the list");
     }
     {
-        // The Stack curve, before Custom in the list, puts its Stack knob after Drive, four knobs across the card:
-        // dragged up, it runs more stages, whole ones, undoably, the display drawing the stages' curve.
+        // The Stack curve, before Custom in the list, puts its Stack knob after Drive, five knobs across the card
+        // (Drive, Stack, Tone, Output and Mix): dragged up, it runs more stages, whole ones, undoably, the display
+        // drawing the stages' curve.
         click(view, clipButton);
         click(view, clipItem(ClipMode::Stack));
         const bool picked =
             std::lround(model.value(paramIndex(0, FxParam::ShaperMode))) == static_cast<long>(ClipMode::Stack);
         const int stack = paramIndex(0, FxParam::ShaperStack);
-        const Point knob{fxCardX(model, 0) + fxCardW(model, 0) / 4.0f * 1.5f, 180.0f + 240.0f};
+        const Point knob = fxKnob(model, 0, 1, 5);
         drag(view, knob, {knob.x, knob.y - 40.0f});
         const double stacked = model.value(stack);
         view.mouseMove(knob, {});

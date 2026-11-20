@@ -1173,7 +1173,10 @@ one may have changed since it last did.
     chevron that folds it, its power switch and an × to remove it at the right; and under it a live display, which
     draws the effect as modulation takes its params now (the newest voice's, or the macros' while nothing plays); the
     Param EQ's band handles and the 3-band dynamics' threshold lines stay where they are set, as the filter's handle
-    does:
+    does. Its knobs go in rows across it, under the display: three to a row 30 px across (36 in the one row of a card
+    that has one), and on a card one place wide, four to a row 26 px across and five 24, leaving room between them
+    for their labels (a wider card's keep 32 px); a label stays as wide as a 32 px knob's, so a value still fits
+    under a smaller knob:
     - the shaper's transfer curve; a Custom curve shows its own points and bends instead, to drag right there
       (double-click adds or deletes a point, Ctrl snaps to the grid), with what the drive, output and mix make of
       it faintly behind and the point under the mouse in numbers; its edit button (a pencil, at the right of its curve's
@@ -1847,8 +1850,8 @@ one may have changed since it last did.
     is hovered; with an aux, a dotted line runs from the aux's handle too. A source can modulate another source's depth too (drop its handle on
     a depth bar in the MODS view): the bar then has the dot in its top right corner, a strip under it shows
     how far the depth swings, and hovering the handle draws a dashed line to it like to any other target.
-  - **More than fit**: a knob, label, cell or depth bar shows as many depth handles as its width holds (under a 30
-    or 32 px knob 3, under a 34 px one 4; on a wire label 5, a matrix cell 5, a depth bar 11), in the order the
+  - **More than fit**: a knob, label, cell or depth bar shows as many depth handles as its width holds (under a 24 or
+    26 px knob 2, under a 30 or 32 px one 3, under a 34 px one 4; on a wire label 5, a matrix cell 5, a depth bar 11), in the order the
     sources show. Past that, as many as fit beside a **+n** pill (2 under a knob, 3 on a label, 4 on a cell, 9 on
     a depth bar) hold the rest, so nothing runs under the next control. Hovering the pill draws the ranges of the
     modulations it holds wider, and says how many there are; a hovered source whose depth handle the pill holds

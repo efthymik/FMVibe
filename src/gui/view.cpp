@@ -1965,7 +1965,14 @@ void View::effectCardWidgets(std::vector<Widget> &list, int slot, Rect card) con
     auto knobs = [&](std::initializer_list<int> params, std::initializer_list<const char *> labels,
                      float y = 240.0f) {
         const float step = card.w / static_cast<float>(params.size());
-        const float diameter = params.size() > 3 ? 32.0f : (y == 240.0f ? 36.0f : 30.0f);
+        // Four or more across a card of the usual width take smaller knobs, leaving room between them for their
+        // labels; a wide card's keep their size.
+        const bool narrow = card.w < 1.5f * kFxCardW;
+        const float diameter = params.size() > 4 && narrow   ? 24.0f
+                               : params.size() > 3 && narrow ? 26.0f
+                               : params.size() > 3           ? 32.0f
+                               : y == 240.0f                 ? 36.0f
+                                                             : 30.0f;
         for (size_t i = 0; i < params.size(); ++i)
             if (params.begin()[i] >= 0) // -1 leaves its place empty
                 knob(params.begin()[i], {card.x + step * (static_cast<float>(i) + 0.5f), card.y + y}, diameter,
@@ -5204,7 +5211,9 @@ void View::paintKnob(Canvas &c, const Widget &w) {
         c.text({w.rect.x + textX, w.rect.y + labelY, textWidth, 16.0f}, w.label, kTextLabel, kDim, Align::Left);
         c.text({w.rect.x + textX, w.rect.y + valueY, textWidth, 18.0f}, shown, kTextValue, kText, Align::Left, true);
     } else {
-        const Rect label{w.rect.x - 14.0f, w.rect.y + w.rect.w + 2.0f, w.rect.w + 28.0f, 16.0f};
+        // As wide as a 32 px knob's at the least, so a smaller knob's value still fits under it.
+        const float labelW = std::max(w.rect.w + 28.0f, 60.0f);
+        const Rect label{center.x - labelW * 0.5f, w.rect.y + w.rect.w + 2.0f, labelW, 16.0f};
         c.text(label, focused || !w.label ? shown : std::string(w.label), kTextLabel,
                focused ? kText : kDim);
     }
