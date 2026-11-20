@@ -450,6 +450,8 @@ private:
     // A knob whose value moves only in whole steps (a count, semitones, a note, a note value, a factor), drawn as a
     // stepper: its number in a field with - and + at its ends and its steps along its foot (see Widget::well).
     static bool isStepper(const Widget &w);
+    // Where knob `w`'s label goes across, among its row's (see Widget::labelRoom).
+    float knobLabelX(Canvas &c, const Widget &w) const;
     static bool isStepperParam(int param);
     // The stepper's - (-1) or + (1) under `p`, or 0.
     static int stepperButton(const Widget &w, Point p);
