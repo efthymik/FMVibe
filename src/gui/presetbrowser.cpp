@@ -278,11 +278,8 @@ void PresetBrowser::paintPresetBar(Canvas &c, const Widget &w, bool hovered) {
     c.fillRect(w.rect, lit ? kTrack : kRaised, kRadiusControl);
     if (outlined())
         c.strokeRect(w.rect, browserOpen_ ? kAccent : kBorder, 1.0f, kRadiusControl);
-    const Point m{w.rect.right() - 14.0f, w.rect.center().y};
-    const Point chevron[] = {{m.x - 4.0f, m.y + (browserOpen_ ? 2.0f : -2.0f)},
-                             {m.x, m.y + (browserOpen_ ? -2.5f : 2.5f)},
-                             {m.x + 4.0f, m.y + (browserOpen_ ? 2.0f : -2.0f)}};
-    c.polyline(chevron, 3, lit ? kText : kDim, 1.5f);
+    paintChevron(c, {w.rect.right() - 14.0f, w.rect.center().y}, lit ? kText : kDim,
+                 browserOpen_ ? ChevronWay::Up : ChevronWay::Down);
     const bool hasFile = controller().presetHasFile();
     const PresetInfo &info = controller().layout().presetInfo;
     const float y = w.rect.center().y;
@@ -918,10 +915,7 @@ void PresetBrowser::paintBrowser(Canvas &c) {
             const Point m = r.center();
             const Color ink = hovered ? kText : kDim;
             const bool open = tree[item.a].open;
-            const Point chevron[] = {open ? Point{m.x - 3.5f, m.y - 1.5f} : Point{m.x - 1.5f, m.y - 3.5f},
-                                     open ? Point{m.x, m.y + 2.0f} : Point{m.x + 2.0f, m.y},
-                                     open ? Point{m.x + 3.5f, m.y - 1.5f} : Point{m.x - 1.5f, m.y + 3.5f}};
-            c.polyline(chevron, 3, ink, 1.4f);
+            paintChevron(c, m, ink, open ? ChevronWay::Down : ChevronWay::Right, true);
             break;
         }
         case Kind::BrowserCategory: {

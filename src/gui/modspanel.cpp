@@ -709,9 +709,7 @@ void ModsPanel::paintCascade(Canvas &c) {
                 c.fillCircle({x + labelW + 7.0f, at.center().y}, 2.5f, kText);
             float right = at.right() - 8.0f;
             if (!item.children.empty()) { // a chevron for a category
-                const Point m{right - 3.0f, at.center().y};
-                const Point chevron[] = {{m.x - 2.0f, m.y - 4.0f}, {m.x + 2.0f, m.y}, {m.x - 2.0f, m.y + 4.0f}};
-                c.polyline(chevron, 3, opened ? kText : kDim, 1.4f);
+                paintChevron(c, {right - 3.0f, at.center().y}, opened ? kText : kDim, ChevronWay::Right, true);
                 right -= 12.0f;
             }
             if (item.checked) {
@@ -935,9 +933,7 @@ bool ModsPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
             c.text({w.rect.x + 20.0f, w.rect.y, w.rect.w - 34.0f, w.rect.h}, ask, kTextBody, hovered || open ? kText : kDim,
                    Align::Left);
             const float x = w.rect.x + 24.0f + std::min(c.textWidth(ask, kTextBody), w.rect.w - 40.0f);
-            const Point m{x + 4.0f, w.rect.center().y};
-            const Point chevron[] = {{m.x - 3.5f, m.y - 1.5f}, {m.x, m.y + 2.0f}, {m.x + 3.5f, m.y - 1.5f}};
-            c.polyline(chevron, 3, kDim, 1.3f);
+            paintChevron(c, {x + 4.0f, w.rect.center().y}, kDim, ChevronWay::Down, true);
             break;
         }
         const Color color = kSourceColors[w.a];
@@ -951,9 +947,7 @@ bool ModsPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
                    Align::Left, true);
             if (hovered || open) {
                 const float x = w.rect.x + 24.0f + std::min(c.textWidth(name, kTextBody, true), w.rect.w - 40.0f);
-                const Point m{x + 4.0f, w.rect.center().y};
-                const Point chevron[] = {{m.x - 3.5f, m.y - 1.5f}, {m.x, m.y + 2.0f}, {m.x + 3.5f, m.y - 1.5f}};
-                c.polyline(chevron, 3, kDim, 1.3f);
+                paintChevron(c, {x + 4.0f, w.rect.center().y}, kDim, ChevronWay::Down, true);
             }
         } else {
             c.line({w.rect.x + 7.0f, w.rect.y - 2.0f}, {w.rect.x + 7.0f, w.rect.bottom() + 2.0f}, color.alpha(0.35f),
@@ -975,9 +969,7 @@ bool ModsPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         c.text({w.rect.x + 6.0f, w.rect.y, w.rect.w - 24.0f, w.rect.h}, name, kTextBody,
                target < 0 || (w.b >= 0 && mods_.slotBypassed(w.a, w.b)) ? kDim : kText, Align::Left);
         if (hovered || open || target < 0) {
-            const Point m{w.rect.right() - 10.0f, w.rect.center().y};
-            const Point chevron[] = {{m.x - 3.5f, m.y - 1.5f}, {m.x, m.y + 2.0f}, {m.x + 3.5f, m.y - 1.5f}};
-            c.polyline(chevron, 3, kDim, 1.3f);
+            paintChevron(c, {w.rect.right() - 10.0f, w.rect.center().y}, kDim, ChevronWay::Down, true);
         }
         break;
     }

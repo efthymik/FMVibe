@@ -212,6 +212,41 @@ void paintPill(Canvas &c, Rect r, bool lit) {
     c.fillRect(r, lit ? kAccent.alpha(0.24f) : kTrack, std::min(kRadiusPanel, r.h * 0.5f));
 }
 
+Color paintActionFace(Canvas &c, Rect r, bool hot, bool can, float radius) {
+    c.fillRect(r, hot && can ? kTrack : kRaised, radius);
+    if (outlined())
+        c.strokeRect(r, kBorder, 1.0f, radius);
+    return !can ? kFaint : hot ? kText : kDim;
+}
+
+// As tall as the power switch beside it (cardPower() in layout.h), about the same middle.
+void paintTitleActionFace(Canvas &c, Rect r, bool hovered) {
+    if (hovered)
+        c.fillRect({r.x, r.center().y - 9.5f, r.w, 19.0f}, look.flat ? wellHover() : kTrack, kRadiusControl);
+}
+
+void paintChevron(Canvas &c, Point m, Color ink, ChevronWay way, bool inRow) {
+    // Pointing down: its arms `half` either side, from `back` above the middle to its tip `tip` below.
+    const float half = inRow ? 3.5f : 4.0f, back = inRow ? 1.5f : 2.0f, tip = inRow ? 2.0f : 2.5f;
+    const float width = inRow ? 1.3f : 1.5f;
+    Point points[3];
+    switch (way) {
+    case ChevronWay::Down:
+        points[0] = {m.x - half, m.y - back}, points[1] = {m.x, m.y + tip}, points[2] = {m.x + half, m.y - back};
+        break;
+    case ChevronWay::Up:
+        points[0] = {m.x - half, m.y + back}, points[1] = {m.x, m.y - tip}, points[2] = {m.x + half, m.y + back};
+        break;
+    case ChevronWay::Right:
+        points[0] = {m.x - back, m.y - half}, points[1] = {m.x + tip, m.y}, points[2] = {m.x - back, m.y + half};
+        break;
+    case ChevronWay::Left:
+        points[0] = {m.x + back, m.y - half}, points[1] = {m.x - tip, m.y}, points[2] = {m.x + back, m.y + half};
+        break;
+    }
+    c.polyline(points, 3, ink, width);
+}
+
 // Along the chip's foot, inside its rounded ends: a faint track, filled in the aux's color as far as the aux depth.
 void paintAuxDepthBar(Canvas &c, Rect chip, int aux, double depth) {
     const float inset = chip.h * 0.5f;
@@ -277,9 +312,7 @@ void paintMenuButton(Canvas &c, Rect r, const char *name, bool hovered, bool ope
     paintAddPlus(c, {r.x + 10.0f, r.center().y}, ink);
     c.text({r.x + 10.0f + kAddPlusW, r.y - kAddNameLift, r.w - 30.0f - kAddPlusW, r.h}, name, kTextLabel, ink,
            Align::Left, true);
-    const Point m{r.right() - 13.0f, r.center().y};
-    const Point chevron[] = {{m.x - 4.0f, m.y - 2.0f}, {m.x, m.y + 2.5f}, {m.x + 4.0f, m.y - 2.0f}};
-    c.polyline(chevron, 3, pill && !lit && !full ? kDim : ink, 1.5f);
+    paintChevron(c, {r.right() - 13.0f, r.center().y}, pill && !lit && !full ? kDim : ink);
 }
 
 // A card that adds one, its plus `arm` long each way about `m`: dashed and faint at rest, lit in the accent under the

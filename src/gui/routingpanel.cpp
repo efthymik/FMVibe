@@ -126,9 +126,7 @@ void paintAlgorithmButton(Canvas &c, Rect r, const std::string &badge, bool hove
         c.fillRect(tag, kAccent.alpha(0.24f), kRadiusControl);
         c.text(tag, badge, kTextSmall, lightTheme() ? kText : kAccent, Align::Center, true);
     }
-    const Point m{r.right() - 13.0f, y};
-    const Point chevron[] = {{m.x - 4.0f, m.y - 2.0f}, {m.x, m.y + 2.5f}, {m.x + 4.0f, m.y - 2.0f}};
-    c.polyline(chevron, 3, pill && !lit ? kDim : ink, 1.5f);
+    paintChevron(c, {r.right() - 13.0f, y}, pill && !lit ? kDim : ink);
 }
 
 // The glow behind the routing graph: a bloom of the accent from OUT, strongest on the core and fading smoothly out to

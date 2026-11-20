@@ -962,9 +962,8 @@ bool InspectorPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
             const Rect icon{w.rect.x + 4.0f, w.rect.y + 6.0f, w.rect.w - 15.0f, w.rect.h - 12.0f};
             const std::vector<Point> points = waveIcon(wave, icon);
             c.polyline(points.data(), points.size(), litInk(kAccent), 1.5f);
-            const Point m{w.rect.right() - 6.0f, w.rect.center().y};
-            const Point chevron[] = {{m.x - 3.0f, m.y - 1.5f}, {m.x, m.y + 1.5f}, {m.x + 3.0f, m.y - 1.5f}};
-            c.polyline(chevron, 3, look.flat ? litInk(kText) : lit ? kText : kDim, 1.2f);
+            paintChevron(c, {w.rect.right() - 6.0f, w.rect.center().y}, look.flat ? litInk(kText) : lit ? kText : kDim,
+                         ChevronWay::Down, true);
         } else {
             for (int d = -1; d <= 1; ++d)
                 c.fillCircle({w.rect.center().x + d * 5.0f, w.rect.center().y}, 1.6f, lit ? kText : kDim);

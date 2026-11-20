@@ -2479,6 +2479,35 @@ void testCardOutline(const std::filesystem::path &dir, Renderer &renderer) {
           "a Spectrum card is outlined only while the mouse is over it");
 }
 
+// A card title row's small actions, its fold and its x, show an action's face only while the mouse is over them, as tall
+// as the power switch beside them, in Midnight and in Spectrum (read off the rendered pixels, inside each button's face
+// and clear of its glyph).
+void testTitleActionFace(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    addSource(view, SourceType::Lfo);
+    const Rect card = detail::sourceCard(0.0f);
+    const Rect fold = detail::cardFold(card), cross = detail::cardClose(card), power = detail::cardPower(card);
+    const Point away{600.0f, 328.0f};
+    bool shown = true;
+    for (const char *theme : {"Midnight", "Spectrum"}) {
+        model.themeName = theme;
+        for (const Rect r : {fold, cross}) {
+            // Inside the face, 2 px in from its top left corner's curve, where neither the chevron nor the cross reach.
+            const Point probe{r.x + 3.0f, power.y + 3.0f};
+            const std::string name = std::string("17m-title-action-") + theme + (r.x == fold.x ? "-fold" : "-x");
+            view.mouseMove(away, {});
+            const uint32_t rest = renderer.save(view, dir / (name + "-rest.png")) ? renderer.pixel(probe) : 0u;
+            view.mouseMove(r.center(), {});
+            const uint32_t hot = renderer.save(view, dir / (name + "-hover.png")) ? renderer.pixel(probe) : 0u;
+            shown = shown && rest != 0u && hot != 0u && rest != hot;
+        }
+    }
+    view.mouseMove(away, {});
+    model.themeName = "Midnight";
+    check(shown, "a card title's fold and x show an action's face only under the mouse");
+}
+
 // A modulation ring whose reach runs past its knob's end, cut off there, ends in a line across it: at the knob's end
 // angle something is drawn further out than the ring reaches inside its range, while a reach that stays inside draws
 // nothing there past the knob's track (read off the rendered pixels, along rays out from Op A's Phase knob).
@@ -14114,6 +14143,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testPopupEscape(dir, renderer);
     testModFocus(dir, renderer);
     testCardOutline(dir, renderer);
+    testTitleActionFace(dir, renderer);
     testFlatModulatedKnob(dir, renderer);
     testModEndMarks(dir, renderer);
     testFlatThemes(dir, renderer);

@@ -29,6 +29,9 @@ feature. How to use it, for the plugin's users, is in the user manual, [docs/man
 - The editor's corners and text sizes keep to the scales in `src/gui/theme.h`: a radius is `kRadiusMark`,
   `kRadiusControl`, `kRadiusCard` or `kRadiusPanel` (a ring around something takes its radius plus how far out it is),
   and a text size one of the `kText...` sizes. New drawing uses them rather than literals.
+- A button looks as what it does (the list above `paintActionFace()` in `src/gui/theme.h`): an action is an icon on
+  `paintActionFace()`, a param's switch `View::paintButtonFace()`, a button that opens a list its name and
+  `paintChevron()`. A new button takes its role's painter rather than drawing a face of its own.
 - Text the plugin shows (labels, tooltips, menus, messages, parameter names, remote control pages) is worded in
   `src/uistrings.inc` and looked up by name: `tr(Str::Name)`, or `trf()` for a wording with `{1}`, `{2}` in it. New
   text gets a line there. Tests that match on text (menu entries, page names) look it up the same way, so a
@@ -835,6 +838,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - a knob's modulation ring cut off at the knob's end ending in a line across it, and one within range not (read
     off the rendered pixels);
   - in Spectrum, a source card outlined only while the mouse is over it (read off the rendered pixels);
+  - a card title's fold and x showing an action's face only under the mouse, in Midnight and Spectrum (read off the
+    rendered pixels);
   - in every theme, Porcelain among them, a filter's and a shaper's display on the inspector's lens standing apart from
     the lens's face (read off the rendered pixels);
   - in Spectrum, a modulated knob's arc keeping the accent and a ring from a source of a like color (LFO 1's) drawn

@@ -4344,10 +4344,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // A chevron pointing down while open, right while collapsed, and the panel's title beside it.
         const bool sources = w.kind == Kind::SourcesToggle;
         const bool collapsed = sources ? controller_.layout().sourcesCollapsed : controller_.layout().keysCollapsed;
-        const Point m{w.rect.x + 9.0f, w.rect.center().y};
-        const Point open[] = {{m.x - 4.0f, m.y - 2.0f}, {m.x, m.y + 2.5f}, {m.x + 4.0f, m.y - 2.0f}};
-        const Point shut[] = {{m.x - 2.0f, m.y - 4.0f}, {m.x + 2.5f, m.y}, {m.x - 2.0f, m.y + 4.0f}};
-        c.polyline(collapsed ? shut : open, 3, hovered ? kText : kDim, 1.5f);
+        paintChevron(c, {w.rect.x + 9.0f, w.rect.center().y}, hovered ? kText : kDim,
+                     collapsed ? ChevronWay::Right : ChevronWay::Down);
         c.text({w.rect.x + 20.0f, w.rect.y, w.rect.w - 20.0f, w.rect.h},
                tr(sources ? Str::HeadingModulation : Str::HeadingKeyboard), kTextBody, hovered ? kText : kDim, Align::Left,
                true);
@@ -4408,9 +4406,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
             c.strokeRect(w.rect, hovered ? kSourceColors[w.a].alpha(0.6f) : kBorder, 1.0f, kRadiusControl);
         }
-        const Point m{w.rect.right() - 12.0f, w.rect.center().y};
-        const Point chevron[] = {{m.x - 2.0f, m.y - 4.0f}, {m.x + 2.0f, m.y}, {m.x - 2.0f, m.y + 4.0f}};
-        c.polyline(chevron, 3, hovered ? kText : kDim, 1.4f);
+        paintChevron(c, {w.rect.right() - 12.0f, w.rect.center().y}, hovered ? kText : kDim, ChevronWay::Right);
         if (count == 0) {
             c.text({w.rect.x + 10.0f, w.rect.y, w.rect.w - 30.0f, w.rect.h}, tr(Str::CardNoModulations), kTextBody,
                    hovered ? kText : kDim, Align::Left);
@@ -4428,12 +4424,9 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::UndoButton: {
         const bool redo = w.a == 1;
         const bool can = (redo ? controller_.nextRedo() : controller_.nextUndo()) != nullptr;
-        c.fillRect(w.rect, hovered && can ? kTrack : kRaised, kRadiusControl);
-        if (outlined())
-            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
+        const Color color = paintActionFace(c, w.rect, hovered, can);
         // An arrow curving over the top, its head at the left end (undo) or the right (redo), pointing down.
         const Point m{w.rect.center().x, w.rect.center().y + 2.0f};
-        const Color color = !can ? kFaint : (hovered ? kText : kDim);
         constexpr float kEnd = 1.9f, kRadius = 5.5f;
         c.arc(m, kRadius, -kEnd, kEnd, color, 1.5f);
         const float angle = redo ? kEnd : -kEnd;
@@ -4471,10 +4464,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                 c.fillRect(w.rect.inset(3.0f), kText.alpha(0.06f), kRadiusControl);
             break;
         }
-        const Color color = hovered ? kText : kDim;
-        const Point m = w.rect.center();
-        const Point chevron[] = {{m.x + 2.5f, m.y - 5.0f}, {m.x - 2.5f, m.y}, {m.x + 2.5f, m.y + 5.0f}};
-        c.polyline(chevron, 3, color, 1.5f);
+        paintTitleActionFace(c, w.rect, hovered);
+        paintChevron(c, w.rect.center(), hovered ? kText : kDim, ChevronWay::Left);
         break;
     }
     case Kind::MacroName: // the knob draws the name; hovered, a line under it says it can be changed
@@ -4529,6 +4520,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::FxRemove:
     case Kind::FxNodeRemove:
     case Kind::SourceRemove: {
+        paintTitleActionFace(c, w.rect, hovered); // a small action, as the fold beside it
         const Point center = w.rect.center();
         const Color color = hovered ? kText : kFaint;
         c.line({center.x - 4.0f, center.y - 4.0f}, {center.x + 4.0f, center.y + 4.0f}, color, 1.5f);
@@ -4629,11 +4621,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const float right = w.rect.right() - (steps ? kListStepW + 2.0f : 20.0f);
         c.text({left + indent, w.rect.y, right - left - indent, w.rect.h}, listItemName(w.param, shown),
                kTextBody, text, Align::Left, true);
-        if (!steps) {
-            const Point m{w.rect.right() - 13.0f, w.rect.center().y};
-            const Point chevron[] = {{m.x - 4.0f, m.y - 2.0f}, {m.x, m.y + 2.5f}, {m.x + 4.0f, m.y - 2.0f}};
-            c.polyline(chevron, 3, text, 1.5f);
-        }
+        if (!steps)
+            paintChevron(c, {w.rect.right() - 13.0f, w.rect.center().y}, text);
         break;
     }
     case Kind::ListStep: { // an arrow pointing the way it steps, lit under the mouse
@@ -4742,12 +4731,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break;
     case Kind::PresetButton: {
         // Save and Save As greyed out while they have nothing to save.
-        const bool off = !presetActionOn(static_cast<PresetAction>(w.a));
-        c.fillRect(w.rect, hovered && !off ? kTrack : kRaised, kRadiusControl);
-        if (outlined())
-            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
+        const Color color = paintActionFace(c, w.rect, hovered, presetActionOn(static_cast<PresetAction>(w.a)));
         const Point m = w.rect.center();
-        const Color color = off ? kFaint : hovered ? kText : kDim;
         switch (static_cast<PresetAction>(w.a)) {
         case PresetAction::Init:
             resetIcon(c, m, color);
@@ -4801,12 +4786,9 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::SettingsButton: {
         const bool open = settingsOpen_;
-        c.fillRect(w.rect, hovered || open ? kTrack : kRaised, kRadiusControl);
-        if (outlined())
-            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
+        const Color color = paintActionFace(c, w.rect, hovered || open);
         // A cog: eight teeth around a ring.
         const Point center = w.rect.center();
-        const Color color = hovered || open ? kText : kDim;
         constexpr float kTau = 6.2831853f;
         for (int tooth = 0; tooth < 8; ++tooth) {
             const float angle = tooth * kTau / 8.0f;
@@ -4835,12 +4817,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                                                           : controller_.mpeBendRange() == w.b;
         const bool faint = w.kind == Kind::SettingsMpeRange && !controller_.mpe();
         const Color accent = faint ? kDim : kAccent;
-        if (w.group.w > 0.0f) // in its row's pill
-            paintButtonFace(c, w, on, hovered, accent, 0.22f, kRadiusControl);
-        else {
-            c.fillRect(w.rect, on ? accent.alpha(0.22f) : (hovered ? kTrack : kRaised), kRadiusControl);
-            c.strokeRect(w.rect, on ? accent : kBorder, 1.0f, kRadiusControl);
-        }
+        paintButtonFace(c, w, on, hovered, accent, 0.22f, kRadiusControl); // in its row's pill, or on its own
         char factor[16];
         std::snprintf(factor, sizeof(factor), "%dx", w.b);
         static constexpr Str kHandleSizes[] = {Str::SettingsHandlesSmall, Str::SettingsHandlesMedium,
@@ -4927,16 +4904,10 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         c.text({x + numberW + 4.0f, w.rect.y + 1.0f, unitW + 1.0f, w.rect.h}, unit, kTextLabel, kFaint, Align::Left);
         break;
     }
-    case Kind::PresetStep: {
-        c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
-        if (outlined())
-            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
-        const Point m = w.rect.center();
-        const float d = w.a < 0 ? 1.5f : -1.5f; // the chevron points the way it steps
-        const Point chevron[] = {{m.x + d, m.y - 4.0f}, {m.x - d, m.y}, {m.x + d, m.y + 4.0f}};
-        c.polyline(chevron, 3, hovered ? kText : kDim, 1.5f);
+    case Kind::PresetStep: // the chevron points the way it steps
+        paintChevron(c, w.rect.center(), paintActionFace(c, w.rect, hovered),
+                     w.a < 0 ? ChevronWay::Left : ChevronWay::Right);
         break;
-    }
     case Kind::SearchClear: { // the target menu's drawn with its menu (see ModsPanel)
         const Point m = w.rect.center();
         const Color color = hovered ? kText : kDim;

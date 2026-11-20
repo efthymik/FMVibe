@@ -2265,10 +2265,8 @@ bool FxPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
                 c.fillRect(w.rect.inset(3.0f), kText.alpha(0.06f), kRadiusControl);
             break;
         }
-        const Color color = hovered ? kText : kDim;
-        const Point m = w.rect.center();
-        const Point chevron[] = {{m.x + 2.5f, m.y - 5.0f}, {m.x - 2.5f, m.y}, {m.x + 2.5f, m.y + 5.0f}};
-        c.polyline(chevron, 3, color, 1.5f);
+        paintTitleActionFace(c, w.rect, hovered);
+        paintChevron(c, w.rect.center(), hovered ? kText : kDim, ChevronWay::Left);
         break;
     }
     case Kind::FxBoxGrip: // the title row: drawn with the split's controls
@@ -2318,16 +2316,8 @@ bool FxPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
     }
     case Kind::SplitSolo: { // a plain S, filled in its band's color while soloed
         const bool on = value(w.param) >= 0.5;
-        const Color band = laneColor(w.b);
-        if (look.flat) { // as the other switches: a dark well, filled solid with its band's color while on
-            c.fillRect(w.rect, on ? band : hovered ? wellHover() : wellColor(), kRadiusControl);
-            c.text(w.rect, tr(Str::SoloMark), kTextLabel, on ? litInk(kText) : hovered ? kText : kDim, Align::Center,
-                   true);
-            break;
-        }
-        c.fillRect(w.rect, on ? band.alpha(0.22f) : (hovered ? kTrack : kCardColor), kRadiusControl);
-        c.strokeRect(w.rect, on ? band : mix(kCardColor, kDim, 0.25f), 1.0f, kRadiusControl);
-        c.text(w.rect, tr(Str::SoloMark), kTextLabel, on || hovered ? kText : kDim, Align::Center, true);
+        host_.paintButtonFace(c, w, on, hovered, laneColor(w.b), 0.22f, kRadiusControl); // as the other switches
+        c.text(w.rect, tr(Str::SoloMark), kTextLabel, on ? litInk(kText) : hovered ? kText : kDim, Align::Center, true);
         break;
     }
     case Kind::FxBoxAdd: {
@@ -2356,12 +2346,7 @@ bool FxPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         break;
     }
     case Kind::FxClear: { // a bin, faint while there is nothing to remove
-        const bool any = fx_.anyToClear();
-        // As the other icon buttons (the title bar's, the shape editor's): raised, outlined where controls are.
-        c.fillRect(w.rect, hovered && any ? kTrack : kRaised, kRadiusControl);
-        if (outlined())
-            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
-        binIcon(c, w.rect.center(), !any ? kFaint : hovered ? kText : kDim);
+        binIcon(c, w.rect.center(), paintActionFace(c, w.rect, hovered, fx_.anyToClear()));
         break;
     }
     case Kind::FxNode: // drawn with the effects graph (see paintFxGraph())
@@ -2410,15 +2395,8 @@ bool FxPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
     }
     case Kind::SplitBands: { // the BANDS switch: 2 | 3, the one it is lit in the accent
         const bool on = (w.b == 3) == fx_.splitThree(w.a);
-        if (look.flat) { // as the S beside it and the other switches: a well, filled solid with the accent while lit
-            c.fillRect(w.rect, on ? kAccent : hovered ? wellHover() : wellColor(), kRadiusControl);
-            c.text(w.rect, std::to_string(w.b), kTextLabel, on ? litInk(kText) : hovered ? kText : kDim, Align::Center,
-                   true);
-            break;
-        }
-        c.fillRect(w.rect, on ? kAccent.alpha(0.22f) : (hovered ? kTrack : kRaised), kRadiusControl);
-        c.strokeRect(w.rect, on ? kAccent.alpha(0.8f) : kBorder, 1.0f, kRadiusControl);
-        c.text(w.rect, std::to_string(w.b), kTextLabel, on || hovered ? kText : kDim, Align::Center, true);
+        host_.paintButtonFace(c, w, on, hovered, kAccent, 0.22f, kRadiusControl); // as the S beside it
+        c.text(w.rect, std::to_string(w.b), kTextLabel, on ? litInk(kText) : hovered ? kText : kDim, Align::Center, true);
         break;
     }
     default:

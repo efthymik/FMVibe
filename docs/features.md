@@ -917,6 +917,13 @@ sweeps and spectra the panels' row. What may show anywhere repaints the whole of
 changing, the first note or the last ending, and the host's tempo. It looks over the params for changes only when
 one may have changed since it last did.
 
+Its buttons look as what they do, wherever they are. An action (undo and redo, the preset buttons, the cog, the bins,
+the SEQ view's copy and stretch, a shape's tools) is an icon alone, named in its tooltip, on a raised face; the small
+ones in a card's title row, its fold and its x, show that face only under the mouse, as tall as the power switch beside
+them. A switch or a choice of a param is set in a well and lit in its color, a row of them all icons or all words. A
+button that opens a list or a menu shows its name, after an icon where it has one, then a chevron pointing down, one
+chevron alike on every such button (a smaller one inside a row). A tab is its name, the one shown marked.
+
 - **ROUTING / MATRIX / FX / SEQ / MODS** tabs, under the header, pick what the panel below them shows: the routing
   graph or the matrix (two views of the same connections) with the inspector floating over the panel's left end, or
   across the whole panel the effects chain, the sequencer or every modulation. The

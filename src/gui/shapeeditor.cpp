@@ -1445,10 +1445,13 @@ const Widget *ShapeEditor::focused(DragKind dragged) const {
 }
 
 namespace {
-// An edit button, the same pencil wherever it opens an editor: lit in `color` under the mouse, and outlined in it
-// while what it opens is open.
+// An edit button, the same pencil wherever it opens an editor: an action's face at rest, lit in `color` under the
+// mouse, and outlined in it while what it opens is open.
 void editButton(Canvas &c, Rect r, Color color, bool hovered, bool open) {
-    c.fillRect(r, open ? color.alpha(0.22f) : hovered ? color.alpha(0.3f) : kRaised, kRadiusControl);
+    if (!open && !hovered)
+        paintActionFace(c, r, false);
+    else
+        c.fillRect(r, open ? color.alpha(0.22f) : color.alpha(0.3f), kRadiusControl);
     if (open)
         c.strokeRect(r, color, 1.0f, kRadiusControl);
     editIcon(c, r.center(), open || hovered ? kText : kDim);
@@ -1460,16 +1463,10 @@ bool ShapeEditor::paintWidget(Canvas &c, const Widget &w, bool hovered) {
     switch (w.kind) {
     case Kind::ShapeReset:
     case Kind::PartialReset:
-        c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
-        if (outlined())
-            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
-        resetIcon(c, w.rect.center(), hovered ? kText : kDim);
+        resetIcon(c, w.rect.center(), paintActionFace(c, w.rect, hovered));
         break;
     case Kind::PartialRandom:
-        c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
-        if (outlined())
-            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
-        diceIcon(c, w.rect.center(), hovered ? kText : kDim);
+        diceIcon(c, w.rect.center(), paintActionFace(c, w.rect, hovered));
         break;
     case Kind::ShapeGrid: {
         const UiLayout &layout = controller().layout();
@@ -1478,9 +1475,8 @@ bool ShapeEditor::paintWidget(Canvas &c, const Widget &w, bool hovered) {
                    hovered ? kText : kDim, Align::Center, true);
             break;
         }
-        c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
+        const Color color = paintActionFace(c, w.rect, hovered);
         const Point m = w.rect.center();
-        const Color color = hovered ? kText : kDim;
         c.line({m.x - 3.5f, m.y}, {m.x + 3.5f, m.y}, color, 1.5f);
         if (w.b > 0)
             c.line({m.x, m.y - 3.5f}, {m.x, m.y + 3.5f}, color, 1.5f);
@@ -1528,26 +1524,20 @@ bool ShapeEditor::paintWidget(Canvas &c, const Widget &w, bool hovered) {
     case Kind::PartialArea:
         break; // drawn with its editor
     case Kind::ShapeDone:
-        c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
-        if (outlined())
-            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
+        paintActionFace(c, w.rect, hovered);
         doneIcon(c, w.rect.center(), kText);
         break;
     case Kind::ShapeCollapse:
     case Kind::ShapeExpand:
     case Kind::ShapeWiden:
-        c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
-        if (outlined())
-            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
-        if (w.kind == Kind::ShapeCollapse)
-            collapseIcon(c, w.rect.center(), hovered ? kText : kDim);
+        if (const Color ink = paintActionFace(c, w.rect, hovered); w.kind == Kind::ShapeCollapse)
+            collapseIcon(c, w.rect.center(), ink);
         else
-            expandIcon(c, w.rect.center(), hovered ? kText : kDim);
+            expandIcon(c, w.rect.center(), ink);
         break;
     case Kind::ShapeTool: { // Paste faint while nothing is copied
         const bool can = w.b != static_cast<int>(ShapeTool::Paste) || shapeCopied();
-        c.fillRect(w.rect, hovered && can ? kTrack : kRaised, kRadiusControl);
-        shapeToolIcon(c, w.rect.center(), w.b, !can ? kFaint : hovered ? kText : kDim);
+        shapeToolIcon(c, w.rect.center(), w.b, paintActionFace(c, w.rect, hovered, can));
         break;
     }
     case Kind::ShapeMode: { // Points | Steps, the one picked lit, and Snap lit while it is on

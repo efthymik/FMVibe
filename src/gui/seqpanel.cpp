@@ -2648,11 +2648,6 @@ std::optional<CursorKind> SeqPanel::cursor(const Widget &w) const {
 
 bool SeqPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
     const UiLayout &layout = controller().layout();
-    auto iconButton = [&](bool lit) { // raised, outlined where controls are, as the FX panel's bin
-        c.fillRect(w.rect, lit ? kTrack : kRaised, kRadiusControl);
-        if (outlined())
-            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
-    };
     if ((w.kind == Kind::Choice || w.kind == Kind::Toggle) && isSeqParam(w.param)) {
         const bool on = w.kind == Kind::Choice ? std::lround(value(w.param)) == w.b : value(w.param) >= 0.5;
         host_.paintButtonFace(c, w, on, hovered, kAccent, 0.22f, kRadiusControl);
@@ -2708,9 +2703,7 @@ bool SeqPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         const int snap = std::clamp(layout.seqSnap, 0, kSeqSnapCount - 1);
         c.text({w.rect.x + 10.0f, w.rect.y, w.rect.w - 26.0f, w.rect.h},
                kSeqSnapNames[snap] ? kSeqSnapNames[snap] : tr(Str::ValueOff), kTextBody, lit ? kText : kDim, Align::Left);
-        const Point m{w.rect.x + w.rect.w - 12.0f, w.rect.center().y};
-        const Point chevron[] = {{m.x - 3.5f, m.y - 2.0f}, {m.x, m.y + 2.0f}, {m.x + 3.5f, m.y - 2.0f}};
-        c.polyline(chevron, 3, lit ? kText : kDim, 1.3f);
+        paintChevron(c, {w.rect.right() - 13.0f, w.rect.center().y}, lit ? kText : kDim);
         return true;
     }
     case Kind::SeqSnapMenu:
@@ -2739,9 +2732,7 @@ bool SeqPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         c.fillCircle({w.rect.x + 10.0f, y}, 3.5f, look.sources[kMaxSources + macro].alpha(curve ? 1.0f : kSeqBareMacroDot));
         c.text({w.rect.x + 18.0f, w.rect.y, w.rect.w - 32.0f, w.rect.h}, trf(Str::SeqLaneMacro, {std::to_string(macro + 1)}),
                kTextSmall, ink, Align::Left, true);
-        const float m = w.rect.right() - 10.0f;
-        const Point chevron[] = {{m - 3.5f, y - 2.0f}, {m, y + 2.0f}, {m + 3.5f, y - 2.0f}};
-        c.polyline(chevron, 3, ink, 1.3f);
+        paintChevron(c, {w.rect.right() - 10.0f, y}, ink, ChevronWay::Down, true);
         return true;
     }
     case Kind::SeqMacroMenu:
@@ -2779,8 +2770,8 @@ bool SeqPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         return true;
     }
     case Kind::SeqStretch:
-        iconButton(hovered);
-        c.text(w.rect, w.b > 0 ? "\xC3\x97" "2" : "\xC3\xB7" "2", kTextLabel, hovered ? kText : kDim, Align::Center, true);
+        c.text(w.rect, w.b > 0 ? "\xC3\x97" "2" : "\xC3\xB7" "2", kTextLabel, paintActionFace(c, w.rect, hovered),
+               Align::Center, true);
         return true;
     case Kind::SeqField: {
         const bool any = !seqPicked().empty();
@@ -2811,15 +2802,12 @@ bool SeqPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         return true;
     }
     case Kind::SeqClear: {
-        const bool any = !seqPatternEmpty(seqPattern());
-        iconButton(hovered && any);
-        binIcon(c, w.rect.center(), !any ? kFaint : hovered ? kText : kDim);
+        binIcon(c, w.rect.center(), paintActionFace(c, w.rect, hovered, !seqPatternEmpty(seqPattern())));
         return true;
     }
     case Kind::SeqCopy: { // two sheets, one over the other
-        iconButton(hovered);
+        const Color ink = paintActionFace(c, w.rect, hovered);
         const Point m = w.rect.center();
-        const Color ink = hovered ? kText : kDim;
         c.strokeRect({m.x - 5.0f, m.y - 5.0f, 8.0f, 9.0f}, ink, 1.2f, 1.5f);
         c.fillRect({m.x - 2.0f, m.y - 2.0f, 8.0f, 9.0f}, hovered ? kTrack : kRaised, 1.5f);
         c.strokeRect({m.x - 2.0f, m.y - 2.0f, 8.0f, 9.0f}, ink, 1.2f, 1.5f);
@@ -2854,7 +2842,7 @@ bool SeqPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         if (look.flat)
             c.fillRect(w.rect, hovered ? wellHover() : wellColor(), kRadiusControl);
         else
-            iconButton(hovered);
+            paintActionFace(c, w.rect, hovered);
         const Point m = w.rect.center();
         const Color ink = hovered ? kText : kDim;
         c.line({m.x - 4.0f, m.y}, {m.x + 4.0f, m.y}, ink, 1.4f);

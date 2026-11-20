@@ -317,6 +317,25 @@ void paintMenuRow(Canvas &c, Rect r, bool hovered, bool selected);
 // A flat theme's add button: a filled pill, round at its ends, tinted with the accent while `lit`.
 void paintPill(Canvas &c, Rect r, bool lit);
 
+// The editor's buttons look as what they do, wherever they are:
+// - An action (undo, Save, the settings' cog, a bin, a shape's tools): an icon alone, named in its tooltip, on a raised
+//   face, outlined where controls are (paintActionFace()). A small one in a card's title row (its fold and its x)
+//   shows that face only under the mouse (paintTitleActionFace()), so the title stays light.
+// - A switch or a choice of a param: set in a well and lit in its color (View::paintButtonFace()); a row of them all
+//   icons or all words.
+// - A button that opens a list or a menu (+ SOURCE, ALGORITHM, a list's button, the snap's): its name, after an icon
+//   where it has one, then a chevron pointing down (paintChevron()).
+// - A tab: its name, the one shown marked.
+// An action's face: raised, the track's under the mouse (`hot`) while it can act, outlined where controls are. Gives its
+// icon's ink: faint while it can't act, the text's while hot, else dim.
+Color paintActionFace(Canvas &c, Rect r, bool hot, bool can = true, float radius = kRadiusControl);
+// A card title row's small action (its fold, its x): the face of the power switch beside it, under the mouse only.
+void paintTitleActionFace(Canvas &c, Rect r, bool hovered);
+// A chevron about `m`, pointing `way`: a button's that opens a list or a menu, or a fold's; `inRow`, a smaller one inside
+// a row (a MODS row's, a menu's category, a tree's).
+enum class ChevronWay { Down, Up, Left, Right };
+void paintChevron(Canvas &c, Point m, Color ink, ChevronWay way = ChevronWay::Down, bool inRow = false);
+
 // The bar along the foot of an aux's chip (a MODS row's, a pill's list's row's): as far as the aux depth (0..1), in the
 // aux's color.
 void paintAuxDepthBar(Canvas &c, Rect chip, int aux, double depth);
