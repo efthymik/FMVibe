@@ -1,6 +1,7 @@
 #include "state.h"
 
 #include "gui/controller.h"
+#include "warp.h"
 
 #include <algorithm>
 #include <array>
@@ -77,9 +78,11 @@ constexpr size_t kMaxPresetChunk = 65536;
 // 14: A pattern's curves wrap around its end, the last point's segment going on to the first point; they held their
 //    first and last points' values before and after them. An earlier state's bend and mod wheel curves load with points
 //    at the pattern's start and end that hold those values, playing as they played (see holdSeqCurveEnds()).
+// 15: An operator's Sync warp plays its wave up to 16 times a cycle rather than 8 (kMaxSyncWarp), so an earlier state's
+//    Warp Amount on an operator with the Sync warp, and the depths on it, load 7/15 as large, to play as they did.
 // One version a release at most: what changes between two tagged releases goes into a single step, so the version
 // rises once from one release to the next (see AGENTS.md, Plugin facts).
-constexpr uint32_t kStateVersion = 14;
+constexpr uint32_t kStateVersion = 15;
 
 bool writeAll(const clap_ostream_t *stream, const void *data, size_t size) {
     auto *bytes = static_cast<const uint8_t *>(data);
@@ -680,6 +683,19 @@ bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
                 if (target >= 0 && modulatedInSteps(target))
                     loaded[slotAmountIndex(source, slot)] *= kRetiredSourceDivisionSteps / kSourceDivisionSteps;
             }
+    if (header[1] < 15) { // as many times through a cycle as a Sync warp played: it reached kRetiredMaxSyncWarp
+        constexpr double scale = (kRetiredMaxSyncWarp - 1.0) / (kMaxSyncWarp - 1.0);
+        for (int op = 0; op < kOps; ++op) {
+            if (std::lround(loaded[paramIndex(op, OpParam::Warp)]) != static_cast<long>(OpWarp::Sync))
+                continue;
+            const int amount = paramIndex(op, OpParam::WarpAmount);
+            loaded[amount] *= scale;
+            for (int source = 0; source < kAllSources; ++source)
+                for (int slot = 0; slot < kSlots; ++slot)
+                    if (slotTarget(loaded[slotTargetIndex(source, slot)]) == amount)
+                        loaded[slotAmountIndex(source, slot)] *= scale;
+        }
+    }
     if (header[1] < 8) { // the chain's order onto its places
         const int retired = paramIndex(GlobalParam::RetiredFxOrder);
         for (const auto &[index, value] : fxOrderChanges(fxOrderFromRetired(loaded[retired])))

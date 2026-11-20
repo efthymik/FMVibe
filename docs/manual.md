@@ -302,7 +302,7 @@ The **warp** buttons choose how the operator's waveform is reshaped, and **Amoun
 | Squeeze | Compresses the first half of the cycle and stretches the second: pulse-width modulation for a square, a leaning sine or saw. |
 | Pulse | Plays the whole cycle at its start and stays flat for the remainder (reversed below 0). |
 | Steps | Quantizes the cycle into 8 steps (4 below 0). |
-| Sync | Plays the wave up to 8 times per cycle, cut off at the cycle's end: the formant rises with the amount while the pitch stays. |
+| Sync | Plays the wave up to 16 times per cycle, cut off at the cycle's end: the formant rises with the amount while the pitch stays. |
 
 Amount can be modulated, for example an LFO on Squeeze for PWM. Changing
 warps never clicks.

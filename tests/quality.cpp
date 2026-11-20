@@ -8,6 +8,7 @@
 #include "state.h"
 #include "synth.h"
 #include "unison.h"
+#include "warp.h"
 
 #include <algorithm>
 #include <chrono>
@@ -2253,6 +2254,41 @@ void effectsChainChecks() {
         check(held, "a state before version 14 loads its sequencer curves playing as they played, holding their ends");
         check(std::equal(now.begin(), now.end(), p.begin()) && std::abs(at(now, 0, SeqCurve::Bend, 0.0)) < 1e-9,
               "a version 14 state loads its sequencer curves as saved, wrapping around the pattern's end");
+    }
+    {
+        // Before version 15, the Sync warp reached 8 times a cycle rather than 16: a version 14 state's amount on a
+        // Sync warp and the depth on it load 7/15 as large, playing as many times through a cycle as they did, a
+        // Squeeze's and the depth on it as saved; a version 15 state's as saved.
+        ParamValues p = defaults();
+        const int sync = paramIndex(0, OpParam::WarpAmount), squeeze = paramIndex(1, OpParam::WarpAmount);
+        p[paramIndex(0, OpParam::Warp)] = static_cast<double>(OpWarp::Sync);
+        p[paramIndex(1, OpParam::Warp)] = static_cast<double>(OpWarp::Squeeze);
+        p[sync] = 0.75;
+        p[squeeze] = 0.75;
+        p[slotTargetIndex(0, 0)] = slotTargetValue(sync);
+        p[slotAmountIndex(0, 0)] = 0.3;
+        p[slotTargetIndex(0, 1)] = slotTargetValue(squeeze);
+        p[slotAmountIndex(0, 1)] = 0.3;
+        std::vector<unsigned char> bytes;
+        const clap_ostream_t out = memoryOut(bytes);
+        writePatch(&out, p, gui::UiLayout{}, true);
+        auto load = [&bytes](uint32_t version) {
+            std::vector<unsigned char> saved = bytes;
+            std::memcpy(saved.data() + sizeof(uint32_t), &version, sizeof(version)); // after the magic
+            MemoryReader reader{saved.data(), saved.size(), 0};
+            const clap_istream_t in = memoryIn(reader);
+            ParamValues loaded;
+            readParams(&in, loaded);
+            return loaded;
+        };
+        const ParamValues before = load(14), now = load(15);
+        auto retiredCycles = [](double amount) { return 1.0 + (kRetiredMaxSyncWarp - 1.0) * std::abs(amount); };
+        const bool scaled = std::abs(syncWarpCycles(before[sync]) - retiredCycles(0.75)) < 1e-9 &&
+                            std::abs(syncWarpCycles(before[sync] + before[slotAmountIndex(0, 0)]) -
+                                     retiredCycles(0.75 + 0.3)) < 1e-9 &&
+                            before[squeeze] == 0.75 && before[slotAmountIndex(0, 1)] == 0.3;
+        check(scaled, "a state before version 15 loads its Sync warp's amount and depth playing as they did");
+        check(std::equal(now.begin(), now.end(), p.begin()), "a version 15 state loads its warps as saved");
     }
     {
         // The filter effect switched to another type or slope and back: the stage it left out starts from silence,

@@ -70,7 +70,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     partials, only as many as its count (the 40th silent at 32, heard at 64); a sine synced at 2.5 times an A4
     playing the A4's harmonics and not its own 1100 Hz, and Squeeze moving a square's pulse width (its 2nd harmonic
     from none at 50 % to about 0.63 of its fundamental either way at ±50 %), and the Sync warp at 3 times a cycle
-    playing an A4's 3rd harmonic alone and at 3.5 times its harmonics, not 1540 Hz; a low-pass at 300 Hz and a high-pass
+    playing an A4's 3rd harmonic alone, at 3.5 times its harmonics, not 1540 Hz, and at 16 times its 16th alone; a low-pass at 300 Hz and a high-pass
     at 2 kHz move that ratio the right way (the low-pass's Mix at 0 leaving the saw as it was, at 50 % between), each slope from 6 to 24 dB harder than the one before (the 6 dB
     low-pass a one-pole), and a band-pass set to 6 or 18 dB plays 12 or 24;
   - the ladder's slopes tapping one to four of its one-pole stages; the ladder, the diode and both Sallen-Key's, at
@@ -259,7 +259,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     saved, and its Unison Pan loading Ramp, as its copies played, where a version 13 state without one loads
     Alternate, the pan a new operator starts with, and its depth on a source's Division loading 26/28 as deep, as it
     grew two note values slower, a version 13 state's as saved; and a version 13 state's sequencer curves loading with
-    points that hold their ends as they played, a version 14 state's as saved, wrapping around;
+    points that hold their ends as they played, a version 14 state's as saved, wrapping around; and a version 14
+    state's Sync warp's amount and the depth on it loading 7/15 as large, as its reach grew from 8 times a cycle to
+    16, a Squeeze's as saved, a version 15 state's as saved;
   - the phase disperser's Key Track and Stretch against the chain they make, from the same coefficients: an impulse
     through Key Track with a C4, a C5 and (at 50 %) a C6 coming out as through the chain at Freq and an octave up, and
     through Stretch 4, 37 and 4 at 96 kHz (eight samples) as the plain chain's impulse response spread that far apart,
@@ -1338,7 +1340,7 @@ itself.
   differently goes into the step already made since the last tag, if there is one (its comment in `src/state.cpp`
   and the checks that load a state from before it), rather than adding another. States saved by a build between two
   tags are not kept loading as they were: only released versions are.
-- The state blob holds `(id, value)` pairs with a version number (currently 14: version 1's Volume loads 12 dB
+- The state blob holds `(id, value)` pairs with a version number (currently 15: version 1's Volume loads 12 dB
   lower, since Volume now gives back the 12 dB the voices go into the effects with; before version 3, a state in
   poly loads Legato off, since it did nothing there then and acts there now; before version 4, a modulation's depth on an
   envelope's attack, decay or release loads scaled by `kMaxEnvNorm / (kMaxEnvNorm - kMinEnvNorm)`, since their
@@ -1362,8 +1364,10 @@ itself.
   `kRetiredSourceDivisionSteps / kSourceDivisionSteps`, since it now reaches two note values slower, 8/1T and 8/1,
   numbered -1 and -2 (`kSlowestDivision`) so that its stored values keep their note values; before version 14, a
   pattern's bend and mod wheel curves, which held their first and last points' values and now wrap around the pattern's
-  end, load with points at the pattern's start and end that hold them (`holdSeqCurveEnds()`)), followed by the editor
-  layout:
+  end, load with points at the pattern's start and end that hold them (`holdSeqCurveEnds()`); before version 15, an
+  operator's Warp Amount on a Sync warp and the depths on it load scaled by
+  `(kRetiredMaxSyncWarp - 1) / (kMaxSyncWarp - 1)`, since it now plays its wave up to 16 times a cycle rather than 8),
+  followed by the editor layout:
   node, filter and shaper positions, selected node, zoom, the routing view, whether the modulation panel is collapsed,
   the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names, which
   effect and source cards are folded, whether the keyboard strip is collapsed, the operator page's tab, the

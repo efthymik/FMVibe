@@ -348,9 +348,10 @@ void warpIcon(Canvas &c, Rect r, OpWarp warp, Color color) {
     key.push_back(static_cast<double>(warp));
     const std::vector<Point> points = icons.get(key, [&] {
         // Steps at full, so its eight steps read as steps at this size (at three quarters they blur into a sine),
-        // traced finely enough that each rise stays sharp.
+        // traced finely enough that each rise stays sharp. Sync at 6.25 times a cycle, which still reads at this size.
         const bool steps = warp == OpWarp::Steps;
-        const WarpCoefs coefs = warpCoefs(warp, steps ? 1.0 : 0.75);
+        const double amount = steps ? 1.0 : warp == OpWarp::Sync ? 5.25 / (kMaxSyncWarp - 1.0) : 0.75;
+        const WarpCoefs coefs = warpCoefs(warp, amount);
         const int n = steps ? 160 : 40;
         std::vector<Point> line;
         for (int i = 0; i <= n; ++i) {

@@ -1375,16 +1375,20 @@ int main(int argc, char **argv) {
         check(!free.empty() && !synced.empty() && freeOff > 100.0 && syncedOff < 0.01 && syncedFundamental > 0.2,
               "a synced operator plays the note's harmonic series, not its own pitch");
     }
-    // The Sync warp plays the wave 1 + 7 x |amount| times through each cycle: at 2/7 three times, so an A4 sine
-    // comes out as 1320 Hz alone; at 2.5/7, 3.5 times, cut off where the cycle ends, so what sounds stays on the A4's
-    // harmonics and nothing sounds at 1540 Hz.
+    // The Sync warp plays the wave 1 + 15 x |amount| times through each cycle: at 2/15 three times, so an A4 sine
+    // comes out as 1320 Hz alone; at 2.5/15, 3.5 times, cut off where the cycle ends, so what sounds stays on the A4's
+    // harmonics and nothing sounds at 1540 Hz. At full, 16 times: 7040 Hz alone.
     {
-        const std::vector<float> three = play({.warp = OpWarp::Sync, .warpAmount = 2.0 / 7.0});
-        const std::vector<float> cut = play({.warp = OpWarp::Sync, .warpAmount = 2.5 / 7.0});
+        const std::vector<float> three = play({.warp = OpWarp::Sync, .warpAmount = 2.0 / 15.0});
+        const std::vector<float> cut = play({.warp = OpWarp::Sync, .warpAmount = 2.5 / 15.0});
+        const std::vector<float> full = play({.warp = OpWarp::Sync, .warpAmount = 1.0});
         const double threeOff = magnitude(three, 440.0) / std::max(magnitude(three, 1320.0), 1e-9);
         const double cutOff = magnitude(cut, 1540.0) / std::max(magnitude(cut, 1320.0), 1e-9);
-        std::printf("      Sync warp on a sine: 440/1320 Hz %.4f at x3; 1540/1320 Hz %.4f at x3.5\n", threeOff, cutOff);
-        check(!three.empty() && !cut.empty() && threeOff < 0.01 && cutOff < 0.01,
+        const double fullOff = magnitude(full, 3520.0) / std::max(magnitude(full, 7040.0), 1e-9);
+        std::printf("      Sync warp on a sine: 440/1320 Hz %.4f at x3; 1540/1320 Hz %.4f at x3.5; 3520/7040 Hz %.4f "
+                    "at x16\n",
+                    threeOff, cutOff, fullOff);
+        check(!three.empty() && !cut.empty() && !full.empty() && threeOff < 0.01 && cutOff < 0.01 && fullOff < 0.01,
               "the Sync warp plays the wave several times through each cycle, on the note's harmonics");
     }
     // Squeeze on a square is its pulse width: at 0 a square has no 2nd harmonic; at +50 % (a pulse 72 % wide) and

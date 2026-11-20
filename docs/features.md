@@ -104,16 +104,17 @@ What the plugin does and how its editor works, in full. Building and installing 
     - **Pulse**: the whole cycle squeezed into its start, resting where it began for the rest (below 0, resting
       first and the cycle at the end);
     - **Steps**: the cycle in 8 steps (below 0, 4), each holding, then rising to the next;
-    - **Sync**: the wave played up to 8 times through each cycle (1 + 7 × the amount's size, either way), cut off
+    - **Sync**: the wave played up to 16 times through each cycle (1 + 15 × the amount's size, either way), cut off
       where the cycle ends, as Serum's Sync warp: an oscillator hard-synced to the operator's own pitch, its formant
-      sweeping up as the amount rises while the pitch stays. At whole numbers of times (2/7 is 3 times) it plays
+      sweeping up as the amount rises while the pitch stays. At whole numbers of times (2/15 is 3 times) it plays
       that harmonic alone. Its step at the cycle's end is smoothed as Note Sync's restart is, so a sine at C6 keeps
-      what aliases 80 dB down at 2x (a saw, cut through its own edge, 55).
+      what aliases 70 dB down at 2x at 50 % (a saw at -80 %, cut through its own edge, 90).
 
-    At 0 every warp is the plain wave, bit for bit; the most it squeezes a stretch is 8 times, at ±100 %. A warped
-    operator reads a table with as many fewer harmonics as its warp squeezes the cycle at its steepest, and the
-    bends a warp puts in the wave's slope are smoothed as a sync's restart is, so even Steps at C6 keeps what
-    aliases about 60 dB down at 2x. Warp Amount can be modulated (pulse-width modulation is an LFO on Squeeze); it
+    At 0 every warp is the plain wave, bit for bit; the most it squeezes a stretch is 8 times (Sync's 16), at
+    ±100 %. A warped operator reads a table with as many fewer harmonics as its warp squeezes the cycle at its
+    steepest, and the bends a warp puts in the wave's slope are smoothed as a sync's restart is, so even Steps at C6
+    keeps what aliases about 60 dB down at 2x. A state from before version 15, when Sync reached 8 times, loads its
+    amount and the depths on it 7/15 as large, playing as it did. Warp Amount can be modulated (pulse-width modulation is an LFO on Squeeze); it
     glides to each control block's value, moving at most its whole range in 8 ms, and a warp changed to another
     first goes back to the plain wave and then out to the new one, so neither clicks. Warp and Note Sync work
     together: the restarted wave is read through the warp. An operator with neither runs the plain loop it ran before,

@@ -10,8 +10,9 @@ namespace fmvibe {
 // An operator's Warp: a map of where along its wave's cycle it reads, from where along the cycle it is (both 0..1).
 // Every warp but Sync maps 0 to 0 and the cycle's end to its end, so the wave stays whole and continuous wherever the
 // operator's own was, and at an amount of 0 every warp is the plain wave: a warp switched or swept from 0 starts from
-// the wave as it was. Its steepest stretch reads the wave at most kMaxWarpSqueeze times as fast as the plain wave;
-// the synth reads a table with that many times fewer harmonics, so the warped wave stays below Nyquist.
+// the wave as it was. Its steepest stretch reads the wave at most kMaxWarpSqueeze times as fast as the plain wave
+// (Sync kMaxSyncWarp times); the synth reads a table with that many times fewer harmonics, so the warped wave stays
+// below Nyquist.
 //  - Bend: a curve that rushes through the cycle's start and lingers at its end (negative: the other way round), as
 //    Casio's phase distortion bends a sine toward a saw.
 //  - Squeeze: the cycle's first half squeezed into less (or more) of it and its second half stretched over the rest:
@@ -20,10 +21,19 @@ namespace fmvibe {
 //    at the end); a sixteenth of the cycle at full.
 //  - Steps: the cycle in 8 steps (negative: 4), each holding then rising to the next, over an eighth of the step at
 //    full.
-//  - Sync: the wave played 1 to 8 times through each cycle (either way, by the amount's size), cut off where the
+//  - Sync: the wave played 1 to 16 times through each cycle (either way, by the amount's size), cut off where the
 //    cycle ends, as an oscillator hard-synced to the operator's own pitch: a formant that sweeps up as the amount
 //    rises. Its step at the cycle's end is smoothed as a hard sync's restart is.
 constexpr double kMaxWarpSqueeze = 8.0;
+constexpr double kMaxSyncWarp = 16.0;
+// Up to state version 14 Sync reached 8 times, so an earlier state's amount on a Sync warp, and the depths on it, load
+// scaled by (kRetiredMaxSyncWarp - 1) / (kMaxSyncWarp - 1), to play as they did (see readParams()).
+constexpr double kRetiredMaxSyncWarp = 8.0;
+
+// The wave's cycles in each of the operator's, for a Sync warp's amount.
+inline double syncWarpCycles(double amount) {
+    return 1.0 + (kMaxSyncWarp - 1.0) * std::min(std::abs(amount), 1.0);
+}
 
 // What warpPhase() needs from an amount, worked out once a sample rather than once a copy.
 struct WarpCoefs {
@@ -62,8 +72,8 @@ inline WarpCoefs warpCoefs(OpWarp mode, double amount) {
         w.c = 1.0 / share;
         break;
     case OpWarp::Sync:
-        w.a = 1.0 + (kMaxWarpSqueeze - 1.0) * std::abs(x); // the wave's cycles in each of the operator's
-        w.b = w.a - std::floor(w.a);                        // where the last is cut off
+        w.a = syncWarpCycles(x);     // the wave's cycles in each of the operator's
+        w.b = w.a - std::floor(w.a); // where the last is cut off
         break;
     default:
         break;
@@ -126,7 +136,8 @@ inline WarpKinks warpKinks(const WarpCoefs &w) {
     }
 }
 
-// How many times as fast as the plain wave a warp reads it at its steepest: 1 for none, up to kMaxWarpSqueeze.
+// How many times as fast as the plain wave a warp reads it at its steepest: 1 for none, up to kMaxWarpSqueeze (Sync
+// kMaxSyncWarp).
 inline double warpSqueeze(OpWarp mode, double amount) {
     const double x = std::min(std::abs(amount), 1.0);
     switch (mode) {
@@ -140,7 +151,7 @@ inline double warpSqueeze(OpWarp mode, double amount) {
     case OpWarp::Steps:
         return 1.0 / (1.0 - (1.0 - 1.0 / kMaxWarpSqueeze) * x);
     case OpWarp::Sync:
-        return 1.0 + (kMaxWarpSqueeze - 1.0) * x;
+        return syncWarpCycles(x);
     default:
         return 1.0;
     }
