@@ -21,6 +21,16 @@ double phaserResponse(double hz, double cornerHz, int stages, double feedback, d
 
 namespace fx {
 
+namespace {
+
+// A first-order all-pass's coefficient at `corner` Hz, held within 20 Hz and 45 % of the rate.
+double allPassCoef(double corner, double sampleRate) {
+    const double t = std::tan(std::numbers::pi * std::clamp(corner, 20.0, 0.45 * sampleRate) / sampleRate);
+    return (t - 1.0) / (t + 1.0);
+}
+
+} // namespace
+
 void Phaser::start(const Context &ctx) {
     *this = Phaser{};
     mix = sweepWet(ctx.at(FxParam::PhaserMix));
@@ -68,24 +78,30 @@ double Phaser::run(const Context &ctx, float *const *io, uint32_t n) {
     const double spreadFrom = stageSpread;
     const bool spreading = stageSpread > 0.0 || spreadTo > 0.0;
     auto place = [count](int k) { return count > 1 ? static_cast<double>(k) / (count - 1) - 0.5 : 0.0; };
-    // The all-passes' coefficient where the sweep is at `phase`, `done` samples into the chunk, on each side, moved
-    // `octaves` from the sweep's corner.
-    auto coefAt = [&](double at, uint32_t done, int ch, double octaves = 0.0) {
-        const double lfo = std::sin(2.0 * std::numbers::pi * (at + spread * ch));
-        // Held still, as phaserCorner() works it out.
-        const double middle = centerStep == 0.0 ? centerHz : std::exp2(centerFrom + centerStep * done);
-        const double reach = depthFrom + depthStep * done;
-        double corner = middle * std::exp2(2.5 * reach * lfo); // phaserCorner()
-        if (octaves != 0.0)
-            corner *= std::exp2(octaves);
-        const double t = std::tan(std::numbers::pi * std::clamp(corner, 20.0, 0.45 * sampleRate) / sampleRate);
-        return (t - 1.0) / (t + 1.0);
+    // The sweep's middle and reach `done` samples into the chunk (the middle held still as phaserCorner() works it
+    // out), and its corner on side `ch` where it is at `at`, as phaserCorner().
+    auto middleAt = [&](uint32_t done) {
+        return centerStep == 0.0 ? centerHz : std::exp2(centerFrom + centerStep * done);
     };
+    auto cornerAt = [spread](double at, int ch, double middle, double reach) {
+        return middle * std::exp2(2.5 * reach * std::sin(2.0 * std::numbers::pi * (at + spread * ch)));
+    };
+    // Each stage's corner as a share of the sweep's, with Spread at `amount`: worked out once a chunk while Spread
+    // stays, and every step while it moves, rather than for every stage and side at every step.
+    std::array<double, kMaxPhaserStages> spreadRatio;
+    auto spreadRatios = [&](double amount) {
+        for (int k = 0; k < count; ++k)
+            spreadRatio[k] = std::exp2(amount * kPhaserSpreadOctaves * place(k));
+    };
+    if (spreading || !coefKnown)
+        spreadRatios(spreadFrom);
     if (!coefKnown) {
-        coef = {coefAt(phase, 0, 0), coefAt(phase, 0, 1)};
-        for (int ch = 0; ch < 2; ++ch)
+        for (int ch = 0; ch < 2; ++ch) {
+            const double corner = cornerAt(phase, ch, middleAt(0), depthFrom);
+            coef[ch] = allPassCoef(corner, sampleRate);
             for (int k = 0; k < count; ++k)
-                stageCoef[ch][k] = coefAt(phase, 0, ch, stageSpread * kPhaserSpreadOctaves * place(k));
+                stageCoef[ch][k] = allPassCoef(corner * spreadRatio[k], sampleRate);
+        }
         coefKnown = true;
     }
     if (spreading && spreadFrom <= 0.0) // spreading out from the shared coefficient
@@ -105,15 +121,19 @@ double Phaser::run(const Context &ctx, float *const *io, uint32_t n) {
                 ahead += step;
                 ahead -= std::floor(ahead);
             }
+            const double middle = middleAt(s + stepLeft), reach = depthFrom + depthStep * (s + stepLeft);
+            std::array<double, 2> corner;
             for (int ch = 0; ch < 2; ++ch) {
-                coefTo[ch] = coefAt(ahead, s + stepLeft, ch);
+                corner[ch] = cornerAt(ahead, ch, middle, reach);
+                coefTo[ch] = allPassCoef(corner[ch], sampleRate);
                 coefStep[ch] = (coefTo[ch] - coef[ch]) / stepLeft;
             }
             if (spreading) {
-                const double spreadNow = spreadFrom + spreadStep * (s + stepLeft);
+                if (spreadStep != 0.0)
+                    spreadRatios(spreadFrom + spreadStep * (s + stepLeft));
                 for (int ch = 0; ch < 2; ++ch)
                     for (int k = 0; k < count; ++k) {
-                        stageTo[ch][k] = coefAt(ahead, s + stepLeft, ch, spreadNow * kPhaserSpreadOctaves * place(k));
+                        stageTo[ch][k] = allPassCoef(corner[ch] * spreadRatio[k], sampleRate);
                         stageStep[ch][k] = (stageTo[ch][k] - stageCoef[ch][k]) / stepLeft;
                     }
             }
