@@ -22,6 +22,7 @@
 #include <map>
 #include <memory>
 #include <numbers>
+#include <set>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -6018,18 +6019,25 @@ void newerEffectChecks() {
         check(std::abs(std::log2(spread / plain)) > 1.0 / 6.0, "the phaser's Spread moves its notches");
     }
 
-    // Lo-Fi: at 4 bits and the top rate, unsmoothed, every sample on a level 1/8 apart; at 1 kHz, a new sample about
-    // 1000 times a second; Smooth taking the steps' edges down; Mix at 0 the dry sound exactly.
+    // Lo-Fi: at 4 bits and the top rate, unsmoothed, every sample on one of 16 levels 1/8 apart, half a step off 0,
+    // and at 1 bit on one of two, ±0.5; at 1 kHz, a new sample about 1000 times a second; Smooth taking the steps'
+    // edges down; Mix at 0 the dry sound exactly.
     {
         auto ramp = [](size_t t, int) { return std::sin(2.0 * std::numbers::pi * 3.0 * t / kSampleRate) * 0.9; };
-        const std::vector<float> coarse = run(FxType::LoFi,
-                                              {{FxParam::LoFiBits, 4.0}, {FxParam::LoFiRate, 1.0},
-                                               {FxParam::LoFiSmooth, 0.0}},
-                                              24000, ramp)
-                                          .left;
+        auto levels = [&](double bits) {
+            return run(FxType::LoFi, {{FxParam::LoFiBits, bits}, {FxParam::LoFiRate, 1.0}, {FxParam::LoFiSmooth, 0.0}},
+                       24000, ramp)
+                .left;
+        };
+        const std::vector<float> coarse = levels(4.0), one = levels(1.0);
         double offGrid = 0.0;
-        for (size_t t = 4800; t < coarse.size(); ++t)
-            offGrid = std::max(offGrid, std::abs(coarse[t] * 8.0 - std::round(coarse[t] * 8.0)));
+        std::set<float> found, foundOne;
+        for (size_t t = 4800; t < coarse.size(); ++t) {
+            offGrid = std::max(offGrid, std::abs(coarse[t] * 8.0 - 0.5 - std::round(coarse[t] * 8.0 - 0.5)));
+            found.insert(coarse[t]);
+            foundOne.insert(one[t]);
+        }
+        const bool twoLevels = foundOne == std::set<float>{-0.5f, 0.5f};
         auto held = [&](double smooth) {
             return run(FxType::LoFi,
                        {{FxParam::LoFiBits, 16.0}, {FxParam::LoFiRate, normFromCutoff(1000.0)}, {FxParam::LoFiSmooth, smooth}},
@@ -6048,10 +6056,11 @@ void newerEffectChecks() {
         bool same = true;
         for (size_t t = 0; t < dry.size(); ++t)
             same = same && dry[t] == static_cast<float>(noise(t, 0));
-        std::printf("      lo-fi: 4 bits %.1e off its levels; at 1 kHz %d new samples a second, its steps %.3f, smoothed "
-                    "%.3f; Mix 0 %s\n",
-                    offGrid, changes, rawStep, smoothStep, same ? "dry" : "not dry");
-        check(offGrid < 1e-6 && std::abs(changes - 1000) <= 2 && smoothStep < 0.25 * rawStep && same,
+        std::printf("      lo-fi: 4 bits %.1e off its levels, %zu levels; 1 bit %zu levels; at 1 kHz %d new samples a "
+                    "second, its steps %.3f, smoothed %.3f; Mix 0 %s\n",
+                    offGrid, found.size(), foundOne.size(), changes, rawStep, smoothStep, same ? "dry" : "not dry");
+        check(offGrid < 1e-6 && found.size() <= 16 && twoLevels && std::abs(changes - 1000) <= 2 &&
+                  smoothStep < 0.25 * rawStep && same,
               "the Lo-Fi holds Bits' levels at Rate, Smooth takes the steps' edges off, and Mix at 0 is dry");
     }
 }

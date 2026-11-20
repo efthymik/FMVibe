@@ -760,7 +760,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     Its levels ramp like the other effects'.
     Its knobs come in two rows, Gain and Pan above Width and Mono Bass.
   - **Lo-Fi** (under DRIVE in the list of effects): an early digital converter. **Bits** (1–16, 8 to begin with) puts
-    each sample on the nearest of that many bits' levels across full scale; **Rate** (200 Hz–20 kHz, 12 kHz to begin
+    each sample on the nearest of that many bits' levels (2 to the Bits), each in the middle of its share of full
+    scale, so 1 bit plays ±0.5; **Rate** (200 Hz–20 kHz, 12 kHz to begin
     with) holds each side between samples taken that often, the steps between folding the top back down as such
     converters did; **Smooth** (50 % to begin with) blends in what a 12 dB low-pass just under half Rate makes of it,
     as a converter's output filter does; **Mix** blends it with the dry sound. Its display draws two cycles of a sine

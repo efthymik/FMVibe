@@ -740,7 +740,12 @@ private:
     uint32_t fxFmOps_ = 0;
     std::array<std::array<float, kFxFmBlock>, kOps> fxOpOut_{};
     std::array<double, kOps> fxOpEnv_{};
+    // The effect slots an operator's slot aims at the Filter Cutoff of, a bit each (see shareSlots()), and whether one of
+    // them holds a filter effect that follows filter FM this block (see fxFmWantedNow()).
+    static_assert(kFxSlots <= 32, "the slots filter FM aims at fit a bit each");
+    uint32_t fxFmTargets_ = 0;
     bool fxFmWanted_ = false;
+    bool fxFmWantedNow(const ParamValues &params) const;
     bool fxFmLive_ = false;
     uint64_t fxFmOrder_ = 0; // the voice followed, its order + 1, 0 for none
     int fxFmDelay_ = 0;      // the voices' decimator's delay, in samples

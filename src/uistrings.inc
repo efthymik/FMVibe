@@ -770,6 +770,8 @@ STR(SwitchSoft, "SOFT")
 STR(SwitchAsym, "ASYM")
 STR(SwitchSolo, "Solo") // a join's card: solo the band above it
 STR(SoloMark, "S") // on a join node while one of its bands is soloed
+STR(SeqDoubleMark, "\xC3\x97" "2") // the SEQ card's buttons that double and halve the pattern's length: "×2", "÷2"
+STR(SeqHalveMark, "\xC3\xB7" "2")
 STR(SwitchRms, "RMS") // the three-band dynamics' detector: RMS, or peaks while off
 STR(BandButtonLow, "LOW") // the three-band dynamics' bands, and the DJ EQ's display
 STR(BandButtonMid, "MID")

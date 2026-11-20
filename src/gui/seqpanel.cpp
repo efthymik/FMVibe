@@ -2770,8 +2770,8 @@ bool SeqPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         return true;
     }
     case Kind::SeqStretch:
-        c.text(w.rect, w.b > 0 ? "\xC3\x97" "2" : "\xC3\xB7" "2", kTextLabel, paintActionFace(c, w.rect, hovered),
-               Align::Center, true);
+        c.text(w.rect, tr(w.b > 0 ? Str::SeqDoubleMark : Str::SeqHalveMark), kTextLabel,
+               paintActionFace(c, w.rect, hovered), Align::Center, true);
         return true;
     case Kind::SeqField: {
         const bool any = !seqPicked().empty();

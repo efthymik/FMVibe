@@ -203,7 +203,7 @@ bool View::dialogKey(Key key) {
     if (typing_ || (key != Key::Enter && key != Key::Escape))
         return false;
     if (!dialogOpen()) { // an open list or menu closes at Escape, as at a click around it
-        if (key != Key::Escape || drag_.kind != DragKind::None || !popupOpen())
+        if (key != Key::Escape || !popupTakesEscape())
             return false;
         closeMenus();
         return true;

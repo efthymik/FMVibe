@@ -10,16 +10,18 @@ struct LoFiSettings {
     double step, rateHz, smoothHz;
 };
 LoFiSettings loFiSettings(double bits, double rateNorm, double sampleRate);
-// What a sample becomes at that resolution: the nearest level.
+// What a sample becomes at that resolution: the nearest of 2^Bits levels, each in the middle of its share of full scale
+// (half a step off 0, as a converter's codes sit), so 1 bit is two levels, ±0.5, and nothing goes past full scale.
 inline double loFiLevel(double x, double step) {
-    return step * std::round(x / step);
+    const double top = 1.0 - 0.5 * step;
+    return std::clamp(step * (std::floor(x / step) + 0.5), -top, top);
 }
 
 namespace fx {
 
 // Lo-Fi, as an early digital converter: each side held between samples taken Rate times a second (the steps between
 // fold the top back down, as they did), each sample at Bits of resolution (the nearest of 2^Bits levels across full
-// scale), and Smooth blending in what a 12 dB low-pass just under half Rate makes of it, as a converter's output
+// scale, see loFiLevel()), and Smooth blending in what a 12 dB low-pass just under half Rate makes of it, as a converter's output
 // filter does. Mix blends it with the dry sound.
 struct LoFi {
     std::array<double, 2> held{}; // the sample each side holds

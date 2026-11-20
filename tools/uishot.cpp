@@ -1969,7 +1969,7 @@ void testPopupEscape(const std::filesystem::path &dir, Renderer &renderer) {
     View view(model);
     view.poll();
     auto escaped = [&](const char *shot) {
-        const bool open = view.popupOpen() && renderer.save(view, dir / shot);
+        const bool open = view.popupOpen() && view.popupTakesEscape() && renderer.save(view, dir / shot);
         return open && view.dialogKey(View::Key::Escape) && !view.popupOpen() && !view.dialogOpen();
     };
     const bool none = !view.popupOpen() && !view.dialogKey(View::Key::Escape);
@@ -10384,12 +10384,16 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     // Held over the pill and let go of elsewhere, the list closes again and nothing changes.
     view.mouseDown({252.0f, strip}, {});
     view.mouseMove(pill, {});
+    // Its list open under the held handle, Escape is left to the host (the editor neither takes nor drops it).
+    const bool escapeLeft =
+        view.popupOpen() && !view.popupTakesEscape() && !view.dialogKey(View::Key::Escape) && view.popupOpen();
     view.mouseMove({600.0f, 328.0f}, {});
     view.mouseUp({600.0f, 328.0f}, {});
     renderer.save(view, dir / "40g-pill-sprung.png");
     check(dropShot && aux && stays && renderer.pixel(row(5, 60.0f)) == closed &&
               slotTarget(model.value(slotTargetIndex(kMaxSources + 1, 0))) < 0,
           "a handle held over a pill opens its list, a row takes it as an aux, and elsewhere the list closes");
+    check(escapeLeft, "Escape during a drag with a list open is left to the host, as the window is told");
 
     // With LFO 4's aux, the list opens 126 px wider, an aux column after the names: LFO 4's row shows Macro 2's chip
     // (its dot read off the rendered pixels, where LFO 3's row has none), and the chip's x takes the aux away, the

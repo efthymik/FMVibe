@@ -853,9 +853,10 @@ bool Editor::typedKey(const MSG &msg) {
 }
 
 // Whether a dialog or an open list or menu takes the key (see View::dialogKey()): Enter and Escape for a dialog,
-// Escape for a list or menu.
+// Escape for a list or menu while nothing is dragged (else the key goes on to the host).
 bool Editor::dialogKeyFor(WPARAM key) const {
-    return (view_.dialogOpen() && (key == VK_RETURN || key == VK_ESCAPE)) || (key == VK_ESCAPE && view_.popupOpen());
+    return (view_.dialogOpen() && (key == VK_RETURN || key == VK_ESCAPE)) ||
+           (key == VK_ESCAPE && view_.popupTakesEscape());
 }
 
 // A key sent to this editor, or to the host's window around it. Where that window shows other editors too (a host may

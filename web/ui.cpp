@@ -401,7 +401,7 @@ EMSCRIPTEN_KEEPALIVE int ui_dialog_open() {
 
 // An open list or menu, which takes Escape (as ui_dialog_key() takes it): 1 if one is open.
 EMSCRIPTEN_KEEPALIVE int ui_popup_open() {
-    return view->popupOpen() ? 1 : 0;
+    return view->popupTakesEscape() ? 1 : 0;
 }
 
 EMSCRIPTEN_KEEPALIVE int ui_dialog_key(int key) {

@@ -1010,6 +1010,7 @@ void Synth::renderSpan(float *left, float *right, uint32_t frames, const ParamVa
         fxFmCount_ = 0;
         fxFmOps_ = 0;
         fxFmVoice_ = nullptr;
+        fxFmWanted_ = fxFmTargets_ != 0 && fxFmWantedNow(params);
         if (fxFmWanted_) {
             fxFmVoice_ = newestVoice();
             for (std::array<float, kFxFmBlock> &out : fxOpOut_)
@@ -1761,7 +1762,7 @@ void Synth::clearVoiceMods(Voice &v) {
 void Synth::shareSlots(const ParamValues &params) {
     auto get = [&params](int i) { return params[i]; };
     opSourceMask_ = 0;
-    fxFmWanted_ = false;
+    fxFmTargets_ = 0;
     for (int source = 0; source < kAllSources; ++source) {
         int count = 0;
         for (int s = 0; s < kSlots; ++s) {
@@ -1794,13 +1795,25 @@ void Synth::shareSlots(const ParamValues &params) {
                         slot.fmFilter = f;
                 if (fxSlotOf(target) >= 0 && fxFieldOf(target) == FxParam::FilterCutoff) {
                     slot.fmFx = fxSlotOf(target);
-                    fxFmWanted_ = true;
+                    fxFmTargets_ |= 1u << slot.fmFx;
                 }
             }
         }
         sharedSlotCount_[source] = count;
     }
     sharedSlotsReady_ = true;
+}
+
+// Whether a slot an operator aims at holds a filter effect that follows filter FM (see runOpSources()): read every
+// control block, since an effect's type or filter type changing leaves the shared slots as they are.
+bool Synth::fxFmWantedNow(const ParamValues &params) const {
+    for (uint32_t slots = fxFmTargets_; slots != 0; slots &= slots - 1) {
+        const int slot = std::countr_zero(slots);
+        if (fxType(params[paramIndex(slot, FxParam::Type)]) == FxType::Filter &&
+            followsCutoffFm(params[paramIndex(slot, FxParam::FilterType)]))
+            return true;
+    }
+    return false;
 }
 
 // Kept out of renderBlock(), which patches without an operator as a source run as they did.

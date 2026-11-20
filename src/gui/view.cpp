@@ -5718,6 +5718,12 @@ bool View::popupOpen() const {
     return !list.empty();
 }
 
+// Not while a value is typed, which takes Escape itself, nor during a drag (a handle held over a pill opens its list),
+// which Escape leaves alone: the window then lets the key go on to the host.
+bool View::popupTakesEscape() const {
+    return !typing_ && drag_.kind == DragKind::None && popupOpen();
+}
+
 void View::closeMenus() {
     modList_.reset();
     for (Panel *panel : panels_)

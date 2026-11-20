@@ -132,9 +132,11 @@ public:
     // which cancels it or closes the settings; the panel of algorithms takes Escape, which closes it. While one is open
     // the window should send it those keys: true if one was taken. With no dialog open, an open list or menu (a list
     // button's, the list of effects or of source types, a pill's, a MODS row's cascading menu) takes Escape, which
-    // closes it: while one is open the window should send it Escape too.
+    // closes it: while one is open and nothing is dragged or typed (popupTakesEscape()), the window should send it
+    // Escape too.
     bool dialogOpen() const;
     bool popupOpen() const;
+    bool popupTakesEscape() const;
     // What the preset browser, the info card and the Save dialog show: whether each is open, the presets the browser
     // lists (in its order) and the one picked (see PresetBrowser).
     bool browserShown() const { return presets_.browserShown(); }
