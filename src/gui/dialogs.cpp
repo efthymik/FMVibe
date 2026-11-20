@@ -201,8 +201,14 @@ bool View::dialogOpen() const {
 }
 
 bool View::dialogKey(Key key) {
-    if (typing_ || !dialogOpen() || (key != Key::Enter && key != Key::Escape))
+    if (typing_ || (key != Key::Enter && key != Key::Escape))
         return false;
+    if (!dialogOpen()) { // an open list or menu closes at Escape, as at a click around it
+        if (key != Key::Escape || drag_.kind != DragKind::None || !popupOpen())
+            return false;
+        closeMenus();
+        return true;
+    }
     // The panels' (the preset browser's info card and the browser itself, the panel of algorithms).
     if (!settingsOpen_ && confirm_ < 0)
         for (Panel *panel : panels_)

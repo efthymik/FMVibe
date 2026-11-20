@@ -1213,13 +1213,15 @@ std::string SeqPanel::seqFieldText(int field) const {
 
 // What the View hands it once the shape editors haven't taken the key, with nothing typed, no dialog open and no drag
 // going on (see View::seqKey()).
+// Its snap's list and list of macros (the scale's list is the View's, see PanelHost::openList()).
+void SeqPanel::closePopups() {
+    seqSnapMenu_ = false;
+    seqMacroMenu_ = false;
+}
+
 bool SeqPanel::key(Key key, bool shift) {
     if (!wide())
         return false;
-    if (seqMacroMenu_ && key == Key::Escape) {
-        seqMacroMenu_ = false;
-        return true;
-    }
     // The lane's curve: Delete removes its points picked, and Ctrl+A over the lane picks every one.
     if (seqCurveLane() && key == Key::Delete && !seqCurvePicked().empty()) {
         const SeqCurve curve = seqLaneCurve();

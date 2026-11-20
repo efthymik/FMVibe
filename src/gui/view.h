@@ -130,8 +130,11 @@ public:
     void endTyping(bool commit);
     // A dialog over the editor (a confirm dialog, the settings) takes Enter, which presses its lit button, and Escape,
     // which cancels it or closes the settings; the panel of algorithms takes Escape, which closes it. While one is open
-    // the window should send it those keys: true if one was taken.
+    // the window should send it those keys: true if one was taken. With no dialog open, an open list or menu (a list
+    // button's, the list of effects or of source types, a pill's, a MODS row's cascading menu) takes Escape, which
+    // closes it: while one is open the window should send it Escape too.
     bool dialogOpen() const;
+    bool popupOpen() const;
     // What the preset browser, the info card and the Save dialog show: whether each is open, the presets the browser
     // lists (in its order) and the one picked (see PresetBrowser).
     bool browserShown() const { return presets_.browserShown(); }
@@ -563,6 +566,8 @@ private:
     // Whether the pill the open list belongs to still shows; if not, the list closes.
     bool modListPillShown() const;
     void openModList(const Widget &pill, bool sprung);
+    // Every open list and menu closing, as a click around it closes it (see popupOpen()).
+    void closeMenus();
     void paintModPill(Canvas &c, const Widget &w, bool hovered);
     void paintModList(Canvas &c, const Widget &w);
     void paintModListRow(Canvas &c, const Widget &w);

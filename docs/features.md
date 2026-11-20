@@ -1881,7 +1881,9 @@ one may have changed since it last did.
   back). A long press opens the menu a right-click would. Every dialog (the
   confirm dialogs and the settings) takes the keyboard while it is open: Enter presses its button lit in the accent
   (Load, Init, Overwrite, Clear FX, Keep), Escape cancels it as a click around it does, and both close the settings;
-  the dialog asking where a middle band's effects go lights none, and Enter leaves it open. A double-click whose first click closed the
+  the dialog asking where a middle band's effects go lights none, and Enter leaves it open. An open list or menu (a
+  list button's, the list of effects or of source types, the wave menu, a pill's list, a MODS row's cascading menu, the
+  SEQ view's lists) closes at Escape, picking nothing, as at a click around it. A double-click whose first click closed the
   preset browser, a dialog or a list doesn't act on what was under it. Double-click the number a knob or a target's depth shows (under
   the knob, or beside it in the header), or pick **Edit value…** (**Edit depth…** on a modulation) from the
   right-click menu, or Ctrl+Click it, to type a value, in the units it shows or as a plain number (`300` on a

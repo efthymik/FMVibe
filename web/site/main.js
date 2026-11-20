@@ -595,8 +595,10 @@ window.addEventListener('keydown', (e) => {
     closeMenu();
     return;
   }
-  // A dialog over the editor takes Enter, which confirms it, and Escape, which cancels it.
-  if (!ui._ui_typing() && ui._ui_dialog_open() && (e.key === 'Enter' || e.key === 'Escape')) {
+  // A dialog over the editor takes Enter, which confirms it, and Escape, which cancels it; an open list or menu takes
+  // Escape, which closes it.
+  if (!ui._ui_typing() && ((ui._ui_dialog_open() && (e.key === 'Enter' || e.key === 'Escape')) ||
+                           (e.key === 'Escape' && ui._ui_popup_open()))) {
     e.preventDefault();
     ui._ui_dialog_key(TYPING_KEYS[e.key]);
     afterInput();

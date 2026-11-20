@@ -512,7 +512,8 @@ void releaseKeys() {
 }
 
 // The host's loop, before a key reaches the window that has the keyboard: true when the piano took it. Keys the
-// editor takes while a value is typed, and Enter and Escape while one of its dialogs is open, never come here (its
+// editor takes while a value is typed, Enter and Escape while one of its dialogs is open and Escape while one of its
+// lists or menus is, never come here (its
 // hook empties them), nor Ctrl+Z over the editor.
 bool playKey(const MSG &msg) {
     if ((msg.message != WM_KEYDOWN && msg.message != WM_KEYUP) || !msg.hwnd ||

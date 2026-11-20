@@ -5640,6 +5640,26 @@ void View::openModList(const Widget &pill, bool sprung) {
         panel->closePopups();
 }
 
+bool View::popupOpen() const {
+    if (modList_ || sourceMenuOpen_ || listMenu_ >= 0 || peqMenu_ >= 0)
+        return true;
+    std::vector<Widget> list; // the panels' (the list of effects, the wave menu, a MODS row's menu, the SEQ view's lists)
+    for (const Panel *panel : panels_)
+        panel->popups(list);
+    return !list.empty();
+}
+
+void View::closeMenus() {
+    modList_.reset();
+    for (Panel *panel : panels_)
+        panel->closePopups();
+    sourceMenuOpen_ = false;
+    listMenu_ = -1;
+    peqMenu_ = -1;
+    inspector_.closeWaveMenu();
+    hover_.reset();
+}
+
 bool View::modListPillShown() const {
     const std::vector<Widget> list = widgets();
     return std::any_of(list.begin(), list.end(), [&](const Widget &w) { return w.kind == Kind::ModPill && modListOn(w); });
@@ -7017,14 +7037,8 @@ void View::middleDown(Point p) {
     // Open lists and menus close as a click there closes them, since what they were opened on may scroll away; but
     // not a pill's list that is being scrolled, nor what a panel's popup pans (the preset browser's list).
     if (!(area == PanArea::Panel && pan->panel->modal()) && area != PanArea::ModList) {
-        modList_.reset();
-        for (Panel *panel : panels_)
-            panel->closePopups();
-        sourceMenuOpen_ = false;
+        closeMenus();
         routingPanel_.closeAlgorithms();
-        listMenu_ = -1;
-        peqMenu_ = -1;
-        inspector_.closeWaveMenu();
     }
     menuLive_ = false;
     endTyping(true);

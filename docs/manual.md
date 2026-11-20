@@ -1478,6 +1478,9 @@ undo steps.
 Confirmation dialogs respond to the keyboard: **Enter** confirms the highlighted button, **Escape** cancels (as does a
 click outside).
 
+An open list or menu, such as a filter's type list, the list of effects or the list of sources, closes when you press
+**Escape**, without picking anything.
+
 ## 17. FMVibe in your DAW
 
 ### Automation
@@ -1555,6 +1558,7 @@ the main CPU costs.
 | Ctrl+Z | Undo |
 | Ctrl+Y, Ctrl+Shift+Z | Redo |
 | Enter / Escape | Confirm / cancel a dialog or typed value |
+| Escape | Close an open list or menu |
 
 ### Routing graph
 

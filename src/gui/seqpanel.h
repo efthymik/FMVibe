@@ -58,6 +58,7 @@ public:
     std::optional<float> pan(int part, float first, float across, float down) override;
     bool contextMenu(const std::optional<Widget> &hit, Point p, std::vector<MenuItem> &items) override;
     bool menuCommand(int command) override;
+    void closePopups() override;
     // The SEQ view's keys, while it shows (see View::seqKey()).
     bool key(Key key, bool shift) override;
     void stepApplied(const UndoStep &step, bool forward) override;

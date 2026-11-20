@@ -743,8 +743,9 @@ bool Editor::key(WPARAM key, LPARAM flags) {
         }
         }
     }
-    // A dialog open over the editor: Enter confirms it, Escape cancels it. Other keys go on to the host.
-    if (view_.dialogOpen() && (key == VK_RETURN || key == VK_ESCAPE))
+    // A dialog open over the editor: Enter confirms it, Escape cancels it. An open list or menu: Escape closes it.
+    // Other keys go on to the host.
+    if (dialogKeyFor(key))
         return view_.dialogKey(key == VK_RETURN ? View::Key::Enter : View::Key::Escape);
     if (ctrl && (key == 'Y' || (key == 'Z' && GetKeyState(VK_SHIFT) < 0))) {
         view_.redo();
@@ -832,8 +833,7 @@ bool Editor::typedKey(const MSG &msg) {
         return false;
     switch (msg.message) {
     case WM_KEYDOWN:
-        if (!(view_.typing() || (view_.dialogOpen() && (msg.wParam == VK_RETURN || msg.wParam == VK_ESCAPE))) ||
-            isModifier(msg.wParam))
+        if (!(view_.typing() || dialogKeyFor(msg.wParam)) || isModifier(msg.wParam))
             return false;
         typedKeys_.set(code);
         key(msg.wParam, msg.lParam);
@@ -850,6 +850,12 @@ bool Editor::typedKey(const MSG &msg) {
     default:
         return false;
     }
+}
+
+// Whether a dialog or an open list or menu takes the key (see View::dialogKey()): Enter and Escape for a dialog,
+// Escape for a list or menu.
+bool Editor::dialogKeyFor(WPARAM key) const {
+    return (view_.dialogOpen() && (key == VK_RETURN || key == VK_ESCAPE)) || (key == VK_ESCAPE && view_.popupOpen());
 }
 
 // A key sent to this editor, or to the host's window around it. Where that window shows other editors too (a host may

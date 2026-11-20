@@ -1960,6 +1960,41 @@ void testDialogKeys(const std::filesystem::path &dir, Renderer &renderer) {
           "Escape cancels the preset dialog and Enter loads the preset, over the browser too");
 }
 
+// Escape closes an open list or menu, picking nothing, as a click around it does: a shaper's list of curves on its
+// page, the list of source types, the list of effects and the SEQ view's snap list; with none open, it takes nothing.
+void testPopupEscape(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    view.poll();
+    auto escaped = [&](const char *shot) {
+        const bool open = view.popupOpen() && renderer.save(view, dir / shot);
+        return open && view.dialogKey(View::Key::Escape) && !view.popupOpen() && !view.dialogOpen();
+    };
+    const bool none = !view.popupOpen() && !view.dialogKey(View::Key::Escape);
+    // A shaper's list of curves.
+    const int node = kOps + kFilters;
+    click(view, nodeTab(node));
+    const double curve = model.value(paramIndex(0, ShaperParam::Mode));
+    click(view, kShaperList);
+    const bool shaperList = escaped("14k-escape-shaper-list.png") && model.value(paramIndex(0, ShaperParam::Mode)) == curve;
+    // The list of source types, from the dashed card after the sources.
+    click(view, {cardX(0) + 46.0f, 628.0f});
+    const bool sourceList = escaped("14k-escape-source-list.png") && shown(model).empty();
+    // The list of effects, from ADD EFFECT.
+    click(view, kFxTab);
+    click(view, kFxMenuButton);
+    const bool fxList = escaped("14k-escape-fx-list.png") && fxChain(model).empty();
+    // The SEQ view's snap list.
+    click(view, {308.0f, 116.0f});
+    const int snap = model.ui.seqSnap;
+    const Rect snapButton{detail::kSeqTools.x + 108.0f, detail::kSeqTools.y, 76.0f, detail::kSeqTools.h};
+    click(view, rectCenter(snapButton));
+    const bool snapList = escaped("14k-escape-seq-snap.png") && model.ui.seqSnap == snap;
+    renderer.save(view, dir / "14k-escape-closed.png");
+    check(none && shaperList && sourceList && fxList && snapList,
+          "Escape closes a shaper's curve list, the list of source types, the list of effects and the SEQ snap list");
+}
+
 // Ctrl held as a card or node starts to move carries a copy of it, the original staying: an effect card in the row,
 // an effect's node and a split's (with its join and its bands' effects) in the graph, and a source card. The copy
 // lands where it is let go of, with the original's settings, one undo step; a drag called off leaves nothing.
@@ -6842,7 +6877,7 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
             click(view, {600.0f, 600.0f});
             const bool closedAround = shotInk("36h-seq-macro-closed.png", listInside) == noListInk && model.ui.seqLane == laneOf(4);
             click(view, rectCenter(tab));
-            view.seqKey(Key::Escape, false);
+            view.dialogKey(Key::Escape);
             const bool closedByKey = shotInk("36h-seq-macro-escaped.png", listInside) == noListInk;
             view.wheel(rectCenter(tab), -1.0f, {});
             const bool stepped = model.ui.seqLane == laneOf(5);
@@ -13882,6 +13917,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testTouchPan(dir, renderer);
     testCtrlCopy(dir, renderer);
     testDialogKeys(dir, renderer);
+    testPopupEscape(dir, renderer);
     testModFocus(dir, renderer);
     testCardOutline(dir, renderer);
     testFlatModulatedKnob(dir, renderer);

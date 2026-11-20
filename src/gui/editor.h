@@ -63,6 +63,7 @@ private:
     bool wantsKeyboard() const { return view_.typing() || view_.dialogOpen(); }
     // Whether a key the host's loop took for the window `to` is this editor's (see typedKey()).
     bool keysFor(HWND to) const;
+    bool dialogKeyFor(WPARAM key) const;
     void syncFocus();
     bool key(WPARAM key, LPARAM flags);
 
