@@ -2735,6 +2735,9 @@ bool isRetired(int index);
 constexpr bool isPlayed(int index) {
     return index == paramIndex(GlobalParam::ModWheel) || index == paramIndex(GlobalParam::PitchBend);
 }
+// Continuous, but a setting rather than part of the sound: Bend Range, how far the pitch bend reaches. Neither the
+// sources nor a host's modulation move it (a host still automates it).
+constexpr bool isNeverModulated(int index) { return index == paramIndex(GlobalParam::BendRange); }
 // A macro's knob (MacroParam::Value), which the other sources can modulate too: the LFOs, envelopes and the rest, the
 // mod wheel and the other macros (as long as no loop forms, see macroReaches()). It is past kModulatedCount: what the
 // sources add to it moves what the macro modulates (see MacroGraph), not a param the voices or the effects read.
@@ -2744,7 +2747,7 @@ constexpr bool isMacroKnob(int index) {
 }
 inline bool isModTarget(int index) {
     return isMacroKnob(index) ||
-           (index >= 0 && index < kMacroBase && !isRetired(index) &&
+           (index >= 0 && index < kMacroBase && !isRetired(index) && !isNeverModulated(index) &&
             (!isStepped(paramTable()[index].kind) || modulatedInSteps(index)) &&
             paramTable()[index].kind != ParamKind::ShapePoint);
 }

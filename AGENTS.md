@@ -348,7 +348,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     knobs stand), in a loop a state holds, steadily and alike each time, and per voice by velocity, a loud note's
     knob silencing it while a soft one played with it plays as it would alone;
   - where the pitch bend stands, as the bend wheel shows it: the host's MIDI bend and modulation on top of the Pitch
-    Bend param as set, with no note and in a note with its own modulation;
+    Bend param as set, with no note and in a note with its own modulation; and Bend Range taking none, from a source
+    (a slot a state from before holds) or a host;
   - Volume setting the level after the effects, and a mod envelope's level half way through its release;
   - an LFO on an effect, retriggered or free, still modulating it through a reverb's tail once the note's voice has
     ended, the editor told where it takes the effect and where the LFO is as it moves on, and stopping once the

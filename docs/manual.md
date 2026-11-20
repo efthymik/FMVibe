@@ -161,7 +161,8 @@ sequencer pattern plays as it was made. In a DAW, loading a preset never changes
   effects are driven.
 - **FM Amount**: scales every route in the routing at once, a quick way to make a patch duller or brighter.
 - **Pitch**: transposes the whole instrument by up to ±48 semitones. A useful envelope target for drums.
-- **Bend**: the pitch bend range in semitones for MIDI pitch bend and the Bend wheel.
+- **Bend**: the pitch bend range in semitones for MIDI pitch bend and the Bend wheel. It is a setting, so it takes no
+  modulation.
 - **Pan**: the stereo position of the whole instrument.
 - **Poly | Mono**, **Legato**, **Glide** and **Always**: the play modes. See [Play modes](#play-modes).
 - **Voices**: the polyphony limit, 1–512 (16 by default), with the number of voices playing beside it.

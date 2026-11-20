@@ -3600,6 +3600,22 @@ void bendTelemetryChecks() {
                 idle, idleSet, t->bend, t->bendSet);
     check(std::abs(idle - 0.6f) < 1e-4f && idleSet == 0.2f && std::abs(t->bend - 0.8f) < 1e-4f && t->bendSet == 0.2f,
           "the telemetry tells where the bend stands, the host's MIDI bend and modulation on top of the param as set");
+
+    // Bend Range is a setting, not a target: an LFO's slot on it (as a state from before may hold) and a host's
+    // modulation of it leave a note bent up all the way playing as without them.
+    const int range = paramIndex(GlobalParam::BendRange);
+    auto bent = [&](bool modulated) {
+        Engine b(2);
+        b.p[bend] = 1.0;
+        if (modulated) {
+            lfoOn(b.p, range, 1.0, 5.0);
+            b.synth().paramMod(range, {-1, -1, -1, -1}, 10.0);
+        }
+        b.noteOn(69);
+        return b.render(9600);
+    };
+    check(!isModTarget(range) && !(paramTable()[range].flags & CLAP_PARAM_IS_MODULATABLE) && bent(true) == bent(false),
+          "Bend Range takes no modulation, from a source or a host");
 }
 
 // How a low note's scope moves as the note is let go of, from a snapshot every 8 ms (as the plugin takes them for the

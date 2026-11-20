@@ -778,7 +778,7 @@ What the plugin does and how its editor works, in full. Building and installing 
   (The effects that make DC of their own, the shapers and the amp, block it themselves.) It is cleared while no
   voice sounds, so a choke or the last note's end is silence at once. Hosts modulate it globally, and LFOs and envelopes through the newest voice, as they
   do effect knobs), FM Amount, Pitch (±48 semitones, handy as an envelope target for drums), Pan, **Bend** Range for
-  MIDI pitch bend (its knob in the header, after Pitch), **Mod Wheel**, which moves what is assigned to it (nothing to begin with), **Pitch Bend**
+  MIDI pitch bend (its knob in the header, after Pitch; a setting, which no source or host modulates), **Mod Wheel**, which moves what is assigned to it (nothing to begin with), **Pitch Bend**
   (±100 %, at rest in the middle), and **Voices**, the polyphony limit (1–512, default 16). Pitch Bend is the
   editor's bend wheel: it bends as the MIDI pitch bend does, added to it (by Bend Range), and the pitch bend source
   follows it. As a parameter, a host automates and modulates it like the others, globally or per note (a modulator
