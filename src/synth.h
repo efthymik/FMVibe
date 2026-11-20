@@ -362,6 +362,9 @@ private:
         int index;
         double offset;
         int slot = -1; // whose: source * kSlots + slot
+        // Only for what the editor shows: an operator's slot that moves its target every sample (see AudioKind), as of
+        // the last control block on average. The params leave it out.
+        bool shown = false;
     };
 
     // What renderBlock() ramps sample by sample toward each block's values.
@@ -738,6 +741,121 @@ private:
     };
     std::vector<FxCutoffFm> fxCutoffFm_ = std::vector<FxCutoffFm>(kFxSlots);
     void runFxCutoffFm(uint32_t frames);
+
+    // Audio-rate modulation: an operator's slot on a param the voice plays by moves it every sample, as the operator
+    // plays, rather than as of the last control block: the operators' pitch (Ratio, Pitch, Detune, Freq), Out, Pan,
+    // Phase, sends, routes, unison, warp, envelope and noise color, the voice filters' and shapers' settings and
+    // levels, and the voice's Pitch, FM Amount and Pan. A voice filter's Cutoff is filter FM (see CutoffFm) unless
+    // the filter has another of its settings moved so too. The effects, which hear every voice together, the sources'
+    // own params, the macros' knobs and stepped params stay with the control blocks. What kind of param each is:
+    enum class AudioKind : uint8_t {
+        None,
+        Level,  // a field of Levels the param sets as it is, where `gate` lets it through
+        Route,  // a route into an operator, a field of Levels as routeLevel() takes it: from node `a` to operator `b`
+        OpPan,  // operator `a`'s, its panL and panR
+        OpPhase, // operator `a`'s Phase, its Levels::phase
+        OpRatio,
+        OpTranspose,
+        OpDetune,
+        OpFixedFreq,
+        UnisonDetune,
+        UnisonSpread,
+        UnisonBlend,
+        WarpAmount,
+        OpEnv,    // operator `a`'s envelope's field `b` (attack, hold, decay, sustain, release, then the three curves)
+        NoiseSlope,
+        Filter,   // filter `a`'s setting `b`, numbered as renderBlock()'s inputs to filterSettings()
+        Shaper,   // shaper `a`'s Drive, Output or Mix (`b` 0, 1, 2)
+        GlobalPitch,
+        FmAmount,
+        GlobalPan,
+    };
+    // What lets a Level through, as renderBlock() sets its field: the operator, filter or shaper `a` switched on, or
+    // both of `a` and `b` (and, for a route into a shaper or into the same or an earlier filter, not in the voice's
+    // tail).
+    enum class AudioGate : uint8_t {
+        None, Op, OpFilter, OpShaper, Shaper, FilterFilter, FilterShaper, ShaperShaper, ShaperFilter
+    };
+    struct AudioTarget {
+        AudioKind kind = AudioKind::None;
+        AudioGate gate = AudioGate::None;
+        int8_t a = -1, b = -1;
+        int16_t field = -1; // in Levels, as values() runs through it
+    };
+    // The voice being rendered: each operator slot so, and each param they move (a lane): its value before them,
+    // unclamped, as the block sets it, its range, and how far they may take it either way.
+    struct AudioMod {
+        int op = 0;
+        int lane = 0;
+        double scale = 0.0; // what a swing of 1 adds, in the param's units
+        double curve = 0.0;
+        bool bipolar = true;
+    };
+    struct AudioLane {
+        int target = 0;
+        AudioTarget at;
+        double base = 0.0, set = 0.0, lo = 0.0, hi = 0.0;
+        double down = 0.0, up = 0.0; // the most the operators take it below and above base
+        double acc = 0.0, value = 0.0;
+        double gate = 1.0;
+        double from = 0.0, fromR = 0.0; // what the block's value makes of it (a pitch, a pan's gains)
+    };
+    // What audioSample() moves of renderBlock()'s block, and the values it puts back after each sample.
+    struct AudioRun {
+        const double *p = nullptr;
+        double pitch = 0.0, gain = 0.0, exprPan = 0.0;
+        EnvRates *rates = nullptr;
+        NoiseColor::Coefs *noiseCoefs = nullptr;
+        double *noiseMid = nullptr, *noiseSide = nullptr;
+        const UnisonGains **copyGains = nullptr;
+        const FilterSettings **filter = nullptr;
+        const int *copies = nullptr;
+        const bool *opOn = nullptr;
+        const bool *noise = nullptr;
+        std::array<bool, kOps> fixed{};
+        std::array<EnvRates, kOps> baseRates{};
+        std::array<std::array<double, kMaxUnison>, kOps> shares{}; // each copy's share of the detune
+        std::array<std::array<double, kMaxUnison>, kOps> copyPan{};    // its place, -1..1
+        std::array<std::array<double, kMaxUnison>, kOps> copyWeight{}; // its weight, as Blend sets it for the block
+        std::array<UnisonModes, kOps> modes{};
+        std::array<double, kOps> monoGain{};
+        std::array<UnisonGains, kOps> gains{};
+        std::array<FilterSettings, kFilters> filterNow{};
+        struct Saved {
+            double *at;
+            double was, set;
+        };
+        std::array<Saved, 512> saved{};
+        int savedCount = 0;
+    };
+    // Fills audioTargets_ (the constructor), and the lane of `target` for the voice being rendered.
+    void findAudioTargets();
+    int audioLane(int target);
+    // Before the block's samples: the lanes' values, how far they reach (the routes they open, the operators' tables),
+    // and what audioSample() moves. Whether there are any.
+    struct AudioBlock {
+        std::array<EnvRates, kOps> &rates;
+        std::array<const float *, kOps> &wave;
+        const std::array<OpWave, kOps> &shapes;
+        std::array<double, kOps> &highestInc;
+        const std::array<bool, kOps> &noise;
+        std::array<bool, kOps> &colored;
+        std::array<NoiseColor::Coefs, kOps> &noiseCoefs;
+        std::array<double, kOps> &noiseMid;
+        std::array<double, kOps> &noiseSide;
+        const std::array<int, kOps> &copies;
+        const std::array<double, kOps> &monoGain;
+        std::array<const UnisonGains *, kOps> &copyGains;
+        std::array<bool, kOps> &warped;
+        const std::array<bool, kOps> &opOn;
+        const std::array<bool, kFilters> &filterEnabled;
+        const std::array<bool, kShapers> &shaperEnabled;
+        bool &stereo;
+    };
+    bool startAudioMods(Voice &v, const double *p, double pitch, const Levels &target, const AudioBlock &block);
+    const Levels &audioSteps(const Levels &step);
+    void audioSample(Voice &v, uint32_t sample);
+    void audioRestore();
     std::vector<double> voiceBase_ = std::vector<double>(kVoiceParamCount, 0.0);
     std::vector<double> voiceClamped_ = std::vector<double>(kVoiceParamCount, 0.0);
     bool voiceBaseReady_ = false;
@@ -941,6 +1059,17 @@ private:
     OutScopeCapture outScope_;
     void captureOutput(const float *left, const float *right, uint32_t frames);
     std::vector<NoteRef> ended_; // reserved in prepare(), never grows on the audio thread
+    // Audio-rate modulation's state (see AudioKind), last: large, and only some patches use it.
+    std::vector<AudioTarget> audioTargets_ = std::vector<AudioTarget>(kVoiceParamCount);
+    std::array<AudioMod, kOps * kSlots> audioMods_{};
+    int audioModCount_ = 0;
+    std::array<AudioLane, kOps * kSlots> audioLanes_{};
+    int audioLaneCount_ = 0;
+    uint32_t audioFilterMask_ = 0; // the voice filters whose settings it works out every sample (filter FM's too)
+    Levels audioReach_{};          // how far it takes each Level (0 for the others), so the routes it opens run
+    Levels audioTo_{}, audioBy_{}; // the block's levels and steps with that reach, which renderBlock() checks
+    double audioFmReach_ = 0.0;
+    AudioRun audioRun_;
 };
 
 } // namespace fmvibe

@@ -300,8 +300,9 @@ constexpr int kVelocityParamCount = static_cast<int>(VelocityParam::Count);
 enum class BendParam { Slots, Bipolar = Slots + 2 * kSlots, Count };
 constexpr int kBendParamCount = static_cast<int>(BendParam::Count);
 // An operator's output as a source: kSlots (target, amount) pairs, like the pitch bend's, and Bipolar like a macro's, on
-// to begin with, as an LFO's. Per voice, it puts out what the operator put out (after its envelope, before its Out)
-// over the last control block, averaged: an operator far above the control rate averages away rather than aliasing.
+// to begin with, as an LFO's. Per voice, it puts out what the operator puts out (after its envelope, before its Out):
+// every sample on the params a voice plays by (see Synth::AudioKind), and elsewhere averaged over the last control
+// block, where an operator far above the control rate averages away rather than aliasing.
 // Bipolar, it swings its targets about the set value with the output; unipolar, from nothing up to the operator's
 // envelope level, so a silent operator moves nothing either way. They count as sources kOpSource + op, after the pitch
 // bend. Stored in projects by number: only append.

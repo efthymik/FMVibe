@@ -352,19 +352,29 @@ What the plugin does and how its editor works, in full. Building and installing 
     aux menus, or dragged from the operator's letter at the top of its page in the inspector, which is its handle and
     lights under the mouse. Like velocity each has 16 slots and no switch of its own, runs per voice and reaches the effects through
     the newest voice. It puts out what the operator plays, after its envelope and whatever its Out says, so an operator
-    heard by nothing can modulate; one switched off modulates nothing. Modulation runs at the control rate, once every
-    32 samples, so a source takes the operator's output averaged over the last such block: a slow operator (a fixed
-    one at a few Hz, say) moves its targets along its wave and envelope, and one far above that rate averages away
-    rather than aliasing. It starts bipolar, swinging its targets both ways of the set value with the output;
-    unipolar, it takes them one way, from nothing up to as far as the operator's envelope has risen, so a silent
-    operator moves nothing either way.
-    **Filter FM**: on the **Cutoff** of a voice's filter or of a filter effect, an operator doesn't average: it moves the
-    cutoff every sample, at audio rate, by as many octaves as its depth takes the knob (100 % at full swing being the
-    knob's 10 octaves), its Amount, aux and depth read once per 32-sample block. A voice's filter follows that voice's
-    own operator. A filter effect, which hears all the voices together, follows the newest voice's, as the effects' other
-    modulation does, and takes over from one note to the next over about 5 ms, so a new note doesn't click; an operator
-    at a fixed frequency moves it alike whichever note is newest. The Formant type's cutoff stays with the 32-sample
-    blocks.
+    heard by nothing can modulate; one switched off modulates nothing. It starts bipolar, swinging its targets both
+    ways of the set value with the output; unipolar, it takes them one way, from nothing up to as far as the
+    operator's envelope has risen, so a silent operator moves nothing either way.
+    **Audio rate**: on a param the voice plays by, an operator moves it every sample (at the voices' oversampled rate),
+    as it plays, so a fast one gives sidebands as FM does: an operator's Ratio, Pitch, Detune and Freq, Out, Pan,
+    Phase, its sends to the filters and shapers, a route's depth (from an operator, filter or shaper into an
+    operator), its Unison Detune, Spread and Blend, Warp Amount, its envelope's times, sustain and curves and its
+    noise's Slope; a voice filter's Cutoff, Key Track, Resonance, Drive, Vowel, Morph, Out and Mix and its routes to
+    the filters and shapers; a voice shaper's Drive, Output, Mix and Out and its routes; and the voice's Pitch, FM
+    Amount and Pan. Each sample takes what the operators put out the sample before, so an operator can move its own
+    pitch, level or phase. Its Amount, aux and depth are read once per 32-sample block. An operator's table suits the
+    highest pitch the modulation can take it to, so moving its pitch stays clear of aliasing as FM does, and a route,
+    send or Out at 0 that the modulation opens runs. Every other target (an effect's, a source's own param, a macro's
+    knob, a slot's depth and Amount) takes modulation at the control rate, once every 32 samples, from the operator's
+    output averaged over the last such block: a slow operator (a fixed one at a few Hz, say) moves it along its wave
+    and envelope, and one far above that rate averages away rather than aliasing. So does an operator as an aux. The
+    MODS view's rows and the knobs' rings show the average.
+    **Filter FM**: on a voice filter's **Cutoff**, the cutoff moves every sample, by as many octaves as the depth takes
+    the knob (100 % at full swing being the knob's 10 octaves). A voice's filter follows that voice's own operator. A
+    filter effect's Cutoff takes it at audio rate too, the one effect param that does: a filter effect, which hears
+    all the voices together, follows the newest voice's operator, as the effects' other modulation does, and takes
+    over from one note to the next over about 5 ms, so a new note doesn't click; an operator at a fixed frequency
+    moves it alike whichever note is newest. The filter effect's Formant type's cutoff stays with the 32-sample blocks.
   - An LFO runs in one of four clock modes, picked one at a time: **Retrigger** (the default), **Free**, **Anchor** or
     **One-Shot**. Retrigger restarts the LFO from its Phase with every note. Each of the other three is a switch
     hosts see; the editor turns the other two off as it picks one. Should a host turn on more than one, One-Shot
