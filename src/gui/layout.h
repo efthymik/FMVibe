@@ -906,13 +906,17 @@ inline Rect clipEditButton(Rect card) {
     return {card.right() - 14.0f - kClipEditW, card.y + 44.0f, kClipEditW, 22.0f};
 }
 inline Rect clipSymButton(Rect card) {
-    return {card.center().x - 47.0f, card.y + 194.0f, 44.0f, 20.0f};
+    return {card.center().x - 47.0f, card.y + 199.0f, 44.0f, 20.0f};
 }
 inline Rect clipLinkButton(Rect card, bool custom) {
-    return {card.center().x + (custom ? 3.0f : -22.0f), card.y + 194.0f, 44.0f, 20.0f};
+    return {card.center().x + (custom ? 3.0f : -22.0f), card.y + 199.0f, 44.0f, 20.0f};
 }
 // The reverb's three rows of knobs, down its card from its top.
-constexpr float kReverbKnobsY[] = {154.0f, 210.0f, 266.0f};
+constexpr float kReverbKnobsY[] = {158.0f, 212.0f, 266.0f};
+// A card's two rows of knobs under its display (the delay's, compressor's, phaser's and on), and the shaper's one row
+// under its LINK: down the card from its top, the lower row where it always was, the others moved down toward it as
+// far as the smaller knobs of a row of four let them, the display taking the room.
+constexpr float kFxKnobsY1 = 211.0f, kFxKnobsY2 = 266.0f, kShaperKnobsY = 245.0f;
 inline Rect reverbTypeButton(Rect card) {
     return {card.x + 14.0f, card.y + 44.0f, card.w - 28.0f, 22.0f};
 }
@@ -994,10 +998,11 @@ inline Rect fxDisplayIn(Rect card, FxType type) {
                                type == FxType::Filter || type == FxType::Delay;
     // The shaper's LINK goes between its display and its knobs; the reverb's three rows of knobs (kReverbKnobsY)
     // take more of it.
-    const float bottom = type == FxType::Reverb      ? 126.0f
-                         : switchesUnder             ? 158.0f
-                         : twoRows                   ? 180.0f
-                         : type == FxType::Shaper    ? 190.0f
+    const float bottom = type == FxType::Reverb      ? 130.0f
+                         : switchesUnder             ? 163.0f
+                         : type == FxType::ParamEq   ? 180.0f // its chips under it (kPeqChipY)
+                         : twoRows                   ? 185.0f
+                         : type == FxType::Shaper    ? 195.0f
                                                      : 198.0f;
     return {card.x + 14.0f, card.y + top, card.w - 28.0f, bottom - top};
 }

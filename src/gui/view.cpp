@@ -1997,10 +1997,11 @@ void View::effectCardWidgets(std::vector<Widget> &list, int slot, Rect card) con
             knobs({at(FxParam::ShaperDrive), at(FxParam::ShaperStack), at(FxParam::ShaperTone), at(FxParam::ShaperOutput),
                    at(FxParam::ShaperMix)},
                   {tr(Str::LabelDrive), tr(Str::LabelStack), tr(Str::LabelTone), tr(Str::LabelOutput),
-                   tr(Str::LabelMix)});
+                   tr(Str::LabelMix)},
+                  kShaperKnobsY);
         else
             knobs({at(FxParam::ShaperDrive), at(FxParam::ShaperTone), at(FxParam::ShaperOutput), at(FxParam::ShaperMix)},
-                  {tr(Str::LabelDrive), tr(Str::LabelTone), tr(Str::LabelOutput), tr(Str::LabelMix)});
+                  {tr(Str::LabelDrive), tr(Str::LabelTone), tr(Str::LabelOutput), tr(Str::LabelMix)}, kShaperKnobsY);
         break;
     }
     case FxType::Delay: {
@@ -2021,9 +2022,9 @@ void View::effectCardWidgets(std::vector<Widget> &list, int slot, Rect card) con
         const Str left = synced ? (linked ? Str::LabelRate : Str::LabelRateL)
                                 : (linked ? Str::LabelTime : Str::LabelTimeL);
         knobs({timeL, linked ? -1 : timeR, at(FxParam::DelayFeedback)},
-              {tr(left), tr(synced ? Str::LabelRateR : Str::LabelTimeR), tr(Str::LabelFeedback)}, 206.0f);
+              {tr(left), tr(synced ? Str::LabelRateR : Str::LabelTimeR), tr(Str::LabelFeedback)}, kFxKnobsY1);
         knobs({at(FxParam::DelayTone), at(FxParam::DelayDuck), at(FxParam::DelayWidth), at(FxParam::DelayMix)},
-              {tr(Str::LabelTone), tr(Str::LabelDuck), tr(Str::LabelWidth), tr(Str::LabelMix)}, 266.0f);
+              {tr(Str::LabelTone), tr(Str::LabelDuck), tr(Str::LabelWidth), tr(Str::LabelMix)}, kFxKnobsY2);
         break;
     }
     case FxType::Eq:
@@ -2070,22 +2071,22 @@ void View::effectCardWidgets(std::vector<Widget> &list, int slot, Rect card) con
         add(Kind::FilterPoint, {handle.x - 8.0f, handle.y - 8.0f, 16.0f, 16.0f}, -1, slot, 1);
         const FilterKnobLabels names = filterKnobLabels(filterType, true);
         knobs({at(FxParam::FilterCutoff), at(FxParam::FilterResonance), at(FxParam::FilterKeyTrack)},
-              {tr(names.cutoff), tr(names.resonance), tr(Str::LabelKeyTrack)}, 206.0f);
+              {tr(names.cutoff), tr(names.resonance), tr(Str::LabelKeyTrack)}, kFxKnobsY1);
         const bool formant = filterType == FilterType::Formant, morph = filterType == FilterType::Morph;
         knobs({at(FxParam::FilterDrive),
                formant ? at(FxParam::FilterVowel) : morph ? at(FxParam::FilterMorph) : -1,
                at(FxParam::FilterMix)},
               {tr(Str::LabelDrive), formant ? tr(Str::LabelVowel) : morph ? tr(Str::LabelMorph) : nullptr,
                tr(Str::LabelMix)},
-              266.0f);
+              kFxKnobsY2);
         break;
     }
     case FxType::Compressor:
         knobs({at(FxParam::CompThreshold), at(FxParam::CompRatio), at(FxParam::CompKnee), at(FxParam::CompDetectorHp)},
-              {tr(Str::LabelThresh), tr(Str::LabelRatio), tr(Str::LabelKnee), tr(Str::LabelDetectorHp)}, 206.0f);
+              {tr(Str::LabelThresh), tr(Str::LabelRatio), tr(Str::LabelKnee), tr(Str::LabelDetectorHp)}, kFxKnobsY1);
         knobs({at(FxParam::CompAttack), at(FxParam::CompRelease), at(FxParam::CompMakeup),
                at(FxParam::CompMix)},
-              {tr(Str::LabelAttack), tr(Str::LabelRelease), tr(Str::LabelMakeup), tr(Str::LabelMix)}, 266.0f);
+              {tr(Str::LabelAttack), tr(Str::LabelRelease), tr(Str::LabelMakeup), tr(Str::LabelMix)}, kFxKnobsY2);
         break;
     case FxType::MultiDyn: {
         // RMS and LINK at the right end of the line over the shared knobs. Each band's row picks the band its knobs set, its threshold lines
@@ -2178,17 +2179,17 @@ void View::effectCardWidgets(std::vector<Widget> &list, int slot, Rect card) con
             knobs({rate, at(FxParam::PhaserDepth), at(FxParam::PhaserCenter), at(FxParam::PhaserSpread)},
                   {synced ? nullptr : tr(Str::LabelRate), tr(Str::LabelDepth), tr(Str::LabelCenter),
                    tr(Str::LabelSpread)},
-                  206.0f);
+                  kFxKnobsY1);
             knobs({at(FxParam::PhaserStages), at(FxParam::PhaserFeedback), at(FxParam::PhaserMix)},
-                  {tr(Str::LabelStages), tr(Str::LabelFeedback), tr(Str::LabelMix)}, 266.0f);
+                  {tr(Str::LabelStages), tr(Str::LabelFeedback), tr(Str::LabelMix)}, kFxKnobsY2);
             break;
         }
         knobs({rate, at(FxParam::FlangerDepth), at(FxParam::FlangerDelay)},
-              {synced ? nullptr : tr(Str::LabelRate), tr(Str::LabelDepth), tr(Str::LabelDelay)}, 206.0f);
+              {synced ? nullptr : tr(Str::LabelRate), tr(Str::LabelDepth), tr(Str::LabelDelay)}, kFxKnobsY1);
         knobs({at(FxParam::FlangerFeedback), -1, at(FxParam::FlangerMix)},
-              {tr(Str::LabelFeedback), nullptr, tr(Str::LabelMix)}, 266.0f);
+              {tr(Str::LabelFeedback), nullptr, tr(Str::LabelMix)}, kFxKnobsY2);
         // Through zero, a switch in the place between them.
-        add(Kind::Toggle, {card.center().x - 20.0f, card.y + 266.0f - 9.0f, 40.0f, 18.0f},
+        add(Kind::Toggle, {card.center().x - 20.0f, card.y + kFxKnobsY2 - 9.0f, 40.0f, 18.0f},
             at(FxParam::FlangerThroughZero));
         break;
     }
@@ -2201,24 +2202,24 @@ void View::effectCardWidgets(std::vector<Widget> &list, int slot, Rect card) con
                 kChorusVoiceChoices[i]);
         merge(voices);
         knobs({at(FxParam::ChorusRate), at(FxParam::ChorusDepth), at(FxParam::ChorusDelay)},
-              {tr(Str::LabelRate), tr(Str::LabelDepth), tr(Str::LabelDelay)}, 206.0f);
+              {tr(Str::LabelRate), tr(Str::LabelDepth), tr(Str::LabelDelay)}, kFxKnobsY1);
         knobs({at(FxParam::ChorusFeedback), at(FxParam::ChorusSpread), at(FxParam::ChorusMix)},
-              {tr(Str::LabelFeedback), tr(Str::LabelSpread), tr(Str::LabelMix)}, 266.0f);
+              {tr(Str::LabelFeedback), tr(Str::LabelSpread), tr(Str::LabelMix)}, kFxKnobsY2);
         break;
     }
     case FxType::FreqShifter:
         // The range, then the share of it the shift takes.
         knobs({at(FxParam::ShiftRange), at(FxParam::ShiftAmount), at(FxParam::ShiftSpread)},
-              {tr(Str::LabelRange), tr(Str::LabelShift), tr(Str::LabelSpread)}, 206.0f);
+              {tr(Str::LabelRange), tr(Str::LabelShift), tr(Str::LabelSpread)}, kFxKnobsY1);
         knobs({at(FxParam::ShiftFeedback), -1, at(FxParam::ShiftMix)},
-              {tr(Str::LabelFeedback), nullptr, tr(Str::LabelMix)}, 266.0f);
+              {tr(Str::LabelFeedback), nullptr, tr(Str::LabelMix)}, kFxKnobsY2);
         break;
     case FxType::Disperser:
         // Where it disperses and how, over what moves it with the note, how often it repeats and how much is heard.
         knobs({at(FxParam::DisperserFreq), at(FxParam::DisperserStages), at(FxParam::DisperserPinch)},
-              {tr(Str::LabelFreq), tr(Str::LabelStages), tr(Str::LabelPinch)}, 206.0f);
+              {tr(Str::LabelFreq), tr(Str::LabelStages), tr(Str::LabelPinch)}, kFxKnobsY1);
         knobs({at(FxParam::DisperserKeyTrack), at(FxParam::DisperserStretch), at(FxParam::DisperserMix)},
-              {tr(Str::LabelKeyTrack), tr(Str::LabelStretch), tr(Str::LabelMix)}, 266.0f);
+              {tr(Str::LabelKeyTrack), tr(Str::LabelStretch), tr(Str::LabelMix)}, kFxKnobsY2);
         break;
     case FxType::Widener:
         knobs({at(FxParam::WidenerSize), at(FxParam::WidenerWidth), at(FxParam::WidenerHighPass),
@@ -2239,9 +2240,9 @@ void View::effectCardWidgets(std::vector<Widget> &list, int slot, Rect card) con
                 slot, handle);
         }
         knobs({at(FxParam::UtilityGain), at(FxParam::UtilityPan)}, {tr(Str::LabelGain), tr(Str::LabelPan)},
-              206.0f);
+              kFxKnobsY1);
         knobs({at(FxParam::UtilityWidth), at(FxParam::UtilityMonoBass)},
-              {tr(Str::LabelWidth), tr(Str::LabelMonoBass)}, 266.0f);
+              {tr(Str::LabelWidth), tr(Str::LabelMonoBass)}, kFxKnobsY2);
         break;
     }
     case FxType::Amp: {
