@@ -49,6 +49,7 @@ std::vector<View::Widget> View::settingsWidgets() const {
     for (int size = 0; size < kModHandleSizeCount; ++size)
         add(Kind::SettingsHandles, settingsHandles(panel, size), -1, size);
     mergeButtons(list, row);
+    add(Kind::SettingsManual, settingsManual(panel));
     add(Kind::SettingsClose, settingsClose(panel));
     return list;
 }

@@ -1477,6 +1477,10 @@ inline Rect settingsHandles(Rect panel, int size) {
 inline Rect settingsClose(Rect panel) {
     return {panel.right() - 38.0f, panel.y + 14.0f, 24.0f, 24.0f};
 }
+// Before it, the button that opens the user manual.
+inline Rect settingsManual(Rect panel) {
+    return {panel.right() - 70.0f, panel.y + 14.0f, 24.0f, 24.0f};
+}
 
 // The dialog asking before Init or Load replaces a changed patch, or Save overwrites its preset, centered like the settings; a line shorter when
 // it doesn't say what replaces the patch, and before Save overwrites a preset.

@@ -39,6 +39,7 @@ EM_JS(void, js_oversampling, (int factor), { Module.fmvHost.oversampling(factor)
 EM_JS(void, js_tempo, (double bpm), { Module.fmvHost.tempo(bpm); });
 EM_JS(void, js_layout_changed, (), { Module.fmvHost.layoutChanged(); });
 EM_JS(void, js_toast, (const char *utf8), { Module.fmvHost.toast(UTF8ToString(utf8)); });
+EM_JS(void, js_open, (const char *url), { window.open(UTF8ToString(url), '_blank', 'noopener'); });
 // The user's settings (theme, glow, handle size) live in the browser's storage; -1 when there is none.
 EM_JS(int, js_setting, (const char *key, char *out, int capacity), {
     const value = Module.fmvHost.setting(UTF8ToString(key));
@@ -209,6 +210,7 @@ public:
         tempo_ = clampTempo(bpm);
         js_tempo(tempo_);
     }
+    void openManual() override { js_open(kManualUrl); } // in a tab of its own
 
     // Opens on an example rather than Init, so the first note sounds like something; nothing to undo yet.
     void start() {

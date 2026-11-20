@@ -1126,6 +1126,7 @@ STR(TipSaveUnchanged, "No changes to save")
 STR(TipSaveNoFile, "No preset loaded. Use Save As...")
 STR(TipSaveAs, "Save as a new preset")
 STR(TipSettings, "Settings")
+STR(TipManual, "Open the user manual") // the book in the settings dialog's title row, which opens it online
 STR(TipSettingsHue, "Accent color. Double-click resets") // the settings dialog's sliders, under them
 STR(TipSettingsGlow, "Glow effect strength. Double-click resets")
 STR(TipSettingsLinks, "Strength of the modulation lines. Double-click resets")

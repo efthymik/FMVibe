@@ -281,6 +281,9 @@ inline double clampTempo(double bpm) {
     return std::round(std::clamp(bpm, kMinTempo, kMaxTempo) * 100.0) / 100.0;
 }
 
+// Where the user manual is online, the released version's (as the README links it).
+inline constexpr const char *kManualUrl = "https://pcdlin.github.io/FMVibe/manual.html";
+
 // A preset in the library: a factory preset, built in, or a .fmv file in the preset folder or one of its subfolders.
 struct PresetEntry {
     std::string name;   // the file's name without .fmv, or the factory preset's
@@ -602,6 +605,8 @@ public:
     virtual bool hasTempo() const { return false; }
     virtual double tempo() const { return kDefaultTempo; }
     virtual void setTempo(double) {}
+    // Opens the user manual, online at kManualUrl (the settings dialog's book button).
+    virtual void openManual() {}
 
 protected:
     // What beginEdit(), setValue() and endEdit() do besides keeping the history: undo and redo

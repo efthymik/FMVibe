@@ -15,6 +15,7 @@
 #include <random>
 
 #include <windows.h>
+#include <shellapi.h>
 #include <xmmintrin.h>
 
 namespace fmvibe {
@@ -174,6 +175,12 @@ void PluginCore::setMpeBendRange(int semitones) {
     semitones = std::clamp(semitones, 1, kMaxMpeBendRange);
     if (mpeBendRange_.exchange(semitones) != semitones)
         hostMarkDirty();
+}
+
+void PluginCore::openManual() {
+    const std::string_view url = gui::kManualUrl; // plain ASCII
+    const std::wstring wide(url.begin(), url.end());
+    ShellExecuteW(nullptr, L"open", wide.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 
 void PluginCore::beginBlock() {

@@ -219,7 +219,8 @@ enum class WidgetKind {
     SettingsLinks,  // the slider for how strongly the sources' dashed lines are drawn
     SettingsGrid,   // the slider for how strongly the SEQ view's roll draws its grid
     SettingsClose,
-    ModWheel,     // param = mod wheel: drag or scroll
+    SettingsManual, // the book beside the x: opens the user manual in the web browser
+    ModWheel,    // param = mod wheel: drag or scroll
     BendWheel,    // drag; springs back to center on release
     // The effects graph (see fxpanel.cpp).
     FxMode,       // b = 0 the chain, 1 the graph: the switch at the FX panel's top right

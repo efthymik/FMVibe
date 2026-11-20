@@ -1436,7 +1436,8 @@ does not contain the instance settings (oversampling and MPE).
 
 ## 15. Settings
 
-The cog in the title bar opens the settings dialog.
+The cog in the title bar opens the settings dialog. The book at its top right, beside the x, opens this manual in
+your web browser.
 
 **Instance settings**, saved with your project but not with presets:
 

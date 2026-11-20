@@ -92,6 +92,8 @@ void diceIcon(Canvas &c, Point center, Color color);
 void doneIcon(Canvas &c, Point center, Color color);
 // A pencil, about 11 x 11, writing toward the lower left: the edit buttons'.
 void editIcon(Canvas &c, Point center, Color color);
+// An open book, about 14 x 11: the settings dialog's button that opens the user manual.
+void bookIcon(Canvas &c, Point center, Color color);
 // Two arrows pointing in at a middle line, across: a widened card back to its size; and two pointing out to opposite
 // corners: the full-size editor.
 void collapseIcon(Canvas &c, Point center, Color color);

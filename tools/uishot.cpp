@@ -232,6 +232,8 @@ public:
         bpm = v;
         ++tempoSets;
     }
+    void openManual() override { ++manualOpens; }
+    int manualOpens = 0;
 
 protected:
     void performBeginEdit(int index) override {
@@ -13908,6 +13910,13 @@ void run(const std::filesystem::path &dir, float scale) {
           "the settings dialog switches MPE and picks its bend range, leaving the patch alone");
     view.mouseMove(option(3), {});
     check(renderer.save(view, dir / "14-settings.png"), "render the settings dialog");
+    // The book before its x opens the user manual, the dialog staying open; its tooltip says so.
+    const Point manualButton = detail::settingsManual(dialog).center();
+    view.mouseMove(manualButton, {});
+    const bool manualShot = renderer.save(view, dir / "14h-settings-manual.png");
+    click(view, manualButton);
+    check(manualShot && model.manualOpens == 1 && view.dialogOpen(),
+          "the settings dialog's book opens the user manual and leaves the dialog open");
     // Its theme buttons repaint the whole editor in another theme. The first is the default.
     const int midnight = detail::themeIndex("Midnight");
     bool themed = detail::themeIndex("") == 0 && std::string_view(View::themeName(0)) == "Spectrum" &&

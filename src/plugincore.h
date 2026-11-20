@@ -141,6 +141,8 @@ public:
         settings.gridIntensity = userSettings.grid;
         return settings;
     }
+    // In the user's web browser.
+    void openManual() override;
 
     // Every param's value now. Any thread. ParamValues is large (about 150 KB): valuesInto() fills one in place, kept
     // off the stack.

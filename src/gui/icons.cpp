@@ -72,6 +72,22 @@ void doneIcon(Canvas &c, Point center, Color color) {
     c.polyline(check, std::size(check), color, 1.8f);
 }
 
+void bookIcon(Canvas &c, Point m, Color color) {
+    // Two pages from the spine, their top edges dipping to it, and a line of text on each.
+    for (const float side : {-1.0f, 1.0f}) {
+        const Point page[] = {{m.x, m.y - 3.5f},
+                              {m.x + side * 3.0f, m.y - 5.0f},
+                              {m.x + side * 7.0f, m.y - 5.0f},
+                              {m.x + side * 7.0f, m.y + 4.0f},
+                              {m.x + side * 3.0f, m.y + 4.0f},
+                              {m.x, m.y + 5.5f}};
+        c.polyline(page, std::size(page), color, 1.2f);
+        for (const float y : {-1.5f, 1.0f})
+            c.line({m.x + side * 2.0f, m.y + y - 0.5f}, {m.x + side * 5.0f, m.y + y - 0.5f}, color, 1.0f);
+    }
+    c.line({m.x, m.y - 3.5f}, {m.x, m.y + 5.5f}, color, 1.2f);
+}
+
 void editIcon(Canvas &c, Point center, Color color) {
     // Along the pencil from its tip (lower left) to its end (upper right), and across it.
     const Point along{0.7071f, -0.7071f}, across{0.7071f, 0.7071f};

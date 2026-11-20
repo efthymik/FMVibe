@@ -4962,6 +4962,9 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         c.line({m.x - 5.0f, m.y + 5.0f}, {m.x + 5.0f, m.y - 5.0f}, color, 1.5f);
         break;
     }
+    case Kind::SettingsManual:
+        bookIcon(c, w.rect.center(), paintActionFace(c, w.rect, hovered));
+        break;
     case Kind::ModDot: {
         // Compact: on a wire label, matrix cell or depth bar.
         // A bypassed modulation's dot is hollow.
@@ -5466,6 +5469,7 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::PresetStep && hover_->kind != Kind::PresetNameBox &&
          hover_->kind != Kind::TempoBox &&
          hover_->kind != Kind::SettingsButton && hover_->kind != Kind::UndoButton &&
+         hover_->kind != Kind::SettingsManual &&
          hover_->kind != Kind::SettingsHue && hover_->kind != Kind::SettingsGlow &&
          hover_->kind != Kind::SettingsLinks && hover_->kind != Kind::SettingsGrid &&
          hover_->kind != Kind::SlotBypass && hover_->kind != Kind::MacroName &&
@@ -5551,6 +5555,8 @@ void View::paintTooltip(Canvas &c) {
         }
     else if (hover_->kind == Kind::SettingsButton)
         text = tr(Str::TipSettings);
+    else if (hover_->kind == Kind::SettingsManual)
+        text = tr(Str::TipManual);
     else if (hover_->kind == Kind::SettingsHue)
         text = tr(Str::TipSettingsHue);
     else if (hover_->kind == Kind::SettingsGlow)
@@ -6741,6 +6747,9 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::SettingsClose:
         settingsOpen_ = false;
         hover_.reset();
+        break;
+    case Kind::SettingsManual: // the dialog stays open behind the browser
+        controller_.openManual();
         break;
     case Kind::ModWheel:
         drag_.kind = DragKind::ModWheel;
