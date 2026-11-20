@@ -3,7 +3,9 @@
 #include "warp.h"
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
+#include <cstdio>
 #include <limits>
 #include <memory>
 #include <numbers>
@@ -194,6 +196,7 @@ Synth::Synth() : table_(paramTable()), waves_(waveTables()) {
         paramMin_[paramIndex(op, OpParam::Phase)] = -kPhaseModCycles;
         paramMax_[paramIndex(op, OpParam::Phase)] = kPhaseModCycles;
     }
+    findAudioTargets();
 }
 
 namespace {
@@ -206,6 +209,88 @@ std::span<double> values(Levels &levels) {
 }
 
 } // namespace
+
+void Synth::findAudioTargets() {
+    Levels probe;
+    auto field = [&probe](const double &f) { return static_cast<int16_t>(&f - values(probe).data()); };
+    auto put = [this](int index, AudioKind kind, int a, int b = -1, int16_t at = -1, AudioGate gate = AudioGate::None) {
+        if (index >= 0 && index < kVoiceParamCount)
+            audioTargets_[index] = {kind, gate, static_cast<int8_t>(a), static_cast<int8_t>(b), at};
+    };
+    for (int i = 0; i < kOps; ++i) {
+        put(paramIndex(i, OpParam::Out), AudioKind::Level, i, -1, field(probe.out[i]), AudioGate::Op);
+        put(paramIndex(i, OpParam::Pan), AudioKind::OpPan, i);
+        put(paramIndex(i, OpParam::Phase), AudioKind::OpPhase, i, -1, field(probe.phase[i]));
+        put(paramIndex(i, OpParam::Ratio), AudioKind::OpRatio, i);
+        put(paramIndex(i, OpParam::Transpose), AudioKind::OpTranspose, i);
+        put(paramIndex(i, OpParam::Detune), AudioKind::OpDetune, i);
+        put(paramIndex(i, OpParam::FixedFreq), AudioKind::OpFixedFreq, i);
+        put(paramIndex(i, OpParam::UnisonDetune), AudioKind::UnisonDetune, i);
+        put(paramIndex(i, OpParam::UnisonSpread), AudioKind::UnisonSpread, i);
+        put(paramIndex(i, OpParam::UnisonBlend), AudioKind::UnisonBlend, i);
+        put(paramIndex(i, OpParam::WarpAmount), AudioKind::WarpAmount, i);
+        put(paramIndex(i, OpParam::NoiseSlope), AudioKind::NoiseSlope, i);
+        const std::array<OpParam, 8> env{OpParam::Attack,      OpParam::Hold,       OpParam::Decay,
+                                         OpParam::Sustain,     OpParam::Release,    OpParam::AttackCurve,
+                                         OpParam::DecayCurve, OpParam::ReleaseCurve};
+        for (int k = 0; k < 8; ++k)
+            put(paramIndex(i, env[k]), AudioKind::OpEnv, i, k);
+        for (int f = 0; f < kFilters; ++f)
+            put(sendIndex(i, f), AudioKind::Level, i, f, field(probe.send[i][f]), AudioGate::OpFilter);
+        for (int sh = 0; sh < kShapers; ++sh)
+            put(shaperSendIndex(i, sh), AudioKind::Level, i, sh, field(probe.shaperSend[i][sh]),
+                AudioGate::OpShaper);
+        for (int to = 0; to < kOps; ++to)
+            put(matrixIndex(i, to), AudioKind::Route, i, to, field(probe.index[i][to]));
+    }
+    for (int f = 0; f < kFilters; ++f) {
+        for (int to = 0; to < kOps; ++to)
+            put(filterModIndex(f, to), AudioKind::Route, kOps + f, to, field(probe.filterIndex[f][to]));
+        for (int to = 0; to < kFilters; ++to)
+            put(filterLinkIndex(f, to), AudioKind::Level, f, to, field(probe.link[f][to]), AudioGate::FilterFilter);
+        for (int sh = 0; sh < kShapers; ++sh)
+            put(filterShaperIndex(f, sh), AudioKind::Level, f, sh, field(probe.filterShaper[f][sh]),
+                AudioGate::FilterShaper);
+        put(paramIndex(f, FilterParam::Out), AudioKind::Level, f, -1, field(probe.filterOut[f]));
+        put(paramIndex(f, FilterParam::Mix), AudioKind::Level, f, -1, field(probe.filterMix[f]));
+        put(paramIndex(f, FilterParam::Cutoff), AudioKind::Filter, f, 0);
+        put(paramIndex(f, FilterParam::KeyTrack), AudioKind::Filter, f, 1);
+        put(paramIndex(f, FilterParam::Resonance), AudioKind::Filter, f, 5);
+        put(paramIndex(f, FilterParam::Drive), AudioKind::Filter, f, 6);
+        put(paramIndex(f, FilterParam::Vowel), AudioKind::Filter, f, 7);
+        put(paramIndex(f, FilterParam::Morph), AudioKind::Filter, f, 8);
+    }
+    for (int sh = 0; sh < kShapers; ++sh) {
+        for (int to = 0; to < kOps; ++to)
+            put(shaperModIndex(sh, to), AudioKind::Route, kOps + kFilters + sh, to, field(probe.shaperIndex[sh][to]));
+        for (int to = 0; to < kShapers; ++to)
+            put(shaperShaperIndex(sh, to), AudioKind::Level, sh, to, field(probe.shaperShaper[sh][to]),
+                AudioGate::ShaperShaper);
+        for (int f = 0; f < kFilters; ++f)
+            put(shaperFilterIndex(sh, f), AudioKind::Level, sh, f, field(probe.shaperLink[sh][f]),
+                AudioGate::ShaperFilter);
+        put(paramIndex(sh, ShaperParam::Out), AudioKind::Level, sh, -1, field(probe.shaperDirect[sh]),
+            AudioGate::Shaper);
+        const ShaperParams fields = shaperParams(kFxSlots + sh);
+        put(fields.drive, AudioKind::Shaper, sh, 0);
+        put(fields.output, AudioKind::Shaper, sh, 1);
+        put(fields.mix, AudioKind::Shaper, sh, 2);
+    }
+    put(paramIndex(GlobalParam::Pitch), AudioKind::GlobalPitch, -1);
+    put(paramIndex(GlobalParam::FmAmount), AudioKind::FmAmount, -1);
+    put(paramIndex(GlobalParam::Pan), AudioKind::GlobalPan, -1);
+}
+
+int Synth::audioLane(int target) {
+    for (int l = 0; l < audioLaneCount_; ++l)
+        if (audioLanes_[l].target == target)
+            return l;
+    AudioLane &lane = audioLanes_[audioLaneCount_];
+    lane = {};
+    lane.target = target;
+    lane.at = audioTargets_[target];
+    return audioLaneCount_++;
+}
 
 float *Synth::combLine(const Voice &v, int filter, int channel) {
     const size_t voice = static_cast<size_t>(&v - voices_.data());
@@ -1714,6 +1799,8 @@ void Synth::shareSlots(const ParamValues &params) {
 // Kept out of renderBlock(), which patches without an operator as a source run as they did.
 FMVIBE_NOINLINE void Synth::runOpSources(Voice &v, const ParamValues &params) {
     voiceFmCount_ = 0;
+    audioModCount_ = 0;
+    audioLaneCount_ = 0;
     for (int op = 0; op < kOps; ++op) {
         if (!(opSourceMask_ >> op & 1u))
             continue;
@@ -1744,9 +1831,15 @@ FMVIBE_NOINLINE void Synth::runOpSources(Voice &v, const ParamValues &params) {
                 }
                 continue;
             }
-            v.slotMods[v.slotModCount++] = {slot.target,
-                                            slotCurveValue(swing, slot.curve, bipolar) * slot.depth * scale * slot.range,
-                                            source * kSlots + slot.slot};
+            const double offset = slotCurveValue(swing, slot.curve, bipolar) * slot.depth * scale * slot.range;
+            // On a param the voice plays by, every sample (see AudioKind); the editor shows it as of the last block.
+            if (slot.target < kVoiceParamCount && audioTargets_[slot.target].kind != AudioKind::None) {
+                audioMods_[audioModCount_++] = {op, audioLane(slot.target), slot.depth * scale * slot.range, slot.curve,
+                                                bipolar};
+                v.slotMods[v.slotModCount++] = {slot.target, offset, source * kSlots + slot.slot, true};
+                continue;
+            }
+            v.slotMods[v.slotModCount++] = {slot.target, offset, source * kSlots + slot.slot};
         }
     }
 }
@@ -1761,7 +1854,7 @@ FMVIBE_NOINLINE bool Synth::startCutoffFm(std::array<const FilterSettings *, kFi
     bool any = false;
     for (int k = 0; k < voiceFmCount_; ++k) {
         const int f = voiceFm_[k].place;
-        if (!filter[f] || voiceFmBase_[f])
+        if (!filter[f] || voiceFmBase_[f] || (audioFilterMask_ >> f & 1u)) // the latter's settings audioSample()'s
             continue;
         voiceFmBase_[f] = filter[f];
         voiceFmNow_[f] = *filter[f];
@@ -1838,6 +1931,511 @@ FMVIBE_NOINLINE void Synth::finishOpSources(Voice &v, const std::array<bool, kOp
         // From nothing to the envelope's level as the wave swings, so that silence is 0, as an LFO's lowest point is.
         v.opLevel[op] = opOn[op] ? std::clamp(0.5 * (mean + v.ops[op].env.level()), 0.0, 1.0) : 0.0;
     }
+}
+
+namespace {
+
+// An operator's Pan or the voice's as its left and right gains, equal-power and unity at the center.
+double panLeft(double pan) {
+    return std::numbers::sqrt2 * std::cos((std::clamp(pan, -1.0, 1.0) + 1.0) * std::numbers::pi / 4.0);
+}
+double panRight(double pan) {
+    return std::numbers::sqrt2 * std::sin((std::clamp(pan, -1.0, 1.0) + 1.0) * std::numbers::pi / 4.0);
+}
+
+} // namespace
+
+FMVIBE_NOINLINE bool Synth::startAudioMods(Voice &v, const double *p, double pitch, const Levels &target,
+                                           const AudioBlock &b) {
+    AudioRun &run = audioRun_;
+    run.p = p;
+    run.pitch = pitch;
+    run.gain = kVoiceLevel * v.exprGain;
+    run.exprPan = v.exprPan;
+    run.rates = b.rates.data();
+    run.noiseCoefs = b.noiseCoefs.data();
+    run.noiseMid = b.noiseMid.data();
+    run.noiseSide = b.noiseSide.data();
+    run.copyGains = b.copyGains.data();
+    run.copies = b.copies.data();
+    run.opOn = b.opOn.data();
+    run.noise = b.noise.data();
+    run.filter = nullptr;
+    run.savedCount = 0;
+    audioReach_ = {};
+    audioFmReach_ = 0.0;
+    audioFilterMask_ = 0;
+    const std::span<double> reach = values(audioReach_);
+    for (int i = 0; i < kOps; ++i) {
+        run.fixed[i] = p[paramIndex(i, OpParam::Fixed)] >= 0.5;
+        run.modes[i] = {static_cast<UniCurve>(
+                            stepped(p[paramIndex(i, OpParam::UnisonCurve)], static_cast<int>(UniCurve::Count) - 1)),
+                        static_cast<UniPan>(
+                            stepped(p[paramIndex(i, OpParam::UnisonPan)], static_cast<int>(UniPan::Count) - 1)),
+                        std::clamp(p[paramIndex(i, OpParam::UnisonBlend)], 0.0, 1.0), static_cast<uint32_t>(v.order)};
+        run.monoGain[i] = b.opOn[i] ? b.monoGain[i] : 1.0;
+    }
+    // Each lane's value before the operators: as set with the voice's host and other slots' modulation, unclamped.
+    for (int l = 0; l < audioLaneCount_; ++l) {
+        AudioLane &lane = audioLanes_[l];
+        const int t = lane.target;
+        lane.base = voiceBase_[t] + v.mod[t];
+        for (int m = 0; m < v.slotModCount; ++m)
+            if (v.slotMods[m].index == t && !v.slotMods[m].shown)
+                lane.base += v.slotMods[m].offset;
+        lane.set = p[t];
+        lane.lo = paramMin_[t];
+        lane.hi = paramMax_[t];
+        lane.down = lane.up = 0.0;
+    }
+    for (int m = 0; m < audioModCount_; ++m) {
+        const AudioMod &mod = audioMods_[m];
+        AudioLane &lane = audioLanes_[mod.lane];
+        const double low = mod.scale * (mod.bipolar ? -0.5 : 0.0), high = mod.scale * (mod.bipolar ? 0.5 : 1.0);
+        lane.down += std::min({0.0, low, high});
+        lane.up += std::max({0.0, low, high});
+    }
+    auto routeFrom = [&](int node) {
+        return node < kOps            ? b.opOn[node]
+               : node < kOps + kFilters ? b.filterEnabled[node - kOps]
+                                        : b.shaperEnabled[node - kOps - kFilters];
+    };
+    auto pitchedOp = [&](int i) { return b.opOn[i] && !b.noise[i]; };
+    std::array<double, kOps> pitchReach;
+    pitchReach.fill(1.0);
+    std::array<bool, kOps> panned{}, spread{};
+    bool any = false;
+    for (int l = 0; l < audioLaneCount_; ++l) {
+        AudioLane &lane = audioLanes_[l];
+        const AudioTarget &at = lane.at;
+        const double low = std::clamp(lane.base + lane.down, lane.lo, lane.hi);
+        const double high = std::clamp(lane.base + lane.up, lane.lo, lane.hi);
+        const int a = at.a;
+        bool live = true;
+        switch (at.kind) {
+        case AudioKind::Level: {
+            const bool tail = v.tail;
+            switch (at.gate) {
+            case AudioGate::None:
+                break;
+            case AudioGate::Op:
+                live = b.opOn[a];
+                break;
+            case AudioGate::OpFilter:
+                live = b.opOn[a] && b.filterEnabled[at.b];
+                break;
+            case AudioGate::OpShaper:
+                live = b.opOn[a] && b.shaperEnabled[at.b];
+                break;
+            case AudioGate::Shaper:
+                live = b.shaperEnabled[a];
+                break;
+            case AudioGate::FilterFilter:
+                live = b.filterEnabled[a] && b.filterEnabled[at.b] && (at.b > a || !tail);
+                break;
+            case AudioGate::FilterShaper:
+                live = b.filterEnabled[a] && b.shaperEnabled[at.b] && !tail;
+                break;
+            case AudioGate::ShaperShaper:
+                live = b.shaperEnabled[a] && b.shaperEnabled[at.b] && !tail;
+                break;
+            case AudioGate::ShaperFilter:
+                live = b.shaperEnabled[a] && b.filterEnabled[at.b];
+                break;
+            }
+            if (live)
+                reach[at.field] = std::max(std::abs(low), std::abs(high));
+            break;
+        }
+        case AudioKind::Route: {
+            live = routeFrom(a) && b.opOn[at.b];
+            const RouteMode mode = routeModes_[a][at.b];
+            const double index = a == at.b ? kMaxFeedback : kMaxIndex;
+            lane.from = routeLevel(mode, lane.set, index);
+            if (live)
+                reach[at.field] =
+                    std::max(std::abs(routeLevel(mode, low, index)), std::abs(routeLevel(mode, high, index)));
+            break;
+        }
+        case AudioKind::OpPan:
+            live = b.opOn[a];
+            lane.from = panLeft(lane.set);
+            lane.fromR = panRight(lane.set);
+            panned[a] = live;
+            break;
+        case AudioKind::OpPhase:
+            live = pitchedOp(a);
+            if (live)
+                b.warped[a] = true; // the loop that reads its wave where its Phase has moved it
+            break;
+        case AudioKind::OpRatio:
+            live = pitchedOp(a) && !run.fixed[a];
+            lane.from = ratioFromNorm(std::clamp(lane.set, 0.0, kRatioModNorm));
+            if (live)
+                pitchReach[a] *= ratioFromNorm(std::clamp(high, 0.0, kRatioModNorm)) / lane.from;
+            break;
+        case AudioKind::OpTranspose:
+            live = pitchedOp(a) && !run.fixed[a];
+            if (live)
+                pitchReach[a] *= std::exp2((high - lane.set) / 12.0);
+            break;
+        case AudioKind::OpDetune:
+            live = pitchedOp(a) && !run.fixed[a];
+            if (live)
+                pitchReach[a] *= std::exp2((high - lane.set) / 1200.0);
+            break;
+        case AudioKind::OpFixedFreq:
+            live = pitchedOp(a) && run.fixed[a];
+            lane.from = fixedFreqFromNorm(lane.set);
+            if (live)
+                pitchReach[a] *= fixedFreqFromNorm(high) / lane.from;
+            break;
+        case AudioKind::GlobalPitch:
+            for (int i = 0; i < kOps; ++i)
+                if (pitchedOp(i) && !run.fixed[i])
+                    pitchReach[i] *= std::exp2(std::max(high - lane.set, 0.0) / 12.0);
+            break;
+        case AudioKind::UnisonDetune:
+            live = pitchedOp(a) && b.copies[a] > 1;
+            if (live) {
+                run.shares[a] = unisonDetunes(a, b.copies[a], run.modes[a]);
+                pitchReach[a] *= std::exp2(std::max(high - lane.set, 0.0) / 1200.0);
+            }
+            break;
+        case AudioKind::UnisonSpread:
+        case AudioKind::UnisonBlend:
+            live = b.opOn[a] && (at.kind == AudioKind::UnisonSpread ? b.copies[a] > 1 || b.noise[a]
+                                                                      : !b.noise[a] && b.copies[a] > 1);
+            if (live && !b.noise[a]) {
+                // Each copy's place, which the samples spread, and its weight, as the block has them.
+                const UnisonSpreadOut out = unisonSpread(b.copies[a], run.modes[a].curve, run.modes[a].pan,
+                                                         run.modes[a].blend, run.modes[a].seed, a);
+                run.copyPan[a] = out.pan;
+                run.copyWeight[a] = out.weight;
+            }
+            if (live && at.kind == AudioKind::UnisonBlend)
+                b.warped[a] = true; // the loop that weighs its copies
+            spread[a] = spread[a] || live;
+            break;
+        case AudioKind::WarpAmount: {
+            const Operator &op = v.ops[a];
+            live = pitchedOp(a) && op.warp != OpWarp::Off;
+            if (live) {
+                const double was = std::max(std::abs(op.warpNow), std::abs(lane.set));
+                const double most = std::min(std::max({was, std::abs(low), std::abs(high)}), 1.0);
+                pitchReach[a] *= std::max(warpSqueeze(op.warp, most) / warpSqueeze(op.warp, was), 1.0);
+            }
+            break;
+        }
+        case AudioKind::OpEnv:
+            live = b.opOn[a];
+            run.baseRates[a] = b.rates[a];
+            break;
+        case AudioKind::NoiseSlope:
+            live = b.opOn[a] && b.noise[a];
+            if (live)
+                b.colored[a] = true;
+            break;
+        case AudioKind::Filter:
+            live = b.filterEnabled[a];
+            if (live)
+                audioFilterMask_ |= 1u << a;
+            break;
+        case AudioKind::Shaper:
+            live = b.shaperEnabled[a];
+            break;
+        case AudioKind::FmAmount:
+            audioFmReach_ = std::max(std::abs(low), std::abs(high));
+            break;
+        case AudioKind::GlobalPan:
+            lane.from = run.gain * panLeft(lane.set + run.exprPan);
+            lane.fromR = run.gain * panRight(lane.set + run.exprPan);
+            break;
+        case AudioKind::None:
+            live = false;
+            break;
+        }
+        lane.gate = live ? 1.0 : 0.0;
+        any = any || live;
+    }
+    // The tables suit the highest the operators take each one's pitch.
+    for (int i = 0; i < kOps; ++i)
+        if (pitchReach[i] > 1.0) {
+            b.highestInc[i] = std::min(b.highestInc[i] * pitchReach[i], 0.5);
+            b.wave[i] = b.shapes[i] == OpWave::Custom ? customWaves_[i].table(b.highestInc[i])
+                                                       : waves_.table(b.shapes[i], b.highestInc[i]);
+        }
+    // The levels the routes are checked against, as far as the operators take each.
+    audioTo_ = target;
+    {
+        const std::span<double> to = values(audioTo_);
+        for (size_t k = 0; k < to.size(); ++k)
+            to[k] = std::max(to[k], reach[k]);
+    }
+    // An operator panned or spread, or with its Pan or spread moved, is stereo while it is heard, or the operators may
+    // make it heard.
+    for (int i = 0; i < kOps; ++i) {
+        if (!b.opOn[i])
+            continue;
+        const bool wide = panned[i] || spread[i] || p[paramIndex(i, OpParam::Pan)] != 0.0 ||
+                          v.levels.panL[i] != v.levels.panR[i] ||
+                          ((b.copies[i] > 1 || b.noise[i]) && p[paramIndex(i, OpParam::UnisonSpread)] > 0.0);
+        if (!wide)
+            continue;
+        double heard = std::max(target.out[i], audioReach_.out[i]);
+        for (int f = 0; f < kFilters; ++f)
+            heard = std::max({heard, target.send[i][f], audioReach_.send[i][f]});
+        for (int sh = 0; sh < kShapers; ++sh)
+            heard = std::max({heard, target.shaperSend[i][sh], audioReach_.shaperSend[i][sh]});
+        b.stereo = b.stereo || heard > 0.0;
+    }
+    return any;
+}
+
+FMVIBE_NOINLINE void Synth::audioSample(Voice &v, uint32_t sample) {
+    AudioRun &run = audioRun_;
+    const double *const p = run.p;
+    audioRestore(); // the last sample's, with what the ramps have moved them by since
+    auto save = [&run](double &at, double to) {
+        run.saved[run.savedCount++] = {&at, at, to};
+        at = to;
+    };
+    for (int l = 0; l < audioLaneCount_; ++l)
+        audioLanes_[l].acc = 0.0;
+    // What each operator puts out as it stands, before this sample: as a source does (see runOpSources()).
+    for (int m = 0; m < audioModCount_; ++m) {
+        const AudioMod &mod = audioMods_[m];
+        const Operator &o = v.ops[mod.op];
+        double swing = mod.bipolar ? 0.5 * std::clamp(o.out, -1.0, 1.0)
+                                   : std::clamp(0.5 * (o.out + o.env.level()), 0.0, 1.0);
+        if (mod.curve != 0.0)
+            swing = slotCurveValue(swing, mod.curve, mod.bipolar);
+        audioLanes_[mod.lane].acc += swing * mod.scale;
+    }
+    std::array<double, kOps> factor;
+    factor.fill(1.0);
+    std::array<double, kOps> detune{}, spreadTo{}, blendTo{};
+    std::array<std::array<double, 8>, kOps> env;
+    std::array<std::array<double, 10>, kFilters> filterIn;
+    std::array<std::array<double, 3>, kShapers> shaperIn;
+    double global = 1.0; // the voice's Pitch
+    uint32_t pitched = 0, detuned = 0, spreadMask = 0, blendMask = 0, envMask = 0, envTimes = 0, filterMask = 0,
+             shaperMask = 0;
+    const std::span<double> level = values(v.levels);
+    for (int l = 0; l < audioLaneCount_; ++l) {
+        AudioLane &lane = audioLanes_[l];
+        if (lane.gate == 0.0)
+            continue;
+        const double value = std::clamp(lane.base + lane.acc, lane.lo, lane.hi);
+        lane.value = value;
+        const int a = lane.at.a;
+        const uint32_t bit = 1u << std::max(a, 0);
+        switch (lane.at.kind) {
+        case AudioKind::Level:
+        case AudioKind::OpPhase:
+            save(level[lane.at.field], level[lane.at.field] + (value - lane.set));
+            break;
+        case AudioKind::Route: {
+            const double to = routeLevel(routeModes_[a][lane.at.b], value, a == lane.at.b ? kMaxFeedback : kMaxIndex);
+            save(level[lane.at.field], level[lane.at.field] + (to - lane.from));
+            break;
+        }
+        case AudioKind::OpPan:
+            save(v.levels.panL[a], v.levels.panL[a] + (panLeft(value) - lane.from));
+            save(v.levels.panR[a], v.levels.panR[a] + (panRight(value) - lane.fromR));
+            break;
+        case AudioKind::OpRatio:
+            factor[a] *= ratioFromNorm(std::clamp(value, 0.0, kRatioModNorm)) / lane.from;
+            pitched |= bit;
+            break;
+        case AudioKind::OpTranspose:
+            factor[a] *= std::exp2((value - lane.set) / 12.0);
+            pitched |= bit;
+            break;
+        case AudioKind::OpDetune:
+            factor[a] *= std::exp2((value - lane.set) / 1200.0);
+            pitched |= bit;
+            break;
+        case AudioKind::OpFixedFreq:
+            factor[a] *= fixedFreqFromNorm(value) / lane.from;
+            pitched |= bit;
+            break;
+        case AudioKind::GlobalPitch:
+            global *= std::exp2((value - lane.set) / 12.0);
+            break;
+        case AudioKind::UnisonDetune:
+            detune[a] = value - lane.set;
+            detuned |= bit;
+            break;
+        case AudioKind::UnisonSpread:
+            spreadTo[a] = value;
+            spreadMask |= bit;
+            break;
+        case AudioKind::UnisonBlend:
+            blendTo[a] = value;
+            blendMask |= bit;
+            break;
+        case AudioKind::WarpAmount: {
+            Operator &op = v.ops[a];
+            save(op.warpNow, std::clamp(op.warpNow + (value - lane.set), -1.0, 1.0));
+            break;
+        }
+        case AudioKind::OpEnv:
+            if (!(envMask & bit)) {
+                env[a] = {p[paramIndex(a, OpParam::Attack)],      p[paramIndex(a, OpParam::Hold)],
+                          p[paramIndex(a, OpParam::Decay)],       p[paramIndex(a, OpParam::Sustain)],
+                          p[paramIndex(a, OpParam::Release)],     p[paramIndex(a, OpParam::AttackCurve)],
+                          p[paramIndex(a, OpParam::DecayCurve)], p[paramIndex(a, OpParam::ReleaseCurve)]};
+                envMask |= bit;
+            }
+            env[a][lane.at.b] = value;
+            if (lane.at.b != 3)
+                envTimes |= bit;
+            break;
+        case AudioKind::NoiseSlope:
+            run.noiseCoefs[a] = noiseColor_.coefs(value);
+            break;
+        case AudioKind::Filter:
+            if (!(filterMask & bit)) {
+                const double keyTrack = p[paramIndex(a, FilterParam::KeyTrack)];
+                filterIn[a] = {p[paramIndex(a, FilterParam::Cutoff)],    keyTrack,
+                               run.pitch,                                p[paramIndex(a, FilterParam::Type)],
+                               p[paramIndex(a, FilterParam::Slope)],     p[paramIndex(a, FilterParam::Resonance)],
+                               p[paramIndex(a, FilterParam::Drive)],     p[paramIndex(a, FilterParam::Vowel)],
+                               p[paramIndex(a, FilterParam::Morph)],     p[paramIndex(a, FilterParam::MorphMode)]};
+                filterMask |= bit;
+            }
+            filterIn[a][lane.at.b] = value;
+            break;
+        case AudioKind::Shaper:
+            if (!(shaperMask & bit)) {
+                const ShaperParams fields = shaperParams(kFxSlots + a);
+                shaperIn[a] = {p[fields.drive], p[fields.output], p[fields.mix]};
+                shaperMask |= bit;
+            }
+            shaperIn[a][lane.at.b] = value;
+            break;
+        case AudioKind::FmAmount:
+            save(v.fmScale, v.fmScale + (value - lane.set));
+            break;
+        case AudioKind::GlobalPan:
+            save(v.gainL, v.gainL + (run.gain * panLeft(value + run.exprPan) - lane.from));
+            save(v.gainR, v.gainR + (run.gain * panRight(value + run.exprPan) - lane.fromR));
+            break;
+        case AudioKind::None:
+            break;
+        }
+    }
+    // The copies' increments, and the masters' of the synced, which follow the note and their copies' detune.
+    if (pitched != 0 || detuned != 0 || global != 1.0)
+        for (int i = 0; i < kOps; ++i) {
+            if (!run.opOn[i] || run.noise[i])
+                continue;
+            const bool spreads = detuned >> i & 1u;
+            const double by = factor[i] * (run.fixed[i] ? 1.0 : global);
+            Operator &op = v.ops[i];
+            if (by == 1.0 && !spreads && !(op.syncOn && global != 1.0))
+                continue;
+            for (int k = 0; k < run.copies[i]; ++k) {
+                const double copy = spreads ? std::exp2(run.shares[i][k] * detune[i] / 1200.0) : 1.0;
+                save(op.incNow[k], std::min(op.incNow[k] * by * copy, 0.5));
+                if (op.syncOn)
+                    save(op.syncIncNow[k], std::min(op.syncIncNow[k] * global * copy, 0.5));
+            }
+        }
+    // The copies' places and weights.
+    for (uint32_t ops = spreadMask | blendMask; ops != 0; ops &= ops - 1) {
+        const int i = std::countr_zero(ops);
+        const double width = spreadMask >> i & 1u ? spreadTo[i] : p[paramIndex(i, OpParam::UnisonSpread)];
+        if (run.noise[i]) {
+            run.noiseMid[i] = 1.0 / std::sqrt(1.0 + width * width);
+            run.noiseSide[i] = width * run.noiseMid[i];
+            continue;
+        }
+        const std::array<double, kMaxUnison> *pan = &run.copyPan[i], *weight = &run.copyWeight[i];
+        UnisonSpreadOut out;
+        if (blendMask >> i & 1u) {
+            out = unisonSpread(run.copies[i], run.modes[i].curve, run.modes[i].pan, std::clamp(blendTo[i], 0.0, 1.0),
+                               run.modes[i].seed, i);
+            pan = &out.pan;
+            weight = &out.weight;
+            for (int k = 0; k < run.copies[i]; ++k)
+                save(v.copyWeights[i][k], out.weight[k]);
+        }
+        UnisonGains &gains = run.gains[i];
+        for (int k = 0; k < run.copies[i]; ++k) {
+            const double angle = ((*pan)[k] * width + 1.0) * std::numbers::pi / 4.0;
+            gains.gainL[k] = std::numbers::sqrt2 * std::cos(angle) * run.monoGain[i] * (*weight)[k];
+            gains.gainR[k] = std::numbers::sqrt2 * std::sin(angle) * run.monoGain[i] * (*weight)[k];
+        }
+        run.copyGains[i] = &gains;
+    }
+    for (uint32_t ops = envMask; ops != 0; ops &= ops - 1) {
+        const int i = std::countr_zero(ops);
+        const std::array<double, 8> &t = env[i];
+        if (envTimes >> i & 1u) {
+            run.rates[i] = envRates(t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7], rate_);
+        } else {
+            run.rates[i] = run.baseRates[i];
+            run.rates[i].sustain = t[3];
+        }
+    }
+    // The filters' settings, with their filter FM: the diode's every other sample, as filter FM's are.
+    for (uint32_t fs = filterMask; fs != 0; fs &= fs - 1) {
+        const int f = std::countr_zero(fs);
+        if (!run.filter || !run.filter[f])
+            continue; // not running
+        const std::array<double, 10> &in = filterIn[f];
+        const auto type = static_cast<FilterType>(stepped(in[3], static_cast<int>(FilterType::Count) - 1));
+        if (type == FilterType::Diode && (sample & 1u) != 0)
+            continue;
+        double octaves = 0.0;
+        for (int k = 0; k < voiceFmCount_; ++k)
+            if (voiceFm_[k].place == f) {
+                const Operator &op = v.ops[voiceFm_[k].op];
+                octaves += cutoffFmOctaves(voiceFm_[k], op.out, op.env.level());
+            }
+        const double resonance = v.tail && selfOscillates(type) ? std::min(in[5], kTailResonance) : in[5];
+        const double cutoffHz = cutoffFromNorm(in[0]) * std::exp2((run.pitch - 60.0) / 12.0 * in[1] + octaves);
+        run.filterNow[f] = filterSettings(type, filterSlope(in[4]), cutoffHz, resonance, in[6], rate_, in[7], in[8],
+                                          morphMode(in[9]));
+        run.filter[f] = &run.filterNow[f];
+    }
+    for (uint32_t shs = shaperMask; shs != 0; shs &= shs - 1) {
+        const int sh = std::countr_zero(shs);
+        const ShaperParams fields = shaperParams(kFxSlots + sh);
+        const std::array<double, 3> &in = shaperIn[sh];
+        const ShaperSettings now = shaperSettings(
+            [&](int i) {
+                return i == fields.drive ? in[0] : i == fields.output ? in[1] : i == fields.mix ? in[2] : p[i];
+            },
+            fields);
+        const ShaperSettings &set = v.shaperSettings[sh].last();
+        save(v.levels.shaperDrive[sh], v.levels.shaperDrive[sh] + (now.drive - set.drive));
+        save(v.levels.shaperOutput[sh], v.levels.shaperOutput[sh] + (now.output - set.output));
+        save(v.levels.shaperMix[sh], v.levels.shaperMix[sh] + (now.mix - set.mix));
+        save(v.levels.shaperBetween[sh], v.levels.shaperBetween[sh] + (now.between - set.between));
+    }
+}
+
+// The block's steps, but a level the operators take somewhere counts as moving, so its route runs.
+FMVIBE_NOINLINE const Synth::Levels &Synth::audioSteps(const Levels &step) {
+    audioBy_ = step;
+    const std::span<double> by = values(audioBy_), reach = values(audioReach_);
+    for (size_t k = 0; k < by.size(); ++k)
+        if (reach[k] > 0.0 && by[k] == 0.0)
+            by[k] = reach[k];
+    return audioBy_;
+}
+
+// Puts back what audioSample() moved, with what has moved it since (the ramps', the increments' and the warp's steps).
+FMVIBE_NOINLINE void Synth::audioRestore() {
+    AudioRun &run = audioRun_;
+    for (int k = run.savedCount - 1; k >= 0; --k) {
+        const AudioRun::Saved &s = run.saved[k];
+        *s.at = s.was + (*s.at - s.set);
+    }
+    run.savedCount = 0;
 }
 
 void Synth::shareVoiceParams(const ParamValues &params) {
@@ -2107,7 +2705,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         }
         for (int m = 0; m < v.slotModCount; ++m) {
             const int i = v.slotMods[m].index;
-            if (i >= kVoiceParamCount)
+            if (i >= kVoiceParamCount || v.slotMods[m].shown)
                 continue;
             if (slotPassOf_[i] != slotPass_) { // the first slot on this param
                 slotPassOf_[i] = slotPass_;
@@ -2411,7 +3009,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             continue; // an effect's, which render() applies
         double modulated = raw(target);
         for (int k = 0; k < v.slotModCount; ++k)
-            modulated += v.slotMods[k].index == target ? v.slotMods[k].offset : 0.0;
+            modulated += v.slotMods[k].index == target && !v.slotMods[k].shown ? v.slotMods[k].offset : 0.0;
         set(target, inRange(target, modulated));
     }
     if (v.slotModCount > noteModsStart)
@@ -2714,6 +3312,14 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         curve[sh].stack(settings.stack, rate_);
         block[sh] = clipNeedsBlocker(settings.mode);
     }
+    // Operators moving params the voice plays by, every sample (see AudioKind).
+    const bool audioOn = opSourceMask_ != 0 && audioLaneCount_ > 0 &&
+                         startAudioMods(v, p, pitch, target,
+                                        {rates, wave, opShapes, highestInc, noise, colored, noiseCoefs, noiseMid,
+                                         noiseSide, copies, monoGain, copyGains, warped, opOn, filterEnabled,
+                                         shaperEnabled, stereo});
+    // What the routes are checked against: the block's levels, or with the operators, as far as they take each.
+    const Levels &routeTo = audioOn ? audioTo_ : target;
 
     // A new voice starts at its levels; after that they ramp.
     if (starting)
@@ -2741,6 +3347,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                     now[k] += by[k];
             }
     }
+    const Levels &routeBy = audioOn ? audioSteps(step) : step; // and the steps, likewise
     // Filters run only while something is routed into them (a route still
     // ramping down counts), and only once (on the left channel, copied right)
     // while the voice has no stereo spread.
@@ -2764,18 +3371,18 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     bool filterShapes = false;
     for (int sh = 0; sh < kShapers; ++sh) {
         for (int to = 0; to < kOps; ++to)
-            shaperUsed[sh] = shaperUsed[sh] || routed(target.shaperIndex[sh][to], current.shaperIndex[sh][to]);
+            shaperUsed[sh] = shaperUsed[sh] || routed(routeTo.shaperIndex[sh][to], current.shaperIndex[sh][to]);
         for (int f = 0; f < kFilters; ++f)
-            shaperUsed[sh] = shaperUsed[sh] || routed(target.shaperLink[sh][f], current.shaperLink[sh][f]);
+            shaperUsed[sh] = shaperUsed[sh] || routed(routeTo.shaperLink[sh][f], current.shaperLink[sh][f]);
         shaperUsed[sh] =
-            shaperEnabled[sh] && (shaperUsed[sh] || routed(target.shaperDirect[sh], current.shaperDirect[sh]));
+            shaperEnabled[sh] && (shaperUsed[sh] || routed(routeTo.shaperDirect[sh], current.shaperDirect[sh]));
     }
     // A shaper feeding another one that is used is used too; one feeding only itself isn't.
     for (int pass = 0; pass < kShapers; ++pass)
         for (int sh = 0; sh < kShapers; ++sh)
             for (int to = 0; to < kShapers; ++to)
                 shaperUsed[sh] = shaperUsed[sh] || (shaperEnabled[sh] && to != sh && shaperUsed[to] &&
-                                                    routed(target.shaperShaper[sh][to], current.shaperShaper[sh][to]));
+                                                    routed(routeTo.shaperShaper[sh][to], current.shaperShaper[sh][to]));
     // What the operators feed, then what that feeds in turn: filters and shapers can feed each other, round in a
     // loop too, so it takes a few passes for what runs to settle.
     std::array<bool, kShapers> shaperOn{};
@@ -2784,30 +3391,30 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         filterOn[f] = filterEnabled[f] && v.filterRing[f] > 0;
     for (int i = 0; i < kOps; ++i) {
         for (int f = 0; f < kFilters; ++f)
-            filterOn[f] = filterOn[f] || (filterEnabled[f] && routed(target.send[i][f], current.send[i][f]));
+            filterOn[f] = filterOn[f] || (filterEnabled[f] && routed(routeTo.send[i][f], current.send[i][f]));
         for (int sh = 0; sh < kShapers; ++sh)
             shaperOn[sh] =
-                shaperOn[sh] || (shaperUsed[sh] && routed(target.shaperSend[i][sh], current.shaperSend[i][sh]));
+                shaperOn[sh] || (shaperUsed[sh] && routed(routeTo.shaperSend[i][sh], current.shaperSend[i][sh]));
     }
     for (int pass = 0; pass < kFilters + kShapers; ++pass) {
         for (int f = 0; f < kFilters; ++f) {
             for (int from = 0; from < kFilters; ++from)
                 filterOn[f] = filterOn[f] || (from != f && filterEnabled[f] && filterOn[from] &&
-                                              routed(target.link[from][f], current.link[from][f]));
+                                              routed(routeTo.link[from][f], current.link[from][f]));
             for (int sh = 0; sh < kShapers; ++sh)
                 filterOn[f] = filterOn[f] || (filterEnabled[f] && shaperOn[sh] &&
-                                              routed(target.shaperLink[sh][f], current.shaperLink[sh][f]));
+                                              routed(routeTo.shaperLink[sh][f], current.shaperLink[sh][f]));
         }
         for (int sh = 0; sh < kShapers; ++sh) {
             for (int f = 0; f < kFilters; ++f) {
                 const bool shapes =
-                    shaperUsed[sh] && filterOn[f] && routed(target.filterShaper[f][sh], current.filterShaper[f][sh]);
+                    shaperUsed[sh] && filterOn[f] && routed(routeTo.filterShaper[f][sh], current.filterShaper[f][sh]);
                 shaperOn[sh] = shaperOn[sh] || shapes;
                 filterShapes = filterShapes || shapes;
             }
             for (int from = 0; from < kShapers; ++from)
                 shaperOn[sh] = shaperOn[sh] || (from != sh && shaperUsed[sh] && shaperOn[from] &&
-                                                routed(target.shaperShaper[from][sh], current.shaperShaper[from][sh]));
+                                                routed(routeTo.shaperShaper[from][sh], current.shaperShaper[from][sh]));
         }
     }
     bool shaperShapes = false; // whether any shaper that runs hears one (itself among them)
@@ -2824,7 +3431,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         v.shaperHeld[sh] = true;
         for (int from = 0; from < kShapers; ++from)
             shaperShapes = shaperShapes ||
-                           (shaperOn[from] && routed(target.shaperShaper[from][sh], current.shaperShaper[from][sh]));
+                           (shaperOn[from] && routed(routeTo.shaperShaper[from][sh], current.shaperShaper[from][sh]));
     }
     const double pole = clipBlockerPole(rate_); // the shapers' DC blockers
     // The settings of the filters that run, and their comb lines; while a filter's inputs ramp (see below), its
@@ -2874,7 +3481,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         v.filterHeld[f] = true;
         combs[f] = {combLine(v, f, 0), combLine(v, f, 1)};
         for (int from = f; from < kFilters; ++from)
-            filterBack = filterBack || (filterOn[from] && routed(target.link[from][f], current.link[from][f]));
+            filterBack = filterBack || (filterOn[from] && routed(routeTo.link[from][f], current.link[from][f]));
         // Without key tracking the pitch moves nothing (2 to the power of 0 is exactly 1): left out, so a pitch that
         // moves doesn't have the settings worked out again.
         const double keyTrack = p[paramIndex(f, FilterParam::KeyTrack)];
@@ -2964,13 +3571,13 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                 continue;
             OpRoutes &r = routes[i];
             for (int j = 0; j < kOps; ++j)
-                if (inUse(current.index[j][i], step.index[j][i]))
+                if (inUse(current.index[j][i], routeBy.index[j][i]))
                     r.ops[r.opCount++] = j;
             for (int f = 0; f < kFilters; ++f)
-                if (inUse(current.filterIndex[f][i], step.filterIndex[f][i]))
+                if (inUse(current.filterIndex[f][i], routeBy.filterIndex[f][i]))
                     r.filters[r.filterCount++] = f;
             for (int sh = 0; sh < kShapers; ++sh)
-                if (inUse(current.shaperIndex[sh][i], step.shaperIndex[sh][i]))
+                if (inUse(current.shaperIndex[sh][i], routeBy.shaperIndex[sh][i]))
                     r.shapers[r.shaperCount++] = sh;
             auto noteMode = [&](RouteMode mode) {
                 r.phaseOnly = r.phaseOnly && mode == RouteMode::Phase;
@@ -2983,12 +3590,12 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             for (int k = 0; k < r.shaperCount; ++k)
                 noteMode(routeModes_[kOps + kFilters + r.shapers[k]][i]);
             for (int f = 0; f < kFilters; ++f)
-                if (filterOn[f] && inUse(current.send[i][f], step.send[i][f]))
+                if (filterOn[f] && inUse(current.send[i][f], routeBy.send[i][f]))
                     r.sends[r.sendCount++] = f;
             for (int sh = 0; sh < kShapers; ++sh)
-                if (shaperOn[sh] && inUse(current.shaperSend[i][sh], step.shaperSend[i][sh]))
+                if (shaperOn[sh] && inUse(current.shaperSend[i][sh], routeBy.shaperSend[i][sh]))
                     r.shaperSends[r.shaperSendCount++] = sh;
-            r.out = inUse(current.out[i], step.out[i]);
+            r.out = inUse(current.out[i], routeBy.out[i]);
         }
     }
 
@@ -2997,7 +3604,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     for (int i = 0; i < kOps; ++i) {
         if (!opOn[i] || noise[i] || !routes[i].pitched)
             continue;
-        const double fm = std::max(fmTarget, v.fmScale);
+        const double fm = std::max(std::max(fmTarget, v.fmScale), audioOn ? audioFmReach_ : 0.0);
         double lin = 0.0, ex = 0.0;
         auto reach = [&](RouteMode mode, double now, double to) {
             const double depth = std::max(std::abs(now), std::abs(to)) * fm;
@@ -3008,13 +3615,13 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         };
         const OpRoutes &r = routes[i];
         for (int k = 0; k < r.opCount; ++k)
-            reach(routeModes_[r.ops[k]][i], current.index[r.ops[k]][i], target.index[r.ops[k]][i]);
+            reach(routeModes_[r.ops[k]][i], current.index[r.ops[k]][i], routeTo.index[r.ops[k]][i]);
         for (int k = 0; k < r.filterCount; ++k)
             reach(routeModes_[kOps + r.filters[k]][i], current.filterIndex[r.filters[k]][i],
-                  target.filterIndex[r.filters[k]][i]);
+                  routeTo.filterIndex[r.filters[k]][i]);
         for (int k = 0; k < r.shaperCount; ++k)
             reach(routeModes_[kOps + kFilters + r.shapers[k]][i], current.shaperIndex[r.shapers[k]][i],
-                  target.shaperIndex[r.shapers[k]][i]);
+                  routeTo.shaperIndex[r.shapers[k]][i]);
         const double highest = std::min(highestInc[i] * (std::exp2(std::min(ex, 16.0)) + lin), 0.5);
         wave[i] = opShapes[i] == OpWave::Custom ? customWaves_[i].table(highest) : waves_.table(opShapes[i], highest);
     }
@@ -3028,6 +3635,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     const uint32_t fxOps = &v == fxFmVoice_ ? fxFmOps_ : 0u; // those the filter effects' FM hears, from the newest voice
     // Operators moving this voice's filters' cutoffs, sample by sample.
     const bool cutoffFm = opSourceMask_ != 0 && voiceFmCount_ > 0 && startCutoffFm(filter);
+    if (audioOn)
+        audioRun_.filter = filter.data();
     for (uint32_t s = 0; s < frames; ++s) {
         v.fmScale += fmStep;
         v.gainL += gainLStep;
@@ -3041,6 +3650,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             for (int m = 0; m < movingCount; ++m)
                 now[moving[m]] += by[moving[m]];
         }
+        if (audioOn)
+            audioSample(v, s);
         std::array<double, 2> mix{};
         std::array<std::array<double, 2>, kFilters> toFilter{};
         std::array<std::array<double, 2>, kShapers> toShaper{};
@@ -3289,6 +3900,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         left[s] += mix[0] * v.gainL * v.fade;
         right[s] += mix[1] * v.gainR * v.fade;
     }
+    if (audioOn)
+        audioRestore();
     for (int i = 0; i < kOps; ++i)
         if (opOn[i] && !noise[i])
             for (int k = 0; k < copies[i]; ++k)
@@ -3313,11 +3926,11 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     bool sounding = false;
     double peak = 0.0;
     for (int i = 0; i < kOps; ++i) {
-        double heard = target.out[i];
+        double heard = routeTo.out[i];
         for (int f = 0; f < kFilters; ++f)
-            heard = std::max(heard, target.send[i][f]);
+            heard = std::max(heard, routeTo.send[i][f]);
         for (int sh = 0; sh < kShapers; ++sh)
-            heard = std::max(heard, target.shaperSend[i][sh]);
+            heard = std::max(heard, routeTo.shaperSend[i][sh]);
         if (heard <= 0.0)
             continue;
         sounding = sounding || !v.ops[i].env.idle();

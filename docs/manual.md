@@ -759,15 +759,20 @@ the operator's letter at the top of its page in the inspector, which is its hand
 
 - It follows what the operator plays, after its envelope. The operator doesn't need to be heard: one with its Out at
   0 still modulates. A switched-off operator modulates nothing.
-- Most targets are updated every 32 samples. A slow operator (a fixed one at a few Hz, say) moves them along its wave
-  and envelope; a fast one averages out.
+- **At audio rate**: on anything that shapes a voice's sound, an operator moves it every sample, so a fast one gives
+  sidebands the way FM does. That covers an operator's pitch (Ratio, Pitch, Detune, Freq), Out, Pan, Phase, sends,
+  unison, warp, envelope and noise; the depths of the routes into an operator; a voice filter's and shaper's knobs and
+  routes; and the voice's Pitch, FM Amount and Pan. An operator can modulate its own pitch, level or phase too.
+- Everything else (an effect's knobs, another source's settings, a macro's knob, a modulation's depth) is updated
+  every 32 samples. There, a slow operator (a fixed one at a few Hz, say) moves it along its wave and envelope; a
+  fast one averages out.
 - **Bipolar** (the default) swings its targets both ways around their setting. **Unipolar** pushes them one way, as
   far as the operator's envelope has risen, so a silent operator moves nothing.
 
 **Filter FM**: on the **Cutoff** of a filter or a filter effect, an operator moves the cutoff at audio rate, which
 gives the growl and sidebands of filter FM. At 100 % depth its full swing covers the knob's whole range. A voice's
-filter follows that voice's operator; a filter effect follows the most recent note's. The Formant type doesn't take
-filter FM.
+filter follows that voice's operator; a filter effect follows the most recent note's. The filter effect is the only
+effect that takes audio-rate modulation, and its Formant type doesn't.
 
 ### Modulation after the last note
 

@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <functional>
 #include <iterator>
 #include <map>
 #include <memory>
@@ -2509,14 +2510,204 @@ void noteAndVoiceChecks() {
                     unscaled.high, scaled.high);
         check(slow.high > 1.8f * plain.high && slow.low < 0.2f * plain.high,
               "an operator at 5 Hz swings what it modulates both ways with its output");
-        check(fast.high < 1.05f * plain.high && fast.low > 0.95f * plain.high,
-              "an operator far above the control rate averages away rather than aliasing onto what it modulates");
+        check(fast.low > 1.8f * plain.high,
+              "an operator at 12 kHz moves what it modulates every sample, not averaging away");
         check(lifted.high > 1.8f * plain.high && lifted.low > 0.95f * plain.high && lifted.low < 1.1f * plain.high,
               "a unipolar operator takes what it modulates one way, from nothing up to its depth");
         check(std::abs(silent.high - plain.high) < 0.01f * plain.high && off.high == plain.high,
               "a silent operator, unipolar, and one switched off move nothing");
         check(unscaled.high < 1e-3f && std::abs(scaled.high - plain.high) < 0.01f * plain.high,
               "a silent operator as an aux scales its modulation to nothing");
+    }
+    {
+        // Audio-rate modulation: B, fixed at 3 kHz and heard by nothing, on a param A's 440 Hz plays by. B goes through
+        // two whole cycles a control block, so a param that took it by the block would put out none of its sidebands
+        // around 3 kHz.
+        const int a = 0, b = 1, c = 2, source = kOpSource + b;
+        auto setUp = [&](ParamValues &p, double hz, int target, double depth) {
+            p[paramIndex(b, OpParam::Enabled)] = 1.0;
+            p[paramIndex(b, OpParam::Fixed)] = 1.0;
+            p[paramIndex(b, OpParam::FixedFreq)] = normFromFixedFreq(hz > kMaxFixedFreq ? hz / 10.0 : hz);
+            p[paramIndex(b, OpParam::FixedMult)] = hz > kMaxFixedFreq ? 4.0 : 3.0; // x10, x1
+            p[paramIndex(b, OpParam::Out)] = 0.0;
+            p[slotTargetIndex(source, 0)] = slotTargetValue(target);
+            p[slotAmountIndex(source, 0)] = depth;
+        };
+        auto throughFilter = [&](ParamValues &p) {
+            p[paramIndex(a, OpParam::Out)] = 0.0;
+            p[sendIndex(a, 0)] = 1.0;
+            p[paramIndex(0, FilterParam::Enabled)] = 1.0;
+            p[paramIndex(0, FilterParam::Cutoff)] = normFromCutoff(1000.0);
+            p[paramIndex(0, FilterParam::Resonance)] = 0.5;
+            p[paramIndex(0, FilterParam::Out)] = 1.0;
+        };
+        auto throughShaper = [&](ParamValues &p) {
+            p[paramIndex(a, OpParam::Out)] = 0.0;
+            p[shaperSendIndex(a, 0)] = 1.0;
+            p[paramIndex(0, ShaperParam::Enabled)] = 1.0;
+            p[paramIndex(0, ShaperParam::Out)] = 1.0;
+            p[paramIndex(0, ShaperParam::Drive)] = 0.3;
+        };
+        auto fromC = [&](ParamValues &p) { // C into A, at A's pitch
+            p[paramIndex(c, OpParam::Enabled)] = 1.0;
+            p[paramIndex(c, OpParam::Out)] = 0.0;
+            p[matrixIndex(c, a)] = 0.3;
+        };
+        struct Case {
+            const char *name;
+            int target;
+            double depth;
+            std::function<void(ParamValues &)> patch;
+            int key = 69; // the key that plays A4 as patched
+        };
+        const auto none = [](ParamValues &) {};
+        const std::vector<Case> cases{
+            {"Out", paramIndex(a, OpParam::Out), 0.5, [&](ParamValues &p) { p[paramIndex(a, OpParam::Out)] = 0.5; }},
+            {"Ratio", paramIndex(a, OpParam::Ratio), 0.02, none},
+            {"Pitch", paramIndex(a, OpParam::Transpose), 0.05, none},
+            {"Detune", paramIndex(a, OpParam::Detune), 1.0, none},
+            {"Phase", paramIndex(a, OpParam::Phase), 0.02, none},
+            {"Pan", paramIndex(a, OpParam::Pan), 0.5, none},
+            {"Sustain", paramIndex(a, OpParam::Sustain), 0.5,
+             [&](ParamValues &p) {
+                 p[paramIndex(a, OpParam::Decay)] = normFromTime(0.01);
+                 p[paramIndex(a, OpParam::Sustain)] = 0.5;
+             }},
+            // Two copies, one each side: three's outer copies, swung opposite ways, cancel each other's sidebands.
+            {"Unison Detune", paramIndex(a, OpParam::UnisonDetune), 1.0,
+             [&](ParamValues &p) { p[paramIndex(a, OpParam::Unison)] = 2.0; }},
+            {"Warp Amount", paramIndex(a, OpParam::WarpAmount), 0.3,
+             [&](ParamValues &p) {
+                 p[paramIndex(a, OpParam::Warp)] = static_cast<double>(OpWarp::Squeeze);
+                 p[paramIndex(a, OpParam::WarpAmount)] = 0.3;
+             }},
+            {"Freq", paramIndex(a, OpParam::FixedFreq), 0.05,
+             [&](ParamValues &p) {
+                 p[paramIndex(a, OpParam::Fixed)] = 1.0;
+                 p[paramIndex(a, OpParam::FixedFreq)] = normFromFixedFreq(440.0);
+                 p[paramIndex(a, OpParam::FixedMult)] = 3.0;
+             }},
+            {"Unison Spread", paramIndex(a, OpParam::UnisonSpread), 0.5,
+             [&](ParamValues &p) {
+                 p[paramIndex(a, OpParam::Unison)] = 2.0;
+                 p[paramIndex(a, OpParam::UnisonSpread)] = 0.5;
+             }},
+            {"Unison Blend", paramIndex(a, OpParam::UnisonBlend), 1.0,
+             [&](ParamValues &p) {
+                 p[paramIndex(a, OpParam::Unison)] = 3.0;
+                 p[paramIndex(a, OpParam::UnisonBlend)] = 0.5;
+             }},
+            {"send", sendIndex(a, 0), 0.5,
+             [&](ParamValues &p) {
+                 throughFilter(p);
+                 p[sendIndex(a, 0)] = 0.5;
+             }},
+            {"a route's depth", matrixIndex(c, a), 0.3, fromC},
+            {"FM Amount", paramIndex(GlobalParam::FmAmount), 0.3, fromC},
+            {"the voice's Pitch", paramIndex(GlobalParam::Pitch), 0.05, none},
+            {"the voice's Pan", paramIndex(GlobalParam::Pan), 0.5, none},
+            {"a filter's Morph", paramIndex(0, FilterParam::Morph), 0.5,
+             [&](ParamValues &p) {
+                 throughFilter(p);
+                 p[paramIndex(0, FilterParam::Type)] = static_cast<double>(FilterType::Morph);
+                 p[paramIndex(0, FilterParam::Morph)] = 0.5;
+             }},
+            {"a shaper's Output", paramIndex(0, ShaperParam::Output), 0.5, throughShaper},
+            {"a filter's Resonance", paramIndex(0, FilterParam::Resonance), 0.5, throughFilter},
+            {"a filter's Drive", paramIndex(0, FilterParam::Drive), 0.5, throughFilter},
+            {"a filter's Out", paramIndex(0, FilterParam::Out), 0.5, throughFilter},
+            {"a shaper's Drive", paramIndex(0, ShaperParam::Drive), 0.5, throughShaper},
+        };
+        auto sidebands = [&](const Case &k, double depth) {
+            const std::vector<double> power = powerSpectrum(steadyTone(2, k.key, [&](ParamValues &p) {
+                k.patch(p);
+                setUp(p, 3000.0, k.target, depth);
+            }));
+            auto around = [&](double hz) {
+                const long center = std::lround(hz * kFftSize / kSampleRate);
+                double sum = 1e-30;
+                for (long n = center - 6; n <= center + 6; ++n)
+                    sum += power[static_cast<size_t>(n)];
+                return sum;
+            };
+            return 10.0 * std::log10((around(2560.0) + around(3440.0)) / around(440.0));
+        };
+        bool moved = true, still = true;
+        for (const Case &k : cases) {
+            const double on = sidebands(k, k.depth), off = sidebands(k, 0.0);
+            std::printf("      a 3 kHz operator on A's %s: sidebands %.1f dB (%.1f without)\n", k.name, on, off);
+            moved = moved && on > -60.0;
+            still = still && off < -90.0;
+        }
+        check(moved, "an operator moves every param a voice plays by at audio rate, its sidebands heard");
+        check(still, "without its modulation, none of those sidebands");
+
+        // B at 7040 Hz deep on the Ratio of A at 3520 Hz, which swings it an octave either way: A plays its mean pitch,
+        // which the swing lifts (by the mean of 2 to the power of it), and the sidebands around it every 7040 Hz;
+        // anything else has folded back.
+        {
+            constexpr double kDepth = 0.3;
+            const double octaves = 0.5 * kDepth * std::log2(kMaxRatio / kMinRatio); // at B's peaks
+            double lift = 0.0;
+            constexpr int kSteps = 100000;
+            for (int k = 0; k < kSteps; ++k)
+                lift += std::exp2(octaves * std::sin(2.0 * std::numbers::pi * k / kSteps));
+            const double carrier = 3520.0 * lift / kSteps;
+            std::vector<double> lines;
+            for (int n = -8; n <= 8; ++n)
+                lines.push_back(std::abs(carrier + n * 7040.0));
+            std::vector<double> folded;
+            for (const int factor : {1, 2, 4, 8})
+                folded.push_back(unexpectedDb(steadyTone(factor, 69, [&](ParamValues &p) {
+                    p[paramIndex(a, OpParam::Ratio)] = normFromRatio(8.0);
+                    setUp(p, 7040.0, paramIndex(a, OpParam::Ratio), kDepth);
+                }), lines));
+            std::printf("      an operator swinging a Ratio an octave at audio rate, its aliasing at 1x %.1f dB, "
+                        "2x %.1f, 4x %.1f, 8x %.1f\n",
+                        folded[0], folded[1], folded[2], folded[3]);
+            check(folded[1] < -40.0 && folded[3] < folded[0],
+                  "an operator's pitch moved at audio rate keeps its aliasing far below what it plays, less so "
+                  "oversampled");
+        }
+
+        // A on its own Ratio, Out and Phase, and B at full depth on everything at once: finite, and ending.
+        bool finite = true, ended = true;
+        for (const bool self : {true, false}) {
+            Engine e(2);
+            if (self) {
+                const int own = kOpSource + a;
+                const std::array<int, 3> targets{paramIndex(a, OpParam::Ratio), paramIndex(a, OpParam::Out),
+                                                 paramIndex(a, OpParam::Phase)};
+                for (int s = 0; s < 3; ++s) {
+                    e.p[slotTargetIndex(own, s)] = slotTargetValue(targets[static_cast<size_t>(s)]);
+                    e.p[slotAmountIndex(own, s)] = 1.0;
+                }
+            } else {
+                throughFilter(e.p);
+                setUp(e.p, 3000.0, paramIndex(0, FilterParam::Resonance), 1.0);
+                const std::array<int, 6> targets{paramIndex(a, OpParam::Ratio), paramIndex(a, OpParam::Pan),
+                                                 paramIndex(0, FilterParam::Cutoff), paramIndex(0, FilterParam::Drive),
+                                                 paramIndex(GlobalParam::Pitch), sendIndex(a, 0)};
+                for (int s = 1; s <= 6; ++s) {
+                    e.p[slotTargetIndex(source, s)] = slotTargetValue(targets[static_cast<size_t>(s - 1)]);
+                    e.p[slotAmountIndex(source, s)] = 1.0;
+                }
+            }
+            e.p[paramIndex(a, OpParam::Release)] = normFromTime(0.01);
+            e.p[paramIndex(b, OpParam::Release)] = normFromTime(0.01);
+            e.noteOn(45);
+            std::vector<float> out = e.render(24000);
+            e.noteOff(45);
+            const std::vector<float> after = e.render(96000);
+            out.insert(out.end(), after.begin(), after.end());
+            for (const float x : out)
+                finite = finite && std::isfinite(x) && std::abs(x) < 64.0f;
+            for (size_t s = after.size() - 4800; s < after.size(); ++s)
+                ended = ended && std::abs(after[s]) < 1e-3f;
+            ended = ended && e.synth().activeVoiceCount() == 0;
+        }
+        check(finite && ended, "an operator on its own pitch, level and phase, and on many params at once at full "
+                               "depth, stays finite and ends with its note");
     }
     {
         // Filter FM: A through a filter, a voice's or the filter effect, whose Cutoff B moves, B fixed and heard by

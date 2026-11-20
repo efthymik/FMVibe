@@ -329,9 +329,15 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the DC blocker before the effects: a squeezed square coming out with no DC, a Ring route at unison going into
     a hard shaper as its octave alone (clipped evenly, no 4th harmonic), and the output exactly silent once the
     note has rung out, the effects resting;
-  - an operator's output as a source: one at 5 Hz swinging its target both ways, one at 12 kHz averaging away, unipolar
-    taking its target one way, silent or switched off moving nothing, and silent as an aux scaling its modulation to
-    nothing;
+  - an operator's output as a source: one at 5 Hz swinging its target both ways, one at 12 kHz moving it every
+    sample rather than averaging away, unipolar taking its target one way, silent or switched off moving nothing, and
+    silent as an aux scaling its modulation to nothing;
+  - audio-rate modulation: an operator at 3 kHz (two whole cycles a control block) putting its sidebands around an A4
+    through each kind of param a voice plays by (an operator's Out, Ratio, Pitch, Detune, Freq, Phase, Pan, sustain,
+    Unison Detune, Spread and Blend, Warp Amount and send, a route's depth, FM Amount, the voice's Pitch and Pan, a
+    filter's Resonance, Drive, Morph and Out and a shaper's Drive and Output), and none without it; one swinging a
+    Ratio an octave at 7 kHz aliasing 40 dB down at 2x; and one on its own pitch, level and phase, and one on many
+    params at once at full depth, staying finite and ending with its note;
   - filter FM, an operator on the Cutoff of a voice's filter and of the filter effect: sidebands from a modulator at
     3 kHz (two whole cycles a control block), every filter type finite at full depth and resonance in both places and
     a voice ending with its note, the aliasing at each oversampling factor, a slow operator moving a cutoff as far as an
