@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <bit>
 #include <cmath>
-#include <cstdio>
 #include <limits>
 #include <memory>
 #include <numbers>
@@ -29,11 +28,22 @@ namespace {
 bool memberChannel(int channel) { return channel >= 1 && channel < 16; }
 
 constexpr uint32_t kControlBlock = 32;        // samples between modulation updates
-// A voice filter's inputs (see renderBlock()): which move it smoothly, and ramp (its cutoff, key tracking, the pitch it
-// tracks, resonance, drive, vowel and morph) rather than switch (its type, slope and morph mode); and how many host
-// samples apart its settings are worked out again while they ramp.
-constexpr std::array<bool, 10> kFilterSmooth{true, true, true, false, false, true, true, true, true, false};
+// How many host samples apart a voice filter's settings are worked out again while its inputs ramp (see renderBlock()
+// and kFilterInputSmooth).
 constexpr uint32_t kFilterSubStep = 8;
+// An operator's envelope's fields, in envRates()'s order: its times, sustain and curves.
+constexpr std::array<OpParam, 8> kOpEnvFields{OpParam::Attack,  OpParam::Hold,        OpParam::Decay,
+                                              OpParam::Sustain, OpParam::Release,     OpParam::AttackCurve,
+                                              OpParam::DecayCurve, OpParam::ReleaseCurve};
+std::array<double, 8> opEnvFields(const double *p, int op) {
+    std::array<double, 8> fields;
+    for (size_t k = 0; k < fields.size(); ++k)
+        fields[k] = p[paramIndex(op, kOpEnvFields[k])];
+    return fields;
+}
+EnvRates envRatesOf(const std::array<double, 8> &t, double rate) {
+    return envRates(t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7], rate);
+}
 constexpr double kPhaseModCycles = 64.0;      // how many cycles modulation takes an operator's Phase either way
 constexpr double kWarpSlew = 250.0;           // how fast an operator's warp amount moves at most, a second
 // Filter FM: the octaves a modulation at full swing and depth takes a cutoff, as far as the knob goes, and the seconds
@@ -230,11 +240,8 @@ void Synth::findAudioTargets() {
         put(paramIndex(i, OpParam::UnisonBlend), AudioKind::UnisonBlend, i);
         put(paramIndex(i, OpParam::WarpAmount), AudioKind::WarpAmount, i);
         put(paramIndex(i, OpParam::NoiseSlope), AudioKind::NoiseSlope, i);
-        const std::array<OpParam, 8> env{OpParam::Attack,      OpParam::Hold,       OpParam::Decay,
-                                         OpParam::Sustain,     OpParam::Release,    OpParam::AttackCurve,
-                                         OpParam::DecayCurve, OpParam::ReleaseCurve};
-        for (int k = 0; k < 8; ++k)
-            put(paramIndex(i, env[k]), AudioKind::OpEnv, i, k);
+        for (int k = 0; k < static_cast<int>(kOpEnvFields.size()); ++k)
+            put(paramIndex(i, kOpEnvFields[static_cast<size_t>(k)]), AudioKind::OpEnv, i, k);
         for (int f = 0; f < kFilters; ++f)
             put(sendIndex(i, f), AudioKind::Level, i, f, field(probe.send[i][f]), AudioGate::OpFilter);
         for (int sh = 0; sh < kShapers; ++sh)
@@ -1845,9 +1852,19 @@ FMVIBE_NOINLINE void Synth::runOpSources(Voice &v, const ParamValues &params) {
     }
 }
 
+namespace {
+
+// What an operator that moves something every sample swings it by, as it plays: bipolar, half its output either way;
+// unipolar, from nothing up to as far as its envelope has risen (see runOpSources()). Through its slot's curve.
+double opSwing(double out, double env, bool bipolar, double curve) {
+    const double swing = bipolar ? 0.5 * std::clamp(out, -1.0, 1.0) : std::clamp(0.5 * (out + env), 0.0, 1.0);
+    return curve != 0.0 ? slotCurveValue(swing, curve, bipolar) : swing;
+}
+
+} // namespace
+
 double Synth::cutoffFmOctaves(const CutoffFm &fm, double out, double env) {
-    const double swing = fm.bipolar ? 0.5 * std::clamp(out, -1.0, 1.0) : std::clamp(0.5 * (out + env), 0.0, 1.0);
-    return (fm.curve != 0.0 ? slotCurveValue(swing, fm.curve, fm.bipolar) : swing) * fm.octaves;
+    return opSwing(out, env, fm.bipolar, fm.curve) * fm.octaves;
 }
 
 FMVIBE_NOINLINE bool Synth::startCutoffFm(std::array<const FilterSettings *, kFilters> &filter) {
@@ -1855,9 +1872,10 @@ FMVIBE_NOINLINE bool Synth::startCutoffFm(std::array<const FilterSettings *, kFi
     bool any = false;
     for (int k = 0; k < voiceFmCount_; ++k) {
         const int f = voiceFm_[k].place;
-        if (!filter[f] || voiceFmBase_[f] || (audioFilterMask_ >> f & 1u)) // the latter's settings audioSample()'s
+        if (!filter[f] || voiceFmBase_[f])
             continue;
-        voiceFmBase_[f] = filter[f];
+        // From its settings as they stand: those audioSample() works out every sample, for a filter it moves.
+        voiceFmBase_[f] = audioFilterMask_ >> f & 1u ? &audioRun_.filterNow[f] : filter[f];
         voiceFmNow_[f] = *filter[f];
         filter[f] = &voiceFmNow_[f];
         any = true;
@@ -1875,8 +1893,11 @@ FMVIBE_NOINLINE void Synth::moveCutoffs(const Voice &v, uint32_t sample) {
     for (int f = 0; f < kFilters; ++f) {
         const FilterSettings *base = voiceFmBase_[f];
         // The diode's stages take a system solved anew: every other sample is enough at the voices' oversampling.
-        if (base && (base->type != FilterType::Diode || (sample & 1u) == 0))
+        if (base && (base->type != FilterType::Diode || (sample & 1u) == 0)) {
+            if (audioFilterMask_ >> f & 1u) // its settings worked out anew this sample, all of them
+                voiceFmNow_[f] = *base;
             modulateCutoff(voiceFmNow_[f], *base, std::exp2(octaves[f]), voiceFmRange_);
+        }
     }
 }
 
@@ -1962,17 +1983,14 @@ FMVIBE_NOINLINE bool Synth::startAudioMods(Voice &v, const double *p, double pit
     run.opOn = b.opOn.data();
     run.noise = b.noise.data();
     run.filter = nullptr;
+    run.pitchFilters = run.fmFilters = 0;
     run.savedCount = 0;
     audioReach_ = {};
     audioFmReach_ = 0.0;
     const std::span<double> reach = values(audioReach_);
     for (int i = 0; i < kOps; ++i) {
         run.fixed[i] = p[paramIndex(i, OpParam::Fixed)] >= 0.5;
-        run.modes[i] = {static_cast<UniCurve>(
-                            stepped(p[paramIndex(i, OpParam::UnisonCurve)], static_cast<int>(UniCurve::Count) - 1)),
-                        static_cast<UniPan>(
-                            stepped(p[paramIndex(i, OpParam::UnisonPan)], static_cast<int>(UniPan::Count) - 1)),
-                        std::clamp(p[paramIndex(i, OpParam::UnisonBlend)], 0.0, 1.0), static_cast<uint32_t>(v.order)};
+        run.modes[i] = unisonModesOf(p, i, v.order);
         run.monoGain[i] = b.opOn[i] ? b.monoGain[i] : 1.0;
     }
     // Each lane's value before the operators: as set with the voice's host and other slots' modulation, unclamped.
@@ -2094,6 +2112,11 @@ FMVIBE_NOINLINE bool Synth::startAudioMods(Voice &v, const double *p, double pit
             for (int i = 0; i < kOps; ++i)
                 if (pitchedOp(i) && !run.fixed[i])
                     pitchReach[i] *= std::exp2(std::max(high - lane.set, 0.0) / 12.0);
+            for (int f = 0; f < kFilters; ++f) // a key-tracked filter follows it, every sample
+                if (b.filterEnabled[f] && p[paramIndex(f, FilterParam::KeyTrack)] != 0.0) {
+                    run.pitchFilters |= 1u << f;
+                    audioFilterMask_ |= 1u << f;
+                }
             break;
         case AudioKind::UnisonDetune:
             live = pitchedOp(a) && b.copies[a] > 1;
@@ -2129,7 +2152,8 @@ FMVIBE_NOINLINE bool Synth::startAudioMods(Voice &v, const double *p, double pit
         }
         case AudioKind::OpEnv:
             live = b.opOn[a];
-            run.baseRates[a] = b.rates[a];
+            if (live) // a switched-off one's rates aren't worked out
+                run.baseRates[a] = b.rates[a];
             break;
         case AudioKind::NoiseSlope:
             live = b.opOn[a] && b.noise[a];
@@ -2155,7 +2179,7 @@ FMVIBE_NOINLINE bool Synth::startAudioMods(Voice &v, const double *p, double pit
             live = false;
             break;
         }
-        lane.gate = live ? 1.0 : 0.0;
+        lane.live = live;
         any = any || live;
     }
     // The tables suit the highest the operators take each one's pitch.
@@ -2206,28 +2230,39 @@ FMVIBE_NOINLINE void Synth::audioSample(Voice &v, uint32_t sample) {
     for (int m = 0; m < audioModCount_; ++m) {
         const AudioMod &mod = audioMods_[m];
         const Operator &o = v.ops[mod.op];
-        double swing = mod.bipolar ? 0.5 * std::clamp(o.out, -1.0, 1.0)
-                                   : std::clamp(0.5 * (o.out + o.env.level()), 0.0, 1.0);
-        if (mod.curve != 0.0)
-            swing = slotCurveValue(swing, mod.curve, mod.bipolar);
-        audioLanes_[mod.lane].acc += swing * mod.scale;
+        audioLanes_[mod.lane].acc += opSwing(o.out, o.env.level(), mod.bipolar, mod.curve) * mod.scale;
     }
     std::array<double, kOps> factor;
     factor.fill(1.0);
     std::array<double, kOps> detune{}, spreadTo{}, blendTo{};
     std::array<std::array<double, 8>, kOps> env;
-    std::array<std::array<double, 10>, kFilters> filterIn;
+    std::array<FilterInputs, kFilters> filterIn;
     std::array<std::array<double, 3>, kShapers> shaperIn;
-    double global = 1.0; // the voice's Pitch
+    double global = 1.0;     // the voice's Pitch, as a factor
+    double pitchShift = 0.0; // and in semitones, which key tracking follows
     uint32_t pitched = 0, detuned = 0, spreadMask = 0, blendMask = 0, envMask = 0, envTimes = 0, filterMask = 0,
              shaperMask = 0;
+    // A filter's inputs where renderBlock()'s ramp has them at this sample (see kFilterInputSmooth), so what the
+    // control blocks move still glides; the operators move them from there.
+    auto seedFilter = [&](int f) {
+        if (filterMask >> f & 1u)
+            return;
+        const FilterInputs &from = run.filterFrom[f], &to = run.filterTo[f];
+        const double along = run.filterShare * std::min(1.0, (sample + 1.0) / run.frames);
+        filterIn[f] = to;
+        for (size_t i = 0; i < to.size(); ++i)
+            if (kFilterInputSmooth[i] && along < 1.0)
+                filterIn[f][i] = from[i] + (to[i] - from[i]) * along;
+        if (to[FilterIn::Pitch] == 0.0) // left out without key tracking, which an operator may bring in
+            filterIn[f][FilterIn::Pitch] = run.pitch;
+        filterMask |= 1u << f;
+    };
     const std::span<double> level = values(v.levels);
     for (int l = 0; l < audioLaneCount_; ++l) {
         AudioLane &lane = audioLanes_[l];
-        if (lane.gate == 0.0)
+        if (!lane.live)
             continue;
         const double value = std::clamp(lane.base + lane.acc, lane.lo, lane.hi);
-        lane.value = value;
         const int a = lane.at.a;
         const uint32_t bit = 1u << std::max(a, 0);
         switch (lane.at.kind) {
@@ -2262,6 +2297,7 @@ FMVIBE_NOINLINE void Synth::audioSample(Voice &v, uint32_t sample) {
             break;
         case AudioKind::GlobalPitch:
             global *= std::exp2((value - lane.set) / 12.0);
+            pitchShift += value - lane.set;
             break;
         case AudioKind::UnisonDetune:
             detune[a] = value - lane.set;
@@ -2282,10 +2318,7 @@ FMVIBE_NOINLINE void Synth::audioSample(Voice &v, uint32_t sample) {
         }
         case AudioKind::OpEnv:
             if (!(envMask & bit)) {
-                env[a] = {p[paramIndex(a, OpParam::Attack)],      p[paramIndex(a, OpParam::Hold)],
-                          p[paramIndex(a, OpParam::Decay)],       p[paramIndex(a, OpParam::Sustain)],
-                          p[paramIndex(a, OpParam::Release)],     p[paramIndex(a, OpParam::AttackCurve)],
-                          p[paramIndex(a, OpParam::DecayCurve)], p[paramIndex(a, OpParam::ReleaseCurve)]};
+                env[a] = opEnvFields(p, a);
                 envMask |= bit;
             }
             env[a][lane.at.b] = value;
@@ -2296,19 +2329,7 @@ FMVIBE_NOINLINE void Synth::audioSample(Voice &v, uint32_t sample) {
             run.noiseCoefs[a] = noiseColor_.coefs(value);
             break;
         case AudioKind::Filter:
-            if (!(filterMask & bit)) {
-                // Its inputs where renderBlock()'s ramp has them at this sample (see kFilterSmooth), so what the
-                // control blocks move still glides; the operators move them from there.
-                const std::array<double, 10> &from = run.filterFrom[a], &to = run.filterTo[a];
-                const double along = run.filterShare * std::min(1.0, (sample + 1.0) / run.frames);
-                filterIn[a] = to;
-                for (size_t i = 0; i < to.size(); ++i)
-                    if (kFilterSmooth[i] && along < 1.0)
-                        filterIn[a][i] = from[i] + (to[i] - from[i]) * along;
-                if (to[2] == 0.0) // left out without key tracking, which an operator may bring in
-                    filterIn[a][2] = run.pitch;
-                filterMask |= bit;
-            }
+            seedFilter(a);
             filterIn[a][lane.at.b] += value - lane.set;
             break;
         case AudioKind::Shaper:
@@ -2326,7 +2347,7 @@ FMVIBE_NOINLINE void Synth::audioSample(Voice &v, uint32_t sample) {
             save(v.gainL, v.gainL + (run.gain * panLeft(value + run.exprPan) - lane.from));
             save(v.gainR, v.gainR + (run.gain * panRight(value + run.exprPan) - lane.fromR));
             break;
-        case AudioKind::None:
+        case AudioKind::None: // never live (see startAudioMods()), listed for the switch's sake
             break;
         }
     }
@@ -2366,44 +2387,38 @@ FMVIBE_NOINLINE void Synth::audioSample(Voice &v, uint32_t sample) {
             for (int k = 0; k < run.copies[i]; ++k)
                 save(v.copyWeights[i][k], out.weight[k]);
         }
-        UnisonGains &gains = run.gains[i];
-        for (int k = 0; k < run.copies[i]; ++k) {
-            const double angle = ((*pan)[k] * width + 1.0) * std::numbers::pi / 4.0;
-            gains.gainL[k] = std::numbers::sqrt2 * std::cos(angle) * run.monoGain[i] * (*weight)[k];
-            gains.gainR[k] = std::numbers::sqrt2 * std::sin(angle) * run.monoGain[i] * (*weight)[k];
-        }
-        run.copyGains[i] = &gains;
+        run.gains[i] = copyGains(run.copies[i], *pan, *weight, width, run.monoGain[i]);
+        run.copyGains[i] = &run.gains[i];
     }
     for (uint32_t ops = envMask; ops != 0; ops &= ops - 1) {
         const int i = std::countr_zero(ops);
         const std::array<double, 8> &t = env[i];
         if (envTimes >> i & 1u) {
-            run.rates[i] = envRates(t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7], rate_);
+            run.rates[i] = envRatesOf(t, rate_);
         } else {
             run.rates[i] = run.baseRates[i];
             run.rates[i].sustain = t[3];
         }
     }
-    // The filters' settings, with their filter FM: the diode's every other sample, as filter FM's are.
+    // The filters' settings: the diode's every other sample, as filter FM's are. A key-tracked filter follows the
+    // voice's Pitch as the operators move it. Filter FM moves the cutoff from these, after the operators (see
+    // moveCutoffs()), as it does a filter's settings that hold still.
+    for (uint32_t fs = run.pitchFilters; fs != 0; fs &= fs - 1)
+        seedFilter(std::countr_zero(fs));
     for (uint32_t fs = filterMask; fs != 0; fs &= fs - 1) {
         const int f = std::countr_zero(fs);
         if (!run.filter || !run.filter[f])
             continue; // not running
-        const std::array<double, 10> &in = filterIn[f];
-        const auto type = static_cast<FilterType>(stepped(in[3], static_cast<int>(FilterType::Count) - 1));
+        FilterInputs &in = filterIn[f];
+        const FilterType type = filterTypeOf(in[FilterIn::Type]);
         if (type == FilterType::Diode && (sample & 1u) != 0)
             continue;
-        double octaves = 0.0;
-        for (int k = 0; k < voiceFmCount_; ++k)
-            if (voiceFm_[k].place == f) {
-                const Operator &op = v.ops[voiceFm_[k].op];
-                octaves += cutoffFmOctaves(voiceFm_[k], op.out, op.env.level());
-            }
-        const double resonance = v.tail && selfOscillates(type) ? std::min(in[5], kTailResonance) : in[5];
-        const double cutoffHz = cutoffFromNorm(in[0]) * std::exp2((run.pitch - 60.0) / 12.0 * in[1] + octaves);
-        run.filterNow[f] = filterSettings(type, filterSlope(in[4]), cutoffHz, resonance, in[6], rate_, in[7], in[8],
-                                          morphMode(in[9]));
-        run.filter[f] = &run.filterNow[f];
+        in[FilterIn::Pitch] += pitchShift;
+        if (v.tail && selfOscillates(type)) // held below self-oscillation, as renderBlock() holds it
+            in[FilterIn::Resonance] = std::min(in[FilterIn::Resonance], kTailResonance);
+        run.filterNow[f] = filterSettingsFrom(in, rate_);
+        if (!(run.fmFilters >> f & 1u))
+            run.filter[f] = &run.filterNow[f];
     }
     for (uint32_t shs = shaperMask; shs != 0; shs &= shs - 1) {
         const int sh = std::countr_zero(shs);
@@ -2543,15 +2558,28 @@ void Synth::unisonCopies(Operator &op, int index, int copies, double inc, double
     });
     gains = &op.unisonGains.get({spread, static_cast<double>(copies), modesKey, modes.blend}, [&] {
         const UnisonSpreadOut at = spreadOf();
-        UnisonGains c{};
-        for (int k = 0; k < copies; ++k) {
-            const double copyAngle = (at.pan[k] * spread + 1.0) * std::numbers::pi / 4.0;
-            c.gainL[k] = std::numbers::sqrt2 * std::cos(copyAngle) * monoGain * at.weight[k];
-            c.gainR[k] = std::numbers::sqrt2 * std::sin(copyAngle) * monoGain * at.weight[k];
-        }
         weights = at.weight;
-        return c;
+        return copyGains(copies, at.pan, at.weight, spread, monoGain);
     });
+}
+
+Synth::UnisonModes Synth::unisonModesOf(const double *p, int op, uint64_t order) {
+    // The Random modes draw from the note: a seed of its own, the same every block.
+    return {static_cast<UniCurve>(
+                stepped(p[paramIndex(op, OpParam::UnisonCurve)], static_cast<int>(UniCurve::Count) - 1)),
+            static_cast<UniPan>(stepped(p[paramIndex(op, OpParam::UnisonPan)], static_cast<int>(UniPan::Count) - 1)),
+            std::clamp(p[paramIndex(op, OpParam::UnisonBlend)], 0.0, 1.0), static_cast<uint32_t>(order)};
+}
+
+Synth::UnisonGains Synth::copyGains(int copies, const std::array<double, kMaxUnison> &pan,
+                                    const std::array<double, kMaxUnison> &weight, double spread, double monoGain) {
+    UnisonGains c{};
+    for (int k = 0; k < copies; ++k) {
+        const double angle = (pan[k] * spread + 1.0) * std::numbers::pi / 4.0;
+        c.gainL[k] = std::numbers::sqrt2 * std::cos(angle) * monoGain * weight[k];
+        c.gainR[k] = std::numbers::sqrt2 * std::sin(angle) * monoGain * weight[k];
+    }
+    return c;
 }
 
 #ifdef _MSC_VER
@@ -2858,10 +2886,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             p[paramIndex(s, SourceParam::Decay)],       p[paramIndex(s, SourceParam::Sustain)],
             p[paramIndex(s, SourceParam::Release)],     p[paramIndex(s, SourceParam::AttackCurve)],
             p[paramIndex(s, SourceParam::DecayCurve)], p[paramIndex(s, SourceParam::ReleaseCurve)]};
-        const EnvRates &rates = v.modEnvRates[s].get(times, [&] {
-            return envRates(times[0], times[1], times[2], times[3], times[4], times[5], times[6], times[7],
-                            sampleRate_);
-        });
+        const EnvRates &rates = v.modEnvRates[s].get(times, [&] { return envRatesOf(times, sampleRate_); });
         std::array<double, kControlBlock> levels; // as the block goes; the sources take its last
         env.run(rates, levels.data(), static_cast<int>(hostFrames));
     }
@@ -3127,14 +3152,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             stepped(p[paramIndex(i, OpParam::Wave)], static_cast<int>(OpWave::Count) - 1));
         noise[i] = shape == OpWave::Noise;
 
-        const std::array<double, 8> times{
-            p[paramIndex(i, OpParam::Attack)],      p[paramIndex(i, OpParam::Hold)],
-            p[paramIndex(i, OpParam::Decay)],       p[paramIndex(i, OpParam::Sustain)],
-            p[paramIndex(i, OpParam::Release)],     p[paramIndex(i, OpParam::AttackCurve)],
-            p[paramIndex(i, OpParam::DecayCurve)], p[paramIndex(i, OpParam::ReleaseCurve)]};
-        rates[i] = op.rates.get(times, [&] {
-            return envRates(times[0], times[1], times[2], times[3], times[4], times[5], times[6], times[7], rate_);
-        });
+        const std::array<double, 8> times = opEnvFields(p, i);
+        rates[i] = op.rates.get(times, [&] { return envRatesOf(times, rate_); });
         target.out[i] = p[paramIndex(i, OpParam::Out)];
         // Its Pan, equal-power and unity at the center, as the voice's (above): on what it puts out, to the output,
         // the filters and the shapers; what other operators hear of it stays mono.
@@ -3160,12 +3179,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         monoGain[i] = 1.0 / std::sqrt(static_cast<double>(copies[i]));
         const double detune = p[paramIndex(i, OpParam::UnisonDetune)];
         const double spread = p[paramIndex(i, OpParam::UnisonSpread)];
-        // The Random modes draw from the note: a seed of its own, the same every block.
-        const UnisonModes modes{
-            static_cast<UniCurve>(
-                stepped(p[paramIndex(i, OpParam::UnisonCurve)], static_cast<int>(UniCurve::Count) - 1)),
-            static_cast<UniPan>(stepped(p[paramIndex(i, OpParam::UnisonPan)], static_cast<int>(UniPan::Count) - 1)),
-            std::clamp(p[paramIndex(i, OpParam::UnisonBlend)], 0.0, 1.0), static_cast<uint32_t>(v.order)};
+        const UnisonModes modes = unisonModesOf(p, i, v.order);
         // The warp: its amount ramps to this block's over a control block, as the levels do; a warp changed to another
         // first takes its amount down to 0 (the plain wave, whatever the warp), then switches and takes it up again.
         double squeeze = 1.0; // how much faster the warp reads the wave at its steepest, for the table
@@ -3447,7 +3461,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     // and how many samples that step has.
     std::array<FilterGains, kFilters> gainsFrom{}, gainsTo{};
     std::array<uint32_t, kFilters> stepLength{};
-    std::array<std::array<double, 10>, kFilters> filterFrom{}, filterTo{};
+    std::array<FilterInputs, kFilters> filterFrom{}, filterTo{};
     // How far along their ramp this block takes them (a block shorter than a control block going its share), and the
     // inputs `done` samples into it, at the end of the step that starts there.
     const double filterShare = std::min(1.0, static_cast<double>(hostFrames) / kControlBlock);
@@ -3455,26 +3469,20 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     auto filterInputsAt = [&](int f, uint32_t done) {
         const double along =
             filterShare * std::min(1.0, static_cast<double>(done + filterStep) / static_cast<double>(frames));
-        std::array<double, 10> in = filterTo[f];
+        FilterInputs in = filterTo[f];
         for (size_t i = 0; i < in.size(); ++i)
-            if (kFilterSmooth[i])
+            if (kFilterInputSmooth[i])
                 in[i] = along >= 1.0 ? filterTo[f][i] : filterFrom[f][i] + (filterTo[f][i] - filterFrom[f][i]) * along;
         return in;
-    };
-    // A filter's settings from its inputs (see below). Without key tracking the pitch is 0 there (left out), and 2 to
-    // the power of 0 is exactly 1.
-    auto filterSettingsOf = [&](const std::array<double, 10> &in) {
-        const double cutoffHz = cutoffFromNorm(in[0]) * std::exp2((in[2] - 60.0) / 12.0 * in[1]);
-        const auto type = static_cast<FilterType>(stepped(in[3], static_cast<int>(FilterType::Count) - 1));
-        return filterSettings(type, filterSlope(in[4]), cutoffHz, in[5], in[6], rate_, in[7], in[8], morphMode(in[9]));
     };
     std::array<std::array<float *, 2>, kFilters> combs{};
     bool filterBack = false; // whether any filter that runs hears itself or a later one
     for (int f = 0; f < kFilters; ++f) {
-        if (!filterOn[f]) { // when it runs again, it starts from silence
+        if (!filterOn[f]) { // when it runs again, it starts from silence, at its inputs as they are then
             if (v.filterHeld[f]) {
                 v.filters[f] = {};
                 v.filterHeld[f] = false;
+                v.filterInputsNow[f][0] = std::numeric_limits<double>::quiet_NaN();
             }
             v.combDirty[f] = {true, true};
             v.filterRing[f] = 0;
@@ -3486,41 +3494,27 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         combs[f] = {combLine(v, f, 0), combLine(v, f, 1)};
         for (int from = f; from < kFilters; ++from)
             filterBack = filterBack || (filterOn[from] && routed(routeTo.link[from][f], current.link[from][f]));
-        // Without key tracking the pitch moves nothing (2 to the power of 0 is exactly 1): left out, so a pitch that
-        // moves doesn't have the settings worked out again.
-        const double keyTrack = p[paramIndex(f, FilterParam::KeyTrack)];
+        FilterInputs inputs = filterInputs(
+            p[paramIndex(f, FilterParam::Cutoff)], p[paramIndex(f, FilterParam::KeyTrack)], pitch,
+            p[paramIndex(f, FilterParam::Type)], p[paramIndex(f, FilterParam::Slope)],
+            p[paramIndex(f, FilterParam::Resonance)], p[paramIndex(f, FilterParam::Drive)],
+            p[paramIndex(f, FilterParam::Vowel)], p[paramIndex(f, FilterParam::Morph)],
+            p[paramIndex(f, FilterParam::MorphMode)]);
         // The ladder, the diode and the Sallen-Key's self-oscillate at the top of their resonance, which would ring
         // on without end: once the voice's operators have faded (see Voice::tail), it is held below that, so their
         // ringing dies away as a loop's does.
-        const auto type = static_cast<FilterType>(
-            stepped(p[paramIndex(f, FilterParam::Type)], static_cast<int>(FilterType::Count) - 1));
-        double resonance = p[paramIndex(f, FilterParam::Resonance)];
-        if (v.tail && selfOscillates(type))
-            resonance = std::min(resonance, kTailResonance);
-        // The Formant type's vowel and the Morph type's place and mode go in for those types alone: for the others,
-        // which don't play them, a modulation of one doesn't have the settings worked out again.
-        const bool formant = type == FilterType::Formant, morph = type == FilterType::Morph;
-        const std::array<double, 10> inputs{
-            p[paramIndex(f, FilterParam::Cutoff)],
-            keyTrack,
-            keyTrack != 0.0 ? pitch : 0.0,
-            p[paramIndex(f, FilterParam::Type)],
-            p[paramIndex(f, FilterParam::Slope)],
-            resonance,
-            p[paramIndex(f, FilterParam::Drive)],
-            formant ? p[paramIndex(f, FilterParam::Vowel)] : 0.0,
-            morph ? p[paramIndex(f, FilterParam::Morph)] : 0.0,
-            morph ? p[paramIndex(f, FilterParam::MorphMode)] : 0.0};
+        if (v.tail && selfOscillates(filterTypeOf(inputs[FilterIn::Type])))
+            inputs[FilterIn::Resonance] = std::min(inputs[FilterIn::Resonance], kTailResonance);
         // The inputs that move the filter smoothly ramp to the block's over a control block (a shorter block going its
         // share of the way), worked out again every kFilterSubStep samples while they move: taken once a block, an
         // LFO or envelope on the cutoff would step it every control block, a buzz at the control rate's multiples.
         // The type, the slope and the morph's mode switch at once, and a new type takes every input at once.
-        std::array<double, 10> &now = v.filterInputsNow[f];
-        if (std::isnan(now[0]) || now[3] != inputs[3])
+        FilterInputs &now = v.filterInputsNow[f];
+        if (std::isnan(now[0]) || now[FilterIn::Type] != inputs[FilterIn::Type])
             now = inputs;
         filterMoving[f] = false;
         for (size_t i = 0; i < inputs.size(); ++i) {
-            if (!kFilterSmooth[i])
+            if (!kFilterInputSmooth[i])
                 now[i] = inputs[i];
             else if (now[i] != inputs[i])
                 filterMoving[f] = true;
@@ -3529,20 +3523,25 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         filterTo[f] = inputs;
         if (filterMoving[f]) {
             for (size_t i = 0; i < inputs.size(); ++i) // where the block leaves them
-                if (kFilterSmooth[i])
+                if (kFilterInputSmooth[i])
                     now[i] = filterShare >= 1.0 ? inputs[i] : now[i] + (inputs[i] - now[i]) * filterShare;
             // An operator moving one of its settings has audioSample() work them out every sample, along the ramp.
             if (audioOn && (audioFilterMask_ >> f & 1u))
                 filterMoving[f] = false;
         }
         if (filterMoving[f]) {
-            gainsFrom[f] = filterGains(filterSettingsOf(filterFrom[f])); // as it was left
-            filterStepped[f] = filterSettingsOf(filterInputsAt(f, 0));
+            // As it was left: where the last block's ramp ended (the inputs it left, worked out at its last step), or
+            // the settings it held still at.
+            gainsFrom[f] = v.filterRamped[f] ? v.filterGainsLeft[f]
+                                             : filterGains(v.filterSettings[f].get(filterFrom[f], [&] {
+                                                   return filterSettingsFrom(filterFrom[f], rate_);
+                                               }));
+            filterStepped[f] = filterSettingsFrom(filterInputsAt(f, 0), rate_);
             gainsTo[f] = filterGains(filterStepped[f]);
             stepLength[f] = std::min(filterStep, frames);
             filter[f] = &filterStepped[f];
         } else {
-            filter[f] = &v.filterSettings[f].get(inputs, [&] { return filterSettingsOf(inputs); });
+            filter[f] = &v.filterSettings[f].get(inputs, [&] { return filterSettingsFrom(inputs, rate_); });
         }
         if (filter[f]->type == FilterType::Comb) // its lines start silent
             for (int c = 0; c < channels; ++c)
@@ -3650,6 +3649,9 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         audioRun_.filterTo = filterTo.data();
         audioRun_.filterShare = filterShare;
         audioRun_.frames = frames;
+        for (int f = 0; f < kFilters && cutoffFm; ++f)
+            if (filter[f] == &voiceFmNow_[f])
+                audioRun_.fmFilters |= 1u << f;
     }
     for (uint32_t s = 0; s < frames; ++s) {
         v.fmScale += fmStep;
@@ -3865,7 +3867,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             const bool stepped = s > 0 && into == 0;
             if (stepped) { // its ramp's next step
                 gainsFrom[f] = gainsTo[f];
-                filterStepped[f] = filterSettingsOf(filterInputsAt(f, s));
+                filterStepped[f] = filterSettingsFrom(filterInputsAt(f, s), rate_);
                 gainsTo[f] = filterGains(filterStepped[f]);
                 stepLength[f] = std::min(filterStep, frames - s);
             }
@@ -3933,6 +3935,11 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                                    : std::max(0, v.filterHeard[f] - static_cast<int>(frames));
             filtersHeard = filtersHeard || v.filterHeard[f] > 0;
         }
+    for (int f = 0; f < kFilters; ++f) { // where each ramp ended, which the next block's starts from
+        v.filterRamped[f] = filterOn[f] && filterMoving[f];
+        if (v.filterRamped[f])
+            v.filterGainsLeft[f] = gainsTo[f];
+    }
 
     // Once released, the voice ends when every operator that is heard (directly
     // or through a filter or shaper) has faded and the filters have rung out. A stolen

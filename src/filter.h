@@ -400,6 +400,39 @@ inline FilterSettings filterSettings(FilterType type, int slope, double cutoffHz
     return s;
 }
 
+// A filter's inputs, a voice filter's and the filter effect's alike, which its settings are worked out from (see
+// filterSettingsFrom()) and which ramp as modulation moves them.
+namespace FilterIn {
+enum : int { Cutoff, KeyTrack, Pitch, Type, Slope, Resonance, Drive, Vowel, Morph, MorphMode, Count };
+}
+using FilterInputs = std::array<double, FilterIn::Count>;
+// Those that move the filter smoothly, and ramp (its cutoff, key tracking, the pitch it tracks, resonance, drive, vowel
+// and morph), rather than switch (its type, slope and morph mode).
+constexpr std::array<bool, FilterIn::Count> kFilterInputSmooth{true, true, true, false, false, true,
+                                                               true, true, true, false};
+inline FilterType filterTypeOf(double value) {
+    return static_cast<FilterType>(
+        std::clamp(static_cast<int>(std::lround(value)), 0, static_cast<int>(FilterType::Count) - 1));
+}
+// The inputs from the params (the cutoff 0-1, as stored; the pitch in semitones, 69 an A4). Without key tracking the
+// pitch goes in as 0 (2 to the power of 0 is exactly 1), and the Formant type's vowel and the Morph type's place and
+// mode for those types alone: what doesn't move the filter doesn't have its settings worked out again.
+inline FilterInputs filterInputs(double cutoff, double keyTrack, double pitch, double type, double slope,
+                                 double resonance, double drive, double vowel, double morph, double morphMode) {
+    const FilterType playing = filterTypeOf(type);
+    const bool formant = playing == FilterType::Formant, morphing = playing == FilterType::Morph;
+    return {cutoff,         keyTrack, keyTrack != 0.0 ? pitch : 0.0, type, slope, resonance, drive,
+            formant ? vowel : 0.0, morphing ? morph : 0.0, morphing ? morphMode : 0.0};
+}
+// Its settings: key tracking moves the cutoff with the pitch from C4 on.
+inline FilterSettings filterSettingsFrom(const FilterInputs &in, double sampleRate) {
+    const double cutoffHz =
+        cutoffFromNorm(in[FilterIn::Cutoff]) * std::exp2((in[FilterIn::Pitch] - 60.0) / 12.0 * in[FilterIn::KeyTrack]);
+    return filterSettings(filterTypeOf(in[FilterIn::Type]), filterSlope(in[FilterIn::Slope]), cutoffHz,
+                          in[FilterIn::Resonance], in[FilterIn::Drive], sampleRate, in[FilterIn::Vowel],
+                          in[FilterIn::Morph], morphMode(in[FilterIn::MorphMode]));
+}
+
 // One channel of one voice's filter. The comb's delay line (`combSize` floats,
 // see combLength) is owned by the synth.
 class Filter {

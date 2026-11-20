@@ -339,7 +339,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     filter's Resonance, Drive, Morph and Out and a shaper's Drive and Output), and none without it; one swinging a
     Ratio an octave at 7 kHz aliasing 40 dB down at 2x; and one on its own pitch, level and phase, and one on many
     params at once at full depth, staying finite and ending with its note; and filter FM carrying on once an operator
-    on the filter's Resonance stops (its depth taken to 0);
+    on the filter's Resonance stops (its depth taken to 0), and a key-tracked filter following the voice's Pitch as an
+    operator moves it (an operator fixed at 440 Hz through it taking on its sidebands); a voice filter switched off and
+    on again mid-note, its cutoff moved meanwhile, starting at its settings as they are then;
   - filter FM, an operator on the Cutoff of a voice's filter and of the filter effect: sidebands from a modulator at
     3 kHz (two whole cycles a control block), every filter type finite at full depth and resonance in both places and
     a voice ending with its note, the aliasing at each oversampling factor, a slow operator moving a cutoff as far as an

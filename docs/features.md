@@ -368,9 +368,10 @@ What the plugin does and how its editor works, in full. Building and installing 
     operator), its Unison Detune, Spread and Blend, Warp Amount, its envelope's times, sustain and curves and its
     noise's Slope; a voice filter's Cutoff, Key Track, Resonance, Drive, Vowel, Morph, Out and Mix and its routes to
     the filters and shapers; a voice shaper's Drive, Output, Mix and Out and its routes; and the voice's Pitch, FM
-    Amount and Pan. Each sample takes what the operators put out the sample before, so an operator can move its own
-    pitch, level or phase. Its Amount, aux and depth are read once per 32-sample block. An operator's table suits the
-    highest pitch the modulation can take it to, so moving its pitch stays clear of aliasing as FM does, and a route,
+    Amount and Pan (a key-tracked filter following the voice's Pitch as they move it). Each sample takes what the
+    operators put out the sample before, so an operator can move its own pitch, level or phase. Its Amount, aux and
+    depth are read once per 32-sample block. An operator's table suits the highest pitch the modulation can take it
+    to, so moving its pitch stays clear of aliasing as FM does, and a route,
     send or Out at 0 that the modulation opens runs. Every other target (an effect's, a source's own param, a macro's
     knob, a slot's depth and Amount) takes modulation at the control rate, once every 32 samples (an effect gliding
     between, as its other modulation does), from the operator's output averaged over the last such block: a slow

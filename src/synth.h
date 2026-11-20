@@ -320,6 +320,9 @@ private:
     struct UnisonGains {
         std::array<double, kMaxUnison> gainL, gainR;
     };
+    // The copies' gains: each at its place (-1..1) across `spread`, equal-power, and its weight.
+    static UnisonGains copyGains(int copies, const std::array<double, kMaxUnison> &pan,
+                                 const std::array<double, kMaxUnison> &weight, double spread, double monoGain);
 
     struct Operator {
         std::array<double, kMaxUnison> phases{}; // in cycles, one per unison copy
@@ -428,15 +431,18 @@ private:
         std::array<Lfo, kMaxSources> lfos{};
         std::array<Envelope, kMaxSources> modEnvs{};
         std::array<Memo<EnvRates, 8>, kMaxSources> modEnvRates{};
-        std::array<Memo<FilterSettings, 10>, kFilters> filterSettings{};
+        std::array<Memo<FilterSettings, FilterIn::Count>, kFilters> filterSettings{};
         // Each filter's inputs (see renderBlock()) as they ramp to the block's, the continuous ones over a control
         // block, as the levels do: NaN until its first block, which takes them as they are.
-        std::array<std::array<double, 10>, kFilters> filterInputsNow = [] {
-            std::array<std::array<double, 10>, kFilters> none;
+        std::array<FilterInputs, kFilters> filterInputsNow = [] {
+            std::array<FilterInputs, kFilters> none;
             for (auto &inputs : none)
                 inputs.fill(std::numeric_limits<double>::quiet_NaN());
             return none;
         }();
+        // Whether its inputs ramped through the last block, and what it scaled its outputs by where they ended.
+        std::array<bool, kFilters> filterRamped{};
+        std::array<FilterGains, kFilters> filterGainsLeft{};
         std::array<Memo<ShaperSettings, 7>, kShapers> shaperSettings{};
         std::array<std::array<Filter, 2>, kFilters> filters{}; // [filter][channel]
         // Samples (at the oversampled rate) a filter whose inputs have stopped runs on for, ringing out: a comb's
@@ -542,6 +548,8 @@ private:
         double blend;
         uint32_t seed; // the note's, which the Random modes draw from
     };
+    // Operator `op`'s, from the params `p`, for a voice whose note is the `order`th.
+    static UnisonModes unisonModesOf(const double *p, int op, uint64_t order);
     static void unisonCopies(Operator &op, int index, int copies, double inc, double detune, double spread,
                              double monoGain, const UnisonModes &modes, const UnisonIncs *&incs,
                              const UnisonGains *&gains, std::array<double, kMaxUnison> &weights);
@@ -804,8 +812,8 @@ private:
         AudioTarget at;
         double base = 0.0, set = 0.0, lo = 0.0, hi = 0.0;
         double down = 0.0, up = 0.0; // the most the operators take it below and above base
-        double acc = 0.0, value = 0.0;
-        double gate = 1.0;
+        double acc = 0.0; // what the operators add, this sample
+        bool live = true; // what it moves runs (see startAudioMods())
         double from = 0.0, fromR = 0.0; // what the block's value makes of it (a pitch, a pan's gains)
     };
     // What audioSample() moves of renderBlock()'s block, and the values it puts back after each sample.
@@ -818,9 +826,12 @@ private:
         const UnisonGains **copyGains = nullptr;
         const FilterSettings **filter = nullptr;
         // The voice filters' inputs as the block ramps them (from, to, its share of a control block, over its frames).
-        const std::array<double, 10> *filterFrom = nullptr, *filterTo = nullptr;
+        const FilterInputs *filterFrom = nullptr, *filterTo = nullptr;
         double filterShare = 1.0;
         uint32_t frames = 1;
+        // The filters that follow the voice's Pitch as the operators move it (key-tracked), and those whose cutoff
+        // filter FM moves from the settings worked out here (see moveCutoffs()).
+        uint32_t pitchFilters = 0, fmFilters = 0;
         const int *copies = nullptr;
         const bool *opOn = nullptr;
         const bool *noise = nullptr;

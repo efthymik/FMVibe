@@ -2795,6 +2795,19 @@ void noteAndVoiceChecks() {
         check(finite && ended, "an operator on its own pitch, level and phase, and on many params at once at full "
                                "depth, stays finite and ends with its note");
 
+        // B's sidebands around A's 440 Hz, against it, in dB.
+        auto sidebandDb = [](const std::vector<float> &out) {
+            const std::vector<double> power = powerSpectrum(out);
+            auto around = [&](double hz) {
+                const long center = std::lround(hz * kFftSize / kSampleRate);
+                double sum = 1e-30;
+                for (long n = center - 6; n <= center + 6; ++n)
+                    sum += power[static_cast<size_t>(n)];
+                return sum;
+            };
+            return 10.0 * std::log10((around(2560.0) + around(3440.0)) / around(440.0));
+        };
+
         // B on a filter's Cutoff (filter FM) and on its Resonance, which has the filter worked out every sample, then
         // its depth on the Resonance taken to 0: the cutoff's sidebands carry on as with B on the Cutoff alone.
         auto cutoffSidebands = [&](bool resonanceToo) {
@@ -2809,20 +2822,55 @@ void noteAndVoiceChecks() {
             e.render(4800);
             e.p[slotAmountIndex(source, 1)] = 0.0;
             e.render(4800);
-            const std::vector<double> power = powerSpectrum(e.render(kFftSize));
-            auto around = [&](double hz) {
-                const long center = std::lround(hz * kFftSize / kSampleRate);
-                double sum = 1e-30;
-                for (long n = center - 6; n <= center + 6; ++n)
-                    sum += power[static_cast<size_t>(n)];
-                return sum;
-            };
-            return 10.0 * std::log10((around(2560.0) + around(3440.0)) / around(440.0));
+            return sidebandDb(e.render(kFftSize));
         };
         const double alone = cutoffSidebands(false), after = cutoffSidebands(true);
         std::printf("      filter FM: sidebands %.1f dB, %.1f dB once an operator on the Resonance stops\n", alone, after);
         check(alone > -60.0 && std::abs(after - alone) < 1.0,
               "filter FM carries on once the filter's other settings stop being moved at audio rate");
+
+        // B on the voice's Pitch, A fixed at 440 Hz (which the voice's Pitch leaves alone) through a key-tracked
+        // filter: the filter follows the pitch every sample, putting B's sidebands on A; without key tracking, none.
+        auto trackedSidebands = [&](double keyTrack) {
+            return sidebandDb(steadyTone(2, 69, [&](ParamValues &p) {
+                throughFilter(p);
+                p[paramIndex(a, OpParam::Fixed)] = 1.0;
+                p[paramIndex(a, OpParam::FixedFreq)] = normFromFixedFreq(440.0);
+                p[paramIndex(a, OpParam::FixedMult)] = 3.0; // x1
+                p[paramIndex(0, FilterParam::KeyTrack)] = keyTrack;
+                setUp(p, 3000.0, paramIndex(GlobalParam::Pitch), 0.05);
+            }));
+        };
+        const double tracked = trackedSidebands(1.0), untracked = trackedSidebands(0.0);
+        std::printf("      an operator on the voice's Pitch: a key-tracked filter's sidebands %.1f dB (%.1f untracked)\n",
+                    tracked, untracked);
+        check(tracked > -60.0 && untracked < -90.0,
+              "a key-tracked filter follows the voice's Pitch as an operator moves it, every sample");
+    }
+    {
+        // A voice filter switched off, its cutoff moved meanwhile, and on again starts at its cutoff as it is then, as
+        // one that was there all along does: from silence, not sweeping from where it was. Unheard before, so the two
+        // are alike up to there.
+        auto reopened = [](double cutoffBefore) {
+            Engine e(2);
+            e.p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Saw);
+            e.p[paramIndex(0, OpParam::Out)] = 0.0;
+            e.p[sendIndex(0, 0)] = 1.0;
+            e.p[paramIndex(0, FilterParam::Enabled)] = 1.0;
+            e.p[paramIndex(0, FilterParam::Out)] = 0.0;
+            e.p[paramIndex(0, FilterParam::Cutoff)] = normFromCutoff(cutoffBefore);
+            e.noteOn(57);
+            e.render(4800);
+            e.p[paramIndex(0, FilterParam::Enabled)] = 0.0;
+            e.render(kBlock);
+            e.p[paramIndex(0, FilterParam::Cutoff)] = normFromCutoff(5000.0);
+            e.render(kBlock);
+            e.p[paramIndex(0, FilterParam::Enabled)] = 1.0;
+            e.p[paramIndex(0, FilterParam::Out)] = 1.0;
+            return e.render(4 * kBlock);
+        };
+        check(reopened(200.0) == reopened(5000.0),
+              "a voice filter switched on again mid-note starts at its settings as they are then");
     }
     {
         // Filter FM: A through a filter, a voice's or the filter effect, whose Cutoff B moves, B fixed and heard by
