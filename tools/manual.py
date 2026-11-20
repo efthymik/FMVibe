@@ -422,7 +422,7 @@ def main(argv):
     conv = Converter(source.parent)
     title, lede, body = conv.convert(source.read_text(encoding="utf-8"))
     version = project_version()
-    eyebrow = ["CLAP · VST3", "Windows x64"] + ([f"Version {version}"] if version else [])
+    eyebrow = [f"Version {version}"] if version else []
     page = PAGE.format(
         title=html.escape(title),
         lede=lede,
