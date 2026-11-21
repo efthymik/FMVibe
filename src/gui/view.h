@@ -385,11 +385,10 @@ private:
     // While an LFO's or envelope's handle, or a card of the row, is dragged near either end of a row of cards, the
     // row scrolls that way.
     bool edgeScroll();
-    // A source's handle held over a view's tab, or over a node's tab in the inspector or the node or its name in the
-    // routing graph or the matrix, for
-    // kDwellSeconds shows that view, or that node in the inspector: what dwellTarget() finds under it (a node's edge as
-    // its node), and once it has stayed there long enough, dwellStep() shows it, once, whether the mouse moves or a
-    // poll comes. Whether it showed something.
+    // A source's handle held over a view's tab, an operator page's tab, or over a node's tab in the inspector or the
+    // node or its name in the routing graph or the matrix, for kDwellSeconds shows that view or tab, or that node in
+    // the inspector: what dwellTarget() finds under it (a node's edge as its node), and once it has stayed there long
+    // enough, dwellStep() shows it, once, whether the mouse moves or a poll comes. Whether it showed something.
     static constexpr double kDwellSeconds = 0.5;
     std::optional<Widget> dwellTarget(const std::optional<Widget> &at) const;
     bool dwellStep();

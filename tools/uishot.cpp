@@ -12064,14 +12064,30 @@ void run(const std::filesystem::path &dir, float scale) {
         model.set(slotAmountIndex(0, 7), 0.0);
         std::printf("      ENVELOPE tab's corner: %d, %d with its decay modulated\n", plain, lit);
         check(dotShot && lit > plain + 60, "a hidden tab with a modulated knob shows a dot");
-        // A source's handle dragged over a tab opens it; let go of in empty space, it assigns nothing.
+        // A source's handle held over a tab half a second opens it (passed over one, not); let go of in empty space, it
+        // assigns nothing. The editor's clock is the test's, moved on by hand.
+        static double now = 0.0;
+        view.setClock([] { return now; });
         view.mouseDown(sourceHandle(0), {});
         view.mouseMove({sourceHandle(0).x + 40.0f, sourceHandle(0).y - 40.0f}, {});
+        view.mouseMove(opTabPoint(InspectorTab::Envelope), {});
+        now += 0.3;
         view.mouseMove(opTabPoint(InspectorTab::Unison), {});
+        const bool waits = layout.opTab == InspectorTab::Warp;
+        now += 0.3;
+        view.mouseMove({opTabPoint(InspectorTab::Unison).x + 1.0f, opTabPoint(InspectorTab::Unison).y}, {});
+        const bool still = layout.opTab == InspectorTab::Warp;
+        now += 0.25;
+        view.poll();
         const bool opened = layout.opTab == InspectorTab::Unison;
         view.mouseUp({600.0f, 328.0f}, {});
         view.poll();
-        check(opened && model.scopeOp == -1, "a dragged handle opens the tab it is held over, and the scope stops");
+        view.setClock([] {
+            return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        });
+        check(waits && still && opened && model.scopeOp == -1,
+              "a dragged handle opens the tab it is held over after half a second, passed over one not, and the "
+              "scope stops");
         model.live = before;
         click(view, opTabPoint(InspectorTab::Warp));
         click(view, scopeCycleButton(1));

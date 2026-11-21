@@ -1713,7 +1713,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     display under them shows, and the tab's controls sit in a row under the well (INPUTS, which has none, takes the
     well down to the lens's bottom). The tab is the same for every operator and saved with the project (a preset
     leaves it as it is); a hidden tab whose knobs a source modulates has a dot in its corner, and holding a dragged
-    source's handle over a tab opens it, so its knobs can take the drop:
+    source's handle over a tab for half a second opens it, as over a view's tab (passed over, a moment on each, it
+    opens none), so its knobs can take the drop:
     - **ENVELOPE** (to begin with): the operator's envelope, and its knobs. While notes play, a dashed line across
       it shows the newest voice's envelope level, with a dot where it meets the curve, as a mod envelope's card
       does.

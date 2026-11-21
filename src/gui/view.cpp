@@ -545,6 +545,7 @@ std::optional<Widget> View::dwellTarget(const std::optional<Widget> &at) const {
     const RoutingView view = controller_.layout().view;
     switch (at->kind) {
     case Kind::ViewTab:
+    case Kind::OpTab: // the operator page's
         return at;
     case Kind::NodeTab: // the inspector's tab of a node
         return Widget{Kind::Node, {}, -1, at->a};
@@ -573,6 +574,12 @@ bool View::dwellStep() {
             return false;
         modList_.reset(); // a pill's, of the view it leaves
         showView(static_cast<RoutingView>(w.a));
+        return true;
+    }
+    if (w.kind == Kind::OpTab) {
+        if (layout.opTab == static_cast<InspectorTab>(w.a))
+            return false;
+        layout.opTab = static_cast<InspectorTab>(w.a);
         return true;
     }
     if (layout.selectedNode == w.a)
@@ -6277,9 +6284,8 @@ void View::applyDrag(Point p) {
         break;
     }
     case DragKind::ModSource: {
-        // Held a moment over a view's tab, or a node's tab, or a node or its name in the graph or the matrix, a dragged
-        // handle shows that
-        // view or node (see dwellStep()); over an operator's tab, it opens it at once, so what it shows can take the
+        // Held a moment over a view's tab, a node's tab, an operator page's tab, or a node or its name in the graph or
+        // the matrix, a dragged handle shows that view, node or tab (see dwellStep()), so what it shows can take the
         // drop; over a pill, its list, so one of its rows can take the handle as that modulation's aux.
         const auto at = hitTest(p);
         if (const std::optional<Widget> over = dwellTarget(at); !over)
@@ -6287,8 +6293,6 @@ void View::applyDrag(Point p) {
         else if (!dwell_.over || !dwell_.over->same(*over))
             dwell_ = {over, clock_(), false};
         dwellStep();
-        if (at && at->kind == Kind::OpTab)
-            controller_.layout().opTab = static_cast<InspectorTab>(at->a);
         if (at && at->kind == Kind::ModPill && !modListOn(*at))
             openModList(*at, true);
         break;

@@ -673,7 +673,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     mod envelope's card (read off the rendered pixels), the unison knobs on theirs, the scope asking for its
     operator's output (and a noise operator's, or a hidden one's, for none), its trace drawn over 2 and 4 cycles
     and as a slow span fills, the faint plain wave with no note, a hidden tab's dot while one of its knobs is
-    modulated (read off the rendered pixels), and a dragged handle opening the tab it is held over;
+    modulated (read off the rendered pixels), and a dragged handle opening the tab it is held over after half a second (passed
+    over one, not);
   - an envelope's curve following the modulation of its release and sustain, a faint line staying where the knobs
     set it (read off the rendered pixels);
   - an operator's Ratio readout: each digit dragged by its own place, carrying and held to 64.00, each drag an undo

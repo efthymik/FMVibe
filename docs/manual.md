@@ -325,7 +325,7 @@ The summary line names the warp and says "note sync" while either is active.
 The operator's feedback comes last and is always Phase.
 
 A hidden tab whose controls are being modulated shows a dot. While you drag a modulation source's handle, holding it
-over a tab opens that tab, so you can drop the handle on its controls.
+over a tab for half a second opens that tab, so you can drop the handle on its controls.
 
 ### Noise operators
 
@@ -1606,6 +1606,7 @@ the main CPU costs.
 | Double-click a depth handle | Remove the modulation |
 | Drop a handle on a depth handle | Make that source the modulation's aux |
 | Hold a dragged handle over a view tab for half a second | Show that view |
+| Hold a dragged handle over an operator page's tab for half a second | Open that tab |
 | Hold a dragged handle over a node, its tab or its name in the matrix for half a second | Show that node in the inspector |
 | Drag an operator's letter (its page's title) | Assign the operator's output as modulation |
 
