@@ -888,7 +888,14 @@ What the plugin does and how its editor works, in full. Building and installing 
   - Its notes start and end at their sample, however the host splits its blocks, and go to the voices as notes do
     (stealing, mono, legato and glide alike); the host is never told of their ends, and the keyboard strip lights only
     the keys played (by the host, its own keys and the computer's), not the sequencer's notes. A jump of the transport, or a
-    change of Rate while it plays, ends what it holds and plays on from there. While it may start notes (in Host while
+    change of Rate while it plays, ends what it holds and plays on from there.
+  - It **chases** notes: as it starts playing (the host's transport starting, the transport jumping, or it switched
+    on as the transport plays) and whenever the pattern is read again (a note put down, moved or lengthened, or a
+    setting changed, while it plays), a note the playhead is in the middle of that isn't sounding starts at once, for
+    what is left of it, at its velocity. Not one its chance leaves out, nor one from before where it started: from a
+    key it starts at the pattern's start, with the host from the song's start, and another pattern taking over as
+    the loop comes round chases none of its notes ringing across the loop's end from before.
+  - While it may start notes (in Host while
     it is on; in Key and Latch while it runs), the plugin doesn't let the host put processing to sleep.
   - Its settings but Root and Scale are given to hosts, for automation (not modulation); a pattern's length, loop,
     notes and curves are the editor's alone.

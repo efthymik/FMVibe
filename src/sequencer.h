@@ -27,7 +27,9 @@ constexpr int16_t kAuditionPort = -3;
 // start (Host) or from the key that started it (Key, Latch); each played step plays a step of the pattern's loop as
 // the Order says (forward, back, to and fro, or at random), the notes starting in that step at the same place in it.
 // Swing delays every other played step, Gate scales the notes' lengths, Humanize delays them and moves their velocity a
-// little, the same way every time a step comes round again. A note's chance is drawn the same way.
+// little, the same way every time a step comes round again. A note's chance is drawn the same way. It chases notes: as
+// it starts playing (or the transport jumps), and as the pattern changes, a note the playhead is in the middle of that
+// isn't sounding starts at once, for what is left of it.
 // Audio thread only.
 class Sequencer {
 public:
@@ -91,6 +93,8 @@ private:
         int index; // its slot in the pattern, for drawing its chance and humanizing it
     };
     struct Sounding {
+        int64_t step; // the played step it started in, and its slot in the pattern: which of the notes it is
+        int index;
         int32_t id;
         int key;
         int pitch;   // as written in the pattern
@@ -127,6 +131,8 @@ private:
     int loopStart_ = 0, loopEnd_ = kSeqStepsPerBar;
     std::array<Note, kSeqNotes> notes_{};
     int noteCount_ = 0;
+    std::array<int, kSeqMaxSteps + 1> stepFirst_{}; // notes_ in order of their starts: the first in each step and on
+    double longest_ = 0.0;                          // the longest note's length, in steps
     int read_ = -1; // the pattern notes_ and curves_ were read from, -1 for none
     std::array<std::array<SeqCurvePoint, kSeqCurvePoints>, kSeqCurves> curves_{}; // the playing pattern's
     std::array<int, kSeqCurves> curveCount_{};
@@ -146,6 +152,10 @@ private:
     int32_t nextId_ = 1;
     double next_ = 0.0;   // where the last plan() ended, in played steps
     bool running_ = false; // planning from next_ on: it ran in the last plan()
+    // Whether the next plan() chases the notes the playhead is in the middle of (it started, or the pattern was read
+    // again), and how far back they may start: where it started, or where another pattern took over.
+    bool chase_ = false;
+    double chaseFrom_ = 0.0;
     float position_ = -1.0f;
 };
 

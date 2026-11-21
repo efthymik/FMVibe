@@ -413,7 +413,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     middle one, in what a modulator's carrier plays too;
   - the sequencer: its notes on their steps with the host's transport, the bar round again and alike whatever the
     stretches it plans, each note once where stretches start on its step with the host's position a hair early or
-    late there (as a position in seconds rounds), Swing at 75 % delaying the step after the beat by half a step and Gate at 50 % halving a note,
+    late there (as a position in seconds rounds), the transport starting in a note's middle playing the rest of it
+    once (not one its chance leaves out), a note put down under the playhead playing at once, and neither a key nor
+    another pattern taking over chasing a note from before it, Swing at 75 % delaying the step after the beat by half a step and Gate at 50 % halving a note,
     Reverse playing a note on the first step on the last (the playhead moving steadily backward, as on Ping-Pong's way
     back, and forward otherwise), a loop playing only the notes in it, a muted note and one at
     no chance silent and one at half playing about half the passes (alike each time), another pattern taking over where

@@ -4780,6 +4780,79 @@ void sequencerChecks() {
                     jittered.size(), exact.size());
         check(once, "a position a hair off where a stretch starts on a step neither misses its notes nor plays them twice");
     }
+    // It chases notes: the transport starting in the middle of a note plays it at once, for what is left of it, once,
+    // but not one its chance leaves out, nor one already over; a note put down under the playhead plays as it is put
+    // down; and from a key, or where another pattern takes over, none from before it (a note ringing across the loop's
+    // end) starts.
+    {
+        // Plans `steps` with the transport playing from step `fromStep`, in stretches of 512; `edit` changes the params
+        // (and the sequencer reads them again) after `editAfter` steps.
+        auto planFrom = [&](ParamValues p, double fromStep, double steps, double editAfter = -1.0,
+                            const std::function<void(ParamValues &)> &edit = {}) {
+            Sequencer seq;
+            seq.prepare(kSampleRate);
+            seq.configure(p);
+            std::vector<Event> events;
+            std::array<SeqEvent, Sequencer::kMaxEvents> out;
+            bool edited = false;
+            for (double done = 0.0; done < steps * kStep;) {
+                if (!edited && editAfter >= 0.0 && done >= editAfter * kStep) {
+                    edit(p);
+                    seq.configure(p);
+                    edited = true;
+                }
+                uint32_t covered = 0;
+                const int n = seq.plan(512, 120.0, true, (fromStep + done / kStep) / 4.0, out, covered);
+                for (int i = 0; i < n; ++i)
+                    events.push_back({done + out[i].frame, out[i].on, out[i].key});
+                done += covered;
+            }
+            return events;
+        };
+        ParamValues p = blank();
+        note(p, 0, 0.0, 4.0, 60);
+        const std::vector<Event> mid = planFrom(p, 2.5, 4.0);
+        const std::vector<Event> after = planFrom(p, 4.5, 4.0);
+        ParamValues unlikely = p;
+        unlikely[seqNoteIndex(0, 0, SeqNoteParam::Chance)] = 0.0;
+        const std::vector<Event> skipped = planFrom(unlikely, 2.5, 4.0);
+        std::printf("      started on step 2.5 of a note 4 steps long: %zu events, on at %.0f, off at %.0f\n", mid.size(),
+                    mid.size() > 1 ? mid[0].frame : -1.0, mid.size() > 1 ? mid[1].frame : -1.0);
+        check(mid.size() == 2 && mid[0].on && mid[0].key == 60 && near(mid[0].frame, 0.0) && !mid[1].on &&
+                  near(mid[1].frame, 1.5 * kStep) && after.empty() && skipped.empty(),
+              "the sequencer starting in the middle of a note plays what is left of it, once");
+        // A note put down across the playhead, a step after it went by its start, plays from there, once.
+        ParamValues empty = blank();
+        const std::vector<Event> put =
+            planFrom(empty, 0.0, 8.0, 2.0, [&](ParamValues &q) { note(q, 0, 1.0, 4.0, 62); });
+        std::printf("      a note put down under the playhead: %zu events, on at %.0f, off at %.0f\n", put.size(),
+                    put.size() > 1 ? put[0].frame : -1.0, put.size() > 1 ? put[1].frame : -1.0);
+        check(put.size() == 2 && put[0].on && put[0].key == 62 && std::abs(put[0].frame - 2.0 * kStep) <= 512.0 &&
+                  !put[1].on && near(put[1].frame, 5.0 * kStep),
+              "a note put down under the playhead plays at once");
+        // A note on the last step, ringing 4 steps on across the loop's end: from a key, nothing at the start; another
+        // pattern taking over, nothing as it does.
+        ParamValues ringing = blank();
+        note(ringing, 0, 15.0, 4.0, 64);
+        ParamValues keyed = ringing;
+        keyed[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Key);
+        Sequencer seq;
+        seq.prepare(kSampleRate);
+        seq.configure(keyed);
+        seq.keyDown(60);
+        std::array<SeqEvent, Sequencer::kMaxEvents> out;
+        uint32_t covered = 0;
+        const int fromKey = seq.plan(512, 120.0, true, 0.0, out, covered);
+        ParamValues switching = blank();
+        note(switching, 0, 15.0, 4.0, 64, 1);
+        const std::vector<Event> switched = planFrom(switching, 0.0, 33.0, 4.0, [](ParamValues &q) {
+            q[paramIndex(SeqParam::Pattern)] = 1.0;
+        });
+        std::printf("      a note across the loop's end: %d events from a key; another pattern's first on at step %.2f\n",
+                    fromKey, switched.empty() ? -1.0 : switched[0].frame / kStep);
+        check(fromKey == 0 && !switched.empty() && near(switched[0].frame, 31.0 * kStep),
+              "a key, or another pattern taking over, chases no note from before it");
+    }
     // The Speed reads as a multiple of a 1/16 step, with a times sign in UTF-8 (U+00D7), and reads back.
     {
         const int speed = paramIndex(SeqParam::Rate);

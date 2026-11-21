@@ -102,6 +102,17 @@ void Sequencer::readPattern(int pattern) {
                                 p[seqNoteIndex(pattern, n, SeqNoteParam::Slide)] >= 0.5,
                                 n};
     }
+    // In order of their starts, so that plan() finds a step's notes at once; and the next plan() chases them, as they
+    // may have changed under the playhead.
+    std::stable_sort(notes_.begin(), notes_.begin() + noteCount_,
+                     [](const Note &a, const Note &b) { return a.start < b.start; });
+    longest_ = 0.0;
+    for (int i = 0, s = 0; s <= kSeqMaxSteps; ++s) {
+        while (i < noteCount_ && notes_[i].start < s)
+            longest_ = std::max(longest_, notes_[i++].length);
+        stepFirst_[static_cast<size_t>(s)] = i;
+    }
+    chase_ = true;
     // Its curves, their points held to their ranges and in order.
     auto get = [&](int index) { return p[index]; };
     for (int c = 0; c < kSeqCurves; ++c) {
@@ -268,12 +279,18 @@ int Sequencer::plan(uint32_t frames, double tempo, bool playing, double songBeat
         // the two stretches nor in both.
         from = next_;
     }
+    if (!running_) { // starting: the notes the playhead is in the middle of play from here
+        chase_ = true;
+        chaseFrom_ = 0.0;
+    }
     // Another pattern picked: it takes over where the loop comes round (at once, if it wasn't running), planning stopping
     // there so the next call plans the new one.
     if (pattern_ != patternWanted_) {
         const double length = std::max(loopLength(), 1);
         const double phase = from - std::floor(from / length) * length;
         if (!running_ || phase < 1e-9 || length - phase <= perFrame) {
+            if (running_) // taking over as the loop comes round: none of its notes started before
+                chaseFrom_ = from;
             pattern_ = patternWanted_;
             readPattern(pattern_);
         } else {
@@ -289,37 +306,54 @@ int Sequencer::plan(uint32_t frames, double tempo, bool playing, double songBeat
         curveNow_[c] = seqCurveAt(curveCount_[c], [&](int i) { return curves_[c][static_cast<size_t>(i)]; }, place,
                                   static_cast<double>(curvePeriod_));
 
-    // The notes starting in this stretch, in order.
+    // The notes starting in this stretch, in order; and where it chases them, first, those it is in the middle of that
+    // aren't sounding (not those left out by their chance or their key), from the stretch's start.
     struct Start {
         double at, end;
-        int key, pitch;
+        int64_t step;
+        int index, key, pitch;
         double velocity;
         bool slide;
     };
     std::array<Start, kMaxSounding> starts;
     int startCount = 0;
+    const bool chase = chase_ && soundingCount_ < kMaxSounding; // full, it would only take a note's place
+    chase_ = false;
     if (length > 0 && noteCount_ > 0) {
         const int shift = shift_ + (play_ != SeqPlay::Host && transposeKey_ >= 0 ? transposeKey_ - root_ : 0);
-        for (int64_t k = floorStep(from) - 2; k <= floorStep(to) && startCount < kMaxSounding; ++k) {
+        auto sounding = [&](int64_t k, int index) {
+            for (int i = 0; i < soundingCount_; ++i)
+                if (sounding_[i].step == k && sounding_[i].index == index)
+                    return true;
+            return false;
+        };
+        // Back as far as a note started that may still be playing: its length, gated, and swung and humanized.
+        const int64_t back = chase ? static_cast<int64_t>(std::ceil(longest_ * gate_)) + 1 : 0;
+        for (int64_t k = floorStep(from) - 2 - back; k <= floorStep(to) && startCount < kMaxSounding; ++k) {
             const int step = sourceStep(k);
-            for (int i = 0; i < noteCount_ && startCount < kMaxSounding; ++i) {
+            const int last = stepFirst_[static_cast<size_t>(step) + 1];
+            for (int i = stepFirst_[static_cast<size_t>(step)]; i < last && startCount < kMaxSounding; ++i) {
                 const Note &n = notes_[i];
-                if (n.start < step || n.start >= step + 1)
-                    continue;
                 if (unit(k, n.index, 0) >= n.chance)
                     continue;
                 const double t = static_cast<double>(k) + (n.start - step);
                 const double delay = humanize_ * kHumanizeDelay * unit(k, n.index, 1);
                 const double at = swung(t) + delay;
-                if (at < from || at >= to)
+                if (at >= to)
+                    continue;
+                const bool late = at < from; // started before the stretch: only chased
+                if (late && (!chase || t < chaseFrom_ - 1e-9))
                     continue;
                 const int key = n.pitch + shift;
                 if (key < 0 || key > 127)
                     continue;
                 const double end = std::max(swung(t + std::max(n.length * gate_, kShortest)) + delay, at + 1e-6);
+                if (late && (end <= from || sounding(k, n.index)))
+                    continue;
                 double velocity = (1.0 - velocityAmount_) * kPlainVelocity + velocityAmount_ * n.velocity;
                 velocity *= 1.0 + humanize_ * kHumanizeVelocity * (2.0 * unit(k, n.index, 2) - 1.0);
-                starts[startCount++] = {at, end, key, n.pitch, std::clamp(velocity, 1.0 / 127.0, 1.0), n.slide};
+                starts[startCount++] = {late ? from : at, end, k, n.index, key, n.pitch,
+                                        std::clamp(velocity, 1.0 / 127.0, 1.0), n.slide};
             }
         }
         std::stable_sort(starts.begin(), starts.begin() + startCount,
@@ -375,7 +409,7 @@ int Sequencer::plan(uint32_t frames, double tempo, bool playing, double songBeat
                 sounding_[i].slide = false;
             }
         }
-        sounding_[soundingCount_++] = {id, s.key, s.pitch, s.end, s.slide ? s.end + 1.0 : s.end, s.slide};
+        sounding_[soundingCount_++] = {s.step, s.index, id, s.key, s.pitch, s.end, s.slide ? s.end + 1.0 : s.end, s.slide};
     }
 
     next_ = to;
