@@ -143,6 +143,7 @@ public:
     bool infoCardShown() const { return presets_.infoCardShown(); }
     bool confirmShown() const { return confirm_ >= 0; }
     bool saveShown() const { return presets_.saveShown(); }
+    bool saveFolderListShown() const { return presets_.saveFolderListShown(); }
     bool nameMenuShown() const { return presets_.nameMenuShown(); }
     std::vector<int> browserListed() const { return presets_.browserListed(); }
     int browserPicked() const { return presets_.browserPicked(); }

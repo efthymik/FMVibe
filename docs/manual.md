@@ -1367,11 +1367,13 @@ are shared by all FMVibe instances.
 - **Save As** (the disk with a plus) opens the **Save dialog**:
   - **Name**, **Author**, **Category** (a chip per category, None, or **+ New** to create one with a name of up to 6
     characters and a color) and **Description** (one line, up to 80 characters).
-  - **Folder**: choose where to save; **New Folder** creates one. Right-click a folder for more options.
+  - **Author** shows the preset's author. For a preset without one, it shows the name you typed last.
+  - **Folder**: click it and choose where to save from the list. **New Folder**, at the bottom of the list, creates a
+    folder in the one chosen. To rename or delete folders, right-click them in the browser.
   - **Save** saves the preset there (the button reads **Replace** if the name exists). **Save to File…** saves
     anywhere via the standard file dialog.
 - **Edit Info…** on the info card opens the same dialog to change a preset's author, category and description
-  without changing its sound.
+  without changing its sound. Choose another **Folder** there to move the preset.
 - **Load** opens a `.fmv` file through the standard file dialog.
 - **Init** resets the patch to its defaults.
 

@@ -912,7 +912,8 @@ STR(CategoryPadPill, "PAD")
 STR(CategoryPluckPill, "PLUCK")
 STR(CategorySeqPill, "SEQ")
 
-// The Save Preset dialog (Save As), which also edits a preset's info, and its New Category and New Folder forms.
+// The Save Preset sheet (Save As), which also edits a preset's info and moves it, and its New Category and New Folder
+// forms.
 STR(SaveTitle, "Save Preset")
 STR(SaveInfoTitle, "Preset Info")
 STR(SaveName, "Name")
@@ -920,8 +921,8 @@ STR(SaveAuthor, "Author")
 STR(SaveCategory, "Category")
 STR(SaveDescription, "Description")
 STR(SaveFolder, "Folder")
-STR(SaveNewFolder, "New Folder")
-STR(MenuNewFolder, "New Folder") // the Save dialog's folder tree's right-click menu: a folder in the one clicked
+STR(SaveNewFolder, "New Folder") // the last row of the Save sheet's list of folders
+STR(MenuNewFolder, "New Folder") // the browser's folder tree's right-click menu: a folder in the one clicked
 STR(MenuOpenInExplorer, "Open in Explorer") // and that folder shown in Explorer
 STR(MenuRenameFolder, "Rename...") // and renamed, in a small form
 STR(MenuDeleteFolder, "Delete...") // and moved to the Recycle Bin, asking first
@@ -1310,6 +1311,7 @@ STR(MsgSourcesFull, "Only supports up to {1} sources")
 STR(MsgPresetUnreadable, "Preset could not be read")
 STR(MsgNoPresets, "Preset folder is empty")
 STR(MsgPresetNotSaved, "Could not save preset")
+STR(MsgPresetNotMoved, "Could not move preset") // Preset Info's Save, another folder picked
 STR(MsgBadValue, "Invalid value for {2}: \"{1}\"")
 
 // --- The plugin's file dialogs

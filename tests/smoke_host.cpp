@@ -345,6 +345,8 @@ int settingsProcess(int argc, char **argv) {
         std::replace(userSettings.favorites.begin(), userSettings.favorites.end(), a, b);
     else if (what == "recent")
         userSettings.recent.insert(userSettings.recent.begin(), a);
+    else if (what == "author")
+        userSettings.author = a;
     writeUserSettings();
     return 0;
 }
@@ -425,6 +427,15 @@ void checkSharedSettings(const std::wstring &dir) {
     readUserSettings();
     check(categoryNames() == Names{"Keep", "Gone", "Same"} && userSettings.categories[2].second == 12,
           "settings: a category two processes add under one name is one category");
+
+    // The author typed last into the Save sheet: another process's kept through this one's edit, and read back.
+    start();
+    runSettingsProcess("author Kim");
+    userSettings.favorites.push_back("mine");
+    writeUserSettings();
+    readUserSettings();
+    check(userSettings.author == "Kim" && userSettings.favorites == Names{"a", "b", "mine"},
+          "settings: the author another process typed last is kept through this one's edits");
 
     start();
     runSettingsProcess("favorite theirs");

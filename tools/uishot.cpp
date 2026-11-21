@@ -205,6 +205,26 @@ public:
         return true;
     }
     int infoWrites = 0;
+    // As the plugin does: the preset's file moved to the folder, one of its name there replaced, the patch following
+    // it. Unless moving is to fail.
+    bool movePreset(int index, const std::string &folder) override {
+        if (moveFails || index < 0 || index >= static_cast<int>(library.size()) || library[index].factory)
+            return false;
+        const bool loaded = index == presetIndex();
+        const PresetEntry moved{library[index].name, folder, false, library[index].info};
+        library.erase(library.begin() + index);
+        std::erase_if(library, [&](const PresetEntry &e) { return !e.factory && e.folder == folder && e.name == moved.name; });
+        library.push_back(moved);
+        if (loaded)
+            setPreset(fileOf(static_cast<int>(library.size()) - 1), patchEdited());
+        ++moves;
+        return true;
+    }
+    int moves = 0;
+    bool moveFails = false;
+    std::string author; // the one typed last, as the user's settings keep it
+    std::string presetAuthor() const override { return author; }
+    void setPresetAuthor(const std::string &typed) override { author = typed; }
     void openPresetFolder(const std::string &folder) override {
         ++folderOpens;
         openedFolder = folder;
@@ -10663,7 +10683,7 @@ void renderLfoOnLfo(const std::filesystem::path &dir, Renderer &renderer) {
 
 } // namespace
 
-// The preset library's info, browser and Save dialog: a library of factory presets and the user's, in folders, with
+// The preset library's info, browser and Save sheet: a library of factory presets and the user's, in folders, with
 // their info.
 FakeController &libraryModel(FakeController &model) {
     auto info = [](const char *author, const char *category, const char *description) {
@@ -10696,6 +10716,23 @@ int libraryIndex(const FakeController &model, const char *name) {
         if (model.library[i].name == name)
             return static_cast<int>(i);
     return -1;
+}
+
+// Where the Save sheet puts its parts (see PresetBrowser::saveLayout()), under the preset bar, for its rows of
+// category chips (five a row: the built-in ones, the user's own, None and + New).
+struct SaveSheetAt {
+    float x, y;
+    int rows;
+    Rect name() const { return {x + 24.0f, y + 88.0f, 310.0f, 30.0f}; }
+    Point chip(int i) const { return {x + 24.0f + (i % 5) * 97.0f + 45.0f, y + 150.0f + (i / 5) * 36.0f + 14.0f}; }
+    Rect folder() const { return {x + 24.0f, y + 150.0f + rows * 36.0f - 8.0f + 94.0f, 492.0f, 30.0f}; }
+    // Its list of folders, opened under the folder's button: a row (0 Factory's, 1 User's, then the folders'), and New
+    // Folder under as many rows as it shows.
+    Point listRow(int row) const { return {x + 24.0f + 150.0f, folder().bottom() + 8.0f + row * 26.0f + 13.0f}; }
+    Point listNew(int shown) const { return {x + 24.0f + 150.0f, folder().bottom() + 8.0f + shown * 26.0f + 9.0f + 12.0f}; }
+};
+SaveSheetAt saveSheet(int chipRows) {
+    return {std::round(detail::kPresetName.center().x - 270.0f), detail::kTitleBarH + 6.0f, chipRows};
 }
 
 void testPresetLibrary(const std::filesystem::path &dir, Renderer &renderer) {
@@ -10827,8 +10864,7 @@ void testPresetLibrary(const std::filesystem::path &dir, Renderer &renderer) {
     }
     {
         // Save Here, beside Close: none on Factory or All, where nothing can be saved; greyed out on an unchanged Init,
-        // as Save As is; and on a folder of the user's opening the Save dialog on it, its row scrolled into sight among
-        // more folders than the dialog's tree shows at once.
+        // as Save As is; and on a folder of the user's opening the Save sheet on it, saving the patch there.
         FakeController saving;
         saving.library = {{"Grain", "", false, {}}, {"Bell", "", true, {}}};
         for (char c = '0'; c <= '9'; ++c)
@@ -10852,21 +10888,66 @@ void testPresetLibrary(const std::filesystem::path &dir, Renderer &renderer) {
         const uint32_t greyed = faceAt();
         click(savingView, saveHere);
         const bool greyedNone = savingView.browserShown() && !savingView.saveShown();
-        saving.loadPresetAt(0);
+        saving.loadPresetAt(0); // Grain, in User
         const uint32_t lit = faceAt();
         click(savingView, saveHere);
         const bool opened = savingView.saveShown() && !savingView.browserShown();
-        // The tree's last row, at the bottom of its box: F9's, scrolled up to it.
-        const std::vector<MenuItem> lastRow =
-            savingView.contextMenu({800.0f, detail::kTitleBarH + 6.0f + 88.0f + 188.0f - 15.0f});
-        savingView.menuCommand(lastRow.size() > 1 ? lastRow[1].command : 0);
-        const bool inSight = saving.openedFolder == "F9";
         type(savingView, "Sketch");
         savingView.typeKey(View::Key::Enter);
         check(onFactory == onAll && greyed != onFactory && lit != greyed && lit != onFactory && factoryNone && allNone &&
-                  greyedNone && opened && inSight && saving.savedIn == "F9" && !savingView.saveShown(),
+                  greyedNone && opened && saving.savedIn == "F9" && !savingView.saveShown(),
               "the browser's Save Here shows only on a folder of the user's, greyed out as Save As is, and saves the patch "
-              "in that folder through the Save dialog, its row in sight (read off the rendered pixels)");
+              "in that folder through the Save sheet (read off the rendered pixels)");
+    }
+    {
+        // The Save sheet's folder is a list button: Save As from a factory preset starts in the folder the browser was
+        // left on; the list scrolls through more folders than it shows (Factory's row locked), under the wheel, and a
+        // click picks one, closing it; Escape and a click around it close it alone; and its New Folder makes a folder in
+        // the one picked, which it then picks.
+        FakeController saving;
+        saving.library = {{"Grain", "", false, {}}, {"Bell", "", true, {}}};
+        for (char c = '0'; c <= '9'; ++c)
+            saving.folders.push_back(std::string("F") + c);
+        saving.browserPlace = "folder:F3";
+        View savingView(saving);
+        saving.loadPresetAt(1); // Bell, a factory preset
+        click(savingView, detail::toolbarButton(3).center()); // Save As
+        type(savingView, "Sketch");
+        savingView.typeKey(View::Key::Enter);
+        const bool wasLeft = saving.savedIn == "F3";
+        const SaveSheetAt sheet = saveSheet(2); // no categories of the user's: two rows of chips
+        click(savingView, detail::toolbarButton(3).center());
+        click(savingView, sheet.folder().center());
+        savingView.mouseMove(away, {});
+        const bool listShot = renderer.save(savingView, dir / "23e-save-folder-list.png");
+        const bool opened = savingView.saveFolderListShown();
+        click(savingView, sheet.listRow(0)); // Factory's: nothing
+        const bool locked = savingView.saveFolderListShown();
+        savingView.wheel(sheet.listRow(3), -10.0f, {}); // to its end: F9's row last of the eight shown
+        click(savingView, sheet.listRow(7));
+        const bool picked = !savingView.saveFolderListShown() && savingView.saveShown();
+        type(savingView, "Sketch 2"); // over the name, still all selected
+        savingView.typeKey(View::Key::Enter);
+        const bool savedThere = saving.savedIn == "F9" && !savingView.saveShown();
+        click(savingView, detail::toolbarButton(3).center());
+        click(savingView, sheet.folder().center());
+        savingView.typeKey(View::Key::Escape);
+        const bool escaped = !savingView.saveFolderListShown() && savingView.saveShown();
+        click(savingView, sheet.folder().center());
+        click(savingView, {sheet.x + 100.0f, sheet.y + 25.0f}); // the sheet's title, around the list
+        const bool around = !savingView.saveFolderListShown() && savingView.saveShown();
+        click(savingView, sheet.folder().center());
+        click(savingView, sheet.listNew(8));
+        const bool asked = savingView.nameMenuShown() && !savingView.saveFolderListShown();
+        type(savingView, "Ideas");
+        savingView.typeKey(View::Key::Enter);
+        type(savingView, "Sketch 3");
+        savingView.typeKey(View::Key::Enter);
+        check(wasLeft && listShot && opened && locked && picked && savedThere && escaped && around && asked &&
+                  saving.savedIn == "F9/Ideas",
+              "the Save sheet starts a factory preset's copy where the browser was left, and its folder's list scrolls, "
+              "picks a folder (Factory's locked), closes at Escape and a click around it, and makes a new folder in the "
+              "one picked");
     }
 
     // The sidebar: All, Favorites and Recent, the tree's folders opening and closing, and the categories filtering
@@ -10946,7 +11027,7 @@ void testPresetLibrary(const std::filesystem::path &dir, Renderer &renderer) {
     check(pads && mira && view.browserListed().size() == model.library.size(),
           "the browser's search finds presets by their name, category, author and line");
 
-    // + by FOLDERS makes a folder in the one shown; the Save dialog's + New a category of the user's own (the browser
+    // + by FOLDERS makes a folder in the one shown; the Save sheet's + New a category of the user's own (the browser
     // has no + for one).
     click(view, treeRow(1)); // User
     click(view, {392.0f, 193.0f + 10.0f}); // the folders' +
@@ -10960,7 +11041,7 @@ void testPresetLibrary(const std::filesystem::path &dir, Renderer &renderer) {
     view.dialogKey(View::Key::Escape); // the browser closes
     click(view, detail::toolbarButton(3).center()); // Save As, under the preset bar
     // Its chips five a row: the eight built-in categories, Texture and None, then + New first on the third row.
-    click(view, {268.0f, 279.0f});
+    click(view, saveSheet(3).chip(10));
     const bool categoryAsked = view.nameMenuShown();
     type(view, "Vocal");
     view.mouseMove(away, {});
@@ -10968,16 +11049,16 @@ void testPresetLibrary(const std::filesystem::path &dir, Renderer &renderer) {
     view.typeKey(View::Key::Enter);
     const bool category = categoryAsked && model.categories.size() == 2 && model.categories[1].name == "Vocal";
     // A name takes 6 characters at most, and the name a built-in category shows (Seq) picks that one.
-    click(view, {366.0f, 279.0f}); // + New, after Vocal now
+    click(view, saveSheet(3).chip(11)); // + New, after Vocal now
     type(view, "Melodic");
     view.typeKey(View::Key::SelectAll);
     const bool cut = view.copyText(false) == "Melodi";
     type(view, "Seq");
     view.typeKey(View::Key::Enter);
     const bool seqBuiltIn = cut && !view.nameMenuShown() && model.categories.size() == 2;
-    view.typeKey(View::Key::Escape); // the Save dialog closes
+    view.typeKey(View::Key::Escape); // the Save sheet closes
     check(asked && made && category && seqBuiltIn && !view.saveShown(),
-          "the browser's + by FOLDERS makes a folder, and the Save dialog's + New a category (of 6 characters at most, "
+          "the browser's + by FOLDERS makes a folder, and the Save sheet's + New a category (of 6 characters at most, "
           "Seq picking the built-in one)");
     click(view, detail::kPresetName.center()); // the browser again, for what follows
 
@@ -11035,9 +11116,8 @@ void testPresetLibrary(const std::filesystem::path &dir, Renderer &renderer) {
               "a built-in category has none");
     }
 
-    // Save As: the Save dialog, the name, author, category and line of the preset, in its folder; a name taken there
-    // replaces it, a new one saves a new preset, which the patch then is; its category picked from the chips, a new
-    // one from + New; a new folder from New Folder.
+    // Save As: the Save sheet, the name, author, category and line of the preset, in its folder; a name taken there
+    // replaces it, a new one saves a new preset, which the patch then is.
     model.loadPresetAt(opener);
     click(view, detail::toolbarButton(3).center());
     view.mouseMove(away, {});
@@ -11047,11 +11127,7 @@ void testPresetLibrary(const std::filesystem::path &dir, Renderer &renderer) {
         // Underscores typed into the name show: the field draws its text its whole height, so what hangs below the
         // line isn't clipped away. Three of them after an "a" lay a line across rows where the caret moving alone
         // would change a pixel or two (read off the rendered pixels).
-        // Where the Save dialog (800 wide, its folders 250) puts its name field.
-        const float saveX =
-            std::clamp(std::round(detail::kPresetName.center().x - 400.0f), 12.0f, View::kWidth - 812.0f);
-        const Rect nameField{saveX + 24.0f, detail::kTitleBarH + 6.0f + 88.0f,
-                             800.0f - 48.0f - 250.0f - 24.0f - 182.0f, 30.0f};
+        const Rect nameField = saveSheet(3).name();
         auto lowerRows = [&] { // the field's lower half, row by row, inside its outline
             std::vector<uint32_t> px;
             for (float y = nameField.center().y + 1.0f; y < nameField.bottom() - 3.0f; y += 1.0f)
@@ -11075,7 +11151,7 @@ void testPresetLibrary(const std::filesystem::path &dir, Renderer &renderer) {
                 changed += plain[row * perRow + i] != lined[row * perRow + i] ? 1 : 0;
             widest = std::max(widest, changed);
         }
-        std::printf("      underscores in the Save dialog's name: %d pixels across in a row\n", widest);
+        std::printf("      underscores in the Save sheet's name: %d pixels across in a row\n", widest);
         check(widest >= 10, "underscores typed into a preset's name show");
         view.typeKey(View::Key::SelectAll); // for the name typed over next
     }
@@ -11113,7 +11189,7 @@ void testPresetLibrary(const std::filesystem::path &dir, Renderer &renderer) {
           "Save As saves the patch as a new preset in its preset's folder, with its info");
     check(model.presetName() == "Opener Two" && !model.patchEdited(), "the preset saved is the patch's preset");
     {
-        // Tab steps through the Save dialog's text fields, Name, Author and Description, round from the last to the
+        // Tab steps through the Save sheet's text fields, Name, Author and Description, round from the last to the
         // first, and Shift+Tab back, each field entered all selected to type over and the one left showing no selection
         // (read off the rendered pixels). Editing a preset's info, it passes over the name, which isn't a field there.
         FakeController tabbing;
@@ -11121,9 +11197,8 @@ void testPresetLibrary(const std::filesystem::path &dir, Renderer &renderer) {
         tabbing.loadPresetAt(0);
         View tabView(tabbing);
         click(tabView, detail::toolbarButton(3).center());
-        const float saveX =
-            std::clamp(std::round(detail::kPresetName.center().x - 400.0f), 12.0f, View::kWidth - 812.0f);
-        const Point nameText{saveX + 24.0f + 14.0f, detail::kTitleBarH + 6.0f + 88.0f + 6.0f}; // over the letters
+        const Rect name = saveSheet(2).name();
+        const Point nameText{name.x + 14.0f, name.y + 6.0f}; // over the letters
         auto nameFace = [&] {
             tabView.mouseMove(away, {});
             renderer.save(tabView, dir / "23k-save-tab.png");
@@ -11147,7 +11222,7 @@ void testPresetLibrary(const std::filesystem::path &dir, Renderer &renderer) {
         const int saved = tabbing.presetIndex();
         check(selected != left && saved >= 0 && tabbing.library[saved].name == "Tabbed" &&
                   tabbing.library[saved].info.author == "Bo" && tabbing.library[saved].info.description == "Back",
-              "Tab steps through the Save dialog's text fields and Shift+Tab back, round their ends, each entered all "
+              "Tab steps through the Save sheet's text fields and Shift+Tab back, round their ends, each entered all "
               "selected and the one left showing no selection (read off the rendered pixels)");
         click(tabView, infoButton);
         click(tabView, {card.right() - 66.0f, card.y + 125.0f}); // Edit Info, on the description
@@ -11165,88 +11240,136 @@ void testPresetLibrary(const std::filesystem::path &dir, Renderer &renderer) {
               "Tab and Shift+Tab in Edit Info step between the author and the description alone");
     }
 
-    // The Save dialog's folder tree's right-click menu: Open in Explorer showing the folder clicked, and New Folder
-    // making one in it.
-    click(view, detail::toolbarButton(3).center());
-    const Point liveSet{800.0f, 277.0f}; // its row, under User, Basses, Reese and Drafts
-    const std::vector<MenuItem> folderMenu = view.contextMenu(liveSet);
-    const bool folderOffered = folderMenu.size() == 5 && folderMenu[0].label == tr(Str::MenuNewFolder) &&
-                               folderMenu[1].label == tr(Str::MenuOpenInExplorer);
-    view.menuCommand(folderOffered ? folderMenu[1].command : 0);
-    const bool folderShown = model.openedFolder == "Live Set" && model.folderOpens == 1;
-    view.contextMenu(liveSet);
-    view.menuCommand(folderOffered ? folderMenu[0].command : 0);
-    const bool folderAsked = view.nameMenuShown();
-    type(view, "Sketches");
-    view.mouseMove(away, {});
-    renderer.save(view, dir / "23n-save-folder-menu.png");
-    view.typeKey(View::Key::Enter);
-    const bool folderMade =
-        std::find(model.folders.begin(), model.folders.end(), "Live Set/Sketches") != model.folders.end();
-    view.typeKey(View::Key::Escape);
-    check(folderOffered && folderShown && folderAsked && folderMade && !view.saveShown(),
-          "the Save dialog's folder tree's right-click menu opens a folder in Explorer and makes a new folder in it");
+    {
+        // Preset Info moves the preset: another folder picked from its list, Save writes its info and moves its file,
+        // the patch following it; a folder holding a preset of its name says so, its Save reading Replace, and replaces
+        // that one; and a move that fails leaves the sheet open.
+        FakeController moving;
+        libraryModel(moving);
+        moving.library.push_back({"Hook Lead", "Sound Design", false, {}}); // a second Hook Lead
+        View moveView(moving);
+        const SaveSheetAt sheet = saveSheet(3); // the built-in categories, Texture, None and + New
+        moving.loadPresetAt(libraryIndex(moving, "Glass Rain")); // in Sound Design
+        click(moveView, infoButton);
+        click(moveView, {card.right() - 66.0f, card.y + 125.0f}); // Edit Info
+        click(moveView, sheet.folder().center());
+        // Factory, User, Basses, Reese, Live Set, Act 1, Act 2 and Sound Design: eight, none scrolled.
+        click(moveView, sheet.listRow(4)); // Live Set
+        type(moveView, " Moved"); // after the description
+        moveView.mouseMove(away, {});
+        const bool moveShot = renderer.save(moveView, dir / "23n-info-move.png");
+        moveView.typeKey(View::Key::Enter);
+        const int glass = libraryIndex(moving, "Glass Rain");
+        const bool moved = !moveView.saveShown() && moving.moves == 1 && moving.infoWrites == 1 && glass >= 0 &&
+                           moving.library[glass].folder == "Live Set" && moving.presetIndex() == glass &&
+                           moving.library[glass].info.description == "Scattered high partials. Moved";
+        const int second = static_cast<int>(moving.library.size()) - 2; // the Hook Lead in Sound Design, Glass Rain after
+        moving.loadPresetAt(second);
+        click(moveView, infoButton);
+        click(moveView, {card.right() - 66.0f, card.y + 125.0f}); // Add Info
+        click(moveView, sheet.folder().center());
+        click(moveView, sheet.listRow(5)); // Act 1, where the other Hook Lead is
+        moveView.mouseMove(away, {});
+        const bool replaceShot = renderer.save(moveView, dir / "23o-info-move-replace.png");
+        // The warning between the folder and the buttons, Replace where Save was, 38 px lower.
+        const Rect warning{sheet.x + 24.0f, sheet.folder().bottom() + 16.0f, 492.0f, 28.0f};
+        bool warned = false;
+        for (float x = warning.x + 8.0f; x < warning.x + 24.0f; x += 1.0f)
+            warned = warned || amber(renderer.pixel({x, warning.center().y}));
+        moveView.typeKey(View::Key::Enter);
+        const auto hooks = std::count_if(moving.library.begin(), moving.library.end(),
+                                         [](const PresetEntry &e) { return e.name == "Hook Lead"; });
+        const int hook = libraryIndex(moving, "Hook Lead");
+        const bool replaced = !moveView.saveShown() && hooks == 1 && moving.library[hook].folder == "Live Set/Act 1" &&
+                              moving.library[hook].info.description.empty() && moving.presetIndex() == hook;
+        moving.moveFails = true;
+        click(moveView, infoButton);
+        click(moveView, {card.right() - 66.0f, card.y + 125.0f}); // Add Info
+        click(moveView, sheet.folder().center());
+        click(moveView, sheet.listRow(1)); // User
+        moveView.typeKey(View::Key::Enter);
+        const bool failed = moveView.saveShown() && moving.library[libraryIndex(moving, "Hook Lead")].folder ==
+                                                        "Live Set/Act 1";
+        moveView.typeKey(View::Key::Escape);
+        check(moveShot && moved && replaceShot && warned && replaced && failed && !moveView.saveShown(),
+              "Preset Info's folder moves the preset with its info, asks to replace a preset of its name there, and a "
+              "move that fails keeps the sheet open (read off the rendered pixels)");
+    }
+    {
+        // The author typed last: a preset saved with one typed in remembers it; a preset without an author starts with
+        // it (Preset Info too); one with its own keeps it (a factory preset's copy FMVibe), and saving it, not typed
+        // into, remembers nothing.
+        FakeController authoring;
+        libraryModel(authoring);
+        authoring.library.push_back({"Bare", "", false, {}});
+        View authorView(authoring);
+        auto authorShown = [&] { // the author field, entered by Tab from the name, all selected
+            authorView.typeKey(View::Key::Tab);
+            return authorView.copyText(false);
+        };
+        authoring.loadPresetAt(libraryIndex(authoring, "Test Patch 3")); // no author
+        click(authorView, detail::toolbarButton(3).center());
+        const bool noneYet = authorShown().empty();
+        type(authorView, "Kim");
+        authorView.typeKey(View::Key::Enter); // replacing Test Patch 3
+        const bool remembered = authoring.author == "Kim" && !authorView.saveShown();
+        authoring.loadPresetAt(libraryIndex(authoring, "Screamer")); // a factory preset, FMVibe's
+        click(authorView, detail::toolbarButton(3).center());
+        const bool factoryCopy = authorShown() == "FMVibe";
+        authorView.typeKey(View::Key::Escape);
+        authoring.loadPresetAt(libraryIndex(authoring, "Night Drift")); // Mira K.'s
+        click(authorView, detail::toolbarButton(3).center());
+        const bool ownKept = authorShown() == "Mira K.";
+        authorView.typeKey(View::Key::Enter);
+        const bool notTyped = authoring.author == "Kim";
+        authoring.loadPresetAt(libraryIndex(authoring, "Bare"));
+        click(authorView, infoButton);
+        click(authorView, {card.right() - 66.0f, card.y + 125.0f}); // Add Info, on the description
+        authorView.typeKey(View::Key::BackTab);
+        const bool infoToo = authorView.copyText(false) == "Kim";
+        authorView.typeKey(View::Key::Escape);
+        check(noneYet && remembered && factoryCopy && ownKept && notTyped && infoToo,
+              "the Save sheet remembers the author typed last, for a preset without one, and keeps a preset's own");
+    }
 
-    // Rename and Delete, offered on a subfolder and not on User: Rename's form holding the folder's name to type over,
-    // a name another folder has refused, and a new one renaming it with its subfolders and presets; Delete asking first
-    // (how many presets go with it), Escape keeping it and Enter deleting it.
-    click(view, detail::toolbarButton(3).center());
-    const bool userPlain = view.contextMenu({800.0f, 173.0f}).size() == 2; // User
-    const std::vector<MenuItem> liveSetMenu = view.contextMenu(liveSet);
-    const bool offersBoth = liveSetMenu.size() == 5 && liveSetMenu[3].label == tr(Str::MenuRenameFolder) &&
-                            liveSetMenu[4].label == tr(Str::MenuDeleteFolder);
-    view.menuCommand(offersBoth ? liveSetMenu[3].command : 0);
-    const bool renameAsked = view.nameMenuShown() && view.copyText(false) == "Live Set";
-    type(view, "Drafts");
-    view.typeKey(View::Key::Enter);
-    const bool takenRefused = view.nameMenuShown() &&
-                              std::find(model.folders.begin(), model.folders.end(), "Live Set") != model.folders.end();
-    view.typeKey(View::Key::SelectAll);
-    type(view, "Live Show");
-    view.mouseMove(away, {});
-    renderer.save(view, dir / "23o-save-folder-rename.png");
-    view.typeKey(View::Key::Enter);
-    const bool renamed = !view.nameMenuShown() &&
-                         std::find(model.folders.begin(), model.folders.end(), "Live Show/Act 1") != model.folders.end() &&
-                         std::find(model.folders.begin(), model.folders.end(), "Live Set") == model.folders.end() &&
-                         model.library[opener].folder == "Live Show/Act 1";
-    view.contextMenu(liveSet); // Live Show, in Live Set's place
-    view.menuCommand(offersBoth ? liveSetMenu[4].command : 0);
-    const bool deleteAsked = view.confirmShown();
-    view.mouseMove(away, {});
-    renderer.save(view, dir / "23p-save-folder-delete.png");
-    view.dialogKey(View::Key::Escape);
-    const bool deleteKept = !view.confirmShown() && model.folderDeletes == 0;
-    view.contextMenu(liveSet);
-    view.menuCommand(offersBoth ? liveSetMenu[4].command : 0);
-    view.dialogKey(View::Key::Enter);
-    const bool deleted = model.folderDeletes == 1 &&
-                         std::none_of(model.folders.begin(), model.folders.end(),
-                                      [](const std::string &f) { return f.starts_with("Live Show"); });
-    view.typeKey(View::Key::Escape); // the Save dialog closes
-    check(userPlain && offersBoth && renameAsked && takenRefused && renamed && deleteAsked && deleteKept && deleted &&
-              !view.saveShown(),
-          "the folder tree's menu renames a subfolder, refusing a name another has, and deletes one, asking first");
-
-    // The browser's folder tree offers the same menu: nothing on Factory, New Folder and Open in Explorer on User, and
-    // Rename and Delete too on a subfolder (Basses, open, its Reese under it).
+    // The browser's folder tree's right-click menu: nothing on Factory, New Folder and Open in Explorer on User, and
+    // Rename and Delete too on a subfolder (Basses, open, its Reese under it): Rename's form holding the folder's name to
+    // type over, a name another folder has refused, and a new one renaming it with its subfolders and presets; Delete
+    // asking first, Escape keeping it and Enter deleting it.
     click(view, detail::kPresetName.center());
     const bool factoryPlain = view.contextMenu(treeRow(0)).empty();
     const bool userTwo = view.contextMenu(treeRow(1)).size() == 2;
     const std::vector<MenuItem> bassesMenu = view.contextMenu(treeRow(2));
-    const bool bassesAll = bassesMenu.size() == 5 && bassesMenu[3].label == tr(Str::MenuRenameFolder);
+    const bool bassesAll = bassesMenu.size() == 5 && bassesMenu[0].label == tr(Str::MenuNewFolder) &&
+                           bassesMenu[1].label == tr(Str::MenuOpenInExplorer) &&
+                           bassesMenu[3].label == tr(Str::MenuRenameFolder) &&
+                           bassesMenu[4].label == tr(Str::MenuDeleteFolder);
     view.menuCommand(bassesAll ? bassesMenu[3].command : 0);
     const bool treeRename = view.nameMenuShown() && view.copyText(false) == "Basses";
+    type(view, "Live Set");
+    view.typeKey(View::Key::Enter);
+    const bool takenRefused = view.nameMenuShown() &&
+                              std::find(model.folders.begin(), model.folders.end(), "Basses") != model.folders.end();
+    view.typeKey(View::Key::SelectAll);
     type(view, "Bass Sounds");
+    view.mouseMove(away, {});
+    renderer.save(view, dir / "23o-folder-rename.png");
     view.typeKey(View::Key::Enter);
     const bool treeRenamed =
         std::find(model.folders.begin(), model.folders.end(), "Bass Sounds/Reese") != model.folders.end() &&
-        view.browserShown() && view.contextMenu(treeRow(3)).size() == 5; // still open: Reese under it
+        model.library[index("Reese v2")].folder == "Bass Sounds/Reese" && view.browserShown() &&
+        view.contextMenu(treeRow(3)).size() == 5; // still open: Reese under it
     view.contextMenu(treeRow(2));
     view.menuCommand(bassesAll ? bassesMenu[4].command : 0);
     const bool treeAsked = view.confirmShown();
+    view.mouseMove(away, {});
+    renderer.save(view, dir / "23p-folder-delete.png");
+    view.dialogKey(View::Key::Escape);
+    const bool treeKept = !view.confirmShown() && model.folderDeletes == 0;
+    view.contextMenu(treeRow(2));
+    view.menuCommand(bassesAll ? bassesMenu[4].command : 0);
     view.dialogKey(View::Key::Enter);
-    const bool treeDeleted = !view.confirmShown() && view.browserShown() &&
+    const bool treeDeleted = !view.confirmShown() && view.browserShown() && model.folderDeletes == 1 &&
                              std::none_of(model.folders.begin(), model.folders.end(),
                                           [](const std::string &f) { return f.starts_with("Bass Sounds"); });
     const std::vector<MenuItem> userMenu = view.contextMenu(treeRow(1));
@@ -11258,14 +11381,15 @@ void testPresetLibrary(const std::filesystem::path &dir, Renderer &renderer) {
     const int opensBefore = model.folderOpens;
     view.contextMenu(treeRow(1));
     view.menuCommand(userMenu.size() == 2 ? userMenu[1].command : 0);
-    check(factoryPlain && userTwo && bassesAll && treeRename && treeRenamed && treeAsked && treeDeleted && treeMade &&
-              model.folderOpens == opensBefore + 1 && model.openedFolder.empty(),
-          "the browser's folder tree's right-click menu makes, opens, renames and deletes folders, Factory having none");
+    check(factoryPlain && userTwo && bassesAll && treeRename && takenRefused && treeRenamed && treeAsked && treeKept &&
+              treeDeleted && treeMade && model.folderOpens == opensBefore + 1 && model.openedFolder.empty(),
+          "the browser's folder tree's right-click menu makes, opens, renames (refusing a name another folder has) and "
+          "deletes folders, asking first, Factory having none");
 }
 
 // The preset library's parts in every theme: the bar (and its tooltip), the info card of the user's preset and of a
-// factory one, the browser (and filtered by category), the New Folder and New Category forms, the Save dialog and
-// Edit Info, into presets-<theme>-<part>.png.
+// factory one, the browser (and filtered by category), the New Folder and New Category forms, the Save sheet (and its
+// list of folders) and Edit Info, into presets-<theme>-<part>.png.
 void renderPresetThemes(const std::filesystem::path &dir, Renderer &renderer) {
     bool all = true;
     for (int t = 0; t < View::themeCount(); ++t) {
@@ -11319,11 +11443,17 @@ void renderPresetThemes(const std::filesystem::path &dir, Renderer &renderer) {
         shot("6-new-folder", &browser);
         view.typeKey(View::Key::Escape);
         view.dialogKey(View::Key::Escape); // the browser closes
-        const Rect middle{180.0f, 30.0f, 840.0f, 520.0f}; // the Save dialog, under the preset bar
+        const Rect middle{180.0f, 30.0f, 840.0f, 520.0f}; // the Save sheet, under the preset bar
         click(view, detail::toolbarButton(3).center()); // Save As
         view.mouseMove(away, {});
         shot("8-save", &middle);
-        click(view, {268.0f, 279.0f}); // its + New, first on the chips' third row
+        const SaveSheetAt sheet = saveSheet(3);
+        click(view, sheet.folder().center()); // its list of folders, reaching further down
+        view.mouseMove(sheet.listRow(5), {});
+        const Rect deeper{180.0f, 30.0f, 840.0f, 680.0f};
+        shot("8b-save-folders", &deeper);
+        view.typeKey(View::Key::Escape); // the list closes
+        click(view, sheet.chip(10)); // its + New, first on the chips' third row
         type(view, "Vocal");
         shot("7-new-category", &middle);
         view.typeKey(View::Key::Escape);
