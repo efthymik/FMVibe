@@ -775,7 +775,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the dashed cards that add effects and sources (opening the list of types at the mouse, the effects' moved back
     inside the editor at the chain's right end and staying over a switched-off card's dimming, read off the rendered
     pixels; the sources' closing
-    at a click around it, and shutting with the panel for good), and the arrow between two effects adding one there;
+    at a click around it, and shutting for good as the SEQ view covers their panel), and the arrow between two effects adding one there;
   - picking the oversampling, MPE and its bend range (leaving the patch alone), the theme (Spectrum, the default, and Porcelain first in its list) and the depth handles'
     size (drawn bigger at each, read off the rendered pixels), and dragging the hue slider (the accent taking its hue, read off the rendered pixels), the glow slider, the lines slider (a source's dashed line drawn as strongly as it says, and not at all when off, read off the rendered pixels) and the grid slider, a double-click putting each back where it starts and each showing its tooltip under it while the mouse rests on it and not while it is dragged (read off the rendered pixels), in the settings dialog (with the editor rendered in each theme, and glowing), its book opening the user manual and
     leaving it open, closing it with its x
@@ -821,7 +821,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     tools inverting, reversing and shifting the shape (each one undo step) and copying it into another Curve source (one card
     widened at a time), its title row's expand button widening it as a click on its display does, Steps drawing a step with a plain click and Snap snapping a point unless Ctrl is held, its
     full-size editor greying the card's editor out (taking no clicks) until it closes, by its done button or a view
-    tab, the card staying widened, also while the modulation panel collapses, and the
+    tab, the card staying widened, also while the SEQ view covers the modulation panel, and the
     card back to its size by its collapse button;
   - an LFO's shape list (going with the LFO undone, offering no Random or Custom shape, the wheel stepping along it
     to Square), a Random
@@ -892,6 +892,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     whole ones (a tenth with Shift), held to 20-999, and typed after a double-click or Ctrl+Click (`BPM` after it
     taken, text that isn't a tempo and Escape leaving it), none of it touching the patch, its undo history or the
     host's tempo;
+  - the SEQ view covering the modulation panel, as tall as the editor was, its source cards and title taking no clicks;
   - the SEQ tab, between FX and MODS (a note put down by a double-click and held dragged across lengthening it, to the right its end, to the left its start): its card and an empty roll, and a dot on the tab while the sequencer is on (read
     off the rendered pixels), as on FX's while an effect in the line is switched on; a slight line parting the roll from the lane in every theme (read off the rendered pixels); a double-click putting a note down on its step (a
     step long at 1/16) and on the note deleting it; the notes and the playhead where the telemetry puts it (read off
@@ -917,7 +918,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     one of several picked picking it alone, and the arrow over empty space; Delete removing the notes picked; a note or key clicked in the
     roll heard alone while held (not played as the keyboard's, a key clicked quickly twice heard twice), a note moved heard on its new row; the middle button
     panning it across and up and down, and Alt+wheel zooming the rows
-    in about the row under the mouse, the rows' bar at its right scrolling them; the scale's list opening above its button with both panels collapsed; a note put down by a double-click heard
+    in about the row under the mouse, the rows' bar at its right scrolling them; the scale's list opening under its button in the shortest editor (the keyboard collapsed); a note put down by a double-click heard
     while the button is held; the lane
     on CHANCE setting a note's chance; on BEND the lane's grid lines (read off the rendered pixels), with Select a
     click doing nothing (no pen) and a Ctrl+double-click putting a point down on the grid and a Ctrl+drag moving it
@@ -958,7 +959,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the editor in a hidden host window: one at a time, resized keeping its aspect ratio, a preset loaded by the
     preset bar's arrow with no edits (kParamValuesChanged and the project marked changed instead), the Volume knob dragged
     (beginEdit, performEdit, endEdit, and an older value the host hands back right after not taken), a state with
-    the modulation panel collapsed asking the host for a shorter window, its window gone once it is removed, and
+    the keyboard strip collapsed asking the host for a shorter window, its window gone once it is removed, and
     opening again after.
 - **User manual** (`tools/manual.py`, `cmake/manual.cmake`): turns `docs/manual.md` into the one self-contained
   HTML file the release ships, `FMVibe-Manual.html` in the build folder (its styles inline, the screenshots as data
@@ -1397,7 +1398,7 @@ itself.
   operator's Warp Amount on a Sync warp and the depths on it load scaled by
   `(kRetiredMaxSyncWarp - 1) / (kMaxSyncWarp - 1)`, since it now plays its wave up to 16 times a cycle rather than 8),
   followed by the editor layout:
-  node, filter and shaper positions, selected node, zoom, the routing view, whether the modulation panel is collapsed,
+  node, filter and shaper positions, selected node, zoom, the routing view, a retired field (once whether the modulation panel was collapsed, which it no longer is),
   the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names, which
   effect and source cards are folded, whether the keyboard strip is collapsed, the operator page's tab, the
   scope's cycle count, the wires bent away from their first bow (by route), the MODS view's empty modulations

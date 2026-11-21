@@ -118,12 +118,13 @@ From top to bottom, the plugin window has:
 - The **view tabs**: **ROUTING**, **MATRIX**, **FX**, **SEQ** and **MODS**, which choose what the main panel shows.
   While ROUTING or MATRIX is shown, an **ALGORITHM** button sits at the right end of the row.
 - The **main panel**. In ROUTING and MATRIX it shows the routing graph or matrix, with the **inspector** floating
-  over its left end. FX, SEQ and MODS use the whole panel.
+  over its left end. FX, SEQ and MODS use the whole panel. SEQ also covers the modulation panel, for a taller piano
+  roll.
 - The **modulation panel**: the source cards.
 - The **keyboard strip**: macros, the note and velocity sources, the pitch and mod wheels and a six-octave keyboard.
 
-The plugin window can be resized and keeps its aspect ratio. The modulation panel and the keyboard strip can each be
-collapsed to their title row, which makes the plugin window shorter. A tab shows a dot when its content is active: FX
+The plugin window can be resized and keeps its aspect ratio. The keyboard strip can be collapsed to its title row,
+which makes the plugin window shorter. A tab shows a dot when its content is active: FX
 while an effect is switched on, SEQ while the sequencer is on.
 
 ## 5. Header
@@ -614,7 +615,6 @@ recent note. With no notes playing, it shows where the macros and mod wheel take
 
 The panel's title row has:
 
-- **MODULATION**, which collapses the panel to its title row and opens it again.
 - **+ SOURCE**, which opens the list of source types (Envelope, LFO, Curve, Random, MIDI), and a count of sources
   used (for example 4/16).
 
@@ -1130,8 +1130,8 @@ The display shows the stereo field over frequency, with handles for each control
 
 ## 12. Sequencer
 
-FMVibe has a built-in sequencer that plays the synth's own notes. Edit it in the **SEQ** view; switch it on with the
-power switch on its settings card.
+FMVibe has a built-in sequencer that plays the synth's own notes. Edit it in the **SEQ** view, which takes the space
+of the modulation panel too, for a taller piano roll; switch it on with the power switch on its settings card.
 
 ![Sequencer](seq.png)
 

@@ -269,7 +269,7 @@ void SeqPanel::poll(const Telemetry &t, std::vector<Rect> &repaint) {
     if (seqFollowKeys(t) && wide())
         moved = true;
     if (moved)
-        repaint.push_back(kPanelsBand);
+        repaint.push_back(kSeqBand); // down over the modulation panel's place
 }
 
 // The roll scrolling under a drag held at its edge; and a patch loaded (a preset, Init, the host's state), the roll

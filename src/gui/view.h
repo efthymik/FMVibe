@@ -382,6 +382,11 @@ private:
     // The FX view, the shaper's curve editor that opens from it, or an LFO's shape editor takes the inspector's
     // place (see InspectorPanel::covered()).
     bool inspectorCovered() const;
+    // The SEQ view reaches down over the modulation panel too: while it shows, the source cards and the panel's title
+    // row are hidden (a full-size editor over the panels' row leaves them in view).
+    bool sourcesHidden() const;
+    // The band the panels' row keeps to: kPanelsBand, or kSeqBand while the SEQ view shows.
+    Rect panelsBand() const;
     void flipSwitch(int param); // as a click on its switch flips it
     // While an LFO's or envelope's handle, or a card of the row, is dragged near either end of a row of cards, the
     // row scrolls that way.

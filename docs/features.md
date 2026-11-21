@@ -927,7 +927,7 @@ switching one on and wiring it in is the whole job.
 ## Editor
 
 The editor is drawn with Direct2D and scales freely: hosts can resize it, and it keeps its aspect ratio. Collapsing
-the modulation panel or the keyboard strip makes it shorter (the plugin asks the host to resize the window). It keeps
+the keyboard strip makes it shorter (the plugin asks the host to resize the window). It keeps
 its size as it is scaled on the monitor its window is on: in a host aware of each monitor's scaling, opened on (or
 moved to) one scaled otherwise than the main one, it asks the host for the size at that scaling. While
 only what keeps to its place moves (the output meter and scope and the playing count in the header, the keys, an
@@ -948,7 +948,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
 
 - **ROUTING / MATRIX / FX / SEQ / MODS** tabs, under the header, pick what the panel below them shows: the routing
   graph or the matrix (two views of the same connections) with the inspector floating over the panel's left end, or
-  across the whole panel the effects chain, the sequencer or every modulation. The
+  across the whole panel the effects chain, the sequencer or every modulation. The sequencer's view reaches down
+  over the modulation panel too, as tall as the two together; the source cards come back with another view. The
   choice is saved with the project, but loading a preset or Init leaves the tab shown (and the FX view's row or graph)
   as it is. They are folder tabs: the one shown is part of the panel under it, its outline
   curving into the panel's edge (ROUTING, in line with the panel's left edge, runs straight on down it), with the
@@ -957,7 +958,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   and SEQ while the sequencer is on. While the full-size shape, shaper curve or partial editor has the panels, no tab
   is shown, and clicking one closes the editor (a widened LFO card's shape stays in its card).
 - **SEQ** (the sequencer, see [Sound engine](#sound-engine)): its settings on a card where the inspector floats, and
-  the roll of the pattern picked in the rest.
+  the roll of the pattern picked in the rest, down to the modulation panel's bottom, which it covers; under the card
+  the view is empty for now.
   - **The card**: the sequencer's power switch; **PATTERN** A to D (the one picked plays and shows in the roll) and a
     button that copies it, its length, loop, notes and curves, into the next empty pattern (no notes, and no points
     on its curves); **PLAY** Host | Key | Latch; the
@@ -1589,8 +1591,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     full-size button (two arrows pointing apart); another shape, folding the card and removing it take it back to
     its size too. Every edit applies as it is
     made, so there is no done button. One card is widened at a time: widening another takes the first one back.
-    Collapsing the modulation panel leaves the card as it was, widened or not, for when the panel opens again; it
-    isn't saved with the patch. The full-size button opens the shape over the routing panel and the inspector,
+    The SEQ view covering the modulation panel leaves the card as it was, widened or not, for when the panel shows
+    again; it isn't saved with the patch. The full-size button opens the shape over the routing panel and the inspector,
     which it hides while it is open, the card staying widened under it with its own editor greyed out (it takes no
     input there meanwhile); the done button (a check mark, top right) closes it, as a view tab does, and the card's
     editor is back in use.
@@ -1819,10 +1821,10 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     like the filter effect's, is what the filter puts out, all voices together, measured before its output level
     (the Param EQ's analyzer: a 2048-point FFT in 96 bands, 0 dB at the top), while the editor is open; a filter
     that is off shows none. Underneath are the send knobs of everything that feeds the filter.
-- **Modulation**: the panel's title row has the **MODULATION** toggle, which collapses the panel to that row and
-  opens it again (the editor gets shorter; saved with the project, but not part of presets), then **+ SOURCE**,
+- **Modulation**: the panel's title row has its title, **MODULATION** (the panel doesn't collapse; the SEQ view
+  covers it), then **+ SOURCE**,
   shaped like + EFFECT (a drawn plus, the word and a chevron), which opens the list of source types under it to add
-  one (which opens a collapsed panel), and beside it how many of the 16 places are taken, as in 4/16 (with every
+  one, and beside it how many of the 16 places are taken, as in 4/16 (with every
   place taken it is dimmed, and a click says so). Random and Curve cards are laid out as an LFO's (see below), but
   have **Unipolar** | **Bipolar** (as icons) where an LFO's shape list is, one of them lit, which sets which way their
   depths swing, as the polarity in its title's menu does, and no Unipolar switch; a Random card has no Phase knob. A MIDI card has its input's list (CC,
@@ -2047,10 +2049,10 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   right end, velocity; under them the
   wheels and six octaves of virtual keys, from C1 to C7 (the small − and + buttons under their right end, the
   range between them, shift them by an octave). Each wheel's handle sits over it, under the strip's title. The toggle
-  (a chevron and the title, like the modulation panel's, as far from the strip's top) collapses the strip to its top
+  (a chevron and the title, as far from the strip's top as the modulation panel's title from its) collapses the strip to its top
   row, taking the wheels, the keys and the octave shift away; the wheels' handles stay, their names (BEND, MOD) then
   under them, so the wheels can still be assigned. Whether it is
-  collapsed is kept with the editor, like the modulation panel's, and loading a
+  collapsed is kept with the editor, and loading a
   preset leaves it as it is. A key plays as hard as where it is clicked: velocity 1 at its top, 127 at its bottom
   (a black key along its own height). Drag across the keys to glide between notes, each key struck as hard as where
   the mouse enters it. Keys light up while they are held, whether clicked here or

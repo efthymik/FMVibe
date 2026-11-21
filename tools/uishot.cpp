@@ -604,7 +604,8 @@ constexpr Point kSaveButton{1102.0f, 18.0f};
 constexpr Point kSaveAsButton{1136.0f, 18.0f};
 constexpr Point kSettingsButton{1170.0f, 18.0f};
 const Point kOpFTab = detail::nodeTabRect(kOps - 1).center();
-constexpr Point kSourcesToggle{60.0f, 541.0f};
+constexpr Point kModTitle{60.0f, 541.0f}; // the modulation panel's title, which takes no click
+const Point kKeysToggle = detail::keysToggle(detail::keyboardTop()).center();
 
 // The modulation panel: chips and add buttons in its title row, then four cards, 277 wide (and after them the
 // dashed cards that add sources, 93 wide), at screen places 0..3, fractions while scrolled.
@@ -4353,13 +4354,13 @@ void testWideLfoCard(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, lfoTool(wideCard, 0));
     const bool restored = pointValue(2, 0, PointField::Y) == -firstLevel;
     view.undo();
-    // Collapsing the modulation panel and opening it again leaves the card widened.
-    click(view, kSourcesToggle);
-    click(view, kSourcesToggle);
+    // The SEQ view covering the modulation panel and going again leaves the card widened.
+    click(view, detail::kViewTabs[static_cast<int>(RoutingView::Seq)].center());
+    click(view, kRoutingTab);
     const bool kept = switches(powerAt(2, 2.0f), 2);
     check(covered && greyed && bigShot && back && restored && kept,
           "the full-size editor greys the widened card's editor out until it closes, by its done button or a tab, "
-          "and the card stays widened while the panel collapses");
+          "and the card stays widened while the SEQ view covers it");
     // Back to its size by its collapse button; its display widens it again.
     click(view, wideButton(wideCard, 0));
     const bool collapsed = switches(sourcePower(2), 2);
@@ -5785,7 +5786,7 @@ void testPartialRepaint(const std::filesystem::path &dir, Renderer &renderer) {
     // moves and nothing is edited, and stopped, each wheel is back where its param stands (read off the rendered pixels).
     {
         const int pitchBend = paramIndex(GlobalParam::PitchBend), modWheel = paramIndex(GlobalParam::ModWheel);
-        const float keysTop = detail::keyboardTop(model.ui.sourcesCollapsed);
+        const float keysTop = detail::keyboardTop();
         const Rect keysPanel = detail::keyboardPanel(keysTop, model.ui.keysCollapsed);
         const Rect bendRect = detail::bendWheel(keysTop), modRect = detail::modWheel(keysTop);
         // Where a wheel's level line is: the brightest row down its middle.
@@ -6234,8 +6235,8 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         check(on != off, "the SEQ tab shows a dot while the sequencer is on");
     }
     check(model.ui.view == RoutingView::Seq && emptyShot, "the SEQ tab shows the sequencer's card and an empty roll");
-    // A bar of 16 steps across the grid, 22 rows from C3 (48) up.
-    const float rh = kSeqGrid.h / 22.0f;
+    // A bar of 16 steps across the grid, rows from C3 (48) up, as many as fit kSeqRowH high.
+    const float rh = kSeqGrid.h / std::floor(kSeqGrid.h / detail::kSeqRowH);
     auto at = [&](double step, int pitch) {
         return Point{kSeqGrid.x + static_cast<float>(step) * kSeqGrid.w / 16.0f,
                      kSeqGrid.y + kSeqGrid.h - (static_cast<float>(pitch - 48) + 0.5f) * rh};
@@ -6381,9 +6382,11 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         model.set(seqNoteIndex(0, 31, SeqNoteParam::Start), 0.0);
         model.clearHistory();
         view.poll();
+        // Refitted to the notes left (C3 up), the rows kSeqRowH high again: the top one under E7.
         const int lowRefit = model.ui.seqLow;
+        const int rows = static_cast<int>(std::floor(kSeqGrid.h / detail::kSeqRowH));
         std::printf("      fitted to a patch loaded: rows from %d, then %d\n", lowFitted, lowRefit);
-        check(fitShot && lowFitted <= 30 && lowRefit > 30 && lowRefit <= 48,
+        check(fitShot && lowFitted <= 30 && lowRefit + rows - 1 < 100 && lowRefit <= 48,
               "a patch loaded fits the roll to its notes");
         model.ui.seqLow = lowBefore;
     }
@@ -6544,20 +6547,24 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
               field(0, SeqNoteParam::Pitch) == 48.0,
           "Ctrl+A picks every note, and the arrows move them a step, a semitone and with Shift an octave, undoably");
     // Shift+Up moves the rows only as far as shows every note moved: every note picked (C3 to A#3), up an octave to
-    // C4 to A#4, past the top row (A4), takes them up a row; the first alone, to C4, leaves them where they are.
+    // C4 to A#4, past the top row (A4, the rows scrolled down to end there), takes them up a row; the first alone, to
+    // C4, leaves them where they are.
     {
+        const int lowAt48 = model.ui.seqLow;
+        const int shift = 48 - (69 - static_cast<int>(std::floor(kSeqGrid.h / detail::kSeqRowH)) + 1);
+        model.ui.seqLow = 48 - shift; // at() then puts a pitch `shift` rows lower
         view.seqKey(View::Key::SelectAll, false);
         const int lowBefore = model.ui.seqLow;
         view.seqKey(View::Key::Up, true);
         const int lowAll = model.ui.seqLow;
         view.undo();
         model.ui.seqLow = lowBefore;
-        click(view, at(15.5, 66)); // nothing picked
-        click(view, at(0.5, 48));  // the first note
+        click(view, at(15.5, 66 + shift)); // nothing picked
+        click(view, at(0.5, 48 + shift));  // the first note
         view.seqKey(View::Key::Up, true);
         const int lowOne = model.ui.seqLow;
         view.undo();
-        model.ui.seqLow = lowBefore;
+        model.ui.seqLow = lowAt48;
         std::printf("      rows from %d: an octave up from %d with every note, %d with one\n", lowBefore, lowAll, lowOne);
         check(lowAll == lowBefore + 1 && lowOne == lowBefore,
               "an octave's move takes the rows only as far as shows every note moved");
@@ -7281,19 +7288,17 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
     }
     click(view, {detail::kSeqCard.x + detail::kSeqCard.w - 12.0f - 27.0f, detail::kSeqScaleY + 11.0f});
 
-    // With the modulation panel and the keyboard collapsed, the editor too short for the list under its button: it opens
-    // above it, all of it inside the editor, and its last entry picks Blues.
-    model.ui.sourcesCollapsed = true;
+    // With the keyboard collapsed, the editor at its shortest (the modulation panel doesn't collapse), the list still
+    // opens under its button, all of it inside the editor, and its last entry picks Blues.
     model.ui.keysCollapsed = true;
     click(view, rectCenter(scaleButton));
     view.mouseMove({600.0f, 100.0f}, {});
     const bool shortShot = renderer.save(view, dir / "36d-seq-scale-short.png");
-    const Point blues{scaleButton.x + 60.0f, scaleButton.y - 4.0f - 4.0f - 22.0f + 11.0f}; // its last row, just above
+    const Point blues{scaleButton.x + 60.0f, scaleButton.y + 22.0f + 4.0f + 4.0f + 11.0f * 22.0f + 11.0f}; // its last row
     click(view, blues);
-    check(shortShot && view.height() < scaleButton.y + 22.0f + 4.0f + 8.0f + 12.0f * 22.0f &&
+    check(shortShot && view.height() >= scaleButton.y + 22.0f + 4.0f + 8.0f + 12.0f * 22.0f &&
               model.value(paramIndex(SeqParam::Scale)) == static_cast<double>(SeqScale::Blues),
-          "the scale's list opens above its button where it would reach past the editor's bottom");
-    model.ui.sourcesCollapsed = false;
+          "the scale's list opens under its button in the shortest editor, inside it");
     model.ui.keysCollapsed = false;
 
     // Zoomed in across by its + twice (2.25 times, about the middle step 8), the roll shows from step 4.4: a
@@ -7807,7 +7812,7 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     // The bend wheel is the Pitch Bend param: dragged, it edits it in one gesture, which a host follows (as Bitwig
     // shows the param's automation), springing back to the middle as it is let go, and leaves nothing to undo.
     {
-        const Rect wheel = detail::bendWheel(detail::keyboardTop(false));
+        const Rect wheel = detail::bendWheel(detail::keyboardTop());
         const int bendParam = paramIndex(GlobalParam::PitchBend);
         const UndoStep *before = model.nextUndo();
         model.begun.clear();
@@ -7879,7 +7884,7 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     // A key plays as hard as where it is clicked: velocity 1 at its top, 127 at its bottom, a black key's along its
     // own height; and a drag across the keys strikes each key it enters as hard as where the mouse enters it.
     {
-        const float top = detail::keyboardTop(model.ui.sourcesCollapsed) + detail::kKeys.y;
+        const float top = detail::keyboardTop() + detail::kKeys.y;
         const float bottom = top + detail::kKeys.h, blackBottom = top + detail::kBlackH;
         const float c1 = detail::kKeys.x + 4.0f, cSharp1 = detail::kKeys.x + detail::kWhiteW;
         const float d1 = detail::kKeys.x + 1.5f * detail::kWhiteW;
@@ -8453,13 +8458,13 @@ void testSourceShadow(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove({cardX(2) + 46.0f, 628.0f}, {});
     check(menuShot && lfo && closed && env && renderer.save(view, dir / "29-source-shadow.png"),
           "the dashed card after the sources opens the list of source types at the mouse, which adds the one picked");
-    // Left open while the panel collapses (as a state load or another editor can do), the list shuts with it, and
-    // doesn't come back when the panel opens again: a click where its LFO entry was opens it afresh instead.
+    // Left open while the SEQ view comes over the panel (as a state load or another editor can show it), the list shuts
+    // with it, and doesn't come back when the panel shows again: a click where its LFO entry was opens it afresh instead.
     const Point third{cardX(2) + 46.0f, 628.0f};
     click(view, third);
-    model.ui.sourcesCollapsed = true;
+    model.ui.view = RoutingView::Seq;
     view.poll();
-    model.ui.sourcesCollapsed = false;
+    model.ui.view = RoutingView::Graph;
     view.poll();
     click(view, entry(third, SourceType::Lfo));
     check(shown(model) == std::vector<int>{0, 1}, "the list of source types shuts when its dashed card goes");
@@ -13013,7 +13018,7 @@ void run(const std::filesystem::path &dir, float scale) {
     // rendered pixels: C3's key, clear of its name and the black keys).
     {
         const Point c3{detail::kKeys.x + (24 / 12 * 7) * detail::kWhiteW + 4.0f,
-                       detail::keyboardTop(false) + detail::kKeys.y + detail::kKeys.h - 4.0f};
+                       detail::keyboardTop() + detail::kKeys.y + detail::kKeys.h - 4.0f};
         renderer.save(view, dir / "5-keys-off.png");
         const uint32_t off = renderer.pixel(c3);
         for (int key : {48, 52, 55})
@@ -14020,7 +14025,7 @@ void run(const std::filesystem::path &dir, float scale) {
     check(renderer.save(view, dir / "11-sources.png"), "render six sources, scrolled");
 
     // A source with modulations has the button that shows them in MODS, counting them, under its display.
-    view.wheel(kSourcesToggle, 10.0f, {}); // the first card back in view
+    view.wheel(kModTitle, 10.0f, {}); // the first card back in view
     for (int k = 0; k < 5; ++k) {
         model.set(slotTargetIndex(0, kSlots - 1 - k), slotTargetValue(paramIndex(k, OpParam::Phase)));
         model.set(slotAmountIndex(0, kSlots - 1 - k), 0.1 * (k + 1));
@@ -14035,22 +14040,29 @@ void run(const std::filesystem::path &dir, float scale) {
     view.mouseMove({400.0f, 328.0f}, {});
     check(renderer.save(view, dir / "12-sources-full.png"), "render 16 sources");
 
-    // Collapsed, the modulation panel keeps its title row and the editor gets shorter.
-    const float open = view.height();
-    click(view, kSourcesToggle);
-    check(layout.sourcesCollapsed && view.height() == open - 216.0f, "the toggle collapses the modulation panel");
-    view.mouseMove({400.0f, 328.0f}, {});
-    check(renderer.save(view, dir / "13-collapsed.png"), "render the collapsed modulation panel");
-    click(view, kSourcesToggle);
-    check(!layout.sourcesCollapsed && view.height() == open, "the toggle opens the panel again");
+    // The SEQ view covers the modulation panel, as tall as the editor was: its cards take no clicks, and its title
+    // none either.
+    {
+        const float open = view.height();
+        const double on = model.value(sourceEnabledIndex(0));
+        click(view, detail::kViewTabs[static_cast<int>(RoutingView::Seq)].center());
+        click(view, sourcePower(0));
+        view.mouseMove({400.0f, 328.0f}, {});
+        const bool seqShot = renderer.save(view, dir / "13-seq-over-sources.png");
+        const bool covered = model.value(sourceEnabledIndex(0)) == on && view.height() == open;
+        click(view, kRoutingTab);
+        click(view, kModTitle);
+        check(seqShot && covered && view.height() == open && model.value(sourceEnabledIndex(0)) == on,
+              "the SEQ view covers the modulation panel, whose title takes no click");
+    }
 
     // Init and Load ask before throwing away a changed patch; Save As never asks.
     const Rect confirm{420.0f, std::round((view.height() - 150.0f) * 0.5f), 360.0f, 150.0f};
     const Point cancel{confirm.x + 170.0f + 40.0f, confirm.bottom() - 38.0f};
     const Point ok{confirm.right() - 64.0f, confirm.bottom() - 38.0f};
     click(view, kInitButton);
-    click(view, kSourcesToggle); // around the dialog: cancels it
-    check(model.resets == 1 && !layout.sourcesCollapsed, "a click around the confirm dialog cancels it");
+    click(view, kModTitle); // around the dialog: cancels it
+    check(model.resets == 1, "a click around the confirm dialog cancels it");
     click(view, kInitButton);
     view.mouseMove(ok, {});
     check(renderer.save(view, dir / "15-confirm.png"), "render the confirm dialog");
@@ -14334,12 +14346,12 @@ void run(const std::filesystem::path &dir, float scale) {
     view.mouseMove(cog, {});
     check(renderer.save(view, dir / "14b-settings-closed.png"), "render the cog after the dialog closed");
     click(view, cog);
-    click(view, kSourcesToggle);
-    check(!layout.sourcesCollapsed && model.oversamplingFactor == 4,
+    click(view, kKeysToggle);
+    check(!layout.keysCollapsed && model.oversamplingFactor == 4,
           "a click around the dialog only closes it");
-    click(view, kSourcesToggle);
-    check(layout.sourcesCollapsed, "once it is closed, the editor takes clicks again");
-    click(view, kSourcesToggle);
+    click(view, kKeysToggle);
+    check(layout.keysCollapsed, "once it is closed, the editor takes clicks again");
+    click(view, kKeysToggle);
     runMore(dir, renderer);
     // The README's, in the default theme (see release.ps1): Screamer's routing, Crystal Motion's effects as a chain and
     // Neon Pluck's as a graph, split low and high.

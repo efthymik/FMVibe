@@ -340,15 +340,19 @@ constexpr float kFxGap = 22.0f; // room for the plus that adds an effect between
 constexpr float kFxRowLeft = 8.0f + kFxGap;
 constexpr float kFxCardW = (kFxPanel.w - kFxRowLeft - 16.0f - (kVisibleFx - 1) * kFxGap) / kVisibleFx;
 constexpr float kFxTop = kRouting.y + 48.0f;
-// The SEQ view covers them too: the sequencer's settings on a card where the inspector floats, and the roll of the
-// pattern picked in the rest, under a row of tools: the piano keys at its left, the bars over it, a lane of one value a
-// note under it and the lane's tabs under that. Its rows are kSeqRowH high, as many as fit.
+// The SEQ view covers them too, and the modulation panel under them (kModPanel, whose bottom it shares), so it is
+// as tall as both and the gap between: the sequencer's settings on a card where the inspector floats, and the roll of
+// the pattern picked in the rest, under a row of tools: the piano keys at its left, the bars over it, a lane of one
+// value a note under it and the lane's tabs under that. Its rows are kSeqRowH high, as many as fit.
+constexpr Rect kSeqPanel{kFxPanel.x, kPanelsTop, kFxPanel.w, kRouting.h + 16.0f + 258.0f};
+// The editor's band the SEQ view keeps to, as kPanelsBand is the panels' row's (see View::panelsBand()).
+constexpr Rect kSeqBand{0.0f, kHeaderH, View::kWidth, kSeqPanel.y + kSeqPanel.h - kHeaderH};
 constexpr Rect kSeqCard = kInspector;
 constexpr float kSeqCardX = kSeqCard.x + 12.0f;       // the card's labels
 constexpr float kSeqCardControls = kSeqCard.x + 76.0f; // and the controls after them
 constexpr Rect kSeqTools{kRouting.x + 4.0f, kPanelsTop + 10.0f, 1172.0f - kRouting.x - 4.0f, 24.0f};
 constexpr Rect kSeqBox{kSeqTools.x, kSeqTools.y + kSeqTools.h + 8.0f, kSeqTools.w,
-                       kPanelsTop + 372.0f - 10.0f - (kSeqTools.y + kSeqTools.h + 8.0f)};
+                       kSeqPanel.y + kSeqPanel.h - 10.0f - (kSeqTools.y + kSeqTools.h + 8.0f)};
 constexpr float kSeqKeysW = 44.0f, kSeqRulerH = 20.0f, kSeqLaneH = 52.0f, kSeqLaneTabsH = 22.0f, kSeqRowH = 10.0f;
 constexpr float kSeqScrollW = 12.0f; // the rows' scroll bar, at the grid's right
 constexpr Rect kSeqKeys{kSeqBox.x, kSeqBox.y + kSeqRulerH, kSeqKeysW,
@@ -499,9 +503,9 @@ constexpr Color kMeterRed = Color::hex(0xEF4444);
 // param to modulate it, click it to bring its card into view) and the buttons
 // that add sources, then the sources' cards, kVisibleCards at a time, in the
 // order they show (UiLayout::sourceOrder).
-// Open, tall enough for a card's button under its display to end 12 px above its bottom.
+// Tall enough for a card's button under its display to end 12 px above its bottom. The SEQ view covers it.
 constexpr Rect kModPanel{16.0f, kPanelsTop + 372.0f + 16.0f, 1168.0f, 258.0f};
-constexpr float kModBarH = 42.0f; // the title row: all that shows while collapsed
+static_assert(kModPanel.y + kModPanel.h == kSeqPanel.y + kSeqPanel.h);
 constexpr int kVisibleCards = 4;
 constexpr float kCardGap = 12.0f;
 constexpr float kCardW = (kModPanel.w - 24.0f - (kVisibleCards - 1) * kCardGap) / kVisibleCards;
@@ -509,11 +513,8 @@ constexpr float kCardTop = kModPanel.y + 44.0f;
 constexpr float kCardH = kModPanel.y + kModPanel.h - 18.0f - kCardTop; // the scrollbar goes under them
 constexpr float kAddSourceX = kModPanel.x + 112.0f;
 
-inline Rect modPanel(bool collapsed) {
-    return {kModPanel.x, kModPanel.y, kModPanel.w, collapsed ? kModBarH : kModPanel.h};
-}
-
-inline Rect sourcesToggle() {
+// The panel's title, at its top left; the keyboard strip's chevron and title sit as far into it (keysToggle()).
+inline Rect modTitle() {
     return {kModPanel.x + 8.0f, kModPanel.y + 8.0f, 100.0f, 26.0f};
 }
 
@@ -1282,15 +1283,15 @@ constexpr float kKeyboardH = 192.0f;
 constexpr float kKeyboardBarH = 80.0f;
 constexpr Rect kKeys{130.0f, 76.0f, 1046.0f, 98.0f}; // relative to the strip's top
 constexpr float kStripRow = 29.0f;                   // the middle of the row above the keys, below the strip's top
-inline float keyboardTop(bool sourcesCollapsed) {
-    return modPanel(sourcesCollapsed).bottom() + 16.0f;
+inline float keyboardTop() {
+    return kModPanel.bottom() + 16.0f;
 }
 inline Rect keyboardPanel(float top, bool collapsed) {
     return {16.0f, top, 1168.0f, collapsed ? kKeyboardBarH : kKeyboardH};
 }
 // The chevron and the title, as far from the strip's top as the modulation panel's from its.
 inline Rect keysToggle(float top) {
-    const Rect sources = sourcesToggle();
+    const Rect sources = modTitle();
     return {sources.x, top + sources.y - kModPanel.y, sources.w, sources.h};
 }
 // The macros in a row above the keys, close together from the keys' left end: a knob each, its name under it
