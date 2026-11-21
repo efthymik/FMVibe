@@ -369,6 +369,24 @@ void TextField::selectWord(float x) {
     caret = to;
 }
 
+size_t TextField::wordBefore(std::string_view text, size_t at) {
+    at = std::min(at, text.size());
+    while (at > 0 && text[at - 1] == ' ')
+        --at;
+    while (at > 0 && text[at - 1] != ' ')
+        --at;
+    return at;
+}
+
+size_t TextField::wordAfter(std::string_view text, size_t at) {
+    at = std::min(at, text.size());
+    while (at < text.size() && text[at] != ' ')
+        ++at;
+    while (at < text.size() && text[at] == ' ')
+        ++at;
+    return at;
+}
+
 bool TextField::key(Key key, bool extend) {
     const auto [from, to] = selection();
     // The caret to `at`; extending (Shift held), the selection grows or shrinks with it, else there is none.
@@ -394,6 +412,12 @@ bool TextField::key(Key key, bool extend) {
         break;
     case Key::Right:
         moveTo(from != to && !extend ? to : after(caret));
+        break;
+    case Key::WordLeft: // from the caret, as a text field does with Ctrl, a selection or not
+        moveTo(wordBefore(text, caret));
+        break;
+    case Key::WordRight:
+        moveTo(wordAfter(text, caret));
         break;
     case Key::Home:
         moveTo(0);

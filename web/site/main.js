@@ -36,6 +36,7 @@ const TYPING_KEYS = { // View::Key
   Enter: 0, NumpadEnter: 0, Escape: 1, Backspace: 2, Delete: 3, ArrowLeft: 4, ArrowRight: 5, Home: 6, End: 7,
   ArrowUp: 9, ArrowDown: 10,
 };
+const WORD_KEYS = { ArrowLeft: 17, ArrowRight: 18 }; // View::Key: Word Left, Word Right (Ctrl, or Option on a Mac)
 const SELECT_ALL = 8;
 const SEQ_CTRL_KEYS = { KeyA: SELECT_ALL, KeyC: 11, KeyX: 12, KeyV: 13, KeyD: 16 }; // View::Key: Select All, Copy, Cut, Paste, Duplicate
 
@@ -611,6 +612,8 @@ window.addEventListener('keydown', (e) => {
     e.preventDefault();
     if (ctrlOf(e) && e.code === 'KeyA')
       ui._ui_type_key(SELECT_ALL, 0);
+    else if ((e.ctrlKey || e.altKey) && e.key in WORD_KEYS)
+      ui._ui_type_key(WORD_KEYS[e.key], e.shiftKey ? 1 : 0);
     else if (e.code in TYPING_KEYS || e.key in TYPING_KEYS)
       ui._ui_type_key(TYPING_KEYS[e.code] ?? TYPING_KEYS[e.key], e.shiftKey ? 1 : 0);
     else if (!ctrlOf(e) && !e.altKey && [...e.key].length === 1)

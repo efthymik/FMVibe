@@ -1591,6 +1591,7 @@ the main CPU costs.
 | Ctrl+Z | Undo |
 | Ctrl+Y, Ctrl+Shift+Z | Redo |
 | Enter / Escape | Confirm / cancel a dialog or typed value |
+| Ctrl+Left / Ctrl+Right | While typing, move the cursor a word back / forward (with Shift, select) |
 | Escape | Close an open list or menu |
 
 ### Routing graph

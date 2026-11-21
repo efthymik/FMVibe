@@ -710,11 +710,11 @@ bool Editor::key(WPARAM key, LPARAM flags) {
         case VK_DELETE:
             view_.typeKey(View::Key::Delete);
             return true;
-        case VK_LEFT:
-            view_.typeKey(View::Key::Left, shift);
+        case VK_LEFT: // with Ctrl, a word at a time
+            view_.typeKey(ctrl ? View::Key::WordLeft : View::Key::Left, shift);
             return true;
         case VK_RIGHT:
-            view_.typeKey(View::Key::Right, shift);
+            view_.typeKey(ctrl ? View::Key::WordRight : View::Key::Right, shift);
             return true;
         case VK_HOME:
             view_.typeKey(View::Key::Home, shift);

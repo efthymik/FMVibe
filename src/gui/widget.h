@@ -30,7 +30,11 @@ struct MenuItem {
 };
 
 // The keys the window sends while typing goes on or a dialog is open (see View::typing() and View::dialogKey()).
-enum class Key { Enter, Escape, Backspace, Delete, Left, Right, Home, End, SelectAll, Up, Down, Copy, Cut, Paste, Tab, BackTab, Duplicate };
+// WordLeft and WordRight are Ctrl+Left and Ctrl+Right. The browser demo sends them by number (web/site/main.js).
+enum class Key {
+    Enter, Escape, Backspace, Delete, Left, Right, Home, End, SelectAll, Up, Down, Copy, Cut, Paste, Tab, BackTab,
+    Duplicate, WordLeft, WordRight
+};
 
 // What a widget is, which says what its param, a and b mean.
 enum class WidgetKind {
@@ -351,8 +355,13 @@ struct TextField {
     size_t stopAt(float x) const;
     // Selects the word at `x`, up to the spaces either side.
     void selectWord(float x);
-    // Backspace, Delete, the arrows, Home, End and Select All, Shift growing the selection: whether the text
-    // changed. Enter, Escape, Up and Down are the field owner's.
+    // Where Ctrl+Left and Ctrl+Right take the caret from `at` in `text`: the start of the word before it, and the
+    // start of the word after it (or the end), words parted by spaces. A space is ASCII, so either lands on a
+    // character's first byte.
+    static size_t wordBefore(std::string_view text, size_t at);
+    static size_t wordAfter(std::string_view text, size_t at);
+    // Backspace, Delete, the arrows (with Ctrl a word at a time), Home, End and Select All, Shift growing the
+    // selection: whether the text changed. Enter, Escape, Up and Down are the field owner's.
     bool key(Key key, bool extend);
     // Its words, in lower case, and whether `text` holds every one of them, whatever its case.
     std::vector<std::string> words() const;

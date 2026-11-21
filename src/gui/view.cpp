@@ -7930,6 +7930,12 @@ void View::typeKey(Key key, bool shift) {
     case Key::Right:
         t.caret = t.selected || t.caret >= t.text.size() ? t.text.size() : after(t.caret);
         break;
+    case Key::WordLeft: // from the caret, the selection going
+        t.caret = TextField::wordBefore(t.text, t.caret);
+        break;
+    case Key::WordRight:
+        t.caret = TextField::wordAfter(t.text, t.caret);
+        break;
     case Key::Home:
         t.caret = 0;
         break;

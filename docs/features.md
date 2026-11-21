@@ -2235,12 +2235,13 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
       one found is picked; Up and Down pick another from the list (from the preset loaded, before anything is picked),
       and Enter loads the one picked. Escape, or the × in the search, empties it; Escape with nothing typed closes the
       browser, as a click around it or on the preset bar does. The search starts empty each time the browser opens.
-      It edits like a text field: Left and Right move the caret, Home and End jump to the ends, and with Shift they
-      select; a click puts the caret there, a drag or a Shift+click selects, a double-click picks a word, and Ctrl+A
+      It edits like a text field: Left and Right move the caret, with Ctrl a word at a time (to the start of the word
+      before it or after it, words parted by spaces), Home and End jump to the ends, and with Shift they select; a
+      click puts the caret there, a drag or a Shift+click selects, a double-click picks a word, and Ctrl+A
       selects it all. Typing replaces the selection, Backspace and Delete take it out, and Ctrl+C, Ctrl+X and Ctrl+V
       copy, cut and paste (line breaks pasted as spaces, up to 40 characters in all). A search longer than the field
       scrolls to keep the caret in sight. A value typed into a knob copies and pastes too, while all of it is
-      selected. The Save dialog's fields edit the same way.
+      selected, and its caret steps a word at a time with Ctrl too. The Save dialog's fields edit the same way.
   - **Save As** (a disk with a plus) opens the **Save dialog**, one column 540 px wide dropping from the preset bar as
     the info card does: **Name** (the preset's, all selected, to type over) and **Author**, **Category** (a chip for
     each, **None**, and **+ New**, which opens the New Category form), **Description** (with how many of its 80

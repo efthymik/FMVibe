@@ -1866,9 +1866,20 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
         const std::string extended = view.copyText(false);
         doubleClick(view, {end, fieldY});
         const std::string word = view.copyText(false);
+        // Ctrl+Right and Ctrl+Left: a word at a time, with Shift selecting on the way.
+        view.typeKey(View::Key::Home);
+        view.typeKey(View::Key::WordRight);       // before pad
+        view.typeKey(View::Key::WordRight, true); // pad
+        const std::string wordRight = view.copyText(false);
+        view.typeKey(View::Key::WordLeft, true); // back before pad: nothing
+        const bool shrunk = view.copyText(false).empty();
+        view.typeKey(View::Key::WordLeft, true); // "Fac "
+        const std::string wordLeft = view.copyText(false);
         view.typeKey(View::Key::Enter);
         check(dragged == "Fac pad" && selectedShot && placed && extended == "Fac pad" && word == "pad" && model.presetIndex() == 2,
               "the mouse puts the caret in the browser's search and selects in it");
+        check(wordRight == "pad" && shrunk && wordLeft == "Fac ",
+              "Ctrl+Left and Ctrl+Right step the browser's search a word at a time, selecting with Shift");
     }
 
     // Dragging a source's handle to the panel's right end scrolls the cards along.
@@ -11177,6 +11188,25 @@ void testPresetLibrary(const std::filesystem::path &dir, Renderer &renderer) {
         f.insert("cdef"); // typed: as many as fit
         check(whole && stepped && erased && deleted && placed && f.text == "abcd",
               "a text field given UTF-8 cuts, steps, erases and places the mouse between whole characters");
+        // Word by word: over the spaces between words, to a word's start either way, past UTF-8 whole, and from a
+        // selection's caret, Shift keeping its anchor.
+        f.most = 40;
+        f.set("Big  J\xC3\xBCrgen pad"); // Big  Jürgen pad
+        f.key(Key::WordLeft, false);
+        const bool toPad = f.caret == 13;
+        f.key(Key::WordLeft, false);
+        const bool toJurgen = f.caret == 5;
+        f.key(Key::WordLeft, false);
+        f.key(Key::WordLeft, false); // stays at the start
+        const bool toStart = f.caret == 0 && f.anchor == 0;
+        f.key(Key::WordRight, false);
+        const bool overSpaces = f.caret == 5;
+        f.key(Key::WordRight, true);
+        const bool wordPicked = f.selection() == std::pair<size_t, size_t>{5, 13};
+        f.key(Key::WordRight, false);
+        f.key(Key::WordRight, false); // stays at the end
+        check(toPad && toJurgen && toStart && overSpaces && wordPicked && f.caret == f.text.size() && f.anchor == f.caret,
+              "a text field's caret steps a word at a time with Ctrl, over spaces and whole characters");
     }
     type(view, "Opener Two"); // over the name, all of it selected
     view.mouseMove(away, {});
@@ -12590,6 +12620,21 @@ void run(const std::filesystem::path &dir, float scale) {
             view.undo();
             check(backspaced && deleted && model.value(mult) == 3.0,
                   "typing into Mult steps over its × whole, Backspace and Delete taking all of it");
+            // A word at a time: "1 0" typed, Ctrl+Left before the 0 and Ctrl+Right from the start there too, the
+            // space before it backspaced leaving 10.
+            bool wordwise = true;
+            for (View::Key key : {View::Key::WordLeft, View::Key::WordRight}) {
+                doubleClick(view, multNumber);
+                type(view, "1 0");
+                if (key == View::Key::WordRight)
+                    view.typeKey(View::Key::Home);
+                view.typeKey(key);
+                view.typeKey(View::Key::Backspace);
+                view.typeKey(View::Key::Enter);
+                wordwise = wordwise && model.value(mult) == 4.0;
+                view.undo();
+            }
+            check(wordwise && model.value(mult) == 3.0, "a typed value's caret steps a word at a time with Ctrl");
         }
         // Mult is a stepper, its field between Freq's knob and Pitch's less 4 px either side. At ×0.001 its number is
         // too long for - and + both: under the mouse on +, the + alone shows and the number moves off it, as it does
