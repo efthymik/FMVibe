@@ -387,6 +387,26 @@ inline Rect seqKnobCenterRect(int i) { // the place of knob `i` of the eight, as
     return {kSeqCard.x + 16.0f + 268.0f / 4.0f * (static_cast<float>(i % 4) + 0.5f), kSeqKnobsY + (i / 4) * kSeqKnobStep,
             0.0f, 0.0f};
 }
+// Under the card, down to the panel's bottom (as far in as the card from its top), the patterns' overview: a card
+// like it, its title, then a tile a pattern, A to D, one under another: its letter at its left and its notes drawn
+// small after it, across the longest pattern's length (see SeqPanel::paintSeqTile()). A click on a tile shows its
+// pattern; a tile dragged onto another copies its pattern there.
+constexpr Rect kSeqOverview{kSeqCard.x, kSeqCard.y + kSeqCard.h + 8.0f, kSeqCard.w,
+                            kSeqPanel.y + kSeqPanel.h - 6.0f - (kSeqCard.y + kSeqCard.h + 8.0f)};
+constexpr float kSeqOverviewTitleY = kSeqOverview.y + 12.0f;
+constexpr float kSeqTileGap = 6.0f;
+constexpr float kSeqTileTop = kSeqOverview.y + 42.0f;
+constexpr float kSeqTileH =
+    (kSeqOverview.y + kSeqOverview.h - 12.0f - kSeqTileTop - (kSeqPatterns - 1) * kSeqTileGap) / kSeqPatterns;
+constexpr float kSeqTileLetterW = 26.0f; // the letter's place at the tile's left; the notes take the rest
+inline Rect seqTile(int pattern) {
+    return {kSeqOverview.x + 12.0f, kSeqTileTop + static_cast<float>(pattern) * (kSeqTileH + kSeqTileGap),
+            kSeqOverview.w - 24.0f, kSeqTileH};
+}
+inline Rect seqTileNotes(Rect tile) {
+    return {tile.x + kSeqTileLetterW, tile.y + 6.0f, tile.w - kSeqTileLetterW - 8.0f, tile.h - 12.0f};
+}
+static_assert(kSeqTileH >= 40.0f);
 
 // The MODS view covers them too: a row per modulation under the columns' names (the count at the right of their
 // row), scrolling with a bar at the right. Within a row, from its left: the bypass dot, the source and its polarity

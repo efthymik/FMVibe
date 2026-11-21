@@ -959,7 +959,7 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   is shown, and clicking one closes the editor (a widened LFO card's shape stays in its card).
 - **SEQ** (the sequencer, see [Sound engine](#sound-engine)): its settings on a card where the inspector floats, and
   the roll of the pattern picked in the rest, down to the modulation panel's bottom, which it covers; under the card
-  the view is empty for now.
+  the patterns' overview.
   - **The card**: the sequencer's power switch; **PATTERN** A to D (the one picked plays and shows in the roll) and a
     button that copies it, its length, loop, notes and curves, into the next empty pattern (no notes, and no points
     on its curves); **PLAY** Host | Key | Latch; the
@@ -972,6 +972,15 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     those of notes off it all the same, their names faint. The rows' ground follows the keys alone, whatever the scale:
     a black key's row darker and a white key's a little lighter, and folded, all of them plain. Notes off the scale are
     hatched across, folded or not. Its switches say what they do in their tooltips (PLAY's what each mode does).
+  - **PATTERNS**, a card like it under it, down to the panel's bottom: a tile a pattern, A to D, one under another,
+    its letter at its left (lit, and the tile tinted and ringed, while it is the pattern picked) and its notes drawn
+    small after it: across, the longest pattern's length (a shorter one's tile ends short, a line at each bar, outside
+    its loop dimmed); up and down, the pattern's own notes, at least an octave of rows, fainter the softer and a muted
+    one faintest. The pattern that plays shows the playhead in its tile. A click on a tile picks its pattern (one undo
+    step); a tile carried onto another (half seen, following the mouse) rings that one, and let go of there copies its
+    pattern there as the copy button does, length, loop, notes and curves, over what was there (one undo step, and a
+    message says so); let go of on its own place or off the tiles, it does nothing. The hand shows over a tile, and
+    its tooltip says so.
   - **The grid**: a line at every snap's length across the roll (a step with the snap off), the beats and bars
     stronger, as strong as the settings dialog's **GRID** says (50 % to begin with).
   - **The tools** over the roll: select | draw (select to begin with), **SNAP** and its list (Off, 1/4, 1/8, 1/16 to

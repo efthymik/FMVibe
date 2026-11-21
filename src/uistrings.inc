@@ -589,6 +589,7 @@ STR(ViewSeq, "SEQ") // the sequencer's settings and piano roll
 // The SEQ view: its settings card, the tools over its roll, the field of the notes picked and the lane's tabs.
 STR(HeadingSequencer, "SEQUENCER")
 STR(LabelSeqPattern, "PATTERN")
+STR(HeadingSeqPatterns, "PATTERNS") // the overview of the four patterns, under the settings card
 STR(LabelSeqPlay, "PLAY")
 STR(LabelSeqOrder, "ORDER")
 STR(LabelSeqScale, "SCALE")
@@ -1092,6 +1093,7 @@ STR(TipSeqZoomInY, "Zoom in vertically (Alt+wheel)")
 STR(TipSeqScroll, "Drag to scroll")
 STR(TipSeqScrollY, "Drag to scroll rows")
 STR(TipSeqPattern, "Pattern {1}")
+STR(TipSeqTile, "Pattern {1}: click to edit, drag onto another pattern to copy it there")
 STR(TipRemoveSplit, "Remove split")
 STR(TipRemoveJoin, "Remove join")
 STR(TipRouteMode, "{1}. Click to pick how it modulates") // the mode part of a wire label's pill

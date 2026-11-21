@@ -1173,6 +1173,16 @@ Each pattern has a **loop** (the whole pattern by default), which is what plays.
 
 In Key and Latch, the keys you press play no notes of their own; they only start and transpose the pattern.
 
+### The patterns overview
+
+Under the settings card, **PATTERNS** shows the four patterns, A to D, one under another, each with its notes drawn
+small, so you can see what each holds at a glance. The selected pattern is highlighted, and the one playing shows the
+playhead.
+
+- **Click** a pattern to select it.
+- **Drag** a pattern onto another to copy it there: its notes, curves, length and loop replace what was there. Undo
+  brings it back.
+
 ### The piano roll
 
 The **toolbar** above the roll has:

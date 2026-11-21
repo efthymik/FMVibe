@@ -893,6 +893,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     taken, text that isn't a tempo and Escape leaving it), none of it touching the patch, its undo history or the
     host's tempo;
   - the SEQ view covering the modulation panel, as tall as the editor was, its source cards and title taking no clicks;
+  - the SEQ view's PATTERNS: a pattern's notes drawn in its tile where an empty one's has none (read off the rendered
+    pixels), a click on a tile picking its pattern, undoably, a tile carried onto another ringing it (read off the
+    rendered pixels) and let go of there copying its pattern, undoably, let go of on its own place copying nothing, and
+    the pattern that plays showing the playhead in its tile (read off the rendered pixels);
   - the SEQ tab, between FX and MODS (a note put down by a double-click and held dragged across lengthening it, to the right its end, to the left its start): its card and an empty roll, and a dot on the tab while the sequencer is on (read
     off the rendered pixels), as on FX's while an effect in the line is switched on; a slight line parting the roll from the lane in every theme (read off the rendered pixels); a double-click putting a note down on its step (a
     step long at 1/16) and on the note deleting it; the notes and the playhead where the telemetry puts it (read off

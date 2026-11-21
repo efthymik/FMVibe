@@ -7395,6 +7395,77 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
     check(copied && model.value(paramIndex(SeqParam::Pattern)) == 1.0, "a pattern copies into the next empty one");
     click(view, {detail::kSeqCardControls + 14.0f, detail::kSeqPatternY + 11.0f});
 
+    // The patterns' overview under the card, a tile a pattern: B's, holding A's notes now, drawn with them where C's,
+    // empty, has none (read off the rendered pixels); a click on B's tile shows B, undoably; A's tile carried onto C's
+    // rings C's, and let go of there copies A into C in one undo step; let go of on its own place it copies nothing;
+    // and the pattern that plays shows the playhead in its tile.
+    {
+        using detail::seqTile;
+        using detail::seqTileNotes;
+        view.mouseMove({600.0f, 300.0f}, {});
+        const bool shot = renderer.save(view, dir / "36q-seq-overview.png");
+        const Rect b = seqTileNotes(seqTile(1)), cNotes = seqTileNotes(seqTile(2));
+        auto differing = [&](Rect r, Rect other) {
+            int count = 0;
+            for (float y = 0.5f; y < r.h; y += 1.0f)
+                for (float x = 0.5f; x < r.w; x += 1.0f)
+                    count += renderer.pixel({r.x + x, r.y + y}) != renderer.pixel({other.x + x, other.y + y});
+            return count;
+        };
+        const int drawn = differing(b, cNotes);
+
+        click(view, seqTile(1).center());
+        const bool picked = model.value(paramIndex(SeqParam::Pattern)) == 1.0;
+        view.undo();
+        const bool undone = model.value(paramIndex(SeqParam::Pattern)) == 0.0;
+
+        const Point cEdge{seqTile(2).x + 1.0f, seqTile(2).center().y};
+        const uint32_t edgeBefore = renderer.pixel(cEdge);
+        view.mouseDown(seqTile(0).center(), {});
+        view.mouseMove({seqTile(0).center().x, seqTile(1).center().y}, {});
+        view.mouseMove(seqTile(2).center(), {});
+        const bool dragShot = renderer.save(view, dir / "36q-seq-overview-drag.png");
+        const bool ringed = renderer.pixel(cEdge) != edgeBefore;
+        view.mouseUp(seqTile(2).center(), {});
+        bool same = true;
+        for (int slot = 0; slot < kSeqNotes; ++slot)
+            for (int f = 0; f < kSeqNoteParamCount; ++f)
+                same = same && model.value(seqNoteIndex(2, slot, static_cast<SeqNoteParam>(f))) ==
+                                   model.value(seqNoteIndex(0, slot, static_cast<SeqNoteParam>(f)));
+        const bool copiedC = same && model.value(seqNoteIndex(2, 2, SeqNoteParam::Length)) == 2.0;
+        view.undo();
+        bool emptyC = true;
+        for (int slot = 0; slot < kSeqNotes; ++slot)
+            emptyC = emptyC && model.value(seqNoteIndex(2, slot, SeqNoteParam::Length)) == 0.0;
+        const auto before = model.values;
+        drag(view, seqTile(0).center(), {seqTile(0).center().x + 40.0f, seqTile(0).center().y});
+        const bool nothing = model.values == before;
+
+        view.mouseMove({600.0f, 300.0f}, {});
+        renderer.save(view, dir / "36q-seq-overview-still.png");
+        double longest = 1.0; // in bars: the tiles' width
+        for (int p = 0; p < kSeqPatterns; ++p)
+            longest = std::max(longest, std::round(model.value(paramIndex(p, SeqPatternParam::Length))));
+        const Point head{b.x + 8.0f * b.w / static_cast<float>(16.0 * longest), b.center().y};
+        const uint32_t still = renderer.pixel({std::round(head.x) + 0.5f, head.y - 6.0f});
+        model.live.seqPosition = 8.0f;
+        model.live.seqPattern = 1;
+        view.poll();
+        view.mouseMove({600.0f, 300.0f}, {});
+        renderer.save(view, dir / "36q-seq-overview-playing.png");
+        const bool playhead = renderer.pixel({std::round(head.x) + 0.5f, head.y - 6.0f}) != still;
+        model.live.seqPosition = -1.0f;
+        model.live.seqPattern = 0;
+        view.poll();
+        std::printf("      overview: B's notes %d pixels off C's\n", drawn);
+        check(shot && drawn > 20, "the patterns' overview draws each pattern's notes in its tile");
+        check(picked && undone, "a click on a pattern's tile shows that pattern, undoably");
+        check(dragShot && ringed && copiedC && emptyC,
+              "a pattern's tile carried onto another rings it, and let go of there copies the pattern, undoably");
+        check(nothing, "a tile let go of on its own place copies nothing");
+        check(playhead, "the pattern that plays shows the playhead in its tile");
+    }
+
     // The bin asks, then clears the pattern; undo brings it back.
     const Point bin{detail::kSeqTools.x + detail::kSeqTools.w - 13.0f, detail::kSeqTools.y + 12.0f};
     const Rect confirm{420.0f, std::round((view.height() - 150.0f) * 0.5f), 360.0f, 150.0f};
