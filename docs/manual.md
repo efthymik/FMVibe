@@ -1435,6 +1435,7 @@ does not contain the instance settings (oversampling and MPE).
 | Overdrive Lead | Lead | Smooth, overdriven guitar-style lead; the mod wheel adds gain. |
 | Pluck Delay | Pluck | Short, bright pluck trailed by soft echoes. |
 | Random Glass | Seq | Glassy notes in an ever-changing random order, with shimmering echoes. |
+| Randomizer | Pad | Dark, cinematic pad that changes randomly on every note. |
 | Razor Pluck | Pluck | Sharp, aggressive pluck with a snappy attack and echoes. |
 | Reese Bass | Bass | Heavy, growling drum and bass reese over a deep, steady sub. |
 | Screamer | Lead | Screaming, aggressive lead; the mod wheel makes it scream harder. |

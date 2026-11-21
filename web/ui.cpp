@@ -52,7 +52,7 @@ EM_JS(void, js_set_setting, (const char *key, const char *value),
       { Module.fmvHost.setSetting(UTF8ToString(key), UTF8ToString(value)); });
 
 constexpr int kDefaultOversampling = 2;
-constexpr char kFirstPreset[] = "Future Plucks"; // a sequenced patch: a held key plays its riff
+constexpr char kFirstPreset[] = "Randomizer"; // a pad that changes randomly on every note
 
 std::string setting(const char *key) {
     char buffer[256];
