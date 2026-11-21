@@ -1077,6 +1077,8 @@ The display sketches the tail's shape.
 - **Spread**: pans the voices across the stereo field.
 
 The bass below about 200 Hz bypasses the voices, staying steady and centered. The display shows each voice's sweep.
+When Delay jumps, for example from a Random source that gives each note its own value, the chorus crossfades to the
+new delay instead of clicking.
 
 #### Phase Disp
 

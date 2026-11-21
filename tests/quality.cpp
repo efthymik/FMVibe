@@ -6778,13 +6778,14 @@ int main() {
         check(synced, "synced, the phaser's and flanger's sweeps follow the host tempo");
     }
 
-    // --- The chorus's Voices and Spread changed under a sine, all wet: a voice coming or going fades, the voices'
-    // sweeps glide to their new places apart and a voice moving between the sides moves there over 10 ms, so no sample
-    // steps further than a sine as loud as the loudest the voices play does (its pitch wavering a little with the
-    // sweep): voices in phase can play louder than what went in.
-    std::printf("chorus voices and spread changed under a sine (steepest step against a sine's at its peak):\n");
+    // --- The chorus's Voices, Spread and Delay changed under a sine, all wet: a voice coming or going fades, the voices'
+    // sweeps glide to their new places apart, a voice moving between the sides moves there over 10 ms and a Delay that
+    // jumps (as one a note's own random value sets does as the effects take up the new note) crossfades to the new
+    // delay over 10 ms, also in single frames, so no sample steps further than a sine as loud as the loudest the voices
+    // play does (its pitch wavering a little with the sweep): voices in phase can play louder than what went in.
+    std::printf("chorus voices, spread and delay changed under a sine (steepest step against a sine's at its peak):\n");
     {
-        auto steepest = [](FxParam param, std::initializer_list<double> values) {
+        auto steepest = [](FxParam param, std::initializer_list<double> values, uint32_t piece = kBlock) {
             const auto fxHeap = std::make_unique<Effects>();
             Effects &fx = *fxHeap;
             fx.prepare(kSampleRate);
@@ -6806,7 +6807,8 @@ int main() {
                     for (uint32_t s = 0; s < kBlock; ++s)
                         left[s] = right[s] = static_cast<float>(
                             0.5 * std::sin(2.0 * std::numbers::pi * kHz * (t + s) / kSampleRate));
-                    fx.process(left.data(), right.data(), kBlock, p, 120.0, 60.0);
+                    for (uint32_t s = 0; s < kBlock; s += piece)
+                        fx.process(left.data() + s, right.data() + s, std::min(piece, kBlock - s), p, 120.0, 60.0);
                     for (uint32_t s = 0; s < kBlock; ++s) {
                         if (t + s > kSampleRate / 10) { // past its first voices' delays
                             most = std::max(most, static_cast<double>(std::abs(left[s] - last)));
@@ -6820,9 +6822,15 @@ int main() {
         };
         const double voices = steepest(FxParam::ChorusVoices, {2.0, 6.0, 3.0, 2.0});
         const double spread = steepest(FxParam::ChorusSpread, {0.0, 1.0, 0.0});
-        std::printf("      voices 2, 6, 3, 2: x%.3f   spread 0, 100, 0 %%: x%.3f\n", voices, spread);
+        const std::initializer_list<double> delays{normFromTime(0.003), normFromTime(0.025), normFromTime(0.008)};
+        const double delay = steepest(FxParam::ChorusDelay, delays);
+        const double delayFrames = steepest(FxParam::ChorusDelay, delays, 1);
+        std::printf("      voices 2, 6, 3, 2: x%.3f   spread 0, 100, 0 %%: x%.3f   delay 3, 25, 8 ms: x%.3f "
+                    "(x%.3f in single frames)\n",
+                    voices, spread, delay, delayFrames);
         check(voices < 1.15 && spread < 1.15,
               "the chorus's Voices and Spread changed under a sine glide rather than click");
+        check(delay < 1.15 && delayFrames < 1.15, "the chorus's Delay jumping under a sine crossfades rather than clicks");
     }
 
     // --- The phase disperser's Stages changed under a sine, all wet: the count it played fades out as the new one

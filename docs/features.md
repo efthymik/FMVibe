@@ -717,7 +717,11 @@ What the plugin does and how its editor works, in full. Building and installing 
     so it doesn't ring louder. **Mix** takes the dry sound over to the voices alone (50 % to
     begin with). It has no Sync: its Rate is set in Hz alone. Changing Voices, a voice coming or going fades in or
     out over 10 ms and the voices' sweeps and places glide to where they go, rather than jumping; Spread moves a
-    voice between the sides over 10 ms too. A host or modulation can set 5 voices, which the card doesn't offer.
+    voice between the sides over 10 ms too. Delay moving slowly (bending the voices' pitch by up to 1 %), the voices
+    follow it; moving faster, as it jumps, they crossfade over 10 ms from where they read to where it puts them, rather
+    than clicking: a Random source of a voice on Delay jumps that way as each new note takes the effects over (they
+    follow the newest voice). Another jump during a crossfade waits for it to end. A host or modulation can set 5
+    voices, which the card doesn't offer.
   - **Phase Disp** (phase disperser): 1–64 second-order all-passes in a row (Stages) at Freq, each as narrow as
     Pinch sets (Q 0.3 to 6): the sound around Freq comes out later than the rest, smeared in time into a chirp,
     but at full level; Mix blends it with the dry sound. A new Stages fades in from the count before over 10 ms
