@@ -86,7 +86,7 @@ async function startAudio() {
       numberOfInputs: 0,
       numberOfOutputs: 1,
       outputChannelCount: [2],
-      processorOptions: {wasm, values, oversampling: ui._ui_oversampling(), tempo},
+      processorOptions: {wasm, values, oversampling: ui._ui_oversampling(), tempo: playedTempo ?? tempo},
     });
     node.port.onmessage = (e) => fromAudio(e.data);
     node.onprocessorerror = () => fail('The synth stopped with an error; reload the page to start it again.');
@@ -166,6 +166,12 @@ const host = {
   tempo(bpm) {
     setTempo(bpm);
   },
+  playTempo(bpm) {
+    if (!Number.isFinite(bpm))
+      return;
+    playedTempo = clampTempo(bpm);
+    send({type: 'tempo', bpm: playedTempo});
+  },
   layoutChanged() {
     resize();
   },
@@ -188,13 +194,14 @@ const host = {
 
 // --- Tempo --------------------------------------------------------------------------------------------------
 
-// The page stands in for a host's transport: its tempo is what synced LFOs, delays and sweeps follow. The editor's
-// title bar shows it, to drag, scroll or type (ui.cpp hands it here), and it is kept in the browser's storage like
-// the theme, which the editor reads it from too. An example saved at a tempo sets it as it loads, the first one too
-// as the editor starts, so this comes before the editor does.
+// The page stands in for a host's transport: its tempo is what synced LFOs, delays and sweeps follow while the
+// editor's title bar has the synth follow the host, and else the synth's own (ui.cpp hands each here, and which one
+// plays). The page's is kept in the browser's storage like the theme, which the editor reads it from too. An example
+// saved at a tempo sets it as it loads, the first one too as the editor starts, so this comes before the editor does.
 const TEMPO_MIN = 20;
 const TEMPO_MAX = 999;
 let tempo = 140;
+let playedTempo = null; // what the synth plays at, as the editor last said
 
 function clampTempo(bpm) {
   return Math.min(TEMPO_MAX, Math.max(TEMPO_MIN, Math.round(bpm * 100) / 100));
@@ -204,7 +211,6 @@ function setTempo(bpm) {
   if (!Number.isFinite(bpm))
     return;
   tempo = clampTempo(bpm);
-  send({type: 'tempo', bpm: tempo});
   host.setSetting('tempo', String(tempo));
 }
 

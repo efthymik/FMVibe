@@ -141,15 +141,20 @@ From left to right:
 
 ### Tempo
 
-In a DAW, FMVibe follows the host's tempo and shows no tempo field. In the browser demo, and in hosts that let the
-plugin set it, a tempo field (a metronome and the BPM, 20–999) appears in the title bar:
+The tempo field in the title bar shows the tempo that synced LFOs, delays, sweeps and the sequencer follow, in
+BPM. The **H** button at its left syncs to the host tempo:
 
-- Drag up or down to change the tempo (in 0.1 BPM increments when holding Shift).
-- Use the mouse wheel to step it by 1 BPM (in 0.1 BPM increments when holding Shift).
-- Double-click or Ctrl+click to type a value.
+- **H on** (the default): FMVibe plays at the host's tempo. The field shows it dimmed; change the tempo in the host.
+- **H off**: FMVibe plays at its own tempo (140 BPM to begin with), whatever the host's. Set it in the field:
+  - Drag up or down to change the tempo (in 0.1 BPM increments when holding Shift).
+  - Use the mouse wheel to step it by 1 BPM (in 0.1 BPM increments when holding Shift).
+  - Double-click or Ctrl+click to type a value, from 20 to 999.
 
-Every preset remembers the tempo it was saved at, and loading it in these hosts sets the tempo field to it, so a
-sequencer pattern plays as it was made. In a DAW, loading a preset never changes the host's tempo.
+The H and FMVibe's own tempo are saved with your project, not with presets, and undo leaves them alone.
+
+Every preset remembers the tempo it was saved at. Loading it sets FMVibe's own tempo to it, so with H off a sequencer
+pattern plays as it was made. In the browser demo it sets the page's tempo too. In a DAW, loading a preset never
+changes the host's tempo.
 
 ### Global strip
 

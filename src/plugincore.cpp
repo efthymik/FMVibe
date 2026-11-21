@@ -120,6 +120,7 @@ void PluginCore::applyPlayMode() {
     auto on = [this](GlobalParam p) { return values_[paramIndex(p)].load(std::memory_order_relaxed) >= 0.5; };
     synth_.setPlayMode(on(GlobalParam::Mono), on(GlobalParam::Legato), on(GlobalParam::GlideAlways));
     synth_.setMpe(mpe_.load(std::memory_order_relaxed), mpeBendRange_.load(std::memory_order_relaxed));
+    synth_.setOwnTempo(tempoSync_.load(std::memory_order_relaxed) ? 0.0 : ownTempo_.load(std::memory_order_relaxed));
 }
 
 void PluginCore::performStepBegin() {
@@ -175,6 +176,22 @@ void PluginCore::setMpeBendRange(int semitones) {
     semitones = std::clamp(semitones, 1, kMaxMpeBendRange);
     if (mpeBendRange_.exchange(semitones) != semitones)
         hostMarkDirty();
+}
+
+// Main thread, from the title bar's H and tempo: likewise.
+void PluginCore::setTempoSync(bool on) {
+    if (tempoSync_.exchange(on) != on) {
+        hostMarkDirty();
+        hostRequestProcess(); // so the editor hears the tempo played, should the host be asleep
+    }
+}
+
+void PluginCore::setOwnTempo(double bpm) {
+    bpm = gui::clampTempo(bpm);
+    if (ownTempo_.exchange(bpm) != bpm) {
+        hostMarkDirty();
+        hostRequestProcess();
+    }
 }
 
 void PluginCore::openManual() {
@@ -376,7 +393,8 @@ bool PluginCore::saveState(const clap_ostream_t *stream, bool settings) const {
         return false;
     if (!settings)
         return true;
-    if (!writeSettings(stream, {oversampling_.load(), mpe_.load(), mpeBendRange_.load()}))
+    if (!writeSettings(stream,
+                       {oversampling_.load(), mpe_.load(), mpeBendRange_.load(), tempoSync_.load(), ownTempo_.load()}))
         return false;
     // The preset the patch came from: whether it changed since, then its file's path in UTF-8.
     return writePresetChunk(stream, patchEdited(), utf8(std::filesystem::path(presetFile())));
@@ -414,6 +432,8 @@ bool PluginCore::loadState(const clap_istream_t *stream, bool settings) {
         oversampling_.store(stored.oversampling);
         mpe_.store(stored.mpe);
         mpeBendRange_.store(stored.mpeBendRange);
+        tempoSync_.store(stored.tempoSync);
+        ownTempo_.store(stored.ownTempo);
         restartIfNeeded();
 
         // Which preset it was. Without that, it shows Init, changed unless it is Init.
@@ -558,9 +578,13 @@ bool PluginCore::loadPresetFrom(const clap_istream_t *stream, const std::wstring
     valuesInto(*told);
     const bool loaded = loadState(stream, false);
     if (loaded) {
-        // A host that lets the editor set the tempo plays the preset at the tempo it was saved at.
-        if (hasTempo() && layout_.savedTempo > 0.0f)
-            setTempo(gui::clampTempo(layout_.savedTempo));
+        // The preset plays at the tempo it was saved at: the synth's own tempo takes it (heard while the H is off),
+        // and so does a host that lets the editor set its tempo.
+        if (layout_.savedTempo > 0.0f) {
+            setOwnTempo(layout_.savedTempo);
+            if (hasTempo())
+                setTempo(gui::clampTempo(layout_.savedTempo));
+        }
         notifyParams(*told);
         layoutChanged();
         setPreset(path);
@@ -582,10 +606,10 @@ bool PluginCore::savePreset(const std::wstring &path) {
     FILE *file = nullptr;
     if (_wfopen_s(&file, part.c_str(), L"wb") != 0 || !file)
         return false;
-    // The tempo it plays at goes with it: the editor's where the host lets it set one, else the host's last block's.
-    // The patch keeps it only once the file is written.
+    // The tempo it plays at goes with it: its own while the H is off, else the host's, as a host that lets the editor
+    // set it has it, or as the last block played it. The patch keeps it only once the file is written.
     const float tempoBefore = layout_.savedTempo;
-    const double bpm = hasTempo() ? tempo() : playedTempo_.load(std::memory_order_relaxed);
+    const double bpm = !tempoSync() ? ownTempo() : hasTempo() ? tempo() : playedTempo_.load(std::memory_order_relaxed);
     if (bpm > 0.0)
         layout_.savedTempo = static_cast<float>(gui::clampTempo(bpm));
     const clap_ostream_t stream = fileOut(file);

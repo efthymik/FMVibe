@@ -4,7 +4,7 @@
 // still runs the plugin in real time into silence, so the meters, the scope and the analyzers move.
 // Usage: fmvibe-uihost [path\to\FMVibe.clap] [--silent] [--no-midi] [--tempo <bpm>]
 // It offers the plugin FMVibe's own host extension for the tempo (src/hosttempo.h), so the editor's title bar shows
-// the tempo it plays at, to drag, scroll or type.
+// the tempo it plays at, and a preset loaded sets it.
 
 #include "../src/hosttempo.h"
 
@@ -387,7 +387,7 @@ const clap_host_gui_t kHostGui = {
     [](const clap_host_t *, bool) {},          // closed: not floating
 };
 
-// The tempo the editor shows and sets (see src/hosttempo.h): the audio thread's transport's.
+// The tempo the editor shows and a preset sets (see src/hosttempo.h): the audio thread's transport's.
 const fmvibe::HostTempo kHostTempo = {
     [](const clap_host_t *) { return app.audio ? app.audio->tempo() : 140.0; },
     [](const clap_host_t *, double bpm) {
@@ -637,7 +637,7 @@ void usage() {
                 "  --silent   run the plugin without an audio device (the meters and scope still move)\n"
                 "  --no-midi  leave the MIDI inputs alone\n"
                 "  --tempo    the tempo synced LFOs and effects follow to begin with (default 140 BPM; the\n"
-                "             editor's title bar shows it, to drag, scroll or type)\n"
+                "             editor's title bar shows it while its H is on, and a preset loaded sets it)\n"
                 "  The computer keyboard plays notes: A W S E D ... from middle C, Z and X shift the octave,\n"
                 "  C and V step the velocity (1, 20, 40 ... 127).\n");
 }

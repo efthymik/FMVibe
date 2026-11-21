@@ -1827,8 +1827,8 @@ std::vector<View::Widget> View::widgets() const {
     }
     for (int redo = 0; redo < 2; ++redo)
         add(Kind::UndoButton, undoButton(redo), -1, redo);
-    if (controller_.hasTempo())
-        add(Kind::TempoBox, kTempoBox);
+    add(Kind::TempoSync, kTempoSync);
+    add(controller_.tempoSync() ? Kind::TempoHost : Kind::TempoBox, kTempoBox);
     add(Kind::PresetStep, presetStep(-1), -1, -1);
     add(Kind::PresetNameBox, kPresetName);
     if (controller_.presetHasFile())
@@ -4888,26 +4888,32 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break;
     case Kind::SearchField: // the panels' own: the browser's and the MODS view's drawn by them
         break;
-    case Kind::TempoBox: {
-        // A metronome, then the tempo and its unit, centered in the room right of it.
-        const bool lit = hovered || active;
+    case Kind::TempoSync: { // a switch, lit while the synth follows the host's tempo
+        const bool on = controller_.tempoSync();
+        paintButtonFace(c, w, on, hovered, kAccent, 0.22f, kRadiusControl);
+        c.text(w.rect, tr(Str::TempoSyncLetter), kTextValue, on ? litInk(kText) : hovered ? kText : kDim, Align::Center,
+               true);
+        break;
+    }
+    case Kind::TempoBox:
+    case Kind::TempoHost: {
+        // The tempo and its unit, centered: the synth's own, or dimmed and lit by nothing, the host's it follows (as
+        // the host has it where it lets the editor set it, else as the synth last played it).
+        const bool host = w.kind == Kind::TempoHost;
+        const bool lit = !host && (hovered || active);
         c.fillRect(w.rect, lit ? kTrack : kRaised, kRadiusControl);
         if (outlined())
             c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
-        const Color ink = lit ? kText : kDim;
-        const Point m{w.rect.x + 14.0f, w.rect.center().y};
-        const Point body[] = {{m.x - 5.0f, m.y + 6.0f}, {m.x - 2.0f, m.y - 6.0f}, {m.x + 2.0f, m.y - 6.0f},
-                              {m.x + 5.0f, m.y + 6.0f}, {m.x - 5.0f, m.y + 6.0f}};
-        c.polyline(body, std::size(body), ink, 1.2f);
-        c.line({m.x, m.y + 3.0f}, {m.x + 5.0f, m.y - 6.0f}, ink, 1.4f);
         if (typing_ && typing_->widget.kind == Kind::TempoBox)
             break; // the field being typed in covers the number
-        const std::string number = tempoText(controller_.tempo());
+        const double bpm = !host                  ? controller_.ownTempo()
+                           : controller_.hasTempo() ? controller_.tempo()
+                                                    : static_cast<double>(telemetry_.tempo);
+        const std::string number = tempoText(bpm);
         const char *unit = "BPM";
         const float numberW = c.textWidth(number, kTextValue, true), unitW = c.textWidth(unit, kTextLabel);
-        const float room = w.rect.right() - (m.x + 7.0f);
-        const float x = m.x + 7.0f + (room - numberW - 4.0f - unitW) * 0.5f;
-        c.text({x, w.rect.y, numberW + 1.0f, w.rect.h}, number, kTextValue, kText, Align::Left, true);
+        const float x = w.rect.x + (w.rect.w - numberW - 4.0f - unitW) * 0.5f;
+        c.text({x, w.rect.y, numberW + 1.0f, w.rect.h}, number, kTextValue, host ? kDim : kText, Align::Left, true);
         c.text({x + numberW + 4.0f, w.rect.y + 1.0f, unitW + 1.0f, w.rect.h}, unit, kTextLabel, kFaint, Align::Left);
         break;
     }
@@ -5474,7 +5480,7 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::SourceRemove &&
          hover_->kind != Kind::PresetButton &&
          hover_->kind != Kind::PresetStep && hover_->kind != Kind::PresetNameBox &&
-         hover_->kind != Kind::TempoBox &&
+         hover_->kind != Kind::TempoBox && hover_->kind != Kind::TempoHost && hover_->kind != Kind::TempoSync &&
          hover_->kind != Kind::SettingsButton && hover_->kind != Kind::UndoButton &&
          hover_->kind != Kind::SettingsManual &&
          hover_->kind != Kind::SettingsHue && hover_->kind != Kind::SettingsGlow &&
@@ -5540,6 +5546,10 @@ void View::paintTooltip(Canvas &c) {
         text = tr(controller_.patchEdited() ? Str::TipPresetChanged : Str::TipPresetName);
     else if (hover_->kind == Kind::TempoBox)
         text = tr(Str::TipTempo);
+    else if (hover_->kind == Kind::TempoHost)
+        text = tr(Str::TipTempoHost);
+    else if (hover_->kind == Kind::TempoSync)
+        text = tr(Str::TipTempoSync);
     else if (hover_->kind == Kind::PresetButton)
         switch (static_cast<PresetAction>(hover_->a)) {
         case PresetAction::Init:
@@ -6024,8 +6034,8 @@ Rect View::typingField() const {
         return {w.rect.center().x - 36.0f, w.rect.bottom() + 3.0f, 72.0f, 18.0f};
     if (w.kind == Kind::WireLabel || w.kind == Kind::OutLabel || w.kind == Kind::GridCell) // over the label or cell
         return {w.rect.center().x - 36.0f, w.rect.center().y - 9.0f, 72.0f, 18.0f};
-    if (w.kind == Kind::TempoBox) // right of the metronome
-        return {w.rect.x + 24.0f, w.rect.y + 2.0f, w.rect.w - 27.0f, w.rect.h - 4.0f};
+    if (w.kind == Kind::TempoBox) // inside its border
+        return {w.rect.x + 3.0f, w.rect.y + 2.0f, w.rect.w - 6.0f, w.rect.h - 4.0f};
     return {w.rect.x - 4.0f, w.rect.y, w.rect.w + 8.0f, w.rect.h};
 }
 
@@ -6316,8 +6326,8 @@ void View::applyDrag(Point p) {
         const double step = drag_.fine ? 0.1 : 1.0;
         const double moved = std::trunc((drag_.start.y - p.y) / 2.0f) * step;
         const double bpm = clampTempo(std::round((drag_.startValue + moved) / step) * step);
-        if (bpm != controller_.tempo())
-            controller_.setTempo(bpm);
+        if (bpm != controller_.ownTempo())
+            controller_.setOwnTempo(bpm);
         break;
     }
     case DragKind::None:
@@ -6687,7 +6697,10 @@ void View::mouseDown(Point p, Modifiers mods) {
         break;
     case Kind::TempoBox:
         drag_.kind = DragKind::Tempo;
-        drag_.startValue = controller_.tempo();
+        drag_.startValue = controller_.ownTempo();
+        break;
+    case Kind::TempoSync:
+        controller_.setTempoSync(!controller_.tempoSync());
         break;
     case Kind::SearchClear: // the field keeps the keyboard, for what is typed next (see the panels' press())
         clearField(static_cast<Field>(w.a));
@@ -7466,11 +7479,11 @@ void View::wheel(Point p, float steps, Modifiers mods) {
     if (hit && hit->kind == Kind::TempoBox) { // a BPM a notch, onto whole ones; with Shift, a tenth of one
         const double step = mods.shift ? 0.1 : 1.0;
         if (whole != 0) {
-            const double from = controller_.tempo();
+            const double from = controller_.ownTempo();
             const double on = whole > 0 ? std::floor(from / step + 1e-6) : std::ceil(from / step - 1e-6);
             const double bpm = clampTempo((on + whole) * step);
             if (bpm != from)
-                controller_.setTempo(bpm);
+                controller_.setOwnTempo(bpm);
         }
         return;
     }
@@ -7825,7 +7838,7 @@ void View::startTyping(const Widget &w) {
         return;
     }
     if (w.kind == Kind::TempoBox) { // the number, without its unit
-        const std::string bpm = tempoText(controller_.tempo());
+        const std::string bpm = tempoText(controller_.ownTempo());
         typing_ = Typing{w, bpm, bpm.size(), true};
         caretTicks_ = 0;
         return;
@@ -7996,14 +8009,15 @@ void View::endTyping(bool commit) {
         std::erase(rest, ' ');
         for (char &ch : rest)
             ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
-        if (!commit || t.text.find_first_not_of(' ') == std::string::npos || t.text == tempoText(controller_.tempo()))
+        if (!commit || t.text.find_first_not_of(' ') == std::string::npos ||
+            t.text == tempoText(controller_.ownTempo()))
             return;
         if (end == text || !std::isfinite(bpm) || !(rest.empty() || rest == "bpm")) {
             flash(trf(Str::MsgBadValue, {t.text, tr(Str::TempoName)}));
             return;
         }
-        if (clampTempo(bpm) != controller_.tempo())
-            controller_.setTempo(clampTempo(bpm));
+        if (clampTempo(bpm) != controller_.ownTempo())
+            controller_.setOwnTempo(clampTempo(bpm));
         return;
     }
     // Spaces around it don't count. Left as it was shown, or emptied, the value stays as it is,
@@ -8063,6 +8077,7 @@ CursorKind View::cursor() const {
     case Kind::InfoCard:
     case Kind::SaveBackdrop:
     case Kind::NameMenu:
+    case Kind::TempoHost: // the host's tempo, which takes no edits
     // An open list's own panel and what is around it, where a click picks nothing (though around it, it closes it),
     // and a pill's list's rows, which only take a source's handle dropped on them.
     case Kind::SourceMenu:

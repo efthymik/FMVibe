@@ -37,6 +37,7 @@ EM_JS(void, js_audition, (int key, int on), { Module.fmvHost.note(key, on != 0, 
 EM_JS(void, js_scope, (int op, int cycles), { Module.fmvHost.scope(op, cycles); });
 EM_JS(void, js_oversampling, (int factor), { Module.fmvHost.oversampling(factor); });
 EM_JS(void, js_tempo, (double bpm), { Module.fmvHost.tempo(bpm); });
+EM_JS(void, js_play_tempo, (double bpm), { Module.fmvHost.playTempo(bpm); });
 EM_JS(void, js_layout_changed, (), { Module.fmvHost.layoutChanged(); });
 EM_JS(void, js_toast, (const char *utf8), { Module.fmvHost.toast(UTF8ToString(utf8)); });
 EM_JS(void, js_open, (const char *url), { window.open(UTF8ToString(url), '_blank', 'noopener'); });
@@ -97,6 +98,10 @@ public:
             grid.empty() ? EditorSettings::kDefaultGridIntensity : std::clamp(std::atof(grid.c_str()), 0.0, 1.0);
         const std::string tempo = setting("tempo");
         tempo_ = tempo.empty() ? kDefaultTempo : clampTempo(std::atof(tempo.c_str()));
+        const std::string sync = setting("tempoSync");
+        tempoSync_ = sync != "0";
+        const std::string own = setting("ownTempo");
+        ownTempo_ = own.empty() ? kDefaultTempo : clampTempo(std::atof(own.c_str()));
     }
 
     const ParamValues &values() const { return values_; }
@@ -174,8 +179,10 @@ public:
             return false;
         values_ = values;
         replaceLayout(layout);
-        if (layout.savedTempo > 0.0f) // the page plays an example at the tempo it was saved at
+        if (layout.savedTempo > 0.0f) { // the page plays an example at the tempo it was saved at, as the synth's own
             setTempo(layout.savedTempo);
+            setOwnTempo(layout.savedTempo);
+        }
         js_all_params(values_.data(), kParamCount);
         layoutChanged();
         setPreset(fileOf(index));
@@ -202,13 +209,27 @@ public:
     int mpeBendRange() const override { return mpeBendRange_; }
     void setMpeBendRange(int semitones) override { mpeBendRange_ = std::clamp(semitones, 1, 96); }
     EditorSettings editorSettings() const override { return settings_; }
-    // The page stands in for a host's transport: the editor's title bar shows its tempo, which the page hands the
-    // synth and keeps in the browser's storage.
+    // The page stands in for a host's transport: its tempo, which an example sets as it loads, the page keeps in the
+    // browser's storage, and the synth plays at it while the title bar's H is on; while it is off, at its own tempo,
+    // kept there too. The page hands the synth the one it plays at.
     bool hasTempo() const override { return true; }
     double tempo() const override { return tempo_; }
     void setTempo(double bpm) override {
         tempo_ = clampTempo(bpm);
         js_tempo(tempo_);
+        playTempo();
+    }
+    bool tempoSync() const override { return tempoSync_; }
+    void setTempoSync(bool on) override {
+        tempoSync_ = on;
+        js_set_setting("tempoSync", on ? "1" : "0");
+        playTempo();
+    }
+    double ownTempo() const override { return ownTempo_; }
+    void setOwnTempo(double bpm) override {
+        ownTempo_ = clampTempo(bpm);
+        js_set_setting("ownTempo", std::to_string(ownTempo_).c_str());
+        playTempo();
     }
     void openManual() override { js_open(kManualUrl); } // in a tab of its own
 
@@ -217,6 +238,7 @@ public:
         for (size_t i = 0; i < examples_.size(); ++i)
             if (examples_[i].name == kFirstPreset)
                 loadPresetAt(static_cast<int>(i)); // which leaves nothing to undo
+        playTempo();
     }
 
 protected:
@@ -249,6 +271,8 @@ private:
         const std::string &name = examples_[index].name;
         return L"Factory/" + std::wstring(name.begin(), name.end()); // the examples' names are ASCII
     }
+    // The tempo the synth plays at, to the page: its own, or the page's while it follows that.
+    void playTempo() const { js_play_tempo(tempoSync_ ? tempo_ : ownTempo_); }
     // A patch's layout, with what belongs to the editor kept (keepEditorLayout(), as the plugin does).
     void replaceLayout(const UiLayout &patch) {
         const UiLayout before = layout_;
@@ -271,6 +295,8 @@ private:
     int mpeBendRange_ = 48;
     EditorSettings settings_;
     double tempo_ = kDefaultTempo;
+    bool tempoSync_ = true;
+    double ownTempo_ = kDefaultTempo;
 };
 
 std::unique_ptr<WebController> controller;

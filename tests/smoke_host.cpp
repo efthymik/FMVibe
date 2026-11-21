@@ -2242,6 +2242,22 @@ int main(int argc, char **argv) {
                    {paramIndex(0, OpParam::UnisonSpread), 0.5}});
     }
 
+    // A saved state's settings chunk: its floats, past the params and layout (oversampling, MPE, its bend range, the
+    // title bar's H and the synth's own tempo), or none.
+    const auto settingsOf = [&](MemoryStream &saved) -> float * {
+        size_t at = 12 + static_cast<size_t>(kParamCount) * 12;
+        uint32_t chunk[2] = {};
+        if (at + 8 > saved.data.size())
+            return nullptr;
+        std::memcpy(chunk, saved.data.data() + at, sizeof(chunk));
+        at += 8 + chunk[1] * sizeof(float);
+        if (at + 8 + 5 * sizeof(float) > saved.data.size())
+            return nullptr;
+        std::memcpy(chunk, saved.data.data() + at, sizeof(chunk));
+        return chunk[0] == 0x47544553 && chunk[1] >= 5 ? reinterpret_cast<float *>(saved.data.data() + at + 8)
+                                                       : nullptr;
+    };
+
     // LFO sync: a square LFO 1 at -100 % on A's output, set to 0.5, swings it half the depth either way: muted
     // in the first half of each cycle, full in the second. At 1/4 a cycle takes 0.5 s at 120 bpm and 1 s at
     // 60 bpm, so 0.35 s into the note it is sounding at 120 bpm and still muted at 60.
@@ -2269,6 +2285,37 @@ int main(int argc, char **argv) {
         const float early = levelAt(120.0, 0.1), fast = levelAt(120.0, 0.35), slow = levelAt(60.0, 0.35);
         std::printf("      synced square LFO at 0.35 s: %.3f at 120 bpm, %.3f at 60 bpm\n", fast, slow);
         check(early == 0.0f && fast > 0.1f && slow == 0.0f, "a synced LFO follows the host tempo");
+
+        // The synth's own tempo, a setting that goes in through the state's settings chunk: with the title bar's H off
+        // and the tempo at 60 BPM, the LFO plays at 60 whatever the host's, muted at 0.35 s with the host at 120; the H
+        // on again, it follows the host's again. A project from before them follows the host.
+        auto setOwnTempo = [&](bool sync, float bpm) {
+            MemoryStream saved;
+            state->save(plugin, &saved.out);
+            float *settings = settingsOf(saved);
+            if (!settings)
+                return false;
+            settings[3] = sync ? 1.0f : 0.0f;
+            settings[4] = bpm;
+            return state->load(plugin, &saved.in);
+        };
+        MemoryStream fresh;
+        state->save(plugin, &fresh.out);
+        const float *freshSettings = settingsOf(fresh);
+        const bool syncedFirst = freshSettings && freshSettings[3] == 1.0f && freshSettings[4] == 140.0f;
+        const bool ownSet = setOwnTempo(false, 60.0f);
+        const float own = levelAt(120.0, 0.35);
+        MemoryStream ownKept;
+        state->save(plugin, &ownKept.out);
+        const float *ownSettings = settingsOf(ownKept);
+        const bool ownSaved = ownSettings && ownSettings[3] == 0.0f && ownSettings[4] == 60.0f;
+        setOwnTempo(true, 60.0f);
+        const float followed = levelAt(120.0, 0.35);
+        std::printf("      synced square LFO at 0.35 s, the host at 120 bpm: %.3f at its own 60, %.3f following the "
+                    "host again\n",
+                    own, followed);
+        check(syncedFirst && ownSet && ownSaved && own == 0.0f && followed > 0.1f,
+              "with host sync off, a synced LFO plays at the synth's own tempo, saved in the state's settings chunk");
 
         // Modulated, its note value moves in steps: a macro at 10 % of the 29 values (8/1 to 1/64T) takes 1/4 to 1/8
         // turned up (2.8 steps, rounded to 3), where 0.35 s in falls in the muted half of its third cycle, and turned a
@@ -2323,6 +2370,16 @@ int main(int argc, char **argv) {
                     firstHalf, retriggered);
         check(secondHalf > 0.1f && firstHalf == 0.0f && retriggered == 0.0f,
               "an anchored LFO stands where the host's transport puts it");
+        // At a tempo of its own, 240 BPM with the host at 120, it counts the beats from the host's time at its own
+        // tempo: twice as many, beat 2.6 standing at 5.2, in the first half of a cycle (muted), and 3.3 at 6.6 (sounding).
+        setOwnTempo(false, 240.0f);
+        const float ownAt26 = anchoredAt(2.6, true), ownAt33 = anchoredAt(3.3, true);
+        setOwnTempo(true, 240.0f);
+        setParams({{paramIndex(0, SourceParam::Anchor), 0.0}});
+        std::printf("      anchored square LFO at its own 240 bpm, the host at 120: %.3f at beat 2.6, %.3f at 3.3\n",
+                    ownAt26, ownAt33);
+        check(ownAt26 == 0.0f && ownAt33 > 0.1f,
+              "an anchored LFO at the synth's own tempo counts the host's time in its own beats");
         proc.transport = nullptr;
         setParams({{paramIndex(0, SourceParam::Sync), 0.0}});
 
@@ -2794,23 +2851,10 @@ int main(int argc, char **argv) {
         // With MPE off, a bend on any channel takes both.
         // MPE and its bend range are settings, not params: they go in through the state's settings chunk.
         {
-            const auto settingsChunk = [&](MemoryStream &saved) -> float * { // its floats, past the params and layout
-                size_t at = 12 + static_cast<size_t>(kParamCount) * 12;
-                uint32_t chunk[2] = {};
-                if (at + 8 > saved.data.size())
-                    return nullptr;
-                std::memcpy(chunk, saved.data.data() + at, sizeof(chunk));
-                at += 8 + chunk[1] * sizeof(float);
-                if (at + 8 + 3 * sizeof(float) > saved.data.size())
-                    return nullptr;
-                std::memcpy(chunk, saved.data.data() + at, sizeof(chunk));
-                return chunk[0] == 0x47544553 && chunk[1] >= 3 ? reinterpret_cast<float *>(saved.data.data() + at + 8)
-                                                               : nullptr;
-            };
             auto setMpe = [&](bool on, float range = 12.0f) {
                 MemoryStream saved;
                 state->save(plugin, &saved.out);
-                float *settings = settingsChunk(saved);
+                float *settings = settingsOf(saved);
                 if (!settings)
                     return false;
                 const float stored[] = {on ? 1.0f : 0.0f, range};
@@ -2820,7 +2864,7 @@ int main(int argc, char **argv) {
             check(setMpe(true), "a state's settings chunk switches MPE on and sets its bend range");
             MemoryStream kept;
             state->save(plugin, &kept.out);
-            const float *settings = settingsChunk(kept);
+            const float *settings = settingsOf(kept);
             check(settings && settings[1] == 1.0f && settings[2] == 12.0f,
                   "the state saves MPE and its bend range in its settings chunk");
             const double a3 = 220.0, a4 = 440.0;

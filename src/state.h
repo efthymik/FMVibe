@@ -36,6 +36,10 @@ struct Settings {
     int oversampling = kDefaultOversampling; // 1, 2, 4 or 8
     bool mpe = false;                        // MPE over MIDI (see Synth::setMpe())
     int mpeBendRange = kDefaultMpeBendRange; // 1 to kMaxMpeBendRange semitones
+    // Whether the synth plays at the host's tempo (the title bar's H), and the tempo it plays at while it doesn't, in
+    // BPM (held to the range and rounded as gui::clampTempo() does; 140 to begin with, gui::kDefaultTempo).
+    bool tempoSync = true;
+    double ownTempo = 140.0;
 };
 
 // Streams over a file, for presets.

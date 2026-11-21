@@ -232,6 +232,13 @@ public:
         bpm = v;
         ++tempoSets;
     }
+    bool tempoSync() const override { return syncTempo; }
+    void setTempoSync(bool on) override { syncTempo = on; }
+    double ownTempo() const override { return ownBpm; }
+    void setOwnTempo(double v) override {
+        ownBpm = v;
+        ++ownTempoSets;
+    }
     void openManual() override { ++manualOpens; }
     int manualOpens = 0;
 
@@ -268,6 +275,9 @@ public:
     bool offersTempo = false; // a host that lets the editor set its tempo (the browser demo, fmvibe-uihost)
     double bpm = kDefaultTempo;
     int tempoSets = 0;
+    bool syncTempo = true; // the title bar's H
+    double ownBpm = kDefaultTempo;
+    int ownTempoSets = 0;
     // Midnight, the theme the pixel checks were written in (an editor given no theme, or one it doesn't know, shows
     // the default, Spectrum).
     std::string themeName = "Midnight";
@@ -2685,57 +2695,106 @@ void testFlatThemes(const std::filesystem::path &dir, Renderer &renderer) {
 // into the next and stopping at 64.00; the wheel stepping the digit under the mouse; a double-click rounding to the
 // digit; the hovered digit lit behind (read off the rendered pixels); a typed fraction; and a source's handle dropped
 // on it modulating it, its reach drawn along the track under the digits (read off the rendered pixels).
-// The title bar's tempo, for a host that lets the editor set it (the browser demo, fmvibe-uihost): none for a plugin
-// host; a field between the name and the preset bar, dragged a BPM every 2 px (with Shift a tenth), scrolled a BPM a
-// notch onto whole ones (with Shift a tenth), typed into after a double-click or Ctrl+Click, held to 20-999 BPM, and
-// none of it touching the patch or its undo history.
+// The title bar's tempo: the H at its left, lit to begin with, the synth following the host's tempo, which the field
+// shows dimmed (as the synth last played it, or as a host that lets the editor set it has it) and which takes no edits;
+// the H's tooltip; and with the H off, the synth's own tempo in the field, dragged a BPM every 2 px (with Shift a
+// tenth), scrolled a BPM a notch onto whole ones (with Shift a tenth), typed into after a double-click or Ctrl+Click,
+// held to 20-999 BPM, and none of it touching the patch, its undo history or the host's tempo.
 void testTempo(const std::filesystem::path &dir, Renderer &renderer) {
     const Rect titleBar{0.0f, 0.0f, 820.0f, detail::kTitleBarH};
     const Point box = detail::kTempoBox.center();
-    // Inside the field, clear of the metronome and the number (whatever the font), and clear of its border.
-    const Point inside{detail::kTempoBox.right() - 5.0f, detail::kTempoBox.center().y};
+    const Point sync = detail::kTempoSync.center();
+    // Inside the H's face, clear of the letter (whatever the font), and clear of its border.
+    const Point face{detail::kTempoSync.x + 4.0f, detail::kTempoSync.y + 5.0f};
+    // Under the H, where its tooltip goes.
+    const Point underSync{sync.x, detail::kTempoSync.bottom() + 6.0f + 11.0f};
+    // The brightest pixel of the field's number, which is at least "20" wide left of the field's middle.
+    auto brightest = [&] {
+        int top = 0;
+        for (float x = box.x - 20.0f; x < box.x + 2.0f; x += 0.5f)
+            for (float y = box.y - 5.0f; y <= box.y + 5.0f; y += 0.5f) {
+                const uint32_t px = renderer.pixel({x, y});
+                top = std::max(top, static_cast<int>((px >> 16 & 0xff) + (px >> 8 & 0xff) + (px & 0xff)));
+            }
+        return top;
+    };
     const Point away{600.0f, 328.0f};
-    uint32_t bare = 0;
     {
-        FakeController model; // a plugin host, whose tempo is its own
+        FakeController model; // a plugin host, whose tempo is its own: shown as the synth last played it
+        model.live.tempo = 128.0f;
         View view(model);
         view.mouseMove(away, {});
-        const bool shot = renderer.save(view, dir / "43-tempo-none.png", &titleBar);
-        bare = renderer.pixel(inside);
+        const bool shot = renderer.save(view, dir / "43-tempo-host.png", &titleBar);
+        const int dim = brightest();
+        const uint32_t lit = renderer.pixel(face);
         drag(view, box, {box.x, box.y - 40.0f});
         view.wheel(box, 1.0f, {});
         doubleClick(view, box);
-        check(shot && model.tempoSets == 0 && !view.typing(), "a plugin host's editor shows no tempo");
+        click(view, box, {false, true});
+        const bool inert = model.ownTempoSets == 0 && model.tempoSets == 0 && !view.typing();
+        check(shot && inert && model.syncTempo,
+              "a plugin host's editor shows the host's tempo, which takes no edits while the H is on");
+
+        view.mouseMove(sync, {});
+        const bool tipShot = renderer.save(view, dir / "43-tempo-sync-tip.png");
+        const uint32_t tip = renderer.pixel(underSync);
+        view.mouseMove(away, {});
+        renderer.save(view, dir / "43-tempo-sync-no-tip.png");
+        check(tipShot && tip != renderer.pixel(underSync),
+              "the H shows its tooltip under it (read off the rendered pixels)");
+
+        click(view, sync);
+        view.mouseMove(away, {});
+        const bool offShot = renderer.save(view, dir / "43-tempo-own.png", &titleBar);
+        const bool off = !model.syncTempo && renderer.pixel(face) != lit;
+        const int bright = brightest();
+        std::printf("      the tempo's number at its brightest: %d synced, %d its own\n", dim, bright);
+        check(offShot && off && bright > dim,
+              "the H switches host sync off, unlit, the field showing the synth's own tempo undimmed (read off the "
+              "rendered pixels)");
+        drag(view, box, {box.x, box.y - 20.0f});
+        check(model.ownBpm == 150.0 && model.ownTempoSets > 0 && model.tempoSets == 0,
+              "with the H off, the field drags the synth's own tempo and leaves the host's alone");
+        click(view, sync);
+        check(model.syncTempo && model.nextUndo() == nullptr, "the H switches host sync back on, with nothing to undo");
     }
     FakeController model;
-    model.offersTempo = true;
+    model.offersTempo = true; // a host that lets the editor set its tempo (the browser demo, fmvibe-uihost)
+    model.bpm = 133.0;
     View view(model);
     const ParamValues patch = model.values;
     view.mouseMove(away, {});
-    const bool shown = renderer.save(view, dir / "43a-tempo.png", &titleBar) && renderer.pixel(inside) != bare;
+    const bool hostShot = renderer.save(view, dir / "43a-tempo-host.png", &titleBar);
+    drag(view, box, {box.x, box.y - 40.0f});
+    check(hostShot && model.bpm == 133.0 && model.tempoSets == 0 && model.ownTempoSets == 0,
+          "a host's tempo shown while the H is on takes no edits, though the host lets the editor set it");
+    click(view, sync);
+    view.mouseMove(away, {});
+    const bool shown = renderer.save(view, dir / "43a-tempo.png", &titleBar);
     view.mouseMove(box, {});
-    check(shown && renderer.save(view, dir / "43b-tempo-hover.png", &titleBar),
-          "a host that lets the editor set its tempo gets a field for it in the title bar (read off the rendered pixels)");
+    check(shown && renderer.save(view, dir / "43b-tempo-hover.png", &titleBar) && !model.syncTempo,
+          "render the synth's own tempo in the title bar, and under the mouse");
 
     drag(view, box, {box.x, box.y - 20.0f});
-    const bool dragged = model.bpm == 150.0;
+    const bool dragged = model.ownBpm == 150.0;
     view.mouseDown(box, {true, false}); // with Shift, a tenth of a BPM every 2 px
     view.mouseMove({box.x, box.y - 10.0f}, {true, false});
     view.mouseUp({box.x, box.y - 10.0f}, {true, false});
-    const bool fine = std::abs(model.bpm - 150.5) < 1e-9;
+    const bool fine = std::abs(model.ownBpm - 150.5) < 1e-9;
     click(view, box); // a click leaves it be
-    const bool clicked = std::abs(model.bpm - 150.5) < 1e-9;
+    const bool clicked = std::abs(model.ownBpm - 150.5) < 1e-9;
     check(dragged && fine && clicked, "the tempo is dragged a BPM every 2 px, a tenth of one with Shift");
     view.wheel(box, 1.0f, {});
-    const bool up = model.bpm == 151.0; // onto whole BPM
+    const bool up = model.ownBpm == 151.0; // onto whole BPM
     view.wheel(box, -2.0f, {});
-    const bool down = model.bpm == 149.0;
+    const bool down = model.ownBpm == 149.0;
     view.wheel(box, 1.0f, {true, false});
-    check(up && down && std::abs(model.bpm - 149.1) < 1e-9, "the wheel steps the tempo a BPM a notch, a tenth with Shift");
+    check(up && down && std::abs(model.ownBpm - 149.1) < 1e-9,
+          "the wheel steps the tempo a BPM a notch, a tenth with Shift");
     drag(view, box, {box.x, box.y - 4000.0f});
-    const bool top = model.bpm == 999.0;
+    const bool top = model.ownBpm == 999.0;
     drag(view, box, {box.x, box.y + 4000.0f});
-    check(top && model.bpm == 20.0, "the tempo stops at 999 and 20 BPM");
+    check(top && model.ownBpm == 20.0, "the tempo stops at 999 and 20 BPM");
 
     doubleClick(view, box);
     const bool typing = view.typing();
@@ -2743,32 +2802,33 @@ void testTempo(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove(away, {});
     const bool typingShot = renderer.save(view, dir / "43c-tempo-typing.png", &titleBar);
     view.typeKey(View::Key::Enter);
-    const bool typed = !view.typing() && model.bpm == 92.5;
+    const bool typed = !view.typing() && model.ownBpm == 92.5;
     view.mouseMove(away, {});
     const bool typedShot = renderer.save(view, dir / "43d-tempo-typed.png", &titleBar);
     check(typing && typingShot && typed && typedShot, "a double-click on the tempo types one");
     click(view, box, {false, true}); // Ctrl+Click types too, a unit after the number allowed
     type(view, "160 BPM");
     view.typeKey(View::Key::Enter);
-    const bool ctrlTyped = model.bpm == 160.0;
+    const bool ctrlTyped = model.ownBpm == 160.0;
     doubleClick(view, box);
     type(view, "fast");
     view.typeKey(View::Key::Enter);
     doubleClick(view, box);
     type(view, "60");
     view.typeKey(View::Key::Escape);
-    const bool kept = model.bpm == 160.0;
+    const bool kept = model.ownBpm == 160.0;
     doubleClick(view, box);
     type(view, "5000");
     view.typeKey(View::Key::Enter);
-    const bool held = model.bpm == 999.0;
+    const bool held = model.ownBpm == 999.0;
     doubleClick(view, box);
     type(view, "100");
     click(view, away); // a click elsewhere takes the value
-    check(ctrlTyped && kept && held && model.bpm == 100.0 && !view.typing(),
+    check(ctrlTyped && kept && held && model.ownBpm == 100.0 && !view.typing(),
           "a typed tempo takes a unit after it and is held to its range; Escape, or text that isn't one, leave it");
-    check(model.values == patch && model.nextUndo() == nullptr && model.openEdits == 0,
-          "the tempo leaves the patch and its undo history alone");
+    check(model.values == patch && model.nextUndo() == nullptr && model.openEdits == 0 && model.tempoSets == 0 &&
+              model.bpm == 133.0,
+          "the tempo leaves the patch, its undo history and the host's tempo alone");
 }
 
 void testRatioDisplay(const std::filesystem::path &dir, Renderer &renderer) {

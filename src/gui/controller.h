@@ -181,10 +181,11 @@ struct UiLayout {
     SeqLane seqLane = SeqLane::Velocity;
     int seqLow = 48;
     bool seqFold = false;
-    // The tempo the patch was last saved as a preset at, in BPM (the host's, whatever host it was), 0 for none (a
-    // preset saved before it was kept, Init). A host that lets the editor set the tempo (see Controller::hasTempo())
-    // takes it up as the preset loads, so a sequencer pattern plays at the tempo it was made at; a plugin host's tempo
-    // stays its own. Part of the patch, like the node places, but not undone.
+    // The tempo the patch was last saved as a preset at, in BPM (the one it played at, whatever host it was), 0 for
+    // none (a preset saved before it was kept, Init). The synth's own tempo (see Controller::ownTempo()) and a host
+    // that lets the editor set the tempo (see Controller::hasTempo()) take it up as the preset loads, so a sequencer
+    // pattern plays at the tempo it was made at; a plugin host's tempo stays its own. Part of the patch, like the node
+    // places, but not undone.
     float savedTempo = 0.0f;
     // What the preset says about itself (see PresetInfo). Part of the patch, but not undone: it changes as a preset is
     // saved, or its info edited.
@@ -598,13 +599,22 @@ public:
     // whichever project it is in. Set, it is held to its ranges first, then stored.
     virtual EditorSettings editorSettings() const = 0;
     void setEditorSettings(const EditorSettings &settings) { storeEditorSettings(settings.clamped()); }
-    // The tempo, for a host that stands in for a transport and lets the editor set it (the browser demo, and
-    // fmvibe-uihost through FMVibe's own host extension, see src/hosttempo.h): the editor then shows it in the title
-    // bar, to drag, scroll or type. A plugin host's tempo is its own, and the editor shows none. In BPM, kMinTempo to
-    // kMaxTempo, in hundredths (see clampTempo()).
+    // The host's tempo, for a host that stands in for a transport and lets the plugin set it (the browser demo, and
+    // fmvibe-uihost through FMVibe's own host extension, see src/hosttempo.h): a preset loaded sets it to the tempo it
+    // was saved at, and the title bar shows it while the synth follows the host. A plugin host's tempo is its own,
+    // which the title bar shows as the synth last played it. In BPM, kMinTempo to kMaxTempo, in hundredths (see
+    // clampTempo()).
     virtual bool hasTempo() const { return false; }
     virtual double tempo() const { return kDefaultTempo; }
     virtual void setTempo(double) {}
+    // Whether the synth plays at the host's tempo (the title bar's H, on to begin with), and the tempo of its own it
+    // plays at while it doesn't, which the title bar's tempo drags, scrolls and types. Settings of the instance, saved
+    // with the host's project, which an edit marks changed but doesn't undo; a preset loaded sets the tempo of its
+    // own to the one it was saved at. In BPM, as above.
+    virtual bool tempoSync() const { return true; }
+    virtual void setTempoSync(bool) {}
+    virtual double ownTempo() const { return kDefaultTempo; }
+    virtual void setOwnTempo(double) {}
     // Opens the user manual, online at kManualUrl (the settings dialog's book button).
     virtual void openManual() {}
 

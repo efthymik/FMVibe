@@ -117,6 +117,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     pitch bend bending its note alone and the master channel's every
     note, and a member channel's pressure being its note's alone (the master channel's standing in until it sends
     some), in mono too for a note taking the voice over; with it off, any channel's bend bending every note;
+  - with host sync off through the state's settings chunk (which saves it, a new instance following the host), a
+    synced LFO playing at the synth's own tempo whatever the host's, and an anchored one counting the host's time in
+    beats of its own tempo;
   - a synced LFO's note value taking a macro's and the host's modulation in steps, a part of a step leaving it as
     it is;
   - an LFO's Phase moving where notes start it (a one-shot running from there to its cycle's end), while a free
@@ -870,10 +873,13 @@ the plain CMake commands and installing into a host are in the [README](README.m
     again (read off the rendered pixels), the 4 of its Operators switch showing the four operators' eight (the panel
     opening on them while one is in force), its 3 and 2 theirs, which switch the operators past theirs off, Escape and a click
     around closing it without a change and Enter left to the host;
-  - the title bar's tempo: none for a plugin host, and for a host that lets the editor set it a field (read off the
-    rendered pixels) dragged a BPM every 2 px (a tenth with Shift), the wheel stepping it a BPM a notch onto whole
-    ones (a tenth with Shift), held to 20-999, and typed after a double-click or Ctrl+Click (`BPM` after it taken,
-    text that isn't a tempo and Escape leaving it), none of it touching the patch or its undo history;
+  - the title bar's tempo: its H lit to begin with, the field showing the host's tempo dimmed (read off the rendered
+    pixels) and taking no drag, wheel or typing, for a plugin host and for one that lets the editor set its tempo; the
+    H's tooltip and a click on it turning it off, unlit, the field undimmed (read off the rendered pixels); the
+    synth's own tempo then dragged a BPM every 2 px (a tenth with Shift), the wheel stepping it a BPM a notch onto
+    whole ones (a tenth with Shift), held to 20-999, and typed after a double-click or Ctrl+Click (`BPM` after it
+    taken, text that isn't a tempo and Escape leaving it), none of it touching the patch, its undo history or the
+    host's tempo;
   - the SEQ tab, between FX and MODS (a note put down by a double-click and held dragged across lengthening it, to the right its end, to the left its start): its card and an empty roll, and a dot on the tab while the sequencer is on (read
     off the rendered pixels), as on FX's while an effect in the line is switched on; a slight line parting the roll from the lane in every theme (read off the rendered pixels); a double-click putting a note down on its step (a
     step long at 1/16) and on the note deleting it; the notes and the playhead where the telemetry puts it (read off
@@ -968,7 +974,7 @@ More checks:
   window's title shows; keys the editor takes for typing stay its own) and from every
   MIDI input it can open, at a tempo of 140 BPM for synced LFOs and effects, its transport playing from its start
   for anchored LFOs. It offers the plugin FMVibe's own host extension for the tempo (`src/hosttempo.h`), so the
-  editor's title bar shows the tempo, to change as it plays. With
+  editor's title bar shows the host's tempo and a preset loaded sets it. With
   `--silent`, or without a device, it still runs the plugin in real time into silence, so the meters, the scope and
   the analyzers move; `--no-midi` leaves the MIDI inputs alone and `--tempo <bpm>` sets another tempo. It restarts
   the plugin when a higher voice limit asks for it, and runs its main-thread callbacks. It isn't a test, and like a
@@ -1085,9 +1091,10 @@ version pinned at its top. After that it loads Visual Studio's environment for C
   clicked.
 - On a touchscreen, `main.js` hands the editor one finger (`View::touchDown()` and on: it drags what drags, pans
   what scrolls, and taps) and two (`View::touchPanBegin()` and on: a pan), with its own slop and double tap.
-- The page stands in for a host's transport: its `Controller` offers the tempo (`hasTempo()`), which the editor's
-  title bar then shows to drag, scroll or type (20–999 BPM, kept in the browser's storage), and which `dsp_tempo()`
-  hands the synth as `Plugin::process()` does the host's tempo.
+- The page stands in for a host's transport: its `Controller` offers the tempo (`hasTempo()`, 20–999 BPM, kept in
+  the browser's storage), which an example sets as it loads and the editor's title bar shows while its H is on. The
+  synth's own tempo and the H (`ownTempo()`, `tempoSync()`) are kept there too, and the page hands `dsp_tempo()` the
+  one the synth plays at, as `Plugin::process()` hands it the host's tempo.
 - The page polls and paints at most about 60 times a second, whatever the display's rate, and, like the plugin
   window, repaints on a mouse move only when what the editor shows changes.
 - The page ships FMVibe's `LICENSE` (as `LICENSE.txt`) and `web/site/THIRD-PARTY-NOTICES.txt`, the licenses of the
@@ -1154,7 +1161,7 @@ breakpoints in `src/` then hit.
 | --- | --- |
 | `src/plugincore.cpp` | What both plugins are: `PluginCore`, the engine and its param values, the editor's `Controller` (presets, settings), the state and the editor window, telling each host through its hooks |
 | `src/entry.cpp` | The CLAP plugin's exported `clap_entry` and factory |
-| `src/hosttempo.h` | FMVibe's own CLAP host extension for the tempo, which `fmvibe-uihost` offers so the editor can show and set it |
+| `src/hosttempo.h` | FMVibe's own CLAP host extension for the tempo, which `fmvibe-uihost` offers so the editor can show it and a preset can set it |
 | `src/plugin.cpp` | The CLAP plugin: the core with its process loop, events and extension tables (ports, params, state, remote controls, voice info, gui) |
 | `src/vst3entry.cpp` | The VST3 plugin's exported `GetPluginFactory` (and `InitDll`, `ExitDll`) and factory |
 | `src/vst3plugin.cpp` | The VST3 plugin: the core as one object that is component, processor and edit controller (buses, process loop, params in units, MIDI mapping, note expressions, state), and its editor view |
@@ -1383,12 +1390,13 @@ itself.
   effect cards past the 16th slot are folded, the node the effects graph's inspector shows, whether the FX view shows
   the graph, the band each split shows and which splits' containers are folded, the SEQ view's roll (whether it
   draws, its snap, its lane, its lowest row and whether it is folded to the scale), and the tempo the patch was last
-  saved as a preset at (0 for none), which a host that lets the editor set the tempo (`Controller::hasTempo()`)
-  takes up as the preset loads, then what the preset says about itself (`gui::PresetInfo`: its author, its category by
+  saved as a preset at (0 for none), which the synth's own tempo and a host that lets the editor set the tempo
+  (`Controller::hasTempo()`) take up as the preset loads, then what the preset says about itself (`gui::PresetInfo`: its author, its category by
   name and its one-line description, each as its length and its bytes in UTF-8), which the library's scan reads past
   the params (`readPresetInfo()`) and an older plugin, reading a longer layout than it knows, skips.
   The host's state goes on with
-  the settings chunk (the oversampling, MPE and MPE's bend range) and a preset chunk (whether the patch changed since its preset, then the preset file's path
+  the settings chunk (the oversampling, MPE, MPE's bend range, whether the synth follows the host's tempo and its
+  own tempo, `Settings` in `src/state.h`) and a preset chunk (whether the patch changed since its preset, then the preset file's path
   in UTF-8, left out past 64 KB); preset files stop after the layout. Params and layout fields a
   state doesn't have keep their defaults; a layout or settings chunk longer than the loader knows (up to 4096
   floats are read) keeps the fields it knows and is skipped past, so the chunks after it still load; a chunk cut
