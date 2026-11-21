@@ -490,7 +490,7 @@ STR(ParamNameBypassOn, "{1} bypass on {2}")
 STR(ParamSeqOn, "Sequencer On")
 STR(ParamSeqPattern, "Sequencer Pattern")
 STR(ParamSeqPlay, "Sequencer Play")
-STR(ParamSeqRate, "Sequencer Rate")
+STR(ParamSeqSpeed, "Sequencer Speed")
 STR(ParamSeqSwing, "Sequencer Swing")
 STR(ParamSeqGate, "Sequencer Gate")
 STR(ParamSeqVelocity, "Sequencer Velocity")
@@ -711,6 +711,7 @@ STR(LabelPreDelay, "Pre") // the reverb's pre-delay
 STR(LabelDamp, "Damp")
 STR(LabelShimmer, "Shimmer")
 STR(LabelRate, "Rate")
+STR(LabelSpeed, "Speed") // the sequencer's speed, a multiple of a 1/16 step
 STR(LabelRateL, "Rate L") // a synced delay's left note value; Rate alone when linked
 STR(LabelRateR, "Rate R")
 STR(LabelDepth, "Depth")

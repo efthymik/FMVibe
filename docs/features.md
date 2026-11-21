@@ -852,8 +852,10 @@ What the plugin does and how its editor works, in full. Building and installing 
     from **Root**, and stops when the keys are let go; **Latch** starts with a key and plays on once they are let go, a
     new key transposing it, until All Notes Off or All Sound Off (MIDI CC 123 or 120, as a host sends as it stops). In Key and Latch the keys play no notes of their own: the host is told each one has ended
     as it is let go.
-  - **Rate** is a step's length: 1/4, 1/8 dotted, 1/8, 1/16 dotted, 1/8 triplet, 1/16 (to begin with), 1/16 triplet or
-    1/32, at the host's tempo. **Swing** (50–75 %) delays every other step; **Gate** (5–200 %) scales every note's
+  - **Speed** sets a step's length as a multiple of a 1/16 step's speed, at the host's tempo (the roll's snap names
+    its grids for a step of a 1/16): ×1/4, ×1/3, ×1/2, ×2/3, ×3/4, ×1 (to begin with), ×1.5 or ×2, a step of a 1/4,
+    1/8 dotted, 1/8, 1/16 dotted, 1/8 triplet, 1/16, 1/16 triplet or 1/32. (Its param, `SeqParam::Rate`, kept its id and
+    its values: only its name and text changed, from the note values.) **Swing** (50–75 %) delays every other step; **Gate** (5–200 %) scales every note's
     length; **Velocity** scales the notes' velocities (at 0 % every note plays at 100); **Humanize** delays the notes by
     up to a quarter of a step and moves their velocity up to 30 % either way, the same way every time round;
     **Octave** (±3) and **Transpose** (±24 semitones) move the whole pattern. **Order** runs the loop's steps forward,

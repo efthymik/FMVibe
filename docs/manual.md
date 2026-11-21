@@ -1153,7 +1153,9 @@ Each pattern has a **loop** (the whole pattern by default), which is what plays.
   - **Key**: plays while a key is held, from the pattern's start, transposed by the newest key relative to **Root**.
   - **Latch**: starts with a key and keeps playing after release; a new key transposes it. All Notes Off or All
     Sound Off (which hosts send when they stop) ends it.
-- **Rate**: the step length, from 1/4 to 1/32, including dotted and triplet values (1/16 by default).
+- **Speed**: how fast the steps go, against a step of a 1/16 note at the host's tempo: ×1 (the default) plays
+  sixteenths, ×1/2 eighths, ×2 thirty-seconds. In between, ×2/3 and ×1/3 play dotted steps and ×3/4 and ×1.5
+  triplets. ×1/4 plays quarter notes.
 - **Length**: the pattern's length in bars.
 - **Octave** (±3) and **Transpose** (±24 semitones).
 - **Swing** (50–75 %), **Gate** (5–200 % of each note's length), **Humanize** (repeatable timing and velocity
@@ -1256,7 +1258,7 @@ Delete, Select All, Slide, Mute and **Quantize** (moves the selected notes onto 
 ### Sequencer behavior
 
 Sequenced notes use voices like any other notes (stealing, mono, legato and glide). The
-keyboard strip lights only the keys you play, not the sequencer's notes. Jumping the transport or changing Rate while
+keyboard strip lights only the keys you play, not the sequencer's notes. Jumping the transport or changing Speed while
 playing restarts from the new position. The sequencer's settings, except Root and Scale, can be automated by your
 host; patterns, notes and curves are edited in the plugin only.
 

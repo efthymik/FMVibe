@@ -87,7 +87,9 @@ const char *const kSeqPatternNames[] = {"A", "B", "C", "D"};
 static_assert(std::size(kSeqPatternNames) == static_cast<size_t>(kSeqPatterns));
 constexpr Str kSeqPlayNames[] = {Str::SeqPlayHost, Str::SeqPlayKey, Str::SeqPlayLatch};
 static_assert(std::size(kSeqPlayNames) == static_cast<size_t>(SeqPlay::Count));
-const char *const kSeqRateNames[] = {"1/4", "1/8D", "1/8", "1/16D", "1/8T", "1/16", "1/16T", "1/32"};
+// The speeds, as multiples of a 1/16 step (kSeqStepsPerBeat / 4): a 1/4 step is x1/4, a 1/8 dotted x1/3, a 1/32 x2.
+const char *const kSeqRateNames[] = {"Ã" "1/4", "Ã" "1/3", "Ã" "1/2", "Ã" "2/3",
+                                     "Ã" "3/4", "Ã" "1",   "Ã" "1.5", "Ã" "2"};
 static_assert(std::size(kSeqRateNames) == static_cast<size_t>(SeqRate::Count));
 constexpr Str kSeqOrderNames[] = {Str::SeqOrderForward, Str::SeqOrderReverse, Str::SeqOrderPingPong,
                                   Str::SeqOrderRandom};
@@ -1057,7 +1059,7 @@ void buildTable(ParamTable &t) {
         setting(SeqParam::Pattern, Str::ParamSeqPattern, ParamKind::SeqPattern, 0.0, kSeqPatterns - 1.0, 0.0);
         setting(SeqParam::Play, Str::ParamSeqPlay, ParamKind::SeqPlay, 0.0, static_cast<double>(SeqPlay::Count) - 1.0,
                 0.0);
-        setting(SeqParam::Rate, Str::ParamSeqRate, ParamKind::SeqRate, 0.0, static_cast<double>(SeqRate::Count) - 1.0,
+        setting(SeqParam::Rate, Str::ParamSeqSpeed, ParamKind::SeqRate, 0.0, static_cast<double>(SeqRate::Count) - 1.0,
                 static_cast<double>(SeqRate::Sixteenth));
         setting(SeqParam::Swing, Str::ParamSeqSwing, ParamKind::Percent, 0.5, 0.75, 0.5);
         setting(SeqParam::Gate, Str::ParamSeqGate, ParamKind::Percent, 0.05, 2.0, 1.0);
@@ -1819,7 +1821,8 @@ bool parseParam(int index, const char *text, double *out) {
         *out = 1.0;
         return true;
     }
-    if (def.kind == ParamKind::FixedMult || def.kind == ParamKind::OpRatio) { // "×10", "x10" or "10"
+    if (def.kind == ParamKind::FixedMult || def.kind == ParamKind::OpRatio ||
+        def.kind == ParamKind::SeqRate) { // "×10", "x10" or "10"
         if (std::strncmp(text, "\xC3\x97", 2) == 0)
             text += 2;
         else if (*text == 'x' || *text == 'X')
@@ -1893,7 +1896,6 @@ bool parseParam(int index, const char *text, double *out) {
     case ParamKind::MorphMode:
     case ParamKind::SeqPattern:
     case ParamKind::SeqPlay:
-    case ParamKind::SeqRate:
     case ParamKind::SeqOrder:
     case ParamKind::SeqBars:
     case ParamKind::FilterType:
@@ -1954,6 +1956,23 @@ bool parseParam(int index, const char *text, double *out) {
     case ParamKind::FixedFreq:
         value = normFromFixedFreq(*end == 'k' || *end == 'K' ? value * 1000.0 : value);
         break;
+    case ParamKind::SeqRate: { // "1.5" or a fraction such as "2/3": the nearest speed, on a log scale
+        if (*end == '/') {
+            const double below = std::strtod(end + 1, nullptr);
+            if (!(below > 0.0) || !std::isfinite(below))
+                return false;
+            value /= below;
+        }
+        if (!(value > 0.0))
+            return false;
+        int nearest = 0;
+        for (int k = 1; k < static_cast<int>(SeqRate::Count); ++k)
+            if (std::abs(std::log(value * 4.0 / kSeqStepsPerBeat[k])) <
+                std::abs(std::log(value * 4.0 / kSeqStepsPerBeat[nearest])))
+                nearest = k;
+        value = nearest;
+        break;
+    }
     case ParamKind::FixedMult: { // the nearest factor, on a log scale
         int nearest = 0;
         for (int k = 1; k < kFixedMultCount; ++k)

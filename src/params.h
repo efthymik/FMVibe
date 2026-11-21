@@ -369,7 +369,8 @@ enum class SeqCurveParam { PointCount, Points, Count = Points + 3 * kSeqCurvePoi
 // When it plays: with the host's transport, from a key held (transposed by it from Root) or from a key until stopped.
 // Stored by number: only append.
 enum class SeqPlay { Host, Key, Latch, Count };
-// How long a step is, slowest first. Stored by number: only append.
+// How long a step is, slowest first; the editor shows it as a speed, a multiple of a 1/16 step (see
+// kSeqStepsPerBeat). Stored by number: only append.
 enum class SeqRate { Quarter, EighthDotted, Eighth, SixteenthDotted, EighthTriplet, Sixteenth, SixteenthTriplet,
                      ThirtySecond, Count };
 // Which way the steps run. Stored by number: only append.
