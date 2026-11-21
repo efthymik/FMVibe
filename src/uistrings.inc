@@ -735,7 +735,7 @@ STR(LabelThresh, "Thresh") // the compressor's Threshold, short beside three mor
 STR(LabelDetectorHp, "SC HP") // the compressor's high-pass on what its detector hears (its side chain)
 STR(LabelBits, "Bits")
 STR(SwitchThroughZero, "TZF") // the flanger's through-zero switch, between its Feedback and Mix
-STR(TipThroughZero, "Through zero: the dry sound waits the sweep's middle, so the sweep passes through it")
+STR(TipThroughZero, "Through-zero flanging")
 STR(LabelFreq, "Freq")
 STR(LabelPinch, "Pinch")
 STR(LabelHighPass, "Cutoff") // the widener's high-pass, above which it widens
