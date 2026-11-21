@@ -66,6 +66,11 @@ The CLAP and VST3 versions share the same engine, plugin window, parameters and 
 either. Your DAW treats them as two different plugins, however, so a project made with the CLAP version won't open the
 VST3 version in its place, or the other way round.
 
+On Linux, both plugins build from source as well (`./build.sh`; see the README). Copy `FMVibe.clap` into `~/.clap` and
+the whole `FMVibe.vst3` folder into `~/.vst3` (`./build.sh --install` does both). The editor is an X11 window
+(XWayland included) drawn through Cairo, and file dialogs come from the desktop (`zenity` or `kdialog`). Presets live
+in `~/.local/share/FMVibe/presets` and settings in `~/.config/FMVibe`, or the XDG equivalents where set.
+
 ## 3. How FMVibe makes sound
 
 ### Signal flow
@@ -1552,6 +1557,11 @@ click outside).
 An open list or menu, such as a filter's type list, the list of effects or the list of sources, closes when you press
 **Escape**, without picking anything.
 
+On Linux, the file dialogs (Load, Save to File…) and the warning dialogs are the desktop's own — `zenity`, else
+`kdialog` — opened as separate windows. While one is open the plugin window dims and says "A dialog is open":
+**Alt+Tab** shows the dialog, **Escape** closes it. With neither program installed, the window says so for a moment
+and no dialog opens; the preset browser's own Save dialog still works.
+
 ## 17. FMVibe in your DAW
 
 ### Automation
@@ -1606,6 +1616,10 @@ oversampling stops them.
 | Presets and projects | The whole patch: parameters, routing and its layout, modulation, effects, sequencer patterns, macro names, preset info. |
 | Projects only | Oversampling, MPE settings, the preset the patch came from and whether it changed. |
 | Personal settings file | Theme, hue, glow, lines, grid, handle size, window size, whether the keyboard strip is collapsed, favorites, recent presets, your categories, where the browser opens. |
+
+On Windows the preset folder is `Documents\FMVibe\presets` and the settings file `%APPDATA%\FMVibe\settings.txt`. On
+Linux they are `~/.local/share/FMVibe/presets` and `~/.config/FMVibe/settings.txt` (or `$XDG_DATA_HOME` /
+`$XDG_CONFIG_HOME` where set).
 
 ### CPU
 

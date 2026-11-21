@@ -67,9 +67,20 @@ To try the plugin without a DAW, run `build\<config>\fmvibe-uihost.exe` (or `.\b
 the editor in a window and plays through the default output device; notes come from the editor's keyboard, the computer
 keyboard (A W S E D … from middle C, Z/X for the octave, C/V for the velocity) and any MIDI input.
 
-On Linux, `./build.sh` builds the engine and the editor without the plugins and runs the audio quality test and the
-editor's snapshots (PNGs in `build/linux/ui-shots`). It needs CMake, Ninja, a C++20 compiler and Cairo
-(`libcairo2-dev`). See [AGENTS.md](AGENTS.md#linux-development-build).
+On Linux, `./build.sh` builds the CLAP and VST3 plugins (`FMVibe.clap` and the `FMVibe.vst3` bundle), the audio
+quality test, the editor's snapshots (PNGs in `build/linux/ui-shots`), a small test host and Steinberg's VST3
+validator, then runs the tests.
+`./build.sh --install` also puts them in `~/.clap` and `~/.vst3`. It needs CMake 3.25+, Ninja, a C++20 compiler (GCC 13
+or Clang 18), `pkg-config`, Cairo and X11:
+
+```bash
+sudo apt-get install -y cmake ninja-build g++ pkg-config git libcairo2-dev libx11-dev fonts-inter
+./build.sh --install
+```
+
+The editor is an X11 window (XWayland included) drawn through Cairo; it links no GTK and no Wayland, and asks the
+desktop for its file and warning dialogs (`zenity`, else `kdialog`) as separate programs, so nothing but X11, Cairo and
+fontconfig is loaded into the DAW. See [AGENTS.md](AGENTS.md#linux-development-build).
 
 ## Documentation
 

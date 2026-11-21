@@ -1,0 +1,10 @@
+/* What a VST3 module exports, and nothing else: the host looks up `GetPluginFactory` and reaches the classes through
+   that factory. See symbols-clap.map on why the rest stays local. */
+{
+    global:
+        GetPluginFactory;
+        ModuleEntry;
+        ModuleExit;
+    local:
+        *;
+};

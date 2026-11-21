@@ -8,8 +8,20 @@
 #include <sstream>
 #include <system_error>
 
+#ifdef _WIN32
 #include <windows.h>
 #include <shlobj.h>
+#else
+#include <cerrno>
+#include <cstdio>
+#include <fcntl.h>
+#include <sys/file.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+#endif
+
+#include "presets.h"
 
 namespace fmvibe {
 
@@ -17,11 +29,12 @@ namespace {
 
 // How long a file that another program holds for a moment (a virus scanner, the search indexer) is waited out.
 constexpr int kBusyAttempts = 20;
-constexpr DWORD kBusyWaitMs = 10;
+constexpr int kBusyWaitMs = 10;
 // Longer than another process can hold the lock while it waits out such a program, reading and then replacing.
-constexpr DWORD kLockWaitMs = 1000;
+constexpr int kLockWaitMs = 1000;
 
 std::filesystem::path userSettingsFile() {
+#ifdef _WIN32
     // The tests name a folder of their own, so they leave the user's settings alone.
     wchar_t override_[MAX_PATH];
     const DWORD length = GetEnvironmentVariableW(L"FMVIBE_SETTINGS_DIR", override_, MAX_PATH);
@@ -33,8 +46,19 @@ std::filesystem::path userSettingsFile() {
         file = std::filesystem::path(appData) / L"FMVibe" / L"settings.txt";
     CoTaskMemFree(appData);
     return file;
+#else
+    // The tests name a folder of their own, so they leave the user's settings alone.
+    if (const char *dir = std::getenv("FMVIBE_SETTINGS_DIR"); dir && *dir)
+        return std::filesystem::path(dir) / "settings.txt";
+    if (const char *config = std::getenv("XDG_CONFIG_HOME"); config && *config)
+        return std::filesystem::path(config) / "FMVibe" / "settings.txt";
+    if (const char *home = std::getenv("HOME"); home && *home)
+        return std::filesystem::path(home) / ".config" / "FMVibe" / "settings.txt";
+    return {};
+#endif
 }
 
+#ifdef _WIN32
 // Held from reading the file until the new one is in its place, so that processes (Bitwig runs instances in several)
 // take turns. Where Windows gives no mutex, each goes ahead alone.
 class FileLock {
@@ -64,6 +88,49 @@ private:
     HANDLE mutex_ = nullptr;
     bool owned_ = false;
 };
+#else
+// The same with flock() on a lock file beside the settings: processes take turns, and a process that ended holding it
+// leaves the file whole, as it is only ever replaced.
+class FileLock {
+public:
+    explicit FileLock(const std::filesystem::path &file) {
+        std::filesystem::path lock = file;
+        lock += ".lock";
+        std::error_code error;
+        std::filesystem::create_directories(lock.parent_path(), error);
+        fd_ = ::open(lock.c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0644);
+        if (fd_ < 0)
+            return;
+        for (int attempt = 0;; ++attempt) {
+            if (::flock(fd_, LOCK_EX | LOCK_NB) == 0) {
+                owned_ = true;
+                return;
+            }
+            if (attempt >= kLockWaitMs / kBusyWaitMs) {
+                ::close(fd_);
+                fd_ = -1;
+                return;
+            }
+            ::usleep(kBusyWaitMs * 1000);
+        }
+    }
+    ~FileLock() {
+        if (fd_ >= 0) {
+            if (owned_)
+                ::flock(fd_, LOCK_UN);
+            ::close(fd_);
+        }
+    }
+    FileLock(const FileLock &) = delete;
+    FileLock &operator=(const FileLock &) = delete;
+
+    bool held() const { return owned_; }
+
+private:
+    int fd_ = -1;
+    bool owned_ = false;
+};
+#endif
 
 UserSettings parsed(const std::string &text) {
     UserSettings settings;
@@ -109,6 +176,7 @@ UserSettings parsed(const std::string &text) {
 // The file's settings, the defaults if there is no file yet. False for a file that is there but can't be read, which
 // says nothing of what it holds: taken for the defaults, they would be written over it.
 bool readFile(const std::filesystem::path &file, UserSettings &settings) {
+#ifdef _WIN32
     HANDLE in = INVALID_HANDLE_VALUE;
     for (int attempt = 0;; ++attempt) {
         in = CreateFileW(file.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
@@ -138,6 +206,39 @@ bool readFile(const std::filesystem::path &file, UserSettings &settings) {
     if (whole)
         settings = parsed(text);
     return whole;
+#else
+    int in = -1;
+    for (int attempt = 0;; ++attempt) {
+        in = ::open(file.c_str(), O_RDONLY | O_CLOEXEC);
+        if (in >= 0)
+            break;
+        if (errno == ENOENT || errno == ENOTDIR) {
+            settings = {};
+            return true;
+        }
+        if (attempt >= kBusyAttempts || (errno != EBUSY && errno != EACCES && errno != ETXTBSY))
+            return false;
+        ::usleep(kBusyWaitMs * 1000);
+    }
+    std::string text;
+    char buffer[4096];
+    bool whole = false;
+    for (;;) {
+        const ssize_t got = ::read(in, buffer, sizeof buffer);
+        if (got > 0) {
+            text.append(buffer, static_cast<size_t>(got));
+            continue;
+        }
+        if (got < 0 && errno == EINTR)
+            continue; // a signal interrupted the read: it goes on, not taken for the file's end
+        whole = got == 0;
+        break;
+    }
+    ::close(in);
+    if (whole)
+        settings = parsed(text);
+    return whole;
+#endif
 }
 
 // Written beside the file under this process's own name, then put in its place: another process reading it meanwhile
@@ -147,7 +248,11 @@ bool writeFile(const std::filesystem::path &file, const UserSettings &settings) 
     std::filesystem::create_directories(file.parent_path(), error);
     error.clear(); // a folder that couldn't be made shows as the write failing
     std::filesystem::path part = file;
+#ifdef _WIN32
     part += L"." + std::to_wstring(GetCurrentProcessId()) + L".part";
+#else
+    part += "." + std::to_string(::getpid()) + ".part";
+#endif
     {
         std::ofstream out(part);
         out << "theme=" << settings.theme << "\nglowLevel=" << settings.glow << "\nhandleSize=" << settings.handleSize
@@ -172,9 +277,18 @@ bool writeFile(const std::filesystem::path &file, const UserSettings &settings) 
         out.close();
         if (!out)
             error = std::make_error_code(std::errc::io_error);
+#ifndef _WIN32
+        if (!error) { // the bytes on the disk before the rename, as MoveFileEx's WRITE_THROUGH does on Windows
+            const int fd = ::open(part.c_str(), O_RDONLY | O_CLOEXEC);
+            if (fd >= 0) {
+                ::fsync(fd);
+                ::close(fd);
+            }
+        }
+#endif
     }
     if (!error)
-        return replaceFile(part.wstring(), file.wstring());
+        return replaceFile(wideOf(part), wideOf(file));
     std::error_code ignored;
     std::filesystem::remove(part, ignored);
     return false;
@@ -297,6 +411,7 @@ UserSettings savedUserSettings() {
 }
 
 bool replaceFile(const std::wstring &part, const std::wstring &target) {
+#ifdef _WIN32
     for (int attempt = 0;; ++attempt) {
         if (MoveFileExW(part.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
             return true;
@@ -307,6 +422,19 @@ bool replaceFile(const std::wstring &part, const std::wstring &target) {
     }
     DeleteFileW(part.c_str());
     return false;
+#else
+    // rename() replaces the target in one step, as MoveFileEx does, and is the file's own name on POSIX.
+    const std::string from = utf8Text(part), to = utf8Text(target);
+    for (int attempt = 0;; ++attempt) {
+        if (::rename(from.c_str(), to.c_str()) == 0)
+            return true;
+        if (attempt >= kBusyAttempts || (errno != EBUSY && errno != EACCES))
+            break;
+        ::usleep(kBusyWaitMs * 1000);
+    }
+    ::unlink(from.c_str());
+    return false;
+#endif
 }
 
 } // namespace fmvibe

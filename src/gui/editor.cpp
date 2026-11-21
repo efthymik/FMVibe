@@ -248,6 +248,24 @@ void Editor::size(uint32_t &width, uint32_t &height) const {
     height = height_;
 }
 
+float Editor::systemScale() { return GetDpiForSystem() / 96.0f; }
+
+void Editor::setScale(double scale) {
+    if (scale <= 0.0)
+        return;
+    const float dpiScale = static_cast<float>(scale);
+    if (std::fabs(dpiScale - dpiScale_) < 1e-3f)
+        return;
+    dpiScale_ = dpiScale;
+    uint32_t width = static_cast<uint32_t>(std::lround(View::kWidth * controller_.layout().zoom * dpiScale_));
+    uint32_t height = 0;
+    fit(width, height);
+    if (width != width_ || height != height_) {
+        dpiWidth_ = width;
+        controller_.requestEditorSize(width, height); // the host then sets it (setSize()), at the same zoom
+    }
+}
+
 void Editor::constrain(uint32_t &width, uint32_t &height, float viewHeight) {
     width = std::clamp(width, kMinWidth, kMaxWidth);
     height = static_cast<uint32_t>(std::lround(width * viewHeight / View::kWidth));

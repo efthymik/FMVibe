@@ -7,6 +7,7 @@
 #include <pluginterfaces/base/ibstream.h>
 #include <pluginterfaces/base/ipluginbase.h>
 #include <pluginterfaces/gui/iplugview.h>
+#include <pluginterfaces/gui/iplugviewcontentscalesupport.h>
 #include <pluginterfaces/vst/ivstaudioprocessor.h>
 #include <pluginterfaces/vst/ivstcomponent.h>
 #include <pluginterfaces/vst/ivsteditcontroller.h>
@@ -19,7 +20,15 @@
 #include <pluginterfaces/vst/ivstunits.h>
 #include <pluginterfaces/vst/vstspeaker.h>
 
+#ifdef _WIN32
 #include <windows.h>
+#else
+#include <cerrno>
+#include <fcntl.h>
+#include <poll.h>
+#include <thread>
+#include <unistd.h>
+#endif
 
 #include <algorithm>
 #include <atomic>
@@ -44,21 +53,76 @@ namespace {
 void copyText(char16 *to, int capacity, const std::string &utf8) {
     if (capacity <= 0)
         return;
-    const int length = MultiByteToWideChar(CP_UTF8, 0, utf8.data(), static_cast<int>(utf8.size()),
-                                           reinterpret_cast<wchar_t *>(to), capacity - 1);
-    to[std::clamp(length, 0, capacity - 1)] = 0;
+    int at = 0;
+    for (size_t i = 0; i < utf8.size() && at < capacity - 1;) {
+        const unsigned char b = static_cast<unsigned char>(utf8[i]);
+        uint32_t c = b;
+        size_t length = 1;
+        if ((b & 0xE0) == 0xC0) {
+            c = b & 0x1Fu;
+            length = 2;
+        } else if ((b & 0xF0) == 0xE0) {
+            c = b & 0x0Fu;
+            length = 3;
+        } else if ((b & 0xF8) == 0xF0) {
+            c = b & 0x07u;
+            length = 4;
+        } else if (b >= 0x80) {
+            c = '?';
+        }
+        bool whole = i + length <= utf8.size();
+        for (size_t k = 1; whole && k < length; ++k) {
+            const unsigned char next = static_cast<unsigned char>(utf8[i + k]);
+            if ((next & 0xC0) != 0x80) {
+                whole = false;
+                break;
+            }
+            c = (c << 6) | (next & 0x3Fu);
+        }
+        if (!whole)
+            c = '?';
+        i += whole ? length : 1;
+        if (c >= 0x10000 && c <= 0x10FFFF) { // a surrogate pair, while the room lasts
+            if (at + 1 >= capacity - 1)
+                break;
+            const uint32_t v = c - 0x10000;
+            to[at++] = static_cast<char16>(0xD800 + (v >> 10));
+            to[at++] = static_cast<char16>(0xDC00 + (v & 0x3FF));
+        } else {
+            to[at++] = static_cast<char16>(c > 0xFFFF ? '?' : c);
+        }
+    }
+    to[at] = 0;
 }
 
 std::string utf8Text(const char16 *text) {
     if (!text)
         return {};
-    const auto *wide = reinterpret_cast<const wchar_t *>(text);
-    const int length = WideCharToMultiByte(CP_UTF8, 0, wide, -1, nullptr, 0, nullptr, nullptr);
-    if (length <= 1)
-        return {};
-    std::string out(static_cast<size_t>(length), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, wide, -1, out.data(), length, nullptr, nullptr);
-    out.resize(static_cast<size_t>(length - 1));
+    std::string out;
+    for (size_t i = 0; text[i]; ++i) {
+        uint32_t c = text[i];
+        if (c >= 0xD800 && c <= 0xDBFF && text[i + 1] >= 0xDC00 && text[i + 1] <= 0xDFFF) {
+            c = 0x10000 + ((c - 0xD800) << 10) + (static_cast<uint32_t>(text[i + 1]) - 0xDC00);
+            ++i;
+        }
+        if (c < 0x80) {
+            out += static_cast<char>(c);
+        } else if (c < 0x800) {
+            out += static_cast<char>(0xC0 | (c >> 6));
+            out += static_cast<char>(0x80 | (c & 0x3F));
+        } else if (c < 0x10000) {
+            out += static_cast<char>(0xE0 | (c >> 12));
+            out += static_cast<char>(0x80 | ((c >> 6) & 0x3F));
+            out += static_cast<char>(0x80 | (c & 0x3F));
+        } else if (c <= 0x10FFFF) {
+            out += static_cast<char>(0xF0 | (c >> 18));
+            out += static_cast<char>(0x80 | ((c >> 12) & 0x3F));
+            out += static_cast<char>(0x80 | ((c >> 6) & 0x3F));
+            out += static_cast<char>(0x80 | (c & 0x3F));
+        } else {
+            out += '?';
+        }
+    }
     return out;
 }
 
@@ -206,8 +270,10 @@ bool clapExpression(NoteExpressionTypeID type, double normalized, int32_t &id, d
     }
 }
 
-// A message-only window on the main thread, which other threads wake to have the plugin do there what only may be
-// done there (see Plugin::wake()).
+// How other threads wake the main thread to have it do what only may be done there (see Plugin::wake()): a message-only
+// window on Windows, a pipe whose read end the host's Linux run loop watches (IRunLoop), or a thread of our own where
+// the host offers no run loop (a plugin without an editor).
+#ifdef _WIN32
 constexpr wchar_t kWakeClass[] = L"FMVibeVst3Wake";
 constexpr UINT kWakeMessage = WM_APP + 1;
 constexpr UINT_PTR kWakeTimer = 1; // see hostTimer()
@@ -219,6 +285,13 @@ HINSTANCE moduleHandle() {
                        reinterpret_cast<LPCWSTR>(&moduleHandle), &module);
     return module;
 }
+#else
+const FIDString kViewPlatform = kPlatformTypeX11EmbedWindowID;
+#endif
+
+#ifdef _WIN32
+const FIDString kViewPlatform = kPlatformTypeHWND;
+#endif
 
 // How many param changes and events a block sorts by time; any beyond apply after them, as the host gave them.
 constexpr size_t kMaxChanges = 4096;
@@ -245,6 +318,8 @@ public:
     tresult PLUGIN_API getState(IBStream *) final { return kResultOk; }
 };
 
+class WakeHandler;
+
 // The processor and the edit controller in one object, on the core.
 class Plugin final : public PluginCore,
                      public ComponentStateNames,
@@ -267,6 +342,15 @@ public:
         if (left == 0)
             delete this;
         return left;
+    }
+
+    // The editor's clock: the host's run loop timer calls this (and a wake, where one came for another reason).
+    // Windows keeps its window's own timer, so there is nothing to pump there.
+    void pumpEditor() {
+#ifndef _WIN32
+        if (gui::Editor *window = editor())
+            window->pump();
+#endif
     }
 
     // IPluginBase
@@ -387,18 +471,28 @@ protected:
         callbackPending_.store(true);
         wake();
     }
-    // A timer on the wake window.
+    // A timer on the wake window, or on the view's run loop where Linux has one.
     bool hostTimer(bool on) override {
+#ifdef _WIN32
         if (!wakeWindow_)
             return false;
         if (on)
             return SetTimer(wakeWindow_, kWakeTimer, kTimerMs, nullptr) != 0;
         KillTimer(wakeWindow_, kWakeTimer);
         return true;
+#else
+        // The run loop's timer, which pumps the editor, ticks the voice limit's settle timer too.
+        if (!on)
+            return true;
+        return runLoop_ != nullptr && wakeHandler_ != nullptr;
+#endif
     }
 
 private:
     friend class View;
+#ifndef _WIN32
+    friend class WakeHandler;
+#endif
 
     // A param change or an event, at its place in a block (see process()).
     struct Change {
@@ -414,16 +508,30 @@ private:
         restartFlags_.fetch_or(flags);
         wake();
     }
-    // Any thread: the wake window's message, unless one is on its way already.
+    // Any thread: has the main thread wake, unless one is on its way already.
     void wake() {
+        if (wakePosted_.exchange(true))
+            return;
+#ifdef _WIN32
         // A post that fails (its queue full) leaves none on its way: the next wake posts again.
-        if (wakeWindow_ && !wakePosted_.exchange(true) && !PostMessageW(wakeWindow_, kWakeMessage, 0, 0))
+        if (!wakeWindow_ || !PostMessageW(wakeWindow_, kWakeMessage, 0, 0))
             wakePosted_.store(false);
+#else
+        const char byte = 1;
+        if (::write(wakePipe_[1], &byte, 1) < 0 && errno != EAGAIN)
+            wakePosted_.store(false);
+#endif
     }
-    // Main thread.
+    // Main thread (the host's run loop, or the thread where the host offers none).
     void woken();
     void timerTicked();
+#ifdef _WIN32
     static LRESULT CALLBACK wakeProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
+    void frameChanged(IPlugFrame *) {} // the wake window's timer pumps the editor
+#else
+    // Main thread: the host's run loop came or went with the view's frame.
+    void frameChanged(IPlugFrame *frame);
+#endif
 
     // Hands each of the block's param changes and events to `take`, in the host's order (see Change::order).
     template <class Take>
@@ -439,7 +547,19 @@ private:
     IComponentHandler *handler_ = nullptr;
     IComponentHandler2 *handler2_ = nullptr;
     View *view_ = nullptr; // the editor's view, while there is one
+#ifdef _WIN32
     HWND wakeWindow_ = nullptr;
+#else
+    // The pipe other threads write to, the run loop (or the thread) reads: the main thread wakes there.
+    int wakePipe_[2] = {-1, -1};
+    Linux::IRunLoop *runLoop_ = nullptr;
+    WakeHandler *wakeHandler_ = nullptr;
+    std::thread wakeThread_;
+    std::atomic<bool> wakeThreadRunning_{false};
+    void startWakeThread();
+    void stopWakeThread();
+    void readWake();
+#endif
     std::atomic<bool> wakePosted_{false};
     std::atomic<bool> callbackPending_{false};
     std::atomic<int32> restartFlags_{0};
@@ -454,7 +574,7 @@ private:
 };
 
 // The editor, in the host's window. The plugin has one view at a time, which owns the editor.
-class View final : public IPlugView {
+class View final : public IPlugView, public IPlugViewContentScaleSupport {
 public:
     explicit View(Plugin &plugin) : plugin_(plugin) { plugin_.addRef(); }
     ~View() {
@@ -468,6 +588,7 @@ public:
     tresult PLUGIN_API queryInterface(const TUID queried, void **obj) override {
         QUERY_INTERFACE(queried, obj, FUnknown::iid, IPlugView)
         QUERY_INTERFACE(queried, obj, IPlugView::iid, IPlugView)
+        QUERY_INTERFACE(queried, obj, IPlugViewContentScaleSupport::iid, IPlugViewContentScaleSupport)
         *obj = nullptr;
         return kNoInterface;
     }
@@ -480,7 +601,7 @@ public:
     }
 
     tresult PLUGIN_API isPlatformTypeSupported(FIDString type) override {
-        return type && std::strcmp(type, kPlatformTypeHWND) == 0 ? kResultTrue : kResultFalse;
+        return type && std::strcmp(type, kViewPlatform) == 0 ? kResultTrue : kResultFalse;
     }
     tresult PLUGIN_API attached(void *parent, FIDString type) override {
         if (isPlatformTypeSupported(type) != kResultTrue || !parent || !owns())
@@ -488,7 +609,16 @@ public:
         if (!plugin_.editor()) // attached again after removed()
             plugin_.openEditor();
         gui::Editor *editor = plugin_.editor();
+#ifdef _WIN32
         return editor && editor->attach(static_cast<HWND>(parent)) ? kResultOk : kResultFalse;
+#else
+        // An X11 host hands its window's id as the parent.
+        const auto window = static_cast<gui::Editor::WindowId>(reinterpret_cast<uintptr_t>(parent));
+        if (!editor || !editor->attach(window))
+            return kResultFalse;
+        plugin_.pumpEditor(); // the first frame now, before the run loop's timer comes
+        return kResultOk;
+#endif
     }
     tresult PLUGIN_API removed() override {
         if (owns())
@@ -508,7 +638,7 @@ public:
         } else {
             // As an editor opens: at the system's DPI, which it then follows to its window's
             width = static_cast<uint32_t>(
-                std::lround(gui::View::kWidth * plugin_.uiLayout().zoom * (GetDpiForSystem() / 96.0f)));
+                std::lround(gui::View::kWidth * plugin_.uiLayout().zoom * gui::Editor::systemScale()));
             gui::Editor::constrain(width, height, gui::View::heightFor(plugin_.uiLayout()));
         }
         *size = ViewRect(0, 0, static_cast<int32>(width), static_cast<int32>(height));
@@ -523,8 +653,15 @@ public:
         return kResultOk;
     }
     tresult PLUGIN_API onFocus(TBool) override { return kResultOk; }
+    // The host's content scale: the editor keeps its zoom, the host is asked for the size that has it at the scale.
+    tresult PLUGIN_API setContentScaleFactor(float factor) override {
+        if (gui::Editor *editor = owns() ? plugin_.editor() : nullptr)
+            editor->setScale(factor);
+        return kResultOk;
+    }
     tresult PLUGIN_API setFrame(IPlugFrame *frame) override {
         frame_ = frame; // the host's, alive while it is set
+        plugin_.frameChanged(frame);
         return kResultOk;
     }
     tresult PLUGIN_API canResize() override { return kResultTrue; }
@@ -561,6 +698,7 @@ private:
 
 Plugin::Plugin() {
     changes_.reserve(kMaxChanges);
+#ifdef _WIN32
     // Plugins are made on the main thread, which then owns this window.
     if (liveWakeWindows++ == 0) {
         WNDCLASSEXW wc{};
@@ -573,17 +711,35 @@ Plugin::Plugin() {
     wakeWindow_ = CreateWindowExW(0, kWakeClass, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, moduleHandle(), nullptr);
     if (wakeWindow_)
         SetWindowLongPtrW(wakeWindow_, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
+#else
+    if (::pipe2(wakePipe_, O_CLOEXEC | O_NONBLOCK) == 0) {
+        // A plugin without an editor never sees a run loop: its own thread reads the pipe instead.
+        startWakeThread();
+    } else {
+        wakePipe_[0] = wakePipe_[1] = -1;
+    }
+#endif
 }
 
 Plugin::~Plugin() {
     closeEditor();
     setComponentHandler(nullptr);
+#ifdef _WIN32
     if (wakeWindow_) {
         SetWindowLongPtrW(wakeWindow_, GWLP_USERDATA, 0); // a message still on its way finds no plugin
         DestroyWindow(wakeWindow_);
     }
     if (--liveWakeWindows == 0)
         UnregisterClassW(kWakeClass, moduleHandle());
+#else
+    frameChanged(nullptr);
+    stopWakeThread();
+    if (wakePipe_[0] >= 0)
+        ::close(wakePipe_[0]);
+    if (wakePipe_[1] >= 0)
+        ::close(wakePipe_[1]);
+    wakePipe_[0] = wakePipe_[1] = -1;
+#endif
 }
 
 tresult PLUGIN_API Plugin::queryInterface(const TUID queried, void **obj) {
@@ -604,9 +760,14 @@ tresult PLUGIN_API Plugin::queryInterface(const TUID queried, void **obj) {
 tresult PLUGIN_API Plugin::terminate() {
     closeEditor();
     setComponentHandler(nullptr);
+#ifndef _WIN32
+    frameChanged(nullptr);
+    stopWakeThread();
+#endif
     return kResultOk;
 }
 
+#ifdef _WIN32
 LRESULT CALLBACK Plugin::wakeProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
     if (message == kWakeMessage || (message == WM_TIMER && wParam == kWakeTimer))
         if (auto *plugin = reinterpret_cast<Plugin *>(GetWindowLongPtrW(hwnd, GWLP_USERDATA))) {
@@ -618,9 +779,13 @@ LRESULT CALLBACK Plugin::wakeProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM
         }
     return DefWindowProcW(hwnd, message, wParam, lParam);
 }
+#endif
 
 void Plugin::woken() {
     wakePosted_.store(false);
+#ifndef _WIN32
+    pumpEditor();
+#endif
     if (callbackPending_.exchange(false))
         onMainThread(); // may ask for a restart: that comes next
     if (const int32 flags = restartFlags_.exchange(0); flags && handler_)
@@ -632,6 +797,110 @@ void Plugin::timerTicked() {
     if (const int32 flags = restartFlags_.exchange(0); flags && handler_)
         handler_->restartComponent(flags);
 }
+
+#ifndef _WIN32
+// The host's run loop watches the wake pipe: its byte means the main thread has what only it may do.
+class WakeHandler final : public Steinberg::Linux::IEventHandler, public Steinberg::Linux::ITimerHandler {
+public:
+    explicit WakeHandler(Plugin &plugin) : plugin_(&plugin) {}
+    void detach() { plugin_ = nullptr; }
+    tresult PLUGIN_API queryInterface(const TUID queried, void **obj) override {
+        QUERY_INTERFACE(queried, obj, FUnknown::iid, Linux::IEventHandler)
+        QUERY_INTERFACE(queried, obj, Linux::IEventHandler::iid, Linux::IEventHandler)
+        QUERY_INTERFACE(queried, obj, Linux::ITimerHandler::iid, Linux::ITimerHandler)
+        *obj = nullptr;
+        return kNoInterface;
+    }
+    uint32 PLUGIN_API addRef() override { return ++refs_; }
+    uint32 PLUGIN_API release() override {
+        const uint32 left = --refs_;
+        if (left == 0)
+            delete this;
+        return left;
+    }
+    void PLUGIN_API onFDIsSet(Steinberg::Linux::FileDescriptor fd) override {
+        char buffer[64];
+        while (fd >= 0 && ::read(fd, buffer, sizeof buffer) > 0) {
+        }
+        if (plugin_)
+            plugin_->woken();
+    }
+    void PLUGIN_API onTimer() override {
+        if (plugin_) {
+            plugin_->pumpEditor(); // the editor's events, its poll and its paint, as CLAP's timer does there
+            plugin_->timerTicked(); // and the voice limit's settle timer, which needs no timer of its own here
+        }
+    }
+
+private:
+    std::atomic<uint32> refs_{1};
+    Plugin *plugin_;
+};
+
+void Plugin::startWakeThread() {
+    if (wakePipe_[0] < 0 || wakeThreadRunning_.exchange(true))
+        return;
+    wakeThread_ = std::thread([this] {
+        while (wakeThreadRunning_.load(std::memory_order_relaxed)) {
+            pollfd waiting{wakePipe_[0], POLLIN, 0};
+            if (::poll(&waiting, 1, 100) <= 0)
+                continue;
+            char buffer[64];
+            while (::read(wakePipe_[0], buffer, sizeof buffer) > 0) {
+            }
+            if (!wakeThreadRunning_.load(std::memory_order_relaxed))
+                break;
+            woken();
+        }
+    });
+}
+
+void Plugin::stopWakeThread() {
+    if (wakePipe_[0] < 0 || !wakeThreadRunning_.exchange(false))
+        return;
+    const char byte = 1; // wakes the poll, so the thread sees that it is to end
+    if (::write(wakePipe_[1], &byte, 1) < 0) {
+    }
+    if (wakeThread_.joinable())
+        wakeThread_.join();
+}
+
+// The view's frame: the host's run loop comes with it, where it offers one (Bitwig does). The pipe's read end is what
+// wakes the main thread there; without a run loop, a thread of our own reads it.
+void Plugin::frameChanged(IPlugFrame *frame) {
+    Linux::IRunLoop *runLoop = nullptr;
+    if (frame && frame->queryInterface(Linux::IRunLoop::iid, reinterpret_cast<void **>(&runLoop)) != kResultOk)
+        runLoop = nullptr;
+    if (runLoop == runLoop_)
+        return;
+    if (runLoop_ && wakeHandler_) {
+        runLoop_->unregisterTimer(wakeHandler_);
+        runLoop_->unregisterEventHandler(wakeHandler_);
+        wakeHandler_->detach();
+        wakeHandler_->release();
+        wakeHandler_ = nullptr;
+    }
+    if (runLoop_)
+        runLoop_->release();
+    runLoop_ = runLoop;
+    if (runLoop_) {
+        stopWakeThread();
+        wakeHandler_ = new WakeHandler(*this);
+        if (runLoop_->registerEventHandler(wakeHandler_, wakePipe_[0]) != kResultOk ||
+            runLoop_->registerTimer(wakeHandler_, 16) != kResultOk) {
+            runLoop_->unregisterEventHandler(wakeHandler_);
+            wakeHandler_->detach();
+            wakeHandler_->release();
+            wakeHandler_ = nullptr;
+            runLoop_->release();
+            runLoop_ = nullptr;
+            startWakeThread();
+        }
+    } else {
+        startWakeThread();
+    }
+}
+#endif
 
 int32 PLUGIN_API Plugin::getBusCount(MediaType type, BusDirection dir) {
     if (type == kAudio)

@@ -2466,3 +2466,20 @@ What the VST3 plugin does its own way:
   notes, but not on the way to the restart asked for, which they play on through as in the CLAP plugin.
 - **Not in VST3**: CLAP's per-voice and global host modulation, Bitwig's remote-control pages, and the note-end
   reports that per-voice modulation needs.
+
+### On Linux
+
+Both plugins build on Linux too (`./build.sh`): the same engine, parameters and state, the editor an X11 child window
+of the host's drawn through Cairo (XWayland included; no Wayland and no GTK is linked). What differs from Windows:
+
+- **File and warning dialogs** are the desktop's own — `zenity`, else `kdialog` — run as separate programs beside the
+  host, never inside it. While one is open the editor dims under a veil that says where it went ("A dialog is open",
+  "Alt+Tab to show it, Esc to close it"); Escape closes it. With neither tool installed the editor says so for a moment
+  ("install zenity or kdialog for file dialogs") and nothing opens; the preset browser's own Save dialog still works.
+- **The preset folder** is `$XDG_DATA_HOME/FMVibe/presets` (else `~/.local/share/FMVibe/presets`) and the **settings**
+  are `$XDG_CONFIG_HOME/FMVibe/settings.txt` (else `~/.config/FMVibe/settings.txt`). Deleting a preset folder moves it
+  to the freedesktop Trash where there is one for it, else deletes it.
+- **The editor's clock** is the host's: CLAP's timer-support, VST3's `Linux::IRunLoop` (a 16 ms timer), with a fallback
+  where the host offers neither. Only the entry points are exported (`clap_entry`; `GetPluginFactory`, `ModuleEntry`,
+  `ModuleExit`), so a CLAP and a VST3 loaded in one process can't bind each other's symbols.
+- Text is drawn in Inter (`FMVIBE_FONT` picks another family), and typing takes Latin-1 — no compose or IME.
