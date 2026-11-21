@@ -954,7 +954,9 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   curving into the panel's edge (ROUTING, in line with the panel's left edge, runs straight on down it), with the
   theme's accent along its top; the others are their names, a tab's shape
   showing faintly under the mouse. FX shows a dot in its upper right while an effect in the line is switched on,
-  and SEQ while the sequencer is on. While the full-size shape, shaper curve or partial editor has the panels, no tab
+  and SEQ while the sequencer is on. Tabs mark their upper right one of two ways, alike everywhere: a filled dot
+  says what the tab shows is at work and heard (these two, and a node's tab in the inspector), and a ring, as a
+  modulated knob has, says a control on the tab, shown or hidden, is modulated (an operator page's tabs). While the full-size shape, shaper curve or partial editor has the panels, no tab
   is shown, and clicking one closes the editor (a widened LFO card's shape stays in its card).
 - **SEQ** (the sequencer, see [Sound engine](#sound-engine)): its settings on a card where the inspector floats, and
   the roll of the pattern picked in the rest.
@@ -1741,7 +1743,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     inspector). Under the block, past a line across the page, a well: tabs along its top edge pick what the
     display under them shows, and the tab's controls sit in a row under the well (INPUTS, which has none, takes the
     well down to the lens's bottom). The tab is the same for every operator and saved with the project (a preset
-    leaves it as it is); a hidden tab whose knobs a source modulates has a dot in its corner, and holding a dragged
+    leaves it as it is); a tab whose knobs a source modulates, shown or hidden, has a ring in its corner (not the
+    filled dot that says a tab's contents are at work), and holding a dragged
     source's handle over a tab for half a second opens it, as over a view's tab (passed over, a moment on each, it
     opens none), so its knobs can take the drop:
     - **ENVELOPE** (to begin with): the operator's envelope, and its knobs. While notes play, a dashed line across

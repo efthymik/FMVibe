@@ -680,8 +680,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     and a dot on the curve along the attack, decay and release (one releasing from above the sustain too), as on a
     mod envelope's card (read off the rendered pixels), the unison knobs on theirs, the scope asking for its
     operator's output (and a noise operator's, or a hidden one's, for none), its trace drawn over 2 and 4 cycles
-    and as a slow span fills, the faint plain wave with no note, a hidden tab's dot while one of its knobs is
-    modulated (read off the rendered pixels), and a dragged handle opening the tab it is held over after half a second (passed
+    and as a slow span fills, the faint plain wave with no note, a tab's ring, hidden and shown, while one of its
+    knobs is modulated (read off the rendered pixels), and a dragged handle opening the tab it is held over after half a second (passed
     over one, not);
   - an envelope's curve following the modulation of its release and sustain, a faint line staying where the knobs
     set it (read off the rendered pixels);

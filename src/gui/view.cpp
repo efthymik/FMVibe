@@ -4313,7 +4313,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             working = value(paramIndex(SeqParam::Enabled)) >= 0.5;
         }
         if (working)
-            c.fillCircle(viewTabDot(w.a), 2.5f, kAccent);
+            c.fillCircle(viewTabDot(w.a), kTabDotRadius, kAccent);
         break;
     }
     case Kind::SourceMenuButton: { // and how many places are taken after it, as the effects' beside + EFFECT

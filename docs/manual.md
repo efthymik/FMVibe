@@ -123,8 +123,14 @@ From top to bottom, the plugin window has:
 - The **keyboard strip**: macros, the note and velocity sources, the pitch and mod wheels and a six-octave keyboard.
 
 The plugin window can be resized and keeps its aspect ratio. The modulation panel and the keyboard strip can each be
-collapsed to their title row, which makes the plugin window shorter. A tab shows a dot when its content is active: FX
-while an effect is switched on, SEQ while the sequencer is on.
+collapsed to their title row, which makes the plugin window shorter.
+
+Tabs use two small marks in their top-right corner, with the same meaning everywhere:
+
+- A **filled dot** means what the tab shows is on and you hear it: FX while an effect is switched on, SEQ while the
+  sequencer is on, and a node's tab in the inspector while the node is sent to the output.
+- A **ring** means a control on that tab is being modulated, like the ring on a modulated knob. It shows whether
+  the tab is open or not, so you can spot modulation on a tab you aren't looking at.
 
 ## 5. Header
 
@@ -183,7 +189,7 @@ The inspector has a tab for each node: operators A–F, filters F1 and F2, and s
 - Tabs of switched-off nodes are dimmed; clicking one switches the node on.
 - Clicking the selected tab switches its node off, or on again. The power switch on the page's title line does the
   same.
-- A dot in a tab's corner means the node is sent to the output.
+- A dot in a tab's corner means the node is sent to the output (see [the tabs' marks](#4-the-plugin-window-at-a-glance)).
 
 Under the tabs, the page title shows the node's letter and a **summary line**, for example
 `A Saw · 1.20 · ×4 · to F1`: the wave, ratio, unison copies and destinations. On an operator's page, the letter is
@@ -330,7 +336,7 @@ The summary line names the warp and says "note sync" while either is active.
 
 The operator's feedback comes last and is always Phase.
 
-A hidden tab whose controls are being modulated shows a dot. While you drag a modulation source's handle, holding it
+A tab whose controls are being modulated shows a ring in its corner. While you drag a modulation source's handle, holding it
 over a tab for half a second opens that tab, so you can drop the handle on its controls.
 
 ### Noise operators

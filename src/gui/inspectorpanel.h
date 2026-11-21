@@ -93,8 +93,7 @@ private:
     std::vector<Assignment> assignments() const;
     // The tab an operator's page shows: the one picked, but a noise operator's envelope for the scope it hasn't.
     InspectorTab opTabShown(int op) const;
-    // Whether a source modulates one of the knobs on an operator's tab, which shows a dot on the tab while it is
-    // hidden.
+    // Whether a source modulates one of the knobs on an operator's tab, which shows a ring on the tab.
     bool opTabModulated(int op, InspectorTab tab) const;
     OpWarp opWarp(int op) const;
     bool opSynced(int op) const;

@@ -1026,7 +1026,7 @@ bool grey(uint32_t color) {
 
 // The color of the dot in the top right corner of a node's tab in the inspector, in what was saved last.
 uint32_t tabDot(const Renderer &renderer, int node) {
-    return renderer.pixel({nodeTab(node).x + 7.0f, nodeTab(node).y - 6.0f});
+    return renderer.pixel(detail::nodeTabDot(node));
 }
 
 void click(View &view, Point p, Modifiers mods = {}) {
@@ -12269,21 +12269,46 @@ void run(const std::filesystem::path &dir, float scale) {
         view.poll();
         check(model.scopeOp == -1, "a noise operator's page asks for no scope");
         model.set(paramIndex(0, OpParam::Wave), 0.0);
-        // A hidden tab with a modulated knob shows a dot: LFO 1 on A's decay, on the ENVELOPE tab.
-        const Rect envelopeTab = detail::opTab(static_cast<int>(InspectorTab::Envelope));
-        const Point dot{envelopeTab.right() - 3.0f, envelopeTab.y + 5.0f};
+        // A tab with a modulated knob shows a ring, as a modulated knob has (not the filled dot that says a tab's
+        // contents are at work), hidden or shown: LFO 1 on A's decay, on the hidden ENVELOPE tab, then on its Warp
+        // Amount, on the WARP tab shown. Its edge lit, its middle not.
+        auto brightness = [&](Point p) {
+            const uint32_t color = renderer.pixel(p);
+            return std::max({static_cast<int>(color >> 16 & 255), static_cast<int>(color >> 8 & 255),
+                             static_cast<int>(color & 255)});
+        };
+        auto edge = [&](InspectorTab tab) { // the brightest of eight points round the ring
+            const Point ring = detail::opTabRing(static_cast<int>(tab));
+            int most = 0;
+            for (int k = 0; k < 8; ++k) {
+                const float angle = static_cast<float>(k) * std::numbers::pi_v<float> / 4.0f;
+                most = std::max(most, brightness({ring.x + detail::kTabRingRadius * std::cos(angle),
+                                                  ring.y + detail::kTabRingRadius * std::sin(angle)}));
+            }
+            return most;
+        };
+        auto middle = [&](InspectorTab tab) { return brightness(detail::opTabRing(static_cast<int>(tab))); };
         view.mouseMove({600.0f, 328.0f}, {});
         renderer.save(view, dir / "3e-scope-tab-dot.png");
-        const int plain = ringLevel(renderer, dot, 4.0f);
+        const int plain = edge(InspectorTab::Envelope), plainShown = edge(InspectorTab::Warp);
         model.set(slotTargetIndex(0, 7), slotTargetValue(paramIndex(0, OpParam::Decay)));
         model.set(slotAmountIndex(0, 7), 0.3);
         view.poll();
-        const bool dotShot = renderer.save(view, dir / "3e-scope-tab-dot.png");
-        const int lit = ringLevel(renderer, dot, 4.0f);
+        const bool ringShot = renderer.save(view, dir / "3e-scope-tab-dot.png");
+        const int lit = edge(InspectorTab::Envelope), hollow = middle(InspectorTab::Envelope);
+        model.set(slotTargetIndex(0, 7), slotTargetValue(paramIndex(0, OpParam::WarpAmount)));
+        view.poll();
+        const bool shownShot = renderer.save(view, dir / "3e-warp-tab-ring.png");
+        const int litShown = edge(InspectorTab::Warp), hollowShown = middle(InspectorTab::Warp);
         model.set(slotTargetIndex(0, 7), 0.0);
         model.set(slotAmountIndex(0, 7), 0.0);
-        std::printf("      ENVELOPE tab's corner: %d, %d with its decay modulated\n", plain, lit);
-        check(dotShot && lit > plain + 60, "a hidden tab with a modulated knob shows a dot");
+        std::printf("      ENVELOPE tab's corner: %d, %d with its decay modulated (%d in the ring's middle); the shown WARP "
+                    "tab's: %d, %d with its Amount modulated (%d)\n",
+                    plain, lit, hollow, plainShown, litShown, hollowShown);
+        check(ringShot && lit > plain + 60 && hollow < lit - 60,
+              "a hidden tab with a modulated knob shows a ring, hollow, not a dot");
+        check(shownShot && layout.opTab == InspectorTab::Warp && litShown > plainShown + 60 && hollowShown < litShown - 60,
+              "the tab shown keeps its ring while one of its knobs is modulated");
         // A source's handle held over a tab half a second opens it (passed over one, not); let go of in empty space, it
         // assigns nothing. The editor's clock is the test's, moved on by hand.
         static double now = 0.0;

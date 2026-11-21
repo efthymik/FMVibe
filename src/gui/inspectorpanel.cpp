@@ -699,7 +699,7 @@ InspectorTab InspectorPanel::opTabShown(int op) const {
     return tab;
 }
 
-// Whether a source modulates one of the knobs on an operator's tab, which shows a dot on the tab while it is hidden.
+// Whether a source modulates one of the knobs on an operator's tab, which shows a ring on the tab.
 bool InspectorPanel::opTabModulated(int op, InspectorTab tab) const {
     std::vector<int> params;
     if (tab == InspectorTab::Unison && !isNoise(op))
@@ -892,7 +892,8 @@ bool InspectorPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
     const bool active = host_.isActive(w);
     switch (w.kind) {
     case Kind::OpTab: {
-        // Names on the tabs' line, the shown one's accent over it; a hidden one with a modulated knob has a dot.
+        // Names on the tabs' line, the shown one's accent over it; one with a modulated knob, shown or hidden, has a
+        // ring, as a modulated knob does (a filled dot on a tab says what it shows is at work).
         const int op = controller().layout().selectedNode;
         const auto tab = static_cast<InspectorTab>(w.a);
         const bool selected = opTabShown(op) == tab;
@@ -903,8 +904,8 @@ bool InspectorPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         if (selected)
             c.line({w.rect.x + 4.0f, w.rect.bottom() - 1.0f}, {w.rect.right() - 4.0f, w.rect.bottom() - 1.0f},
                    kAccent, 2.0f);
-        else if (opTabModulated(op, tab))
-            c.fillCircle({w.rect.right() - 3.0f, w.rect.y + 5.0f}, 2.0f, kAccent);
+        if (opTabModulated(op, tab))
+            c.strokeCircle(opTabRing(w.a, isNoise(op)), kTabRingRadius, kAccent, kTabRingWidth);
         break;
     }
     case Kind::ScopeCycles: {
@@ -941,7 +942,7 @@ bool InspectorPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         c.text(w.rect, kNodeNames[w.a], kTextBody, selected ? ink : (enabled ? mix(kDim, color, 0.3f) : kFaint),
                Align::Center, true);
         if (routing_.soundsOut(w.a))
-            c.fillCircle({w.rect.right() - 5.0f, w.rect.y + 5.0f}, 2.0f, selected ? ink : color);
+            c.fillCircle(nodeTabDot(w.a), kTabDotRadius, selected ? ink : color);
         break;
     }
     case Kind::WaveButton: {

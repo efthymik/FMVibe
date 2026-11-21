@@ -81,6 +81,11 @@ inline Rect nodeTabRect(int node) {
     return {kInspector.x + 16.0f + node * kNodeTabStep + group * kNodeTabGroupGap,
             kInspector.y + 0.5f * (kNodeTabBandH - 22.0f), kNodeTabStep - 1.0f, 22.0f};
 }
+// The dot in a node's tab's upper right while the node sounds out (kTabDotRadius).
+inline Point nodeTabDot(int node) {
+    const Rect r = nodeTabRect(node);
+    return {r.x + r.w - 4.0f, r.y + 4.0f};
+}
 // The hairline before group 1 (the filters) or 2 (the shapers), in the middle of the gap.
 inline float nodeTabDivider(int group) {
     const int first = group == 1 ? kOps : kOps + kFilters;
@@ -169,6 +174,12 @@ inline Rect opTab(int tab, bool noise = false) {
     constexpr int kPlace[] = {1, 0, 2, 3, 2}, kNoisePlace[] = {1, 0, 2, 2, 2};
     const float w = (kOpWell.w - 8.0f) / (noise ? 3.0f : 4.0f);
     return {kOpWell.x + 4.0f + (noise ? kNoisePlace : kPlace)[tab] * w, kOpTabsY, w, kOpTabH};
+}
+// The ring in an operator page tab's upper right while one of its controls is modulated (kTabRingRadius).
+inline Point opTabRing(int tab, bool noise = false) {
+    const Rect r = opTab(tab, noise);
+    return {r.x + r.w - 4.0f, r.y + 4.0f}; // above the name's caps, which a wide name (ENVELOPE) runs out under
+
 }
 // Wave: its display (the scope; with no note, the operator's cycles as its warp reads them, or the note's when
 // synced, the cycle buttons in its top right corner), then the warps' buttons, the amount's knob and the NOTE
@@ -296,7 +307,8 @@ constexpr Rect kViewTabs[] = {{16.0f, kTopRowY, 96.0f, kViewTabH},
                                {344.0f, kTopRowY, 76.0f, kViewTabH},
                                {276.0f, kTopRowY, 64.0f, kViewTabH}};
 constexpr float kViewTabRadius = kRadiusCard; // its top corners
-// The dot in a view tab's upper right while what it shows is at work (an effect switched on, the sequencer on).
+// The dot in a view tab's upper right while what it shows is at work (an effect switched on, the sequencer on;
+// kTabDotRadius).
 inline Point viewTabDot(int view) {
     return {kViewTabs[view].x + kViewTabs[view].w - 9.0f, kViewTabs[view].y + kViewTabs[view].h * 0.5f - 4.0f};
 }

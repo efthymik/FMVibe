@@ -34,6 +34,11 @@ constexpr float kIdleHandleOpacity = 0.45f;
 // The note source's and velocity's curves behind their readouts in the keyboard strip, once they modulate something
 // (faint until then, as their handles are): lit, but still under the text drawn over them.
 constexpr float kLiveCurveOpacity = 0.8f;
+// A tab's two marks, in its upper right. A filled dot: what it shows is at work and heard (FX while an effect in the
+// line is switched on, SEQ while the sequencer is, a node's tab while the node sounds out). A ring, as a modulated
+// knob has: one of the tab's controls is modulated (an operator page's tabs, shown or hidden).
+constexpr float kTabDotRadius = 2.0f;
+constexpr float kTabRingRadius = 2.25f, kTabRingWidth = 1.0f;
 
 constexpr float kTextSmall = 9.0f;     // axis ticks, units, readouts on displays, graph nodes' names
 constexpr float kTextLabel = 10.5f;    // knob labels, switches, buttons, hints
