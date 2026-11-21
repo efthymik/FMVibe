@@ -1636,8 +1636,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   redo, Init, Load, Save, Save As and the settings cog at its right (see Presets and Settings, below). Between the
   name and the preset bar sits the **tempo** every synced LFO, delay and sweep follows: a switch, **H** ("Sync to
   host tempo"), then a field with the tempo in BPM (20–999). With the H on, as it starts, the synth plays at the
-  host's tempo, which the field shows dimmed (as the synth last played it, or as a host that lets the editor set it,
-  the browser demo and `fmvibe-uihost`, has it) and which takes no edits there. With the H off, the synth plays at a
+  host's tempo, which the field shows dimmed (as the synth last played it) and which takes no edits there. With the
+  H off, the synth plays at a
   tempo of its own (140 to begin with), which the field shows and sets: dragged up or down it moves a BPM every 2 px,
   onto whole ones (a tenth of one with Shift); the wheel steps it a BPM a notch (a tenth with Shift); a double-click
   or Ctrl+Click types one, with or without `BPM` after it, held to the range. The host's transport keeps playing it
@@ -1645,10 +1645,12 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   and the tempo of its own are settings of the instance, as the oversampling and MPE are: a host's project keeps
   them (one saved before them following the host), presets don't, and undo leaves them alone. A preset saved keeps
   the tempo it played at (its own, else the host's, a DAW's too), and loading one saved at a tempo sets the synth's
-  own tempo to it, so with the H off a sequencer pattern plays as it was made; in a host that lets the editor set its
-  tempo it sets the host's too (the demo's first preset too, as the page opens). Init and a preset saved before this
-  leave them as they are, and a preset loaded in a DAW leaves the host's tempo alone. The demo keeps its own tempo
-  and the H in the browser's storage, beside the page's tempo. Under it, the
+  own tempo to it, so with the H off a sequencer pattern plays as it was made. Init and a preset saved before this
+  leave them as they are, and a preset loaded in a DAW leaves the host's tempo alone. A host that stands in for a
+  transport and lets the editor set its tempo, the browser demo and `fmvibe-uihost`, has no H: the synth always plays
+  its own tempo there, which the field sets from the start and the host's transport follows (`fmvibe-uihost`'s
+  starting at its `--tempo`, the demo's kept in the browser's storage, its first preset setting it as the page
+  opens). Under it, the
   **global strip** spreads across the editor, from the output scope under the name to the voice count at its right
   end. First the output scope:
   the output after Volume (its two sides' mean) over two periods of the newest note's pitch (kept once the note has

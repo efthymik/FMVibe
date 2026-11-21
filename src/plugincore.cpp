@@ -120,7 +120,7 @@ void PluginCore::applyPlayMode() {
     auto on = [this](GlobalParam p) { return values_[paramIndex(p)].load(std::memory_order_relaxed) >= 0.5; };
     synth_.setPlayMode(on(GlobalParam::Mono), on(GlobalParam::Legato), on(GlobalParam::GlideAlways));
     synth_.setMpe(mpe_.load(std::memory_order_relaxed), mpeBendRange_.load(std::memory_order_relaxed));
-    synth_.setOwnTempo(tempoSync_.load(std::memory_order_relaxed) ? 0.0 : ownTempo_.load(std::memory_order_relaxed));
+    synth_.setOwnTempo(tempoSync() ? 0.0 : ownTempo_.load(std::memory_order_relaxed));
 }
 
 void PluginCore::performStepBegin() {
@@ -186,12 +186,21 @@ void PluginCore::setTempoSync(bool on) {
     }
 }
 
+// A host that lets the editor set its tempo plays it too, so its transport's beats keep in step.
 void PluginCore::setOwnTempo(double bpm) {
     bpm = gui::clampTempo(bpm);
     if (ownTempo_.exchange(bpm) != bpm) {
         hostMarkDirty();
         hostRequestProcess();
     }
+    if (hasTempo() && tempo() != bpm)
+        setTempo(bpm);
+}
+
+// Main thread, as the plugin starts in a host that lets the editor set its tempo: the synth's own starts at it.
+void PluginCore::startAtHostTempo() {
+    if (hasTempo())
+        ownTempo_.store(gui::clampTempo(tempo()));
 }
 
 void PluginCore::openManual() {
@@ -434,6 +443,8 @@ bool PluginCore::loadState(const clap_istream_t *stream, bool settings) {
         mpeBendRange_.store(stored.mpeBendRange);
         tempoSync_.store(stored.tempoSync);
         ownTempo_.store(stored.ownTempo);
+        if (hasTempo() && tempo() != stored.ownTempo)
+            setTempo(stored.ownTempo);
         restartIfNeeded();
 
         // Which preset it was. Without that, it shows Init, changed unless it is Init.
@@ -578,13 +589,10 @@ bool PluginCore::loadPresetFrom(const clap_istream_t *stream, const std::wstring
     valuesInto(*told);
     const bool loaded = loadState(stream, false);
     if (loaded) {
-        // The preset plays at the tempo it was saved at: the synth's own tempo takes it (heard while the H is off),
-        // and so does a host that lets the editor set its tempo.
-        if (layout_.savedTempo > 0.0f) {
+        // The preset plays at the tempo it was saved at: the synth's own tempo takes it (heard while the H is off,
+        // and always in a host that lets the editor set its tempo).
+        if (layout_.savedTempo > 0.0f)
             setOwnTempo(layout_.savedTempo);
-            if (hasTempo())
-                setTempo(gui::clampTempo(layout_.savedTempo));
-        }
         notifyParams(*told);
         layoutChanged();
         setPreset(path);
@@ -606,10 +614,10 @@ bool PluginCore::savePreset(const std::wstring &path) {
     FILE *file = nullptr;
     if (_wfopen_s(&file, part.c_str(), L"wb") != 0 || !file)
         return false;
-    // The tempo it plays at goes with it: its own while the H is off, else the host's, as a host that lets the editor
-    // set it has it, or as the last block played it. The patch keeps it only once the file is written.
+    // The tempo it plays at goes with it: its own while it doesn't follow the host, else the host's, as the last
+    // block played it. The patch keeps it only once the file is written.
     const float tempoBefore = layout_.savedTempo;
-    const double bpm = !tempoSync() ? ownTempo() : hasTempo() ? tempo() : playedTempo_.load(std::memory_order_relaxed);
+    const double bpm = !tempoSync() ? ownTempo() : playedTempo_.load(std::memory_order_relaxed);
     if (bpm > 0.0)
         layout_.savedTempo = static_cast<float>(gui::clampTempo(bpm));
     const clap_ostream_t stream = fileOut(file);

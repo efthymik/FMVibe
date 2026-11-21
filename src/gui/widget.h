@@ -172,7 +172,8 @@ enum class WidgetKind {
     PresetNameBox, // the current preset's name: opens the preset browser
     TempoBox,     // the synth's own tempo (see Controller::ownTempo()): drag up and down, scroll, or double-click to type
     TempoHost,    // the tempo where TempoBox is while the synth follows the host's: shown dimmed, taking no edits
-    TempoSync,    // the H left of the tempo: whether the synth follows the host's tempo (see Controller::tempoSync())
+    TempoSync,    // the H left of the tempo: whether the synth follows the host's tempo (see Controller::tempoSync()),
+                  // in a plugin host alone (see Controller::hasTempo())
     PresetInfoButton, // the (i) in the preset bar: opens the preset's info card
     InfoCard,     // a = 1 on the open info card, 0 around it (a click there closes it)
     InfoAction,   // a = 0 the star (a favorite), 1 Show in Browser, 2 Save As or Edit Info (see infoCardWidgets())

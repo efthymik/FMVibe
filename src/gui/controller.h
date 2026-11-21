@@ -600,17 +600,17 @@ public:
     virtual EditorSettings editorSettings() const = 0;
     void setEditorSettings(const EditorSettings &settings) { storeEditorSettings(settings.clamped()); }
     // The host's tempo, for a host that stands in for a transport and lets the plugin set it (the browser demo, and
-    // fmvibe-uihost through FMVibe's own host extension, see src/hosttempo.h): a preset loaded sets it to the tempo it
-    // was saved at, and the title bar shows it while the synth follows the host. A plugin host's tempo is its own,
-    // which the title bar shows as the synth last played it. In BPM, kMinTempo to kMaxTempo, in hundredths (see
-    // clampTempo()).
+    // fmvibe-uihost through FMVibe's own host extension, see src/hosttempo.h). There the synth always plays its own
+    // tempo, which the host's follows, and the title bar shows no H. A plugin host's tempo is its own, which the title
+    // bar shows as the synth last played it while the synth follows it. In BPM, kMinTempo to kMaxTempo, in hundredths
+    // (see clampTempo()).
     virtual bool hasTempo() const { return false; }
     virtual double tempo() const { return kDefaultTempo; }
     virtual void setTempo(double) {}
-    // Whether the synth plays at the host's tempo (the title bar's H, on to begin with), and the tempo of its own it
-    // plays at while it doesn't, which the title bar's tempo drags, scrolls and types. Settings of the instance, saved
-    // with the host's project, which an edit marks changed but doesn't undo; a preset loaded sets the tempo of its
-    // own to the one it was saved at. In BPM, as above.
+    // Whether the synth plays at the host's tempo (the title bar's H, on to begin with; never in a host that lets the
+    // editor set its tempo), and the tempo of its own it plays at while it doesn't, which the title bar's tempo drags,
+    // scrolls and types. Settings of the instance, saved with the host's project, which an edit marks changed but
+    // doesn't undo; a preset loaded sets the tempo of its own to the one it was saved at. In BPM, as above.
     virtual bool tempoSync() const { return true; }
     virtual void setTempoSync(bool) {}
     virtual double ownTempo() const { return kDefaultTempo; }

@@ -2696,8 +2696,9 @@ void testFlatThemes(const std::filesystem::path &dir, Renderer &renderer) {
 // digit; the hovered digit lit behind (read off the rendered pixels); a typed fraction; and a source's handle dropped
 // on it modulating it, its reach drawn along the track under the digits (read off the rendered pixels).
 // The title bar's tempo: the H at its left, lit to begin with, the synth following the host's tempo, which the field
-// shows dimmed (as the synth last played it, or as a host that lets the editor set it has it) and which takes no edits;
-// the H's tooltip; and with the H off, the synth's own tempo in the field, dragged a BPM every 2 px (with Shift a
+// shows dimmed (as the synth last played it) and which takes no edits; the H's tooltip; with the H off, the synth's
+// own tempo in the field; in a host that lets the editor set its tempo (the browser demo, fmvibe-uihost) no H, the
+// field the synth's own from the start; and the synth's own tempo dragged a BPM every 2 px (with Shift a
 // tenth), scrolled a BPM a notch onto whole ones (with Shift a tenth), typed into after a double-click or Ctrl+Click,
 // held to 20-999 BPM, and none of it touching the patch, its undo history or the host's tempo.
 void testTempo(const std::filesystem::path &dir, Renderer &renderer) {
@@ -2764,16 +2765,15 @@ void testTempo(const std::filesystem::path &dir, Renderer &renderer) {
     View view(model);
     const ParamValues patch = model.values;
     view.mouseMove(away, {});
-    const bool hostShot = renderer.save(view, dir / "43a-tempo-host.png", &titleBar);
-    drag(view, box, {box.x, box.y - 40.0f});
-    check(hostShot && model.bpm == 133.0 && model.tempoSets == 0 && model.ownTempoSets == 0,
-          "a host's tempo shown while the H is on takes no edits, though the host lets the editor set it");
-    click(view, sync);
-    view.mouseMove(away, {});
+    // There the synth always plays its own tempo: no H (its place as bare as the title bar left of it, a click there
+    // switching nothing), and the field the synth's own from the start.
     const bool shown = renderer.save(view, dir / "43a-tempo.png", &titleBar);
+    const bool noSync = renderer.pixel(face) == renderer.pixel({detail::kTempoSync.x - 8.0f, face.y});
+    click(view, sync);
     view.mouseMove(box, {});
-    check(shown && renderer.save(view, dir / "43b-tempo-hover.png", &titleBar) && !model.syncTempo,
-          "render the synth's own tempo in the title bar, and under the mouse");
+    check(shown && noSync && model.syncTempo && renderer.save(view, dir / "43b-tempo-hover.png", &titleBar),
+          "a host that lets the editor set its tempo shows no H, the field the synth's own tempo (read off the "
+          "rendered pixels)");
 
     drag(view, box, {box.x, box.y - 20.0f});
     const bool dragged = model.ownBpm == 150.0;

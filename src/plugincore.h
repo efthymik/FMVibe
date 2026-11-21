@@ -130,7 +130,9 @@ public:
     void setMpe(bool on) override;
     int mpeBendRange() const override { return mpeBendRange_.load(); }
     void setMpeBendRange(int semitones) override;
-    bool tempoSync() const override { return tempoSync_.load(); }
+    // A host that lets the editor set its tempo stands in for a transport of the plugin's own: the synth always plays
+    // its own tempo there, and the title bar shows no H.
+    bool tempoSync() const override { return !hasTempo() && tempoSync_.load(std::memory_order_relaxed); }
     void setTempoSync(bool on) override;
     double ownTempo() const override { return ownTempo_.load(); }
     void setOwnTempo(double bpm) override;
@@ -274,6 +276,10 @@ protected:
 
     // Main thread: tells the host when the remote pages differ.
     void sectionsChanged();
+
+    // Main thread, once the plugin knows its host: in a host that lets the editor set its tempo, the synth's own tempo
+    // starts at the host's (fmvibe-uihost's --tempo).
+    void startAtHostTempo();
 
 private:
     void applyPlayMode();

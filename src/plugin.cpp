@@ -203,6 +203,7 @@ bool Plugin::init() {
     hostTempo_ = static_cast<const HostTempo *>(host_->get_extension(host_, kExtHostTempo));
     if (hostTempo_ && (!hostTempo_->get || !hostTempo_->set))
         hostTempo_ = nullptr;
+    startAtHostTempo();
     hostRemoteControls_ =
         static_cast<const clap_host_remote_controls_t *>(host_->get_extension(host_, CLAP_EXT_REMOTE_CONTROLS));
     if (!hostRemoteControls_)

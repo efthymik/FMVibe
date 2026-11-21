@@ -153,8 +153,9 @@ BPM. The **H** button at its left syncs to the host tempo:
 The H and FMVibe's own tempo are saved with your project, not with presets, and undo leaves them alone.
 
 Every preset remembers the tempo it was saved at. Loading it sets FMVibe's own tempo to it, so with H off a sequencer
-pattern plays as it was made. In the browser demo it sets the page's tempo too. In a DAW, loading a preset never
-changes the host's tempo.
+pattern plays as it was made. In a DAW, loading a preset never changes the host's tempo.
+
+The browser demo has no H button: it always plays at its own tempo, which you set in the field.
 
 ### Global strip
 

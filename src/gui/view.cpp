@@ -1827,8 +1827,10 @@ std::vector<View::Widget> View::widgets() const {
     }
     for (int redo = 0; redo < 2; ++redo)
         add(Kind::UndoButton, undoButton(redo), -1, redo);
-    add(Kind::TempoSync, kTempoSync);
-    add(controller_.tempoSync() ? Kind::TempoHost : Kind::TempoBox, kTempoBox);
+    // A host that lets the editor set its tempo has the synth play its own always: no H there.
+    if (!controller_.hasTempo())
+        add(Kind::TempoSync, kTempoSync);
+    add(!controller_.hasTempo() && controller_.tempoSync() ? Kind::TempoHost : Kind::TempoBox, kTempoBox);
     add(Kind::PresetStep, presetStep(-1), -1, -1);
     add(Kind::PresetNameBox, kPresetName);
     if (controller_.presetHasFile())
@@ -4897,8 +4899,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::TempoBox:
     case Kind::TempoHost: {
-        // The tempo and its unit, centered: the synth's own, or dimmed and lit by nothing, the host's it follows (as
-        // the host has it where it lets the editor set it, else as the synth last played it).
+        // The tempo and its unit, centered: the synth's own, or dimmed and lit by nothing, the host's it follows, as
+        // the synth last played it.
         const bool host = w.kind == Kind::TempoHost;
         const bool lit = !host && (hovered || active);
         c.fillRect(w.rect, lit ? kTrack : kRaised, kRadiusControl);
@@ -4906,9 +4908,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
         if (typing_ && typing_->widget.kind == Kind::TempoBox)
             break; // the field being typed in covers the number
-        const double bpm = !host                  ? controller_.ownTempo()
-                           : controller_.hasTempo() ? controller_.tempo()
-                                                    : static_cast<double>(telemetry_.tempo);
+        const double bpm = host ? static_cast<double>(telemetry_.tempo) : controller_.ownTempo();
         const std::string number = tempoText(bpm);
         const char *unit = "BPM";
         const float numberW = c.textWidth(number, kTextValue, true), unitW = c.textWidth(unit, kTextLabel);
