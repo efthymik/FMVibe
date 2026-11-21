@@ -10,10 +10,6 @@ User manual: [https://pcdlin.github.io/FMVibe/manual.html](https://pcdlin.github
 
 Implemented using Claude Code.
 
-The manual's source is [docs/manual.md](docs/manual.md), and the full feature reference is in
-[docs/features.md](docs/features.md).
-Information about working on the code, its tests and the plugin's internals are in [AGENTS.md](AGENTS.md).
-
 #### Main UI
 ![FMVibe UI](docs/editor.png)
 
@@ -25,7 +21,6 @@ Information about working on the code, its tests and the plugin's internals are 
 
 #### Sequencer panel
 ![FMVibe UI](docs/seq.png)
-
 
 ## Download
 
@@ -68,9 +63,6 @@ cmake --build --preset release --target validate
 cmake --install build\release
 ```
 
-The folder also opens in Visual Studio or VS Code (CMake Tools), which pick up the `debug` and `release` presets from
-`CMakePresets.json`.
-
 To try the plugin without a DAW, run `build\<config>\fmvibe-uihost.exe` (or `.\build.ps1 -Run -SkipTests`). It opens
 the editor in a window and plays through the default output device; notes come from the editor's keyboard, the computer
 keyboard (A W S E D … from middle C, Z/X for the octave, C/V for the velocity) and any MIDI input.
@@ -78,6 +70,12 @@ keyboard (A W S E D … from middle C, Z/X for the octave, C/V for the velocity)
 On Linux, `./build.sh` builds the engine and the editor without the plugins and runs the audio quality test and the
 editor's snapshots (PNGs in `build/linux/ui-shots`). It needs CMake, Ninja, a C++20 compiler and Cairo
 (`libcairo2-dev`). See [AGENTS.md](AGENTS.md#linux-development-build).
+
+## Documentation
+
+The manual's source is [docs/manual.md](docs/manual.md), and the full feature reference is in
+[docs/features.md](docs/features.md).
+Information about working on the code, its tests and the plugin's internals are in [AGENTS.md](AGENTS.md).
 
 ## License
 
