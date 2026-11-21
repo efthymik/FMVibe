@@ -28,9 +28,10 @@ public:
     // The confirm dialog's question this panel asks (see View::confirm_, whose other kinds are the View's and the
     // preset browser's): every note of the pattern going.
     static constexpr int kConfirmClear = 7;
+    static constexpr int kConfirmOverwrite = 10; // a pattern pasted or copied over one that holds notes
     // The roll's right-click menu's commands, numbered from kMenuCommands (as many as kMenuCount; see
     // View::menuCommand(), which numbers the others).
-    static constexpr int kMenuCommands = 50, kMenuCount = 10;
+    static constexpr int kMenuCommands = 50, kMenuCount = 12;
 
     // The SEQ view shows, with no shape editor over it.
     bool wide() const;
@@ -212,12 +213,40 @@ private:
     void stepSeqField(int field, double steps);
     void flipSeqFlag(int flag);
     void stretchSeq(double factor);
-    void clearSeqPattern();
+    void clearSeqPattern(int pattern);    // its notes and its curves' points, one undo step
+    void askClearSeqPattern(int pattern); // asking first (kConfirmClear), unless it is empty
+    int seqClearing_ = 0;                 // the pattern kConfirmClear asks about
     void copySeqPattern();             // into the next empty one
     void copySeqPattern(int from, int to); // every note, curve, length and loop, one undo step
     // The overview's tile under `p`, -1 for none; and one tile painted, `carried` as a drag carries it.
     int seqTileAt(Point p) const;
     void paintSeqTile(Canvas &c, int pattern, Rect tile, bool hovered, bool carried);
+    struct TileScale {
+        Rect notes;         // the tile's notes area
+        int steps = 1;      // the pattern's
+        float stepW = 0.0f; // a step across, the longest pattern's steps filling the area
+        float from = 0.0f;  // the pitch whose row's bottom is the area's bottom
+        float rowH = 0.0f;  // a pitch's row, 0 while the pattern has no notes
+    };
+    TileScale seqTileScale(int pattern) const;
+    std::optional<Rect> seqViewRect(int pattern) const;
+    bool seqViewGrabbed(int pattern, Point p) const;
+    // A pattern's params in one order (its length and loop, its notes, its curves), the values the pattern clipboard
+    // holds; a pattern's values written over another's, one undo step, and the message saying so flashed; or, while
+    // the other holds notes or curve points and would change, asked about first (kConfirmOverwrite).
+    std::vector<int> seqPatternParams(int pattern) const;
+    std::vector<double> seqPatternValues(int pattern) const;
+    void writeSeqPattern(const std::vector<double> &values, int to, const std::string &done);
+    void offerSeqPattern(std::vector<double> values, int to, std::string done);
+    void copySeqPatternToClip(int pattern); // into the pattern clipboard, which the editor keeps for any patch
+    void pasteSeqPattern(int to);           // from it, asking first over notes
+    std::vector<double> seqPatternClip_; // the pattern copied (Copy Pattern, Ctrl+C over a tile), empty for none
+    struct {
+        std::vector<double> values;
+        int to = -1;
+        std::string done;
+    } seqOverwrite_;       // the paste or copy kConfirmOverwrite asks about
+    int seqMenuTile_ = -1; // the tile the right-click menu opened on
     // The notes copied (Ctrl+C, Ctrl+X, the roll's menu), kept by the editor for any pattern: each note's fields, its
     // start from the first one's; and how far they reach, from that start to the last one's end on the grid.
     struct SeqClip {
@@ -237,7 +266,7 @@ private:
     struct SeqDrag {
         enum class Mode { None, Move, Resize, ResizeStart, Box, Paint, Velocity, Lane, LaneGroup, Loop, LoopStart,
                           LoopEnd, LoopMove, Field, Audition, Scroll, ScrollY, CurvePoint, CurveBend, CurvePaint,
-                          CurveBox, LaneBox, Tile };
+                          CurveBox, LaneBox, Tile, ViewRect };
         Mode mode = Mode::None;
         Point start, now;                // where the mouse went down, and where it is now
         int anchor = -1;                 // the note grabbed (Move, Resize), the field (Field), the key (Audition)

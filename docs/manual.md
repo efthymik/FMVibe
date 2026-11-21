@@ -1180,8 +1180,13 @@ small, so you can see what each holds at a glance. The selected pattern is highl
 part of it the piano roll shows, and the one playing shows the playhead.
 
 - **Click** a pattern to select it.
-- **Drag** a pattern onto another to copy it there: its notes, curves, length and loop replace what was there. Undo
-  brings it back.
+- **Drag** a pattern onto another to copy it there: its notes, curves, length and loop replace what was there.
+- **Drag the rectangle** in the selected pattern to scroll the piano roll there, when you have zoomed in.
+- **Right-click** a pattern for **Copy Pattern**, **Paste Pattern** and **Clear Pattern**. **Ctrl+C** and **Ctrl+V**
+  with the mouse over a pattern copy and paste too.
+
+Pasting or dragging onto a pattern that already holds notes asks first: "Are you sure you want to overwrite this
+pattern?" Clearing asks first as well. Undo brings back whatever was there.
 
 ### The piano roll
 

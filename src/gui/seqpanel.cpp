@@ -959,26 +959,47 @@ void SeqPanel::paintSeqCurve(double from, double fromValue, double step, double 
     setSeqCurve(curve, points);
 }
 
-void SeqPanel::clearSeqPattern() {
-    std::vector<int> slots;
-    for (const SeqNote &n : seqNotes())
-        slots.push_back(n.slot);
+void SeqPanel::clearSeqPattern(int pattern) {
+    // Its notes' and curves' params back to their defaults, so a preset saved sparse leaves them out; its length and
+    // loop stay.
+    std::vector<std::pair<int, double>> changes;
+    const std::vector<int> params = seqPatternParams(pattern);
+    for (size_t i = kSeqPatternParamCount; i < params.size(); ++i) // past its length and loop
+        if (value(params[i]) != table_[params[i]].def)
+            changes.push_back({params[i], table_[params[i]].def});
+    if (changes.empty())
+        return;
+    if (pattern == seqPattern()) // what was picked goes with its notes
+        seqSelection_.clear();
     controller().beginStep();
-    removeSeqNotes(slots);
-    for (int c = 0; c < kSeqCurves; ++c)
-        setSeqCurve(static_cast<SeqCurve>(c), {});
+    editMany(changes);
     controller().endStep();
 }
 
-// Asked before every note of the pattern (and its curves) goes, which undo brings back.
-Panel::ConfirmWords SeqPanel::confirmWords(int) const {
-    return {trf(Str::ConfirmSeqClearTitle, {seqPatternName(seqPattern())}), tr(Str::ConfirmSeqClear),
+// Asked before every note of a pattern (and its curves) goes, and before a pattern pasted or copied over one that
+// holds notes replaces them; undo brings them back.
+Panel::ConfirmWords SeqPanel::confirmWords(int kind) const {
+    if (kind == kConfirmOverwrite)
+        return {trf(Str::ConfirmSeqOverwriteTitle, {seqPatternName(seqOverwrite_.to)}), tr(Str::ConfirmSeqOverwrite),
+                tr(Str::ButtonOverwrite), false};
+    return {trf(Str::ConfirmSeqClearTitle, {seqPatternName(seqClearing_)}), tr(Str::ConfirmSeqClear),
             tr(Str::ButtonClearSeq), false};
 }
 
 void SeqPanel::confirmed(int kind, int button) {
     if (kind == kConfirmClear && button == 1)
-        clearSeqPattern();
+        clearSeqPattern(seqClearing_);
+    if (kind == kConfirmOverwrite && button == 1)
+        writeSeqPattern(seqOverwrite_.values, seqOverwrite_.to, seqOverwrite_.done);
+    if (kind == kConfirmOverwrite)
+        seqOverwrite_ = {};
+}
+
+void SeqPanel::askClearSeqPattern(int pattern) {
+    if (seqPatternEmpty(pattern))
+        return;
+    seqClearing_ = pattern;
+    host_.askConfirm(*this, kConfirmClear);
 }
 
 bool SeqPanel::seqPatternEmpty(int pattern) const {
@@ -1008,31 +1029,68 @@ void SeqPanel::copySeqPattern() {
 }
 
 void SeqPanel::copySeqPattern(int from, int to) {
-    std::vector<std::pair<int, double>> changes;
-    for (int f = 0; f < kSeqPatternParamCount; ++f) {
-        const int src = paramIndex(from, static_cast<SeqPatternParam>(f));
-        const int dst = paramIndex(to, static_cast<SeqPatternParam>(f));
-        if (value(dst) != value(src))
-            changes.push_back({dst, value(src)});
-    }
+    offerSeqPattern(seqPatternValues(from), to, trf(Str::MsgSeqCopied, {seqPatternName(from), seqPatternName(to)}));
+}
+
+std::vector<int> SeqPanel::seqPatternParams(int pattern) const {
+    std::vector<int> params;
+    for (int f = 0; f < kSeqPatternParamCount; ++f)
+        params.push_back(paramIndex(pattern, static_cast<SeqPatternParam>(f)));
     for (int slot = 0; slot < kSeqNotes; ++slot)
-        for (int f = 0; f < kSeqNoteParamCount; ++f) {
-            const int src = seqNoteIndex(from, slot, static_cast<SeqNoteParam>(f));
-            const int dst = seqNoteIndex(to, slot, static_cast<SeqNoteParam>(f));
-            if (value(dst) != value(src))
-                changes.push_back({dst, value(src)});
-        }
+        for (int f = 0; f < kSeqNoteParamCount; ++f)
+            params.push_back(seqNoteIndex(pattern, slot, static_cast<SeqNoteParam>(f)));
     for (int c = 0; c < kSeqCurves; ++c)
-        for (int f = 0; f < kSeqCurveParamCount; ++f) {
-            const int src = seqCurveCountIndex(from, static_cast<SeqCurve>(c)) + f;
-            const int dst = seqCurveCountIndex(to, static_cast<SeqCurve>(c)) + f;
-            if (value(dst) != value(src))
-                changes.push_back({dst, value(src)});
-        }
-    controller().beginStep();
-    editMany(changes);
-    controller().endStep();
-    host_.flash(trf(Str::MsgSeqCopied, {seqPatternName(from), seqPatternName(to)}));
+        for (int f = 0; f < kSeqCurveParamCount; ++f)
+            params.push_back(seqCurveCountIndex(pattern, static_cast<SeqCurve>(c)) + f);
+    return params;
+}
+
+std::vector<double> SeqPanel::seqPatternValues(int pattern) const {
+    std::vector<double> values;
+    for (int index : seqPatternParams(pattern))
+        values.push_back(value(index));
+    return values;
+}
+
+void SeqPanel::writeSeqPattern(const std::vector<double> &values, int to, const std::string &done) {
+    const std::vector<int> params = seqPatternParams(to);
+    if (values.size() != params.size())
+        return;
+    std::vector<std::pair<int, double>> changes;
+    for (size_t i = 0; i < params.size(); ++i)
+        if (value(params[i]) != values[i])
+            changes.push_back({params[i], values[i]});
+    if (!changes.empty()) {
+        controller().beginStep();
+        editMany(changes);
+        controller().endStep();
+    }
+    host_.flash(done);
+}
+
+void SeqPanel::copySeqPatternToClip(int pattern) {
+    if (pattern < 0 || pattern >= kSeqPatterns)
+        return;
+    seqPatternClip_ = seqPatternValues(pattern);
+    host_.flash(trf(Str::MsgSeqPatternCopied, {seqPatternName(pattern)}));
+}
+
+void SeqPanel::pasteSeqPattern(int to) {
+    if (!seqPatternClip_.empty())
+        offerSeqPattern(seqPatternClip_, to, trf(Str::MsgSeqPatternPasted, {seqPatternName(to)}));
+}
+
+void SeqPanel::offerSeqPattern(std::vector<double> values, int to, std::string done) {
+    if (to < 0 || to >= kSeqPatterns)
+        return;
+    if (seqPatternEmpty(to) || values == seqPatternValues(to)) { // nothing there to lose
+        writeSeqPattern(values, to, done);
+        return;
+    }
+    seqOverwrite_.values = std::move(values);
+    seqOverwrite_.to = to;
+    seqOverwrite_.done = std::move(done);
+    host_.askConfirm(*this, kConfirmOverwrite);
 }
 
 // --- The notes copied, cut and pasted, and the roll's menu.
@@ -1099,10 +1157,24 @@ bool SeqPanel::seqPaste(const SeqClip &clip, double at) {
 
 namespace {
 // The roll's menu's commands, after SeqPanel::kMenuCommands.
-enum SeqMenu { kSeqCut, kSeqCopy, kSeqPaste, kSeqDuplicate, kSeqDelete, kSeqSelectAll, kSeqSlide, kSeqMute, kSeqQuantize };
+enum SeqMenu {
+    kSeqCut, kSeqCopy, kSeqPaste, kSeqDuplicate, kSeqDelete, kSeqSelectAll, kSeqSlide, kSeqMute, kSeqQuantize,
+    kSeqCopyPattern, kSeqPastePattern, kSeqClearPattern
+};
 } // namespace
 
 bool SeqPanel::contextMenu(const std::optional<Widget> &hit, Point p, std::vector<MenuItem> &items) {
+    if (hit && wide() && hit->kind == Kind::SeqTile) { // a pattern's tile: copying, pasting over and clearing it
+        seqMenuTile_ = hit->b;
+        items.push_back({kMenuCommands + kSeqCopyPattern, tr(Str::MenuSeqCopyPattern)});
+        if (!seqPatternClip_.empty())
+            items.push_back({kMenuCommands + kSeqPastePattern, tr(Str::MenuSeqPastePattern)});
+        if (!seqPatternEmpty(seqMenuTile_)) {
+            items.push_back({0, ""});
+            items.push_back({kMenuCommands + kSeqClearPattern, tr(Str::MenuSeqClearPattern)});
+        }
+        return true;
+    }
     if (!hit || !wide() || hit->kind != Kind::SeqGrid)
         return false;
     const int pattern = seqPattern();
@@ -1156,6 +1228,15 @@ bool SeqPanel::menuCommand(int command) {
     const int pattern = seqPattern();
     const std::vector<int> picked = seqPicked();
     switch (command) {
+    case kSeqCopyPattern:
+        copySeqPatternToClip(seqMenuTile_);
+        break;
+    case kSeqPastePattern:
+        pasteSeqPattern(seqMenuTile_);
+        break;
+    case kSeqClearPattern:
+        askClearSeqPattern(seqMenuTile_);
+        break;
     case kSeqCut:
     case kSeqCopy:
         host_.sendKey(command == kSeqCut ? Key::Cut : Key::Copy, false); // as the keys do, through the editor
@@ -1261,6 +1342,16 @@ bool SeqPanel::key(Key key, bool shift) {
         std::iota(all.begin(), all.end(), 0);
         host_.clearShapePick();
         setSeqCurvePick(std::move(all));
+        return true;
+    }
+    // Over a pattern's tile, Ctrl+C copies its pattern and Ctrl+V pastes the one copied over it.
+    if ((key == Key::Copy || key == Key::Paste) && host_.hovered() && host_.hovered()->kind == Kind::SeqTile) {
+        if (key == Key::Copy)
+            copySeqPatternToClip(host_.hovered()->b);
+        else if (!seqPatternClip_.empty())
+            pasteSeqPattern(host_.hovered()->b);
+        else
+            return false;
         return true;
     }
     const int pattern = seqPattern();
@@ -1455,16 +1546,25 @@ bool SeqPanel::pressAs(const Widget &w, Point p, Modifiers mods, const Widget &h
         flipSeqFlag(w.b);
         return true;
     case Kind::SeqClear:
-        if (!seqPatternEmpty(seqPattern()))
-            host_.askConfirm(*this, kConfirmClear);
+        askClearSeqPattern(seqPattern());
         return true;
     case Kind::SeqCopy:
         copySeqPattern();
         return true;
-    case Kind::SeqTile: // shown once let go of unmoved, copied once let go of on another tile (see drop())
+    case Kind::SeqTile: {
+        // What the roll shows, in the shown pattern's tile: dragged, it scrolls the roll (see seqDrag()).
+        if (seqViewGrabbed(w.b, p)) {
+            const std::vector<int> rows = seqRows();
+            startDrag(SeqDrag::Mode::ViewRect, false);
+            seqDrag_.grabStep = seqScroll();
+            seqDrag_.grabPitch = rows.empty() ? 0 : rows.front();
+            return true;
+        }
+        // Elsewhere, the tile: shown once let go of unmoved, copied once let go of on another tile (see drop()).
         startDrag(SeqDrag::Mode::Tile, false);
         seqDrag_.anchor = w.b;
         return true;
+    }
     case Kind::SeqRoot: // up and down, as a knob
         host_.dragValue(w, p, mods);
         return true;
@@ -1962,6 +2062,19 @@ void SeqPanel::seqDrag(Point p) {
         d.anchor = seqPitchAt(p.y);
         seqHear(d.anchor);
         break;
+    case SeqDrag::Mode::ViewRect: { // the roll scrolled as far as the rectangle goes in the tile, across and up and down
+        const TileScale scale = seqTileScale(pattern);
+        if (scale.stepW > 0.0f) {
+            seqScrollX_ = static_cast<float>(d.grabStep) + (p.x - d.start.x) / scale.stepW;
+            seqScrollX_ = seqScroll();
+        }
+        if (scale.rowH > 0.0f) {
+            const int low = std::clamp(d.grabPitch + static_cast<int>(std::lround((d.start.y - p.y) / scale.rowH)), 0, 127);
+            const std::vector<int> pitches = seqPitchList();
+            seqShowFromRow(static_cast<float>(std::lower_bound(pitches.begin(), pitches.end(), low) - pitches.begin()));
+        }
+        break;
+    }
     case SeqDrag::Mode::Tile: // carried (see paintDrag()) until it is let go of
     case SeqDrag::Mode::None:
         break;
@@ -2279,10 +2392,63 @@ int SeqPanel::seqTileAt(Point p) const {
     return -1;
 }
 
-// A pattern's tile: its letter, lit while it is the one shown, and its notes drawn small after it, the longest
-// pattern's length across (bar lines in it, outside its loop dimmed), each note at its row among the pattern's own
-// (at least an octave of them), fainter the softer it is and muted faintest; and the playhead while it plays. Ringed
-// while it is shown, and while one carried would land on it.
+// A pattern's tile's notes area, as its tile draws it: the longest pattern's steps across, and up and down its own
+// notes' pitches, at least an octave of them (none while it has no notes).
+SeqPanel::TileScale SeqPanel::seqTileScale(int pattern) const {
+    TileScale scale;
+    scale.notes = seqTileNotes(seqTile(pattern));
+    int longest = 1;
+    for (int p = 0; p < kSeqPatterns; ++p)
+        longest = std::max(longest, seqStepsOf(p));
+    scale.steps = seqStepsOf(pattern);
+    scale.stepW = scale.notes.w / static_cast<float>(longest);
+    int low = 128, high = -1;
+    for (const SeqNote &n : seqNotesOf(pattern)) {
+        low = std::min(low, n.pitch);
+        high = std::max(high, n.pitch);
+    }
+    if (high >= low) {
+        const int span = std::max(high - low + 1, 12);
+        scale.from = static_cast<float>(low) - 0.5f * static_cast<float>(span - (high - low + 1));
+        scale.rowH = scale.notes.h / static_cast<float>(span);
+    }
+    return scale;
+}
+
+// What the roll shows of the pattern shown, in its tile: across the steps it shows and up and down its rows (as far as
+// the tile reaches; all the way while the pattern has no notes to scale its rows by). None for another pattern.
+std::optional<Rect> SeqPanel::seqViewRect(int pattern) const {
+    if (pattern != seqPattern())
+        return std::nullopt;
+    const TileScale scale = seqTileScale(pattern);
+    const Rect r = scale.notes;
+    const float x0 = r.x + seqScroll() * scale.stepW, x1 = x0 + seqShownSteps() * scale.stepW;
+    float y0 = r.y, y1 = r.bottom();
+    if (const std::vector<int> rows = seqRows(); scale.rowH > 0.0f && !rows.empty()) {
+        y0 = std::clamp(r.bottom() - (static_cast<float>(rows.back()) - scale.from + 1.0f) * scale.rowH, r.y,
+                        r.bottom() - 2.0f);
+        y1 = std::clamp(r.bottom() - (static_cast<float>(rows.front()) - scale.from) * scale.rowH, y0 + 2.0f,
+                        r.bottom());
+    }
+    return Rect{std::round(x0) + 0.5f, std::round(y0) + 0.5f, std::round(x1) - std::round(x0) - 1.0f,
+                std::round(y1) - std::round(y0) - 1.0f};
+}
+
+// Whether a press at `p` on a pattern's tile grabs what the roll shows of it: on the rectangle (or just round it), while
+// the roll has somewhere to scroll to, across or up and down the tile's rows. Otherwise the tile is grabbed, to pick
+// its pattern or copy it.
+bool SeqPanel::seqViewGrabbed(int pattern, Point p) const {
+    const std::optional<Rect> view = seqViewRect(pattern);
+    if (!view || !view->inset(-2.0f).contains(p))
+        return false;
+    const Rect notes = seqTileNotes(seqTile(pattern));
+    return seqShownSteps() < static_cast<float>(seqSteps()) - 1e-3f || view->h < notes.h - 3.0f;
+}
+
+// A pattern's tile: its letter, lit while it is the one shown, and its notes drawn small after it (see
+// seqTileScale(); bar lines in it, outside its loop dimmed), fainter the softer it is and muted faintest; the pattern
+// shown what the roll shows of it (seqViewRect(), brighter under the mouse and while it is dragged), and the playhead
+// while it plays. Ringed while it is shown, and while one carried would land on it.
 void SeqPanel::paintSeqTile(Canvas &c, int pattern, Rect tile, bool hovered, bool carried) {
     const bool shown = pattern == seqPattern();
     const bool landing = !carried && dragging() && seqDrag_.mode == SeqDrag::Mode::Tile && seqDrag_.carried &&
@@ -2296,36 +2462,23 @@ void SeqPanel::paintSeqTile(Canvas &c, int pattern, Rect tile, bool hovered, boo
     c.text({tile.x, tile.y, kSeqTileLetterW, tile.h}, seqPatternName(pattern), kTextBody,
            shown ? kAccent : hovered ? kText : kDim, Align::Center, true);
 
-    const Rect r = seqTileNotes(tile);
-    int longest = 1;
-    for (int p = 0; p < kSeqPatterns; ++p)
-        longest = std::max(longest, seqStepsOf(p));
-    const int steps = seqStepsOf(pattern);
-    const float stepW = r.w / static_cast<float>(longest);
+    const TileScale scale = seqTileScale(pattern);
+    const Rect r = scale.notes;
+    const int steps = scale.steps;
+    const float stepW = scale.stepW;
     const float end = r.x + static_cast<float>(steps) * stepW;
     c.fillRect({r.x, r.y, end - r.x, r.h}, light.alpha(0.05f), kRadiusMark);
     for (int bar = kSeqStepsPerBar; bar < steps; bar += kSeqStepsPerBar) {
         const float x = std::round(r.x + static_cast<float>(bar) * stepW) + 0.5f;
         c.line({x, r.y}, {x, r.bottom()}, light.alpha(0.08f), 1.0f);
     }
-    const std::vector<SeqNote> notes = seqNotesOf(pattern);
-    // Its rows: the pattern's notes' pitches, at least an octave of them, the lowest's middle `from` + 0.5 up.
-    float from = 0.0f, rowH = 0.0f;
-    if (!notes.empty()) {
-        int low = 127, high = 0;
-        for (const SeqNote &n : notes) {
-            low = std::min(low, n.pitch);
-            high = std::max(high, n.pitch);
-        }
-        const int span = std::max(high - low + 1, 12);
-        from = static_cast<float>(low) - 0.5f * static_cast<float>(span - (high - low + 1));
-        rowH = r.h / static_cast<float>(span);
-        const float h = std::clamp(rowH - 1.0f, 1.5f, 4.0f);
+    if (scale.rowH > 0.0f) {
+        const float h = std::clamp(scale.rowH - 1.0f, 1.5f, 4.0f);
         c.pushClip({r.x, r.y, end - r.x, r.h});
-        for (const SeqNote &n : notes) {
+        for (const SeqNote &n : seqNotesOf(pattern)) {
             const float x = r.x + static_cast<float>(n.start) * stepW;
             const float w = std::max(static_cast<float>(n.length) * stepW - 1.0f, 1.5f);
-            const float y = r.bottom() - (static_cast<float>(n.pitch) - from + 0.5f) * rowH - 0.5f * h;
+            const float y = r.bottom() - (static_cast<float>(n.pitch) - scale.from + 0.5f) * scale.rowH - 0.5f * h;
             const float alpha = n.mute ? 0.3f : 0.55f + 0.45f * static_cast<float>(std::clamp(n.velocity, 0.0, 1.0));
             c.fillRect({x, y, w, h}, kAccent.alpha(alpha), std::min(1.0f, 0.5f * h));
         }
@@ -2337,19 +2490,11 @@ void SeqPanel::paintSeqTile(Canvas &c, int pattern, Rect tile, bool hovered, boo
     if (loopEnd < steps)
         c.fillRect({r.x + static_cast<float>(loopEnd) * stepW, r.y, static_cast<float>(steps - loopEnd) * stepW, r.h},
                    wellColor().alpha(0.6f));
-    // The pattern shown: what the roll shows of it, a rectangle across the steps it shows and up and down its rows
-    // (as far as the tile's reach; all the way up and down while the pattern has no notes to scale its rows by).
-    if (shown && !carried) {
-        const float x0 = r.x + seqScroll() * stepW, x1 = x0 + seqShownSteps() * stepW;
-        float y0 = r.y, y1 = r.bottom();
-        if (const std::vector<int> rows = seqRows(); rowH > 0.0f && !rows.empty()) {
-            y0 = std::clamp(r.bottom() - (static_cast<float>(rows.back()) - from + 1.0f) * rowH, r.y, r.bottom() - 2.0f);
-            y1 = std::clamp(r.bottom() - (static_cast<float>(rows.front()) - from) * rowH, y0 + 2.0f, r.bottom());
-        }
-        const Rect view{std::round(x0) + 0.5f, std::round(y0) + 0.5f, std::round(x1) - std::round(x0) - 1.0f,
-                        std::round(y1) - std::round(y0) - 1.0f};
-        c.fillRect(view, light.alpha(0.06f), kRadiusMark);
-        c.strokeRect(view, kText.alpha(0.55f), 1.0f, kRadiusMark);
+    if (const std::optional<Rect> view = seqViewRect(pattern); view && !carried) {
+        const bool hot = (dragging() && seqDrag_.mode == SeqDrag::Mode::ViewRect) ||
+                         (!dragging() && hovered && seqViewGrabbed(pattern, host_.mouse()));
+        c.fillRect(*view, light.alpha(hot ? 0.1f : 0.06f), kRadiusMark);
+        c.strokeRect(*view, kText.alpha(hot ? 0.85f : 0.55f), 1.0f, kRadiusMark);
     }
     const Telemetry &t = host_.telemetry();
     if (t.seqPosition >= 0.0f && t.seqPattern == pattern && t.seqPosition <= static_cast<float>(steps)) {
@@ -2753,8 +2898,13 @@ SeqPanel::SeqDrag::Mode SeqPanel::seqRulerMode(float x) const {
 }
 
 std::optional<CursorKind> SeqPanel::cursor(const Widget &w) const {
-    if (w.kind == Kind::SeqTile) // a hand to pick it up; moving while it is carried
-        return dragging() && seqDrag_.mode == SeqDrag::Mode::Tile && seqDrag_.carried ? CursorKind::Move : CursorKind::Hand;
+    if (w.kind == Kind::SeqTile) { // a hand to pick it up; moving while it is carried, and over what the roll shows
+        if (dragging())
+            return seqDrag_.mode == SeqDrag::Mode::ViewRect || (seqDrag_.mode == SeqDrag::Mode::Tile && seqDrag_.carried)
+                       ? CursorKind::Move
+                       : CursorKind::Hand;
+        return seqViewGrabbed(w.b, host_.mouse()) ? CursorKind::Move : CursorKind::Hand;
+    }
     if (w.kind == Kind::SeqRuler) { // left and right over an end of the loop or a new one, moving over the loop
         const SeqDrag::Mode mode = dragging() ? seqDrag_.mode : seqRulerMode(host_.mouse().x);
         return mode == SeqDrag::Mode::LoopMove ? CursorKind::Move : CursorKind::Horizontal;

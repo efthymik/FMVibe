@@ -7555,6 +7555,127 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
               "a pattern's tile carried onto another rings it, and let go of there copies the pattern, undoably");
         check(nothing, "a tile let go of on its own place copies nothing");
         check(playhead, "the pattern that plays shows the playhead in its tile");
+
+        // A tile's right-click menu: Copy Pattern, then Paste Pattern on an empty pattern writes it there at once.
+        auto entry = [&](const std::vector<MenuItem> &items, Str label) {
+            for (const MenuItem &item : items)
+                if (item.label == tr(label))
+                    return item.command;
+            return -1;
+        };
+        auto sameAs = [&](int pattern, int other) {
+            for (int slot = 0; slot < kSeqNotes; ++slot)
+                for (int f = 0; f < kSeqNoteParamCount; ++f)
+                    if (model.value(seqNoteIndex(pattern, slot, static_cast<SeqNoteParam>(f))) !=
+                        model.value(seqNoteIndex(other, slot, static_cast<SeqNoteParam>(f))))
+                        return false;
+            return true;
+        };
+        auto emptyPattern = [&](int pattern) {
+            for (int slot = 0; slot < kSeqNotes; ++slot)
+                if (model.value(seqNoteIndex(pattern, slot, SeqNoteParam::Length)) > 0.0)
+                    return false;
+            return true;
+        };
+        {
+            const std::vector<MenuItem> onA = view.contextMenu(seqTile(0).center());
+            const bool offered = entry(onA, Str::MenuSeqCopyPattern) >= 0 && entry(onA, Str::MenuSeqPastePattern) < 0 &&
+                                 entry(onA, Str::MenuSeqClearPattern) >= 0;
+            view.menuCommand(entry(onA, Str::MenuSeqCopyPattern));
+            const std::vector<MenuItem> onC = view.contextMenu(seqTile(2).center());
+            const bool pasteOffered = entry(onC, Str::MenuSeqPastePattern) >= 0 && entry(onC, Str::MenuSeqClearPattern) < 0;
+            view.menuCommand(entry(onC, Str::MenuSeqPastePattern));
+            const bool pasted = !view.dialogOpen() && sameAs(2, 0) && !emptyPattern(2);
+            check(offered && pasteOffered && pasted,
+                  "a tile's menu copies its pattern, and pastes it over an empty pattern without asking");
+
+            // Over a pattern holding other notes, it asks first ("Are you sure you want to overwrite this pattern?"):
+            // Escape keeps the pattern, Enter overwrites it, in one undo step.
+            model.set(seqNoteIndex(1, 100, SeqNoteParam::Start), 9.0);
+            model.set(seqNoteIndex(1, 100, SeqNoteParam::Length), 1.0);
+            model.set(seqNoteIndex(1, 100, SeqNoteParam::Pitch), 70.0);
+            view.poll();
+            view.menuCommand(entry(view.contextMenu(seqTile(1).center()), Str::MenuSeqPastePattern));
+            const bool asked = view.confirmShown();
+            view.mouseMove({600.0f, 300.0f}, {});
+            const bool askShot = renderer.save(view, dir / "36r-seq-overwrite.png");
+            const bool kept = view.dialogKey(View::Key::Escape) && !view.dialogOpen() &&
+                              model.value(seqNoteIndex(1, 100, SeqNoteParam::Length)) == 1.0;
+            view.menuCommand(entry(view.contextMenu(seqTile(1).center()), Str::MenuSeqPastePattern));
+            const bool overwritten = view.dialogKey(View::Key::Enter) && !view.dialogOpen() && sameAs(1, 0);
+            view.undo();
+            const bool undone = model.value(seqNoteIndex(1, 100, SeqNoteParam::Length)) == 1.0;
+            check(asked && askShot && kept && overwritten && undone,
+                  "pasting over a pattern holding notes asks first; Escape keeps it, Enter overwrites it, undoably");
+
+            // A tile dragged onto it asks the same.
+            drag(view, seqTile(0).center(), seqTile(1).center());
+            const bool dragAsked = view.confirmShown();
+            view.dialogKey(View::Key::Escape);
+            check(dragAsked && model.value(seqNoteIndex(1, 100, SeqNoteParam::Length)) == 1.0,
+                  "a tile dragged onto a pattern holding notes asks first too");
+            for (const SeqNoteParam f : {SeqNoteParam::Start, SeqNoteParam::Length, SeqNoteParam::Pitch})
+                model.set(seqNoteIndex(1, 100, f), paramTable()[seqNoteIndex(1, 100, f)].def);
+            view.poll();
+
+            // Clear Pattern asks as the bin does, and clears that pattern, undoably.
+            view.menuCommand(entry(view.contextMenu(seqTile(2).center()), Str::MenuSeqClearPattern));
+            const bool clearAsked = view.confirmShown();
+            const bool cleared = view.dialogKey(View::Key::Enter) && emptyPattern(2) && !emptyPattern(0);
+            view.undo();
+            const bool clearUndone = sameAs(2, 0);
+            view.undo(); // and the paste into C
+            check(clearAsked && cleared && clearUndone && emptyPattern(2),
+                  "a tile's menu clears its pattern, asking first, undoably");
+
+            // Ctrl+C over a tile copies its pattern, and Ctrl+V over another pastes it there.
+            view.mouseMove(seqTile(0).center(), {});
+            const bool copiedKey = view.seqKey(View::Key::Copy, false);
+            view.mouseMove(seqTile(3).center(), {});
+            const bool pastedKey = view.seqKey(View::Key::Paste, false) && sameAs(3, 0) && !emptyPattern(3);
+            view.undo();
+            check(copiedKey && pastedKey && emptyPattern(3),
+                  "Ctrl+C over a tile copies its pattern and Ctrl+V over another pastes it there");
+        }
+
+        // The rectangle of what the roll shows, dragged across in its tile, scrolls the roll: two steps' worth of the
+        // tile on, the roll shows from two steps on.
+        {
+            const Rect zoomIn{detail::kSeqBox.x + detail::kSeqBox.w - 6.0f - 60.0f - 22.0f,
+                              detail::kSeqLaneTabs.y + 2.0f, 18.0f, detail::kSeqLaneTabs.h - 4.0f};
+            click(view, rectCenter(zoomIn));
+            click(view, rectCenter(zoomIn));
+            auto shownFrom = [&] { // the step a double-click at the roll's left edge puts a note on
+                std::vector<int> before;
+                for (int slot = 0; slot < kSeqNotes; ++slot)
+                    if (field(slot, SeqNoteParam::Length) > 0.0)
+                        before.push_back(slot);
+                doubleClick(view, {kSeqGrid.x + 2.0f, at(0.0, 75).y}); // a row with no notes
+                double from = -1.0;
+                for (int slot = 0; slot < kSeqNotes; ++slot)
+                    if (field(slot, SeqNoteParam::Length) > 0.0 &&
+                        std::find(before.begin(), before.end(), slot) == before.end())
+                        from = field(slot, SeqNoteParam::Start);
+                view.undo();
+                return from;
+            };
+            const double before = shownFrom();
+            const Rect notes = seqTileNotes(seqTile(0));
+            const float stepW = notes.w / static_cast<float>(16.0 * longest);
+            const Point grab{notes.x + static_cast<float>(before + 1.0) * stepW, notes.center().y};
+            view.mouseDown(grab, {});
+            view.mouseMove({grab.x + stepW, grab.y}, {});
+            view.mouseMove({grab.x + 2.0f * stepW, grab.y}, {});
+            const bool rectShot = renderer.save(view, dir / "36q-seq-overview-view-drag.png");
+            view.mouseUp({grab.x + 2.0f * stepW, grab.y}, {});
+            const double after = shownFrom();
+            for (int i = 0; i < 4; ++i) // back to the whole pattern across
+                click(view, rectCenter({zoomIn.x - 20.0f, zoomIn.y, zoomIn.w, zoomIn.h}));
+            std::printf("      the overview's rectangle dragged two steps on: the roll from step %.0f to %.0f\n", before,
+                        after);
+            check(rectShot && before >= 0.0 && after == before + 2.0 && model.value(paramIndex(SeqParam::Pattern)) == 0.0,
+                  "the rectangle of what the roll shows, dragged in its tile, scrolls the roll");
+        }
     }
 
     // The bin asks, then clears the pattern; undo brings it back.

@@ -897,7 +897,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
     pixels), what the roll shows a rectangle in the shown pattern's tile, narrowing as the roll zooms in, and no other
     tile changing (read off the rendered pixels), a click on a tile picking its pattern, undoably, a tile carried onto another ringing it (read off the
     rendered pixels) and let go of there copying its pattern, undoably, let go of on its own place copying nothing, and
-    the pattern that plays showing the playhead in its tile (read off the rendered pixels);
+    the pattern that plays showing the playhead in its tile (read off the rendered pixels); a tile's menu offering Copy
+    Pattern, Paste Pattern once one is copied and Clear Pattern while its pattern holds notes, pasting over an empty
+    pattern without asking, over one holding notes asking first (Escape keeping it, Enter overwriting it, undoably), a
+    tile dragged onto one holding notes asking too, Clear Pattern asking and clearing, undoably, Ctrl+C and Ctrl+V over
+    tiles copying and pasting, and the rectangle dragged in its tile scrolling the roll two steps;
   - the SEQ tab, between FX and MODS (a note put down by a double-click and held dragged across lengthening it, to the right its end, to the left its start): its card and an empty roll, and a dot on the tab while the sequencer is on (read
     off the rendered pixels), as on FX's while an effect in the line is switched on; a slight line parting the roll from the lane in every theme (read off the rendered pixels); a double-click putting a note down on its step (a
     step long at 1/16) and on the note deleting it; the notes and the playhead where the telemetry puts it (read off

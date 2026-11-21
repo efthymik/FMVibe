@@ -978,11 +978,19 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     its loop dimmed); up and down, the pattern's own notes, at least an octave of rows, fainter the softer and a muted
     one faintest. The pattern that plays shows the playhead in its tile, and the pattern picked what the roll shows
     of it, as a rectangle: across the steps it shows, up and down its rows (as far as the tile reaches; all the way
-    while the pattern has no notes), moving as the roll scrolls and zooms. A click on a tile picks its pattern (one undo
+    while the pattern has no notes), moving as the roll scrolls and zooms. While the roll has somewhere to scroll to,
+    the rectangle (or just round it) drags it there, across and up and down, the cursor moving over it and the
+    rectangle brighter under the mouse and while dragged. A click elsewhere on a tile picks its pattern (one undo
     step); a tile carried onto another (half seen, following the mouse) rings that one, and let go of there copies its
     pattern there as the copy button does, length, loop, notes and curves, over what was there (one undo step, and a
     message says so); let go of on its own place or off the tiles, it does nothing. The hand shows over a tile, and
-    its tooltip says so.
+    its tooltip says so. A tile's right-click menu has **Copy Pattern**, **Paste Pattern** (once one is copied) and,
+    under a line, **Clear Pattern** (while it holds notes or curve points); Ctrl+C over a tile copies its pattern and
+    Ctrl+V over one pastes the pattern copied there. The pattern copied (length, loop, notes and curves) is the
+    editor's, kept as patches load. Pasted, or copied by a carried tile, over a pattern that holds notes or curve points
+    other than those, it asks first ("Overwrite pattern B?", "Are you sure you want to overwrite this pattern?",
+    Cancel | Overwrite); over an empty pattern it doesn't. Clear Pattern asks as the bin does, and clears that pattern
+    (its length and loop staying). Each is one undo step.
   - **The grid**: a line at every snap's length across the roll (a step with the snap off), the beats and bars
     stronger, as strong as the settings dialog's **GRID** says (50 % to begin with).
   - **The tools** over the roll: select | draw (select to begin with), **SNAP** and its list (Off, 1/4, 1/8, 1/16 to
