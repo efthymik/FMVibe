@@ -894,7 +894,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     host's tempo;
   - the SEQ view covering the modulation panel, as tall as the editor was, its source cards and title taking no clicks;
   - the SEQ view's PATTERNS: a pattern's notes drawn in its tile where an empty one's has none (read off the rendered
-    pixels), a click on a tile picking its pattern, undoably, a tile carried onto another ringing it (read off the
+    pixels), what the roll shows a rectangle in the shown pattern's tile, narrowing as the roll zooms in, and no other
+    tile changing (read off the rendered pixels), a click on a tile picking its pattern, undoably, a tile carried onto another ringing it (read off the
     rendered pixels) and let go of there copying its pattern, undoably, let go of on its own place copying nothing, and
     the pattern that plays showing the playhead in its tile (read off the rendered pixels);
   - the SEQ tab, between FX and MODS (a note put down by a double-click and held dragged across lengthening it, to the right its end, to the left its start): its card and an empty roll, and a dot on the tab while the sequencer is on (read

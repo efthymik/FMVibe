@@ -976,7 +976,9 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     its letter at its left (lit, and the tile tinted and ringed, while it is the pattern picked) and its notes drawn
     small after it: across, the longest pattern's length (a shorter one's tile ends short, a line at each bar, outside
     its loop dimmed); up and down, the pattern's own notes, at least an octave of rows, fainter the softer and a muted
-    one faintest. The pattern that plays shows the playhead in its tile. A click on a tile picks its pattern (one undo
+    one faintest. The pattern that plays shows the playhead in its tile, and the pattern picked what the roll shows
+    of it, as a rectangle: across the steps it shows, up and down its rows (as far as the tile reaches; all the way
+    while the pattern has no notes), moving as the roll scrolls and zooms. A click on a tile picks its pattern (one undo
     step); a tile carried onto another (half seen, following the mouse) rings that one, and let go of there copies its
     pattern there as the copy button does, length, loop, notes and curves, over what was there (one undo step, and a
     message says so); let go of on its own place or off the tiles, it does nothing. The hand shows over a tile, and

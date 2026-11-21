@@ -1176,8 +1176,8 @@ In Key and Latch, the keys you press play no notes of their own; they only start
 ### The patterns overview
 
 Under the settings card, **PATTERNS** shows the four patterns, A to D, one under another, each with its notes drawn
-small, so you can see what each holds at a glance. The selected pattern is highlighted, and the one playing shows the
-playhead.
+small, so you can see what each holds at a glance. The selected pattern is highlighted, with a rectangle showing the
+part of it the piano roll shows, and the one playing shows the playhead.
 
 - **Click** a pattern to select it.
 - **Drag** a pattern onto another to copy it there: its notes, curves, length and loop replace what was there. Undo

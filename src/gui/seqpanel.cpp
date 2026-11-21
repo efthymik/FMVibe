@@ -2309,6 +2309,8 @@ void SeqPanel::paintSeqTile(Canvas &c, int pattern, Rect tile, bool hovered, boo
         c.line({x, r.y}, {x, r.bottom()}, light.alpha(0.08f), 1.0f);
     }
     const std::vector<SeqNote> notes = seqNotesOf(pattern);
+    // Its rows: the pattern's notes' pitches, at least an octave of them, the lowest's middle `from` + 0.5 up.
+    float from = 0.0f, rowH = 0.0f;
     if (!notes.empty()) {
         int low = 127, high = 0;
         for (const SeqNote &n : notes) {
@@ -2316,8 +2318,8 @@ void SeqPanel::paintSeqTile(Canvas &c, int pattern, Rect tile, bool hovered, boo
             high = std::max(high, n.pitch);
         }
         const int span = std::max(high - low + 1, 12);
-        const float from = static_cast<float>(low) - 0.5f * static_cast<float>(span - (high - low + 1));
-        const float rowH = r.h / static_cast<float>(span);
+        from = static_cast<float>(low) - 0.5f * static_cast<float>(span - (high - low + 1));
+        rowH = r.h / static_cast<float>(span);
         const float h = std::clamp(rowH - 1.0f, 1.5f, 4.0f);
         c.pushClip({r.x, r.y, end - r.x, r.h});
         for (const SeqNote &n : notes) {
@@ -2335,6 +2337,20 @@ void SeqPanel::paintSeqTile(Canvas &c, int pattern, Rect tile, bool hovered, boo
     if (loopEnd < steps)
         c.fillRect({r.x + static_cast<float>(loopEnd) * stepW, r.y, static_cast<float>(steps - loopEnd) * stepW, r.h},
                    wellColor().alpha(0.6f));
+    // The pattern shown: what the roll shows of it, a rectangle across the steps it shows and up and down its rows
+    // (as far as the tile's reach; all the way up and down while the pattern has no notes to scale its rows by).
+    if (shown && !carried) {
+        const float x0 = r.x + seqScroll() * stepW, x1 = x0 + seqShownSteps() * stepW;
+        float y0 = r.y, y1 = r.bottom();
+        if (const std::vector<int> rows = seqRows(); rowH > 0.0f && !rows.empty()) {
+            y0 = std::clamp(r.bottom() - (static_cast<float>(rows.back()) - from + 1.0f) * rowH, r.y, r.bottom() - 2.0f);
+            y1 = std::clamp(r.bottom() - (static_cast<float>(rows.front()) - from) * rowH, y0 + 2.0f, r.bottom());
+        }
+        const Rect view{std::round(x0) + 0.5f, std::round(y0) + 0.5f, std::round(x1) - std::round(x0) - 1.0f,
+                        std::round(y1) - std::round(y0) - 1.0f};
+        c.fillRect(view, light.alpha(0.06f), kRadiusMark);
+        c.strokeRect(view, kText.alpha(0.55f), 1.0f, kRadiusMark);
+    }
     const Telemetry &t = host_.telemetry();
     if (t.seqPosition >= 0.0f && t.seqPattern == pattern && t.seqPosition <= static_cast<float>(steps)) {
         const float x = std::round(r.x + t.seqPosition * stepW) + 0.5f;

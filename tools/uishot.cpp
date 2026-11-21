@@ -7470,6 +7470,41 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         };
         const int drawn = differing(b, cNotes);
 
+        // What the roll shows is a rectangle in the shown pattern's tile: zoomed in across, it narrows in A's tile
+        // (read off the rendered pixels), and B's, not shown, stays as it was.
+        {
+            auto grab = [&](Rect r) {
+                std::vector<uint32_t> pixels;
+                for (float y = 0.5f; y < r.h; y += 1.0f)
+                    for (float x = 0.5f; x < r.w; x += 1.0f)
+                        pixels.push_back(renderer.pixel({r.x + x, r.y + y}));
+                return pixels;
+            };
+            auto changed = [](const std::vector<uint32_t> &a, const std::vector<uint32_t> &b) {
+                int count = 0;
+                for (size_t i = 0; i < a.size() && i < b.size(); ++i)
+                    count += a[i] != b[i];
+                return count;
+            };
+            const Rect aNotes = seqTileNotes(seqTile(0));
+            const std::vector<uint32_t> wholeA = grab(aNotes), wholeB = grab(b);
+            const Rect zoomIn{detail::kSeqBox.x + detail::kSeqBox.w - 6.0f - 60.0f - 22.0f,
+                              detail::kSeqLaneTabs.y + 2.0f, 18.0f, detail::kSeqLaneTabs.h - 4.0f};
+            click(view, rectCenter(zoomIn));
+            click(view, rectCenter(zoomIn));
+            view.mouseMove({600.0f, 300.0f}, {});
+            const bool viewShot = renderer.save(view, dir / "36q-seq-overview-view.png");
+            const int movedA = changed(wholeA, grab(aNotes)), movedB = changed(wholeB, grab(b));
+            for (int i = 0; i < 4; ++i) // back to the whole pattern across
+                click(view, rectCenter({zoomIn.x - 20.0f, zoomIn.y, zoomIn.w, zoomIn.h}));
+            view.mouseMove({600.0f, 300.0f}, {});
+            renderer.save(view, dir / "36q-seq-overview.png");
+            std::printf("      overview's view rectangle zoomed in: %d pixels moved in A's tile, %d in B's\n", movedA,
+                        movedB);
+            check(viewShot && movedA > 20 && movedB == 0,
+                  "what the roll shows is a rectangle in the shown pattern's tile, narrowing as it zooms in");
+        }
+
         click(view, seqTile(1).center());
         const bool picked = model.value(paramIndex(SeqParam::Pattern)) == 1.0;
         view.undo();
