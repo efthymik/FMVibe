@@ -284,6 +284,12 @@ Cause: internal calls in a shared module compiled `-fPIC` with default visibilit
 `analyzer.cpp` tripled. Fix: hidden visibility on the static libraries (plus the version scripts). This also makes the
 shipped plugin's analyzer ~3× cheaper. Do not remove it.
 
+That wasn't all of it: the idle half of the check is the FFTs the analyzer still runs over silence, and GCC lowers each
+`std::complex<float>` multiply in them to a libgcc `__mulsc3` call (whatever the optimization or visibility), where
+MSVC inlines it — which is why the Windows build passed while a VM still failed. `Analyzer::measure()` now skips the
+transform while its whole window is silence and falls each band by its share, which is what the transform of zeros came
+to, bit for bit.
+
 ### 6.4 REAPER: "fails to load" while Bitwig loads it
 
 Symptom: REAPER records the class in `reaper-vstplugins64.ini` (timestamp, 32-bit FUID hash, CID
