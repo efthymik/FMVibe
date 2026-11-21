@@ -43,8 +43,9 @@ class FMVibeProcessor extends AudioWorkletProcessor {
           this.dsp.dsp_set(changes[i], changes[i + 1]);
         break;
       }
-      case 'all':
+      case 'all': // a patch loaded (an example, or Init): the transport starts again from the song's start
         this.valuesView().set(message.values);
+        this.dsp.dsp_restart();
         break;
       case 'note':
         this.dsp.dsp_note(message.key, message.on ? 1 : 0, message.velocity ?? 100, message.audition ? 1 : 0);

@@ -1106,7 +1106,10 @@ version pinned at its top. After that it loads Visual Studio's environment for C
 - The page stands in for a host's transport: its `Controller` offers the tempo (`hasTempo()`), which is the synth's
   own (`ownTempo()`; `tempoSync()` is never on there, and the title bar shows no H), for the editor's title bar to
   drag, scroll or type (20–999 BPM, kept in the browser's storage), and which `dsp_tempo()` hands the synth as
-  `Plugin::process()` does the host's tempo.
+  `Plugin::process()` does the host's tempo. Its transport always plays: `dsp_init()` starts it at the song's start,
+  and so does `dsp_restart()`, which the worklet calls as the page loads a patch (an example, or Init), so a preset
+  whose sequencer is set to Host plays its pattern from its start as it loads, and anchored LFOs stand where it puts
+  them.
 - The page polls and paints at most about 60 times a second, whatever the display's rate, and, like the plugin
   window, repaints on a mouse move only when what the editor shows changes.
 - The page ships FMVibe's `LICENSE` (as `LICENSE.txt`) and `web/site/THIRD-PARTY-NOTICES.txt`, the licenses of the

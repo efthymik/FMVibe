@@ -47,10 +47,18 @@ EMSCRIPTEN_KEEPALIVE int dsp_param_count() {
     return kParamCount;
 }
 
+// The page's transport, standing in for a host's: it always plays, from the song's start as the sound starts and
+// again whenever the page loads a patch (dsp_restart()), so a sequencer set to Host plays its pattern from its start
+// and anchored LFOs stand where that puts them. render() moves it on.
+EMSCRIPTEN_KEEPALIVE void dsp_restart() {
+    synth.setTransport(true, 0.0, 0.0);
+}
+
 EMSCRIPTEN_KEEPALIVE void dsp_init(double rate, int factor) {
     sampleRate = rate;
     oversampling = factor;
     synth.prepare(sampleRate, voiceLimit(), oversampling);
+    dsp_restart();
 }
 
 EMSCRIPTEN_KEEPALIVE void dsp_set(int index, double value) {
