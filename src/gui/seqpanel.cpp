@@ -375,6 +375,11 @@ float SeqPanel::seqRowY(int pitch) const {
     return kSeqGrid.y + kSeqGrid.h - static_cast<float>(at - rows.begin() + 1) * seqRowH();
 }
 
+Point SeqPanel::seqBoxStart() const {
+    return {seqStepX(seqDrag_.grabStep),
+            kSeqGrid.y + kSeqGrid.h - (seqDrag_.boxRow - static_cast<float>(seqFirstRow())) * seqRowH()};
+}
+
 int SeqPanel::seqPitchAt(float y) const {
     const std::vector<int> rows = seqRows();
     if (rows.empty())
@@ -1648,6 +1653,7 @@ bool SeqPanel::pressAs(const Widget &w, Point p, Modifiers mods, const Widget &h
         }
         if (hit < 0) { // a box picking what it reaches; with Shift, adding to what is picked
             startDrag(SeqDrag::Mode::Box, false);
+            seqDrag_.boxRow = static_cast<float>(seqFirstRow()) + (kSeqGrid.y + kSeqGrid.h - p.y) / seqRowH();
             seqDrag_.boxBase = mods.shift ? seqPicked() : std::vector<int>{};
             seqSelection_ = seqDrag_.boxBase;
             return true;
@@ -1768,9 +1774,10 @@ void SeqPanel::seqDrag(Point p) {
         editMany(changes);
         break;
     }
-    case SeqDrag::Mode::Box: {
-        const float x0 = std::min(d.start.x, p.x), x1 = std::max(d.start.x, p.x);
-        const float y0 = std::min(d.start.y, p.y), y1 = std::max(d.start.y, p.y);
+    case SeqDrag::Mode::Box: { // from where it started on the roll, which may have scrolled since
+        const Point from = seqBoxStart();
+        const float x0 = std::min(from.x, p.x), x1 = std::max(from.x, p.x);
+        const float y0 = std::min(from.y, p.y), y1 = std::max(from.y, p.y);
         seqSelection_ = d.boxBase;
         for (const SeqNote &n : seqNotes()) {
             const Rect r = seqNoteRect(n);
@@ -2489,8 +2496,8 @@ void SeqPanel::paintBack(Canvas &c) {
     }
     // The box being dragged, picking what it reaches.
     if (dragging() && seqDrag_.mode == SeqDrag::Mode::Box) {
-        const Rect box{std::min(seqDrag_.start.x, seqDrag_.now.x), std::min(seqDrag_.start.y, seqDrag_.now.y),
-                       std::abs(seqDrag_.now.x - seqDrag_.start.x), std::abs(seqDrag_.now.y - seqDrag_.start.y)};
+        const Point from = seqBoxStart(), to = seqDrag_.now;
+        const Rect box{std::min(from.x, to.x), std::min(from.y, to.y), std::abs(to.x - from.x), std::abs(to.y - from.y)};
         c.fillRect(box, kAccent.alpha(0.12f));
         c.strokeRect(box, kAccent.alpha(0.7f), 1.0f);
     }

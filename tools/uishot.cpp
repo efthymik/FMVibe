@@ -6359,6 +6359,37 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         check(lowScrolled > lowBefore && pitch > 69.0 && field(0, SeqNoteParam::Pitch) == 48.0,
               "a note dragged past the roll's edge scrolls it, the note going along");
     }
+    // A box held above the roll's top scrolls the rows up, its start staying on the roll where it began: let go of
+    // over a note that was above the rows, it picks that note and one under it that showed from the start (Delete
+    // then removes both).
+    {
+        const int lowBefore = model.ui.seqLow;
+        put(60, 2.0, 1.0, 94); // in view
+        put(61, 2.0, 1.0, 110); // above the rows
+        view.poll();
+        const Point from = at(1.0, 92);
+        view.mouseDown(from, {});
+        view.mouseMove({at(3.5, 92).x, kSeqGrid.y + 40.0f}, {});
+        view.mouseMove({at(3.5, 92).x, kSeqGrid.y - 20.0f}, {});
+        for (int i = 0; i < 60 && model.ui.seqLow < 80; ++i)
+            view.poll();
+        const int lowScrolled = model.ui.seqLow;
+        const Point over{at(3.5, 92).x, kSeqGrid.y + kSeqGrid.h - (110.0f - static_cast<float>(lowScrolled) + 0.5f) * rh};
+        view.mouseMove(over, {});
+        view.mouseMove({over.x, over.y - 1.0f}, {});
+        const bool boxShot = renderer.save(view, dir / "36b-seq-box-scrolled.png");
+        view.mouseUp({over.x, over.y - 1.0f}, {});
+        const bool removed = view.seqKey(View::Key::Delete, false) && field(60, SeqNoteParam::Length) == 0.0 &&
+                             field(61, SeqNoteParam::Length) == 0.0;
+        view.undo();
+        for (int slot : {60, 61})
+            model.set(seqNoteIndex(0, slot, SeqNoteParam::Length), 0.0);
+        model.ui.seqLow = lowBefore;
+        view.poll();
+        std::printf("      box held above the top: rows from %d\n", lowScrolled);
+        check(boxShot && lowScrolled > lowBefore + 10 && removed,
+              "a box held past the roll's edge scrolls it, its start staying on the roll, and picks the notes it reaches");
+    }
     // A patch loaded fits the roll to its notes: notes high up (C6 to G6), loaded, show.
     {
         const int lowBefore = model.ui.seqLow;

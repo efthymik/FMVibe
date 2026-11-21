@@ -262,7 +262,11 @@ private:
         bool curveUnpick = false; // a point picked, pressed with Ctrl or Shift: let go of if let go unmoved
         std::vector<int> curveBase;
         bool carried = false; // Tile: moved off where it was pressed, so carried onto another
+        // Box: where it started on the roll, in rows up from the first of seqPitchList()'s (and across in grabStep's
+        // steps), so that corner stays on the notes it started by as the roll scrolls under a drag held at its edge.
+        float boxRow = 0.0f;
     };
+    Point seqBoxStart() const; // the Box's starting corner, where the roll shows it now
     void seqHear(int pitch); // that note heard from now on in the drag, the one before let go; -1 lets it go
     SeqDrag seqDrag_;
     bool dragging() const { return seqDrag_.mode != SeqDrag::Mode::None; } // a drag of its own goes on

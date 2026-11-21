@@ -1058,7 +1058,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     the roll, sound alone while the button is held (a note moved to another row sounding that row's), whatever Play is: never the sequencer's
     pattern, which only the keyboard strip's keys and the host's notes start in Key and Latch.
   - **Following what is dragged**: a note, a box or a paint stroke dragged to the roll's edge (or past it) scrolls the
-    roll that way, faster the further past it, what is dragged going along. A patch loaded (a preset, Init, a
+    roll that way, faster the further past it, what is dragged going along (a box's start staying on the notes where
+    it began, so it reaches notes that didn't show as it started). A patch loaded (a preset, Init, a
     project) fits the roll to its pattern's notes: the whole pattern across, and the rows about the notes, lower where
     they don't all fit.
   - **No two notes on one spot**: a note put down, moved, stretched or transposed onto another's start and pitch takes
