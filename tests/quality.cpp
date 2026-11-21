@@ -4780,6 +4780,16 @@ void sequencerChecks() {
                     jittered.size(), exact.size());
         check(once, "a position a hair off where a stretch starts on a step neither misses its notes nor plays them twice");
     }
+    // The Speed reads as a multiple of a 1/16 step, with a times sign in UTF-8 (U+00D7), and reads back.
+    {
+        const int speed = paramIndex(SeqParam::Rate);
+        const double threeQuarters = static_cast<double>(SeqRate::EighthTriplet); // x3/4: a step of a 1/8 triplet
+        char text[32];
+        formatParam(speed, threeQuarters, text, sizeof(text));
+        double typed = -1.0;
+        check(std::string(text) == "\xC3\x97" "3/4" && parseParam(speed, text, &typed) && typed == threeQuarters,
+              "the sequencer's Speed reads as a times sign and its multiple, and reads back");
+    }
     // Swing at 75 % puts the step after the beat three quarters of the way to the next; Gate at 50 % halves a note.
     {
         ParamValues p = blank();

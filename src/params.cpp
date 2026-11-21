@@ -88,8 +88,8 @@ static_assert(std::size(kSeqPatternNames) == static_cast<size_t>(kSeqPatterns));
 constexpr Str kSeqPlayNames[] = {Str::SeqPlayHost, Str::SeqPlayKey, Str::SeqPlayLatch};
 static_assert(std::size(kSeqPlayNames) == static_cast<size_t>(SeqPlay::Count));
 // The speeds, as multiples of a 1/16 step (kSeqStepsPerBeat / 4): a 1/4 step is x1/4, a 1/8 dotted x1/3, a 1/32 x2.
-const char *const kSeqRateNames[] = {"Ã" "1/4", "Ã" "1/3", "Ã" "1/2", "Ã" "2/3",
-                                     "Ã" "3/4", "Ã" "1",   "Ã" "1.5", "Ã" "2"};
+const char *const kSeqRateNames[] = {"\xC3\x97" "1/4", "\xC3\x97" "1/3", "\xC3\x97" "1/2", "\xC3\x97" "2/3",
+                                     "\xC3\x97" "3/4", "\xC3\x97" "1",   "\xC3\x97" "1.5", "\xC3\x97" "2"};
 static_assert(std::size(kSeqRateNames) == static_cast<size_t>(SeqRate::Count));
 constexpr Str kSeqOrderNames[] = {Str::SeqOrderForward, Str::SeqOrderReverse, Str::SeqOrderPingPong,
                                   Str::SeqOrderRandom};
