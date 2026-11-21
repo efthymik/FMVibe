@@ -236,12 +236,15 @@ bool SeqPanel::seqEdgeScroll() {
     constexpr float kZone = 10.0f;
     const Point p = seqDrag_.now;
     bool moved = false;
-    // Across, faster the further past the edge, up to a sixteenth of what shows a poll.
+    // Across, faster the further past the edge (all the way 60 px on): from a quarter of the most at the zone's edge up
+    // to a 96th of what shows a poll, about 0.6 of it a second at the editor's 60 polls, as fast as the rows go (half a
+    // row a poll, of the 50 or so that show).
     const float left = kSeqGrid.x + kZone - p.x, right = p.x - (kSeqGrid.x + kSeqGrid.w - kZone);
-    const float pull = left > 0.0f ? -std::min(left / 40.0f, 1.0f) : right > 0.0f ? std::min(right / 40.0f, 1.0f) : 0.0f;
+    const float pull = left > 0.0f ? -std::min(left / 60.0f, 1.0f) : right > 0.0f ? std::min(right / 60.0f, 1.0f) : 0.0f;
     if (pull != 0.0f) {
         const float before = seqScroll();
-        seqScrollX_ = seqScroll() + pull * seqShownSteps() / 16.0f;
+        const float speed = std::copysign(0.25f + 0.75f * std::abs(pull), pull);
+        seqScrollX_ = seqScroll() + speed * seqShownSteps() / 96.0f;
         seqScrollX_ = seqScroll();
         moved = seqScrollX_ != before;
     }

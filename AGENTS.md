@@ -902,7 +902,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     step long at 1/16) and on the note deleting it; the notes and the playhead where the telemetry puts it (read off
     the rendered pixels); a note the playhead reaches glowing, and not with the glow setting off (read off the rendered
     pixels); a note landing on another's start and pitch (dragged, or by the arrows) taking its place,
-    undoably; a note dragged past the roll's top scrolling the rows, the note going along; a box held there scrolling them too, its start staying on the roll, and picking a note that was above the rows with one that showed from the start; a patch loaded fitting the
+    undoably; a note dragged past the roll's top scrolling the rows, the note going along; a box held there scrolling them too, its start staying on the roll, and picking a note that was above the rows with one that showed from the start; one held past its right edge, zoomed in, scrolling it on by a step or two in half a second, not to the pattern's end; a patch loaded fitting the
     roll to its notes; a note dragged moving on the grid by steps and rows, undoably, its end dragged setting
     its length and its start moving it with its end staying (the cursor left-right over either end), and either with Shift set off the
     grid, as a note moved with Shift lands (a Shift+click on a note picked, not dragged, unpicking it); a box picking the notes it reaches and the field's VEL dragged up turning every one picked up; the

@@ -7362,6 +7362,31 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         model.ui.seqLow = lowBefore;
         check(zoomShot && zoomed >= 0 && panned >= 0 && lowPanned == lowBefore + 3,
               "the roll zooms in across, and the middle button pans it across and up and down");
+        // A box held 20 px past the roll's right edge for half a second (30 polls) scrolls it steadily, not in a rush:
+        // on by a step or two of the seven it shows, where a sixteenth of them a poll went on to the pattern's end.
+        {
+            auto shownFrom = [&] { // the step a double-click at the roll's left edge puts a note on
+                doubleClick(view, left);
+                int from = -1;
+                for (int step = 0; step < 16 && from < 0; ++step)
+                    from = slotAt(step, 60) >= 0 ? step : -1;
+                view.undo();
+                return from;
+            };
+            const int before = shownFrom();
+            const Point empty{kSeqGrid.x + 200.0f, at(0.0, 75).y};
+            view.mouseDown(empty, {});
+            view.mouseMove({kSeqGrid.x + kSeqGrid.w - 40.0f, empty.y}, {});
+            view.mouseMove({kSeqGrid.x + kSeqGrid.w + 20.0f, empty.y}, {});
+            for (int i = 0; i < 30; ++i)
+                view.poll();
+            view.mouseUp({kSeqGrid.x + kSeqGrid.w + 20.0f, empty.y}, {});
+            click(view, empty); // nothing picked
+            const int after = shownFrom();
+            std::printf("      a box held past the right edge for 30 polls: from step %d to %d\n", before, after);
+            check(before >= 0 && after > before && after - before <= 3,
+                  "a box held past the roll's edge scrolls it across steadily, not in a rush");
+        }
         for (int i = 0; i < 4; ++i) // back to the whole pattern across
             click(view, rectCenter(zoomOutX));
         // Alt+wheel at the bottom row zooms in up and down from there: that row stays, and the point five old rows up
