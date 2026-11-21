@@ -345,6 +345,13 @@ public:
     // Writes `info` into the file of the library's preset `index`, leaving its sound alone (and the patch, though it
     // is that preset: only its info then changes, as the file's). Not a factory preset's.
     virtual bool setPresetInfo(int, const PresetInfo &) { return false; }
+    // Moves the file of the library's preset `index` into the subfolder `folder`, replacing a preset of its name there,
+    // and scans again: the patch, a favorite and a recent preset that are that preset follow it. Not a factory
+    // preset's. False if it can't.
+    virtual bool movePreset(int, const std::string &) { return false; }
+    // The author the user typed into the Save sheet last, kept in their settings: a preset without one starts with it.
+    virtual std::string presetAuthor() const { return {}; }
+    virtual void setPresetAuthor(const std::string &) {}
     // The user's favorite presets and the ones loaded last (the last first), by entry: kept in the user's settings.
     virtual bool presetFavorite(int) const { return false; }
     virtual void setPresetFavorite(int, bool) {}

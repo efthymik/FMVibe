@@ -96,6 +96,8 @@ UserSettings parsed(const std::string &text) {
                 settings.categories.push_back({line.substr(9, bar - 9), std::max(std::atoi(line.c_str() + bar + 1), 0)});
         } else if (line.starts_with("browser="))
             settings.browserPlace = line.substr(8);
+        else if (line.starts_with("author="))
+            settings.author = line.substr(7);
     }
     return settings;
 }
@@ -152,6 +154,8 @@ bool writeFile(const std::filesystem::path &file, const UserSettings &settings) 
             out << "zoom=" << settings.zoom << '\n';
         if (!settings.browserPlace.empty())
             out << "browser=" << settings.browserPlace << '\n';
+        if (!settings.author.empty())
+            out << "author=" << settings.author << '\n';
         for (const auto &[name, color] : settings.categories)
             out << "category=" << name << '|' << color << '\n';
         for (const std::string &favorite : settings.favorites)
@@ -233,6 +237,8 @@ UserSettings merged(const UserSettings &base, const UserSettings &mine, const Us
         out.zoom = mine.zoom;
     if (mine.browserPlace != base.browserPlace)
         out.browserPlace = mine.browserPlace;
+    if (mine.author != base.author)
+        out.author = mine.author;
     out.favorites = mergedList(base.favorites, mine.favorites, theirs.favorites, [](const std::string &e) { return e; });
     out.categories = mergedList(base.categories, mine.categories, theirs.categories,
                                 [](const std::pair<std::string, int> &e) { return e.first; });

@@ -1,4 +1,4 @@
-// The preset bar's info and its card, the preset browser and the Save dialog: what the editor shows of the preset
+// The preset bar's info and its card, the preset browser and the Save sheet: what the editor shows of the preset
 // library and of a preset's info (see PresetInfo), as a panel of the editor (see presetbrowser.h).
 #include "presetbrowser.h"
 
@@ -218,7 +218,7 @@ void paintCaret(Canvas &c, Rect panel, float x) {
 
 PresetBrowser::PresetBrowser(PanelHost &host) : host_(host) {}
 
-// --- What it shows over the editor: the info card, the browser, the Save dialog and the name form over it, each
+// --- What it shows over the editor: the info card, the browser, the Save sheet and the name form over it, each
 // over the one before; the topmost takes every click.
 
 bool PresetBrowser::modal() const {
@@ -706,7 +706,7 @@ std::vector<PresetBrowser::SideItem> PresetBrowser::browserSide() const {
             items.push_back({Kind::BrowserTreeToggle, i, {row.x + 2.0f + tree[i].depth * 12.0f, y + 5.0f, 16.0f, 16.0f}});
         y += kSideRowH;
     }
-    // CATEGORIES, and Clear while one filters (a new category is made in the Save dialog).
+    // CATEGORIES, and Clear while one filters (a new category is made in the Save sheet).
     y += 12.0f;
     items.push_back({Kind::BrowserBackdrop, 11, {row.x, y, row.w, 20.0f}});
     if (!browserCategories_.empty())
@@ -1163,13 +1163,16 @@ void PresetBrowser::paintBrowser(Canvas &c) {
             host_.paintWidget(c, w);
 }
 
-// --- The Save dialog, which also edits a preset's info
+// --- The Save sheet, which also edits a preset's info and moves it
 
 namespace {
-constexpr float kSaveW = 800.0f;
-constexpr float kSaveRightW = 250.0f;
+// One column: the name and author, the categories, the description and the folder it goes in, a list button whose
+// list of folders opens under it (or over it, where the editor ends).
+constexpr float kSaveW = 540.0f;
 constexpr float kChipW = 90.0f, kChipH = 28.0f, kChipGap = 7.0f;
 constexpr float kFolderRowH = 26.0f;
+constexpr float kFolderListW = 300.0f;
+constexpr int kFolderRowsShown = 8; // the list's rows at most, Factory's among them; more scroll
 
 std::string trimmed(const std::string &text) {
     const size_t from = text.find_first_not_of(' ');
@@ -1181,6 +1184,28 @@ std::string trimmed(const std::string &text) {
 bool fileNameOk(const std::string &name) {
     return !name.empty() && name.back() != '.' && name.find_first_of("\\/:*?\"<>|") == std::string::npos;
 }
+
+// A folder as the sheet names it: `top` (the preset folder), then its parts, " / " between them.
+std::string folderPath(const std::string &folder, std::string_view top) {
+    std::string path(top);
+    for (size_t at = 0; !folder.empty() && at <= folder.size();) {
+        const size_t end = std::min(folder.find('/', at), folder.size());
+        path += " / " + folder.substr(at, end - at);
+        at = end + 1;
+    }
+    return path;
+}
+
+// A padlock about `m`: its body filled, its shackle two legs over it joined by a half circle.
+void paintPadlock(Canvas &c, Point m, Color color) {
+    c.fillRect({m.x - 4.5f, m.y - 0.5f, 9.0f, 6.5f}, color, kRadiusMark);
+    Point shackle[13];
+    shackle[0] = {m.x - 2.75f, m.y};
+    for (int k = 0; k <= 10; ++k) // the half circle over the legs, left to right
+        shackle[1 + k] = Canvas::onCircle({m.x, m.y - 2.75f}, 2.75f, kPi * (k / 10.0f - 0.5f));
+    shackle[12] = {m.x + 2.75f, m.y};
+    c.polyline(shackle, 13, color, 1.3f);
+}
 } // namespace
 
 std::vector<std::string> PresetBrowser::saveFolders() const {
@@ -1190,44 +1215,64 @@ std::vector<std::string> PresetBrowser::saveFolders() const {
     return folders;
 }
 
+bool PresetBrowser::saveReplaces() const {
+    const std::string name = trimmed(saveName_.text);
+    if (saveMode_ == SaveMode::Save)
+        return presetStore().presetExists(saveFolder_, name);
+    const std::vector<PresetEntry> &presets = presetStore().presets();
+    return saveMode_ == SaveMode::Info && saveIndex_ >= 0 && saveIndex_ < static_cast<int>(presets.size()) &&
+           saveFolder_ != presets[saveIndex_].folder && presetStore().presetExists(saveFolder_, name);
+}
+
 PresetBrowser::SaveLayout PresetBrowser::saveLayout() const {
     SaveLayout l;
-    const float left = 24.0f, leftW = kSaveW - 48.0f - kSaveRightW - 24.0f;
-    // Where each part sits from the panel's top, then the panel centered on that height.
+    const float left = 24.0f, inner = kSaveW - 2.0f * left;
+    // Where each part sits from the panel's top, then the panel as tall as they take.
     const float body = 52.0f + 18.0f;
     const int chips = static_cast<int>(saveCategoryList().size()) + 2; // with None and + New
-    const int perRow = static_cast<int>((leftW + kChipGap) / (kChipW + kChipGap));
+    const int perRow = static_cast<int>((inner + kChipGap) / (kChipW + kChipGap));
     const int chipRows = (chips + perRow - 1) / perRow;
     const float chipsTop = body + 80.0f;
     const float chipsEnd = chipsTop + chipRows * (kChipH + 8.0f) - 8.0f;
     const float descTop = chipsEnd + 32.0f;
-    const float bodyEnd = descTop + 30.0f;
-    const bool exists = saveMode_ == SaveMode::Save && presetStore().presetExists(saveFolder_, trimmed(saveName_.text));
+    const float folderTop = descTop + 30.0f + 32.0f;
+    const float bodyEnd = folderTop + 30.0f;
+    const bool exists = saveReplaces();
     const float footer = bodyEnd + (exists ? 58.0f : 20.0f);
     const float h = footer + 30.0f + 20.0f;
     // It drops from the preset bar, as the info card does.
     const float x = std::clamp(std::round(kPresetName.center().x - kSaveW * 0.5f), 12.0f, View::kWidth - 12.0f - kSaveW);
     l.panel = {x, kTitleBarH + 6.0f, kSaveW, h};
     const Rect p = l.panel;
-    l.name = {p.x + left, p.y + body + 18.0f, leftW - 12.0f - 170.0f, 30.0f};
+    l.name = {p.x + left, p.y + body + 18.0f, inner - 12.0f - 170.0f, 30.0f};
     l.author = {l.name.right() + 12.0f, l.name.y, 170.0f, 30.0f};
     for (int i = 0; i < chips; ++i)
         l.chips.push_back({p.x + left + (i % perRow) * (kChipW + kChipGap), p.y + chipsTop + (i / perRow) * (kChipH + 8.0f),
                            kChipW, kChipH});
-    l.description = {p.x + left, p.y + descTop, leftW, 30.0f};
-    l.folders = {p.right() - 24.0f - kSaveRightW, p.y + body + 18.0f, kSaveRightW, bodyEnd - body - 18.0f};
+    l.description = {p.x + left, p.y + descTop, inner, 30.0f};
+    l.folder = {p.x + left, p.y + folderTop, inner, 30.0f};
     l.warning = exists ? Rect{p.x + 24.0f, p.y + bodyEnd + 16.0f, p.w - 48.0f, 28.0f} : Rect{};
     l.cancel = {p.right() - 24.0f - 96.0f - 8.0f - 86.0f, p.y + footer, 86.0f, 30.0f};
     l.save = {p.right() - 24.0f - 96.0f, p.y + footer, 96.0f, 30.0f};
     l.toFile = {p.x + 24.0f, p.y + footer, 120.0f, 30.0f};
     l.close = {p.right() - 38.0f, p.y + 14.0f, 24.0f, 24.0f};
+    if (saveFolderList_) { // the rows (Factory's and the folders'), a line, then New Folder
+        const int rows = std::min(static_cast<int>(saveFolders().size()) + 1, kFolderRowsShown);
+        const float rowsH = rows * kFolderRowH, listH = 4.0f + rowsH + 9.0f + kFolderRowH + 4.0f;
+        float y = l.folder.bottom() + 4.0f;
+        if (y + listH > host_.height() - 8.0f)
+            y = l.folder.y - 4.0f - listH;
+        l.list = {l.folder.x, y, kFolderListW, listH};
+        l.listRows = {l.list.x + 4.0f, l.list.y + 4.0f, l.list.w - 8.0f, rowsH};
+        l.listNew = {l.list.x + 4.0f, l.listRows.bottom() + 9.0f, l.list.w - 8.0f, kFolderRowH - 1.0f};
+    }
     return l;
 }
 
 void PresetBrowser::openSave(int index) {
     const std::vector<PresetEntry> &presets = presetStore().presets();
     PresetInfo info;
-    if (index >= 0 && index < static_cast<int>(presets.size())) { // editing a preset's info
+    if (index >= 0 && index < static_cast<int>(presets.size())) { // editing a preset's info, where it is
         const PresetEntry &e = presets[index];
         saveMode_ = SaveMode::Info;
         saveIndex_ = index;
@@ -1235,7 +1280,7 @@ void PresetBrowser::openSave(int index) {
         info = e.info;
         saveFolder_ = e.folder;
         saveFocus_ = Field::SaveDescription;
-    } else { // saving the patch, under its preset's name and in its folder to begin with
+    } else { // saving the patch, under its preset's name
         saveMode_ = SaveMode::Save;
         saveIndex_ = -1;
         const int now = presetStore().presetIndex();
@@ -1243,11 +1288,20 @@ void PresetBrowser::openSave(int index) {
                              ? presetStore().presetName()
                              : std::string();
         info = controller().layout().presetInfo;
-        saveFolder_ = now >= 0 && now < static_cast<int>(presets.size()) && !presets[now].factory ? presets[now].folder
-                                                                                                  : std::string();
+        // In its preset's folder, a preset of the user's; else in the folder the browser was left on; else in User.
+        saveFolder_.clear();
+        if (now >= 0 && now < static_cast<int>(presets.size()) && !presets[now].factory) {
+            saveFolder_ = presets[now].folder;
+        } else if (const std::string place = presetStore().presetBrowserPlace(); place.starts_with("folder:")) {
+            const std::vector<std::string> folders = saveFolders();
+            if (std::find(folders.begin(), folders.end(), place.substr(7)) != folders.end())
+                saveFolder_ = place.substr(7);
+        }
         saveFocus_ = Field::SaveName;
     }
-    saveAuthor_.text = info.author; // the preset's own, empty for none
+    // The author: the preset's own; where it has none, the one the user typed last.
+    saveAuthor_.text = info.author.empty() ? presetStore().presetAuthor() : info.author;
+    saveAuthorTyped_ = false;
 
     saveDescription_.text = info.description;
     saveCategory_ = info.category;
@@ -1259,6 +1313,7 @@ void PresetBrowser::openSave(int index) {
     // The name all selected, to type over.
     if (saveFocus_ == Field::SaveName)
         saveName_.anchor = 0;
+    saveFolderList_ = false;
     saveFolderScroll_ = 0.0f;
     browserOpen_ = false;
     infoCardOpen_ = false;
@@ -1278,15 +1333,26 @@ bool PresetBrowser::saveHereOn() const { // as Save As, greyed out on Init until
 void PresetBrowser::openSaveIn(const std::string &folder) {
     openSave();
     const std::vector<std::string> folders = saveFolders();
-    const auto at = std::find(folders.begin(), folders.end(), folder);
-    if (at == folders.end()) // gone since the browser opened
+    if (std::find(folders.begin(), folders.end(), folder) != folders.end()) // not gone since the browser opened
+        saveFolder_ = folder;
+}
+
+float PresetBrowser::saveFolderListEnd() const {
+    const int rows = static_cast<int>(saveFolders().size()) + 1; // Factory's too
+    return std::max(rows - kFolderRowsShown, 0) * kFolderRowH;
+}
+
+void PresetBrowser::toggleSaveFolderList() {
+    saveFolderList_ = !saveFolderList_;
+    host_.resetHover();
+    if (!saveFolderList_)
         return;
-    saveFolder_ = folder;
-    // Scrolled just far enough to show its row, which comes after Factory's.
-    const float box = saveLayout().folders.h;
-    const float rowEnd = 8.0f + static_cast<float>(at - folders.begin() + 2) * kFolderRowH;
-    const float content = static_cast<float>(folders.size() + 1) * kFolderRowH + 8.0f;
-    saveFolderScroll_ = std::clamp(rowEnd - box, 0.0f, std::max(content - box, 0.0f));
+    // Scrolled just far enough to show the folder picked, whose row comes after Factory's.
+    const std::vector<std::string> folders = saveFolders();
+    const auto at = std::find(folders.begin(), folders.end(), saveFolder_);
+    const float rowEnd = at == folders.end() ? 0.0f : static_cast<float>(at - folders.begin() + 2) * kFolderRowH;
+    const float shown = static_cast<float>(std::min(static_cast<int>(folders.size()) + 1, kFolderRowsShown)) * kFolderRowH;
+    saveFolderScroll_ = std::clamp(rowEnd - shown, 0.0f, saveFolderListEnd());
 }
 
 std::vector<Widget> PresetBrowser::saveWidgets() const {
@@ -1316,21 +1382,23 @@ std::vector<Widget> PresetBrowser::saveWidgets() const {
             add(Kind::SaveNewCategory, l.chips[i]);
     }
     add(Kind::SearchField, l.description, static_cast<int>(Field::SaveDescription));
-    if (saveMode_ == SaveMode::Save) {
-        add(Kind::SaveNewFolder, {l.folders.right() - 96.0f, l.folders.y - 20.0f, 96.0f, 18.0f});
-        const Rect box{l.folders.x, l.folders.y, l.folders.w, l.folders.h};
-        const std::vector<std::string> folders = saveFolders();
-        for (int i = 0; i < static_cast<int>(folders.size()); ++i) {
-            const Rect r{box.x + 4.0f, box.y + 4.0f + (i + 1) * kFolderRowH - saveFolderScroll_, box.w - 8.0f,
-                         kFolderRowH - 1.0f};
-            if (r.bottom() > box.y && r.y < box.bottom())
-                add(Kind::SaveFolderRow, r, i, box.inset(1.0f));
-        }
-        if (presetStore().writesPresetFiles())
-            add(Kind::SaveToFile, l.toFile);
-    }
+    add(Kind::SaveFolderList, l.folder);
+    if (saveMode_ == SaveMode::Save && presetStore().writesPresetFiles())
+        add(Kind::SaveToFile, l.toFile);
     add(Kind::SaveButton, l.cancel, 0);
     add(Kind::SaveButton, l.save, 1);
+    if (saveFolderList_) { // over the rest, which a click around it leaves alone, closing it
+        add(Kind::SaveBackdrop, {0.0f, 0.0f, View::kWidth, host_.height()}, 2);
+        add(Kind::SaveBackdrop, l.list, 3);
+        const std::vector<std::string> folders = saveFolders();
+        for (int i = 0; i < static_cast<int>(folders.size()); ++i) {
+            const Rect r{l.listRows.x, l.listRows.y + (i + 1) * kFolderRowH - saveFolderScroll_, l.listRows.w,
+                         kFolderRowH - 1.0f};
+            if (r.bottom() > l.listRows.y && r.y < l.listRows.bottom())
+                add(Kind::SaveFolderRow, r, i, l.listRows);
+        }
+        add(Kind::SaveNewFolder, l.listNew);
+    }
     return list;
 }
 
@@ -1366,55 +1434,7 @@ void PresetBrowser::paintSave(Canvas &c) {
     label(l.description, tr(Str::SaveDescription), count);
     host_.paintField(c, Field::SaveDescription, l.description, formFieldTyped(l.description), tr(Str::SaveDescriptionHint), {},
                false);
-
-    // The folder: a tree of every folder, the one it goes into lit; or, editing info, where it is.
-    label(l.folders, tr(Str::SaveFolder));
-    if (saveMode_ == SaveMode::Save) {
-        const Rect box = l.folders;
-        c.fillRect(box, kBackground.alpha(0.6f), kRadiusCard);
-        c.strokeRect(box, kBorder, 1.0f, kRadiusCard);
-        c.pushClip(box.inset(1.0f));
-        // The factory presets' folder, locked: nothing can go in.
-        const Rect factory{box.x + 4.0f, box.y + 4.0f - saveFolderScroll_, box.w - 8.0f, kFolderRowH - 1.0f};
-        paintFolderIcon(c, {factory.x + 10.0f, factory.y + 6.5f}, kFaint, false, true);
-        c.text({factory.x + 30.0f, factory.y, factory.w - 60.0f, factory.h}, tr(Str::PresetsFactory), kTextBody, kFaint,
-               Align::Left);
-        const Point lock{factory.right() - 14.0f, factory.center().y};
-        // A padlock: its body filled, its shackle two legs over it joined by a half circle.
-        c.fillRect({lock.x - 4.5f, lock.y - 0.5f, 9.0f, 6.5f}, kFaint, kRadiusMark);
-        Point shackle[13];
-        shackle[0] = {lock.x - 2.75f, lock.y};
-        for (int k = 0; k <= 10; ++k) // the half circle over the legs, left to right
-            shackle[1 + k] = Canvas::onCircle({lock.x, lock.y - 2.75f}, 2.75f, kPi * (k / 10.0f - 0.5f));
-        shackle[12] = {lock.x + 2.75f, lock.y};
-        c.polyline(shackle, 13, kFaint, 1.3f);
-        const std::vector<std::string> folders = saveFolders();
-        for (int i = 0; i < static_cast<int>(folders.size()); ++i) {
-            const Rect r{box.x + 4.0f, box.y + 4.0f + (i + 1) * kFolderRowH - saveFolderScroll_, box.w - 8.0f,
-                         kFolderRowH - 1.0f};
-            Widget probe;
-            probe.kind = Kind::SaveFolderRow;
-            probe.rect = r;
-            probe.a = i;
-            const bool on = folders[i] == saveFolder_, hovered = host_.isHovered(probe);
-            if (on)
-                c.fillRect(r, kAccent.alpha(look.flat ? 0.16f : 0.2f), kRadiusControl);
-            else if (hovered)
-                c.fillRect(r, kText.alpha(0.06f), kRadiusControl);
-            const int depth = i == 0 ? 0 : 1 + static_cast<int>(std::count(folders[i].begin(), folders[i].end(), '/'));
-            const float x = r.x + 10.0f + depth * 14.0f;
-            paintFolderIcon(c, {x, r.y + 6.5f}, on ? kAccent : kDim, on, false);
-            c.text({x + 20.0f, r.y, r.right() - x - 24.0f, r.h},
-                   fitted(c, folderName(folders[i], tr(Str::PresetsUser)), kTextBody, on, r.right() - x - 26.0f),
-                   kTextBody, on || hovered ? kText : kDim, Align::Left, on);
-        }
-        c.popClip();
-    } else {
-        const std::string where = saveFolder_.empty() ? std::string(tr(Str::PresetsUser))
-                                                      : std::string(tr(Str::PresetsUser)) + " / " + saveFolder_;
-        c.text({l.folders.x, l.folders.y, l.folders.w, 22.0f}, fitted(c, where, kTextBody, false, l.folders.w), kTextBody,
-               kDim, Align::Left);
-    }
+    label(l.folder, tr(Str::SaveFolder));
     // Replacing a preset says so.
     if (l.warning.w > 0.0f) {
         const Color amber = Color::hex(0xF2C14E);
@@ -1428,14 +1448,61 @@ void PresetBrowser::paintSave(Canvas &c) {
                trf(Str::SaveExists, {trimmed(saveName_.text)}), kTextLabel, kText, Align::Left);
     }
     for (const Widget &w : saveWidgets())
-        if (w.kind != Kind::SearchField && w.kind != Kind::SaveBackdrop && w.kind != Kind::SaveFolderRow)
+        if (w.kind != Kind::SearchField && w.kind != Kind::SaveBackdrop && w.kind != Kind::SaveFolderRow &&
+            w.kind != Kind::SaveNewFolder)
+            host_.paintWidget(c, w);
+    if (saveFolderList_)
+        paintSaveFolderList(c, l);
+}
+
+// The list of folders: Factory's locked (nothing can go in), then User and its folders, the one picked marked, then
+// New Folder under a line.
+void PresetBrowser::paintSaveFolderList(Canvas &c, const SaveLayout &l) {
+    paintMenuPanel(c, l.list, kRadiusCard);
+    const Rect box = l.listRows;
+    c.pushClip(box);
+    const Rect factory{box.x, box.y - saveFolderScroll_, box.w, kFolderRowH - 1.0f};
+    paintFolderIcon(c, {factory.x + 10.0f, factory.y + 6.5f}, kFaint, false, true);
+    c.text({factory.x + 30.0f, factory.y, factory.w - 60.0f, factory.h}, tr(Str::PresetsFactory), kTextBody, kFaint,
+           Align::Left);
+    paintPadlock(c, {factory.right() - 14.0f, factory.center().y}, kFaint);
+    const std::vector<std::string> folders = saveFolders();
+    const std::vector<Widget> widgets = saveWidgets();
+    for (const Widget &w : widgets) {
+        if (w.kind != Kind::SaveFolderRow || w.a < 0 || w.a >= static_cast<int>(folders.size()))
+            continue;
+        const Rect r = w.rect;
+        const bool on = folders[w.a] == saveFolder_, hovered = host_.isHovered(w);
+        paintMenuRow(c, r, hovered, on);
+        const int depth =
+            w.a == 0 ? 0 : 1 + static_cast<int>(std::count(folders[w.a].begin(), folders[w.a].end(), '/'));
+        const float x = r.x + 10.0f + depth * 14.0f;
+        paintFolderIcon(c, {x, r.y + 6.5f}, on ? kAccent : kDim, on, false);
+        c.text({x + 20.0f, r.y, r.right() - x - 24.0f, r.h},
+               fitted(c, folderName(folders[w.a], tr(Str::PresetsUser)), kTextBody, on, r.right() - x - 26.0f),
+               kTextBody, on || hovered ? kText : kDim, Align::Left, on);
+    }
+    c.popClip();
+    // More rows than it shows: a thumb at its right edge, as far down as it is scrolled.
+    if (const float end = saveFolderListEnd(); end > 0.0f) {
+        const float thumb = box.h * box.h / (box.h + end);
+        c.fillRect({box.right() - 3.0f, box.y + (box.h - thumb) * saveFolderScroll_ / end, 3.0f, thumb}, kFaint,
+                   kRadiusMark);
+    }
+    c.line({l.list.x + 1.0f, l.listNew.y - 4.5f}, {l.list.right() - 1.0f, l.listNew.y - 4.5f}, kBorder, 1.0f);
+    for (const Widget &w : widgets)
+        if (w.kind == Kind::SaveNewFolder)
             host_.paintWidget(c, w);
 }
 
 void PresetBrowser::saveKey(Key key) {
-    if (key == Key::Enter)
+    if (key == Key::Escape && saveFolderList_) { // the list of folders closes first
+        saveFolderList_ = false;
+        host_.resetHover();
+    } else if (key == Key::Enter) {
+        saveFolderList_ = false;
         runSave();
-    else if (key == Key::Escape) {
+    } else if (key == Key::Escape) {
         saveMode_ = SaveMode::None;
         host_.resetHover();
     } else if (key == Key::Tab || key == Key::BackTab) {
@@ -1443,7 +1510,7 @@ void PresetBrowser::saveKey(Key key) {
     }
 }
 
-// Tab and Shift+Tab: the dialog's next text field or the one before, round its ends, its text all selected to type
+// Tab and Shift+Tab: the sheet's next text field or the one before, round its ends, its text all selected to type
 // over. Editing a preset's info, the name isn't one of them.
 void PresetBrowser::stepSaveField(int step) {
     static constexpr Field kFields[] = {Field::SaveName, Field::SaveAuthor, Field::SaveDescription};
@@ -1465,13 +1532,36 @@ void PresetBrowser::runSave() {
         return;
     }
     const PresetInfo info{trimmed(saveAuthor_.text), saveCategory_, trimmed(saveDescription_.text)};
-    // Saved, it says nothing: the dialog closing shows it. A failure says so, the dialog staying open.
-    const bool saved = saveMode_ == SaveMode::Info ? presetStore().setPresetInfo(saveIndex_, info)
-                                                   : presetStore().savePresetIn(saveFolder_, name, info);
-    if (!saved) {
+    // Saved, it says nothing: the sheet closing shows it. A failure says so, the sheet staying open.
+    if (saveMode_ == SaveMode::Info) { // its info written, then its file moved if another folder is picked
+        if (saveIndex_ < 0 || saveIndex_ >= static_cast<int>(presetStore().presets().size())) {
+            saveMode_ = SaveMode::None; // gone meanwhile
+            host_.resetHover();
+            return;
+        }
+        const PresetEntry entry = presetStore().presets()[saveIndex_]; // a copy: writing scans the library again
+        if (!presetStore().setPresetInfo(saveIndex_, info)) {
+            host_.flash(tr(Str::MsgPresetNotSaved));
+            return;
+        }
+        if (saveFolder_ != entry.folder) {
+            const std::vector<PresetEntry> &presets = presetStore().presets();
+            int at = -1;
+            for (int i = 0; i < static_cast<int>(presets.size()); ++i)
+                if (!presets[i].factory && presets[i].folder == entry.folder && presets[i].name == entry.name)
+                    at = i;
+            if (!presetStore().movePreset(at, saveFolder_)) {
+                host_.flash(tr(Str::MsgPresetNotMoved));
+                return;
+            }
+        }
+    } else if (!presetStore().savePresetIn(saveFolder_, name, info)) {
         host_.flash(tr(Str::MsgPresetNotSaved));
         return;
     }
+    // An author typed in is the one the next preset starts with.
+    if (saveAuthorTyped_ && !info.author.empty())
+        presetStore().setPresetAuthor(info.author);
     saveMode_ = SaveMode::None;
     host_.resetHover();
 }
@@ -1558,7 +1648,7 @@ void PresetBrowser::runNameMenu() {
             presetStore().addUserCategory({name, nameColor_});
         if (saveMode_ != SaveMode::None)
             saveCategory_ = built >= 0 ? kPresetCategories[built].name : name;
-    } else if (nameMenu_ == 4) { // the Save dialog's folder renamed, in the folder it is in
+    } else if (nameMenu_ == 4) { // the browser's folder renamed, in the folder it is in
         if (!fileNameOk(name)) {
             host_.flash(tr(Str::MsgNameInvalid));
             return;
@@ -1579,12 +1669,11 @@ void PresetBrowser::runNameMenu() {
                 host_.flash(tr(Str::MsgFolderNotRenamed));
                 return;
             }
-            // What showed the folder or one in it follows it: the folder picked, and the browser's.
+            // What showed the folder or one in it follows it: the browser's tree and the folder it shows.
             auto moved = [&](std::string &f) {
                 if (f == renameFolder_ || f.starts_with(renameFolder_ + "/"))
                     f = to + f.substr(renameFolder_.size());
             };
-            moved(saveFolder_);
             std::set<std::string> opened; // the browser's tree keeps it and those in it opened
             for (std::string f : browserOpenFolders_) {
                 moved(f);
@@ -1598,7 +1687,7 @@ void PresetBrowser::runNameMenu() {
                     rememberBrowserPlace();
             }
         }
-    } else { // a folder, in the folder shown (the browser) or picked (the Save dialog)
+    } else { // a folder, in the folder shown (the browser) or picked (the Save sheet)
         if (!fileNameOk(name)) {
             host_.flash(tr(Str::MsgNameInvalid));
             return;
@@ -1740,27 +1829,37 @@ bool PresetBrowser::paintWidget(Canvas &c, const Widget &w, bool hovered) {
                Align::Left);
         return true;
     }
-    case Kind::SaveNewFolder:
-    case Kind::SaveToFile: {
-        const bool folder = w.kind == Kind::SaveNewFolder;
+    case Kind::SaveFolderList: { // as a field, the folder in it, then a chevron
+        const bool open = saveFolderList_;
+        c.fillRect(w.rect, kBackground, kRadiusControl);
+        c.strokeRect(w.rect, open ? kAccent : hovered ? mix(kBorder, kText, 0.25f) : kBorder, 1.0f, kRadiusControl);
+        paintFolderIcon(c, {w.rect.x + 10.0f, w.rect.center().y - 6.5f}, hovered || open ? kText : kDim, false, false);
+        const float x = w.rect.x + 30.0f, right = w.rect.right() - 28.0f;
+        c.text({x, w.rect.y, right - x, w.rect.h},
+               fitted(c, folderPath(saveFolder_, tr(Str::PresetsUser)), kTextBody, false, right - x), kTextBody, kText,
+               Align::Left);
+        paintChevron(c, {w.rect.right() - 14.0f, w.rect.center().y}, hovered || open ? kText : kDim,
+                     open ? ChevronWay::Up : ChevronWay::Down);
+        return true;
+    }
+    case Kind::SaveNewFolder: { // the list's last row: a plus, then its name, in the accent
+        paintMenuRow(c, w.rect, hovered, false);
         const Color ink = hovered ? kText : kAccent;
-        float x = w.rect.x;
-        if (folder) {
-            const float tw = std::ceil(c.textWidth(tr(Str::SaveNewFolder), kTextLabel));
-            x = w.rect.right() - tw - 14.0f;
-            const Point m{x + 4.0f, w.rect.center().y};
-            c.line({m.x - 3.5f, m.y}, {m.x + 3.5f, m.y}, ink, 1.3f);
-            c.line({m.x, m.y - 3.5f}, {m.x, m.y + 3.5f}, ink, 1.3f);
-            x += 12.0f;
-        }
-        c.text({x, w.rect.y, w.rect.right() - x, w.rect.h}, tr(folder ? Str::SaveNewFolder : Str::SaveToFile), kTextLabel,
-               ink, Align::Left);
+        const Point m{w.rect.x + 15.5f, w.rect.center().y};
+        c.line({m.x - 4.0f, m.y}, {m.x + 4.0f, m.y}, ink, 1.3f);
+        c.line({m.x, m.y - 4.0f}, {m.x, m.y + 4.0f}, ink, 1.3f);
+        c.text({w.rect.x + 30.0f, w.rect.y, w.rect.w - 34.0f, w.rect.h}, tr(Str::SaveNewFolder), kTextBody, ink,
+               Align::Left);
+        return true;
+    }
+    case Kind::SaveToFile: {
+        const Color ink = hovered ? kText : kAccent;
+        c.text(w.rect, tr(Str::SaveToFile), kTextLabel, ink, Align::Left);
         return true;
     }
     case Kind::SaveButton: {
         const bool save = w.a == 1;
-        const bool replace = save && saveMode_ == SaveMode::Save &&
-                             presetStore().presetExists(saveFolder_, trimmed(saveName_.text));
+        const bool replace = save && saveReplaces();
         const Color ink = buttonFace(c, w.rect, save, hovered);
         c.text(w.rect, tr(!save ? Str::SaveCancel : replace ? Str::SaveReplace : Str::SaveSave), kTextBody, ink,
                Align::Center, save);
@@ -1951,8 +2050,15 @@ bool PresetBrowser::press(const Widget &w, Point p, Modifiers) {
         if (saveHereOn())
             openSaveIn(browserFolder_);
         return true;
-    case Kind::SaveBackdrop:
-        return true; // a stray click around it keeps what is typed
+    case Kind::SaveBackdrop: // a stray click around it keeps what is typed; around the open list, closes the list
+        if (w.a == 2) {
+            saveFolderList_ = false;
+            host_.resetHover();
+        }
+        return true;
+    case Kind::SaveFolderList:
+        toggleSaveFolderList();
+        return true;
     case Kind::SaveCategory: {
         const std::vector<CategoryRow> categories = saveCategoryList();
         saveCategory_ = w.a >= 0 && w.a < static_cast<int>(categories.size()) ? categories[w.a].name : std::string();
@@ -1961,17 +2067,24 @@ bool PresetBrowser::press(const Widget &w, Point p, Modifiers) {
     case Kind::SaveNewCategory:
         openNameMenu(1, {w.rect.x, w.rect.bottom() + 6.0f});
         return true;
-    case Kind::SaveFolderRow: {
+    case Kind::SaveFolderRow: { // picked, the list closing
         const std::vector<std::string> folders = saveFolders();
         if (w.a >= 0 && w.a < static_cast<int>(folders.size()))
             saveFolder_ = folders[w.a];
+        saveFolderList_ = false;
+        host_.resetHover();
         return true;
     }
-    case Kind::SaveNewFolder:
-        openNameMenu(3, {w.rect.right() - 300.0f, w.rect.bottom() + 6.0f});
+    case Kind::SaveNewFolder: { // in the folder picked, under the list's button
+        saveFolderList_ = false;
+        const Rect folder = saveLayout().folder;
+        openNameMenu(3, {folder.x, folder.bottom() + 6.0f});
         return true;
+    }
     case Kind::SaveToFile: // the file dialog, with what is typed as the preset's info
         controller().layout().presetInfo = {trimmed(saveAuthor_.text), saveCategory_, trimmed(saveDescription_.text)};
+        if (saveAuthorTyped_ && !trimmed(saveAuthor_.text).empty())
+            presetStore().setPresetAuthor(trimmed(saveAuthor_.text));
         saveMode_ = SaveMode::None;
         host_.resetHover();
         presetStore().choosePreset(true);
@@ -2002,7 +2115,7 @@ bool PresetBrowser::press(const Widget &w, Point p, Modifiers) {
             nameMenu_ = 0;
         host_.resetHover();
         return true;
-    case Kind::SearchField: // a field of the Save dialog takes the keyboard, and so does the browser's search
+    case Kind::SearchField: // a field of the Save sheet takes the keyboard, and so does the browser's search
         if (w.a == static_cast<int>(Field::SaveName) || w.a == static_cast<int>(Field::SaveAuthor) ||
             w.a == static_cast<int>(Field::SaveDescription))
             saveFocus_ = static_cast<Field>(w.a);
@@ -2040,12 +2153,9 @@ bool PresetBrowser::wheel(Point p, float steps) {
     if (nameMenu_ != 0)
         return true;
     if (saveMode_ != SaveMode::None) {
-        const SaveLayout l = saveLayout();
-        if (saveMode_ == SaveMode::Save && l.folders.contains(p)) {
-            const float content = (saveFolders().size() + 1) * kFolderRowH + 8.0f;
-            saveFolderScroll_ = std::clamp(saveFolderScroll_ - steps * kFolderRowH * 2.0f, 0.0f,
-                                           std::max(content - l.folders.h, 0.0f));
-        }
+        if (saveFolderList_ && saveLayout().list.contains(p))
+            saveFolderScroll_ =
+                std::clamp(saveFolderScroll_ - steps * kFolderRowH * 2.0f, 0.0f, saveFolderListEnd());
         return true;
     }
     if (!browserOpen_)
@@ -2117,7 +2227,7 @@ void PresetBrowser::drag(const DragState &d) { // the sidebar follows its thumb
 }
 
 // While it is open, only the browser's list (part 0, in whole rows) and its sidebar (part 1, in px) pan, over
-// everything else; the Save dialog, the forms and the info card take none.
+// everything else; the Save sheet, the forms and the info card take none.
 std::optional<std::pair<int, float>> PresetBrowser::panAt(Point p) const {
     if (saveMode_ != SaveMode::None || nameMenu_ != 0 || infoCardOpen_ || !browserOpen_)
         return std::nullopt;
@@ -2146,22 +2256,14 @@ std::optional<float> PresetBrowser::pan(int part, float first, float, float down
     return held;
 }
 
-// A folder of the Save dialog's tree, or of the browser's (not Factory, which is built in).
+// A folder of the browser's tree (not Factory, which is built in).
 bool PresetBrowser::contextMenu(const std::optional<Widget> &hit, Point, std::vector<MenuItem> &items) {
     menuFolder_.reset();
-    if (!hit)
+    if (!hit || !browserOpen_ || (hit->kind != Kind::BrowserTree && hit->kind != Kind::BrowserTreeToggle))
         return false;
-    const bool browserTree = browserOpen_ && (hit->kind == Kind::BrowserTree || hit->kind == Kind::BrowserTreeToggle);
-    if (hit->kind != Kind::SaveFolderRow && !browserTree)
-        return false;
-    if (browserTree) {
-        const std::vector<TreeRow> tree = this->browserTree();
-        if (hit->a >= 0 && hit->a < static_cast<int>(tree.size()) && tree[hit->a].scope == BrowserScope::Folder)
-            menuFolder_ = tree[hit->a].folder;
-    } else if (const std::vector<std::string> folders = saveFolders();
-               hit->a >= 0 && hit->a < static_cast<int>(folders.size())) {
-        menuFolder_ = folders[hit->a];
-    }
+    const std::vector<TreeRow> tree = browserTree();
+    if (hit->a >= 0 && hit->a < static_cast<int>(tree.size()) && tree[hit->a].scope == BrowserScope::Folder)
+        menuFolder_ = tree[hit->a].folder;
     if (menuFolder_) {
         menuFolderRow_ = hit->rect;
         items.push_back({kNewFolderCommand, tr(Str::MenuNewFolder)});
@@ -2176,12 +2278,9 @@ bool PresetBrowser::contextMenu(const std::optional<Widget> &hit, Point, std::ve
 }
 
 bool PresetBrowser::menuCommand(int command) {
-    if (!menuFolder_ || (saveMode_ != SaveMode::Save && !browserOpen_))
+    if (!menuFolder_ || !browserOpen_)
         return false;
-    if (command == kNewFolderCommand && saveMode_ == SaveMode::Save) { // the New Folder form, in the one picked
-        saveFolder_ = *menuFolder_;
-        openNameMenu(3, {menuFolderRow_.x, menuFolderRow_.bottom() + 4.0f});
-    } else if (command == kNewFolderCommand) { // in the browser: in the folder clicked, which it shows
+    if (command == kNewFolderCommand) { // in the folder clicked, which the browser then shows
         browserScope_ = BrowserScope::Folder;
         browserFolder_ = *menuFolder_;
         browserScroll_ = 0;
@@ -2234,7 +2333,7 @@ TextField *PresetBrowser::field(Field f) {
     }
 }
 
-// The form over the rest has the keyboard: the name form's field, the Save dialog's field picked, or the browser's
+// The form over the rest has the keyboard: the name form's field, the Save sheet's field picked, or the browser's
 // search once clicked.
 bool PresetBrowser::fieldFocus(std::optional<Field> &focus) const {
     if (nameMenu_ != 0)
@@ -2250,6 +2349,8 @@ bool PresetBrowser::fieldFocus(std::optional<Field> &focus) const {
 
 // After what is typed in its search changes: the browser's list from its top, the first preset found picked.
 void PresetBrowser::fieldChanged(Field f) {
+    if (f == Field::SaveAuthor)
+        saveAuthorTyped_ = true;
     if (f != Field::Browser)
         return;
     const std::vector<int> rows = browserRows();
@@ -2304,7 +2405,7 @@ Panel::ConfirmWords PresetBrowser::confirmWords(int kind) const {
 }
 
 void PresetBrowser::confirmed(int kind, int button) {
-    if (kind == kConfirmFolderDelete) { // into the Recycle Bin; the Save dialog picks the folder it was in if it was in it
+    if (kind == kConfirmFolderDelete) { // into the Recycle Bin
         if (button == 1) {
             if (presetStore().deletePresetFolder(confirmFolder_)) {
                 // The browser showing it, or one in it, shows the folder it was in.
@@ -2316,10 +2417,6 @@ void PresetBrowser::confirmed(int kind, int button) {
                     rememberBrowserPlace();
                 }
                 browserSideScroll_ = std::min(browserSideScroll_, browserSideEnd());
-                if (saveFolder_ == confirmFolder_ || saveFolder_.starts_with(confirmFolder_ + "/")) {
-                    const size_t slash = confirmFolder_.rfind('/');
-                    saveFolder_ = slash == std::string::npos ? std::string() : confirmFolder_.substr(0, slash);
-                }
             } else {
                 host_.flash(tr(Str::MsgFolderNotDeleted));
             }

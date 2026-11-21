@@ -730,6 +730,40 @@ bool PluginCore::setPresetInfo(int index, const gui::PresetInfo &info) {
     return true;
 }
 
+// The file moved, one of its name there replaced; what named it follows it: the patch, if it is that preset, and the
+// favorites and recent presets (another instance's too).
+bool PluginCore::movePreset(int index, const std::string &folder) {
+    namespace fs = std::filesystem;
+    if (index < 0 || index >= static_cast<int>(presets_.files().size()) || presets_.entries()[index].factory)
+        return false;
+    const std::wstring from = presets_.files()[index];
+    const std::wstring to = PresetLibrary::presetFile(folder, presets_.entries()[index].name);
+    if (to.empty())
+        return false;
+    if (_wcsicmp(from.c_str(), to.c_str()) == 0)
+        return true;
+    std::error_code ignored;
+    fs::create_directories(fs::path(to).parent_path(), ignored);
+    if (!MoveFileExW(from.c_str(), to.c_str(), MOVEFILE_REPLACE_EXISTING))
+        return false;
+    if (_wcsicmp(presetFile().c_str(), from.c_str()) == 0)
+        setPreset(to, patchEdited());
+    const std::string from8 = utf8(fs::path(from)), to8 = utf8(fs::path(to));
+    readUserSettings();
+    bool moved = false;
+    for (std::vector<std::string> *list : {&userSettings.favorites, &userSettings.recent}) {
+        if (std::find(list->begin(), list->end(), from8) == list->end())
+            continue;
+        std::erase(*list, to8); // the preset it replaced, whose file is this one's now
+        std::replace(list->begin(), list->end(), from8, to8);
+        moved = true;
+    }
+    if (moved)
+        writeUserSettings();
+    rescanPresets();
+    return true;
+}
+
 bool PluginCore::presetFavorite(int index) const {
     if (index < 0 || index >= static_cast<int>(presets_.files().size()))
         return false;
@@ -800,6 +834,17 @@ void PluginCore::setPresetBrowserPlace(const std::string &place) {
     if (userSettings.browserPlace == place)
         return;
     userSettings.browserPlace = place;
+    writeUserSettings();
+}
+
+std::string PluginCore::presetAuthor() const {
+    return userSettings.author;
+}
+
+void PluginCore::setPresetAuthor(const std::string &author) {
+    if (userSettings.author == author)
+        return;
+    userSettings.author = author;
     writeUserSettings();
 }
 

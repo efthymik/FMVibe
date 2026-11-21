@@ -49,7 +49,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
 - **Smoke test** (`tests/smoke_host.cpp`): a small headless host. (It and the VST3 test set `FMVIBE_SETTINGS_DIR`,
   which `src/usersettings.cpp` reads in place of the roaming app data, so their editor resizes don't land in your
   settings file.) It first runs itself as other processes sharing a settings file: categories, favorites and recent
-  presets edited in two at once all counting, four editing at once losing no edit, and a file another program holds
+  presets edited in two at once all counting, the author another typed last kept through this one's edits, four editing at once losing no edit, and a file another program holds
   waited for or, held longer, left as it is with the edit written later. It sets `FMVIBE_FIXED_SEED`, as the VST3 test
   and `fmvibe-bench` do, for instances whose notes draw the same randomness each time (the plugin otherwise draws its
   own for each instance). It loads the `.clap`, creates instances on two threads at once, checks that two instances'
@@ -787,14 +787,21 @@ the plain CMake commands and installing into a host are in the [README](README.m
     showing the preset's file (none for a factory preset); its search finding presets by
     name, category, author and description; its + by FOLDERS making a folder and the Save dialog's + New a category;
     the x on one of the user's categories removing it after asking, its presets keeping it, listed in grey;
-    Edit Info writing a preset's author and line into its file; a Save dialog's folder's right-click menu opening it in
-    Explorer, making a folder in it, renaming it (a name taken refused) and deleting it after asking, and the browser's tree's the same (none on Factory); Tab and Shift+Tab stepping through the Save dialog's text fields, round their ends, each entered all selected (in Edit Info passing over the name); underscores typed into the Save dialog's name showing (read off
+    Edit Info writing a preset's author and line into its file; the browser's tree's right-click menu opening a folder in
+    Explorer, making a folder in it, renaming it (a name taken refused) and deleting it after asking (Escape keeping it),
+    none on Factory; Tab and Shift+Tab stepping through the Save dialog's text fields, round their ends, each entered all selected (in Edit Info passing over the name); underscores typed into the Save dialog's name showing (read off
     the rendered pixels); a text field given UTF-8 (a preset's author from its file) cut, stepped through, erased and
     placed by the mouse between whole characters; Save As saving the patch as a new preset in its preset's
-    folder with its info, as the patch's preset; the browser's Save Here beside Close, only on a folder of the user's and
-    greyed out as Save As is (read off the rendered pixels), saving in that folder through the Save dialog, its row
-    scrolled into sight; and every part (the bar, the info cards, the browser with its tooltips,
-    filtered, the New Folder and New Category forms, the Save dialog and Edit Info) rendered in every theme
+    folder with its info, as the patch's preset; the browser's Save Here beside Close, only on a folder of the user's
+    and greyed out as Save As is (read off the rendered pixels), saving in that folder through the Save dialog; the
+    Save dialog's folder, a list button:
+    a factory preset's copy starting where the browser was left, its list scrolling under the wheel past eight rows,
+    Factory's locked, a click picking a folder and closing it, Escape and a click around it closing it alone, and its
+    New Folder making a folder in the one picked; Preset Info's folder moving the preset with its info, asking to
+    replace a preset of its name there (the warning read off the rendered pixels), a failed move keeping it open; the
+    author typed last starting a preset without one (Preset Info too), one with its own (a factory preset's copy too)
+    keeping it and saving untyped remembering nothing; and every part (the bar, the info cards, the browser with its tooltips,
+    filtered, the New Folder and New Category forms, the Save dialog with its list of folders and Edit Info) rendered in every theme
     (`fmvibe-uishot <dir> 1 --library` replays these alone); Save greyed out (read off the rendered pixels) and doing
     nothing while the preset is unchanged, asking before it overwrites the preset's file (Cancel keeping it, a failed
     write leaving the patch changed), on a changed factory preset opening Save As's dialog without asking, and doing
@@ -1169,7 +1176,7 @@ breakpoints in `src/` then hit.
 | `src/state.cpp` | The state's bytes: the patch (params, then the editor layout chunk, whose fields one list describes for writing and reading), the settings and preset chunks; independent of Windows |
 | `src/remotepages.cpp` | The remote control pages hosts show, built from the patch and the editor's source order |
 | `src/presets.cpp` | The preset library: the factory presets, built in, and the preset folder and its scan |
-| `src/usersettings.cpp` | The user's settings file in the roaming app data (theme, hue, glow, handle size, line strength, the editor's size, favorite and recent presets, the user's own categories and where the preset browser opens), which processes share under a lock, each merging its own edits into the file as it is |
+| `src/usersettings.cpp` | The user's settings file in the roaming app data (theme, hue, glow, handle size, line strength, the editor's size, favorite and recent presets, the user's own categories, where the preset browser opens and the author typed into the Save dialog last), which processes share under a lock, each merging its own edits into the file as it is |
 | `src/sharedtelemetry.h` | The telemetry the audio thread hands the editor, in atomics |
 | `src/params.h` | Parameter layout (index ↔ id), slot targets, value mappings |
 | `src/params.cpp` | Parameter table (names, ranges, defaults) and value text |
@@ -1209,7 +1216,7 @@ breakpoints in `src/` then hit.
 | `src/gui/modspanel.h`, `src/gui/modspanel.cpp` | The MODS view, `ModsPanel`: every modulation as a row, its filter, and the cascading menus (the target's with a search) that move it, retarget it and pick its aux |
 | `src/gui/seqpanel.h`, `src/gui/seqpanel.cpp` | The SEQ view, `SeqPanel`: the sequencer's settings card, and the piano roll with its tools, ruler, keys and lane |
 | `src/gui/dialogs.cpp` | The settings and confirm dialogs, the preset bar's actions (Init, Load, Save, Save As, the arrows), and the text fields' editing |
-| `src/gui/presetbrowser.h`, `src/gui/presetbrowser.cpp` | The presets panel, `PresetBrowser`: the preset bar's info and its card, the preset browser (its sidebar, list and search) and the Save dialog with its New Category, New Folder and Rename forms |
+| `src/gui/presetbrowser.h`, `src/gui/presetbrowser.cpp` | The presets panel, `PresetBrowser`: the preset bar's info and its card, the preset browser (its sidebar, list and search, its folders' menus) and the Save dialog (which also edits and moves a preset) with its list of folders, and the New Category, New Folder and Rename forms |
 | `src/gui/canvas.cpp` | Small Direct2D/DirectWrite drawing layer |
 | `src/gui/canvas_web.cpp` | The same drawing layer over the browser's 2D context, for the demo |
 | `src/gui/canvas_cairo.cpp` | The same drawing layer over Cairo, for the Linux development build |

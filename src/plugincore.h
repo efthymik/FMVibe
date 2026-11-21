@@ -114,6 +114,7 @@ public:
     bool savePresetIn(const std::string &folder, const std::string &name, const gui::PresetInfo &info) override;
     bool presetExists(const std::string &folder, const std::string &name) const override;
     bool setPresetInfo(int index, const gui::PresetInfo &info) override;
+    bool movePreset(int index, const std::string &folder) override;
     bool presetFavorite(int index) const override;
     void setPresetFavorite(int index, bool on) override;
     std::vector<int> recentPresets() const override;
@@ -122,6 +123,8 @@ public:
     void removeUserCategory(const std::string &name) override;
     std::string presetBrowserPlace() const override;
     void setPresetBrowserPlace(const std::string &place) override;
+    std::string presetAuthor() const override;
+    void setPresetAuthor(const std::string &author) override;
 
     // gui::Controller's settings, main thread.
     int oversampling() const override { return oversampling_.load(); }

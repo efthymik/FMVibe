@@ -193,12 +193,14 @@ enum class WidgetKind {
     BrowserClose, // closes the browser
     BrowserSideScroll, // the sidebar's scrollbar, at its right edge: drag the thumb, or click the track
     BrowserShowFile, // shows the file of the preset picked in Explorer
-    BrowserSaveHere, // while a folder of the user's is shown: the Save dialog, on that folder
-    SaveBackdrop, // a = 1 on the Save dialog itself, 0 around it (a click there closes it)
+    BrowserSaveHere, // while a folder of the user's is shown: the Save sheet, on that folder
+    SaveBackdrop, // a = 1 on the Save sheet itself, 0 around it (a click there keeps what is typed), 2 around its open
+                  // list of folders (which closes it), 3 on that list
     SaveCategory, // a = row of saveCategoryList(), or -1 for None: the preset's category
     SaveNewCategory, // + New: opens the New Category form
-    SaveFolderRow, // a = row of the folders (0 the preset folder, then presetFolders() + 1): where it goes
-    SaveNewFolder, // New Folder: opens its form
+    SaveFolderList, // the folder it goes in: opens the list of folders, or closes it
+    SaveFolderRow, // a = row of the folders (0 the preset folder, then presetFolders() + 1), in the open list: where it goes
+    SaveNewFolder, // New Folder, under the list's rows: opens its form, for one in the folder picked
     SaveToFile,   // Save to File...: the file dialog, which puts it anywhere
     SaveButton,   // a = 1 saves (or replaces), 0 cancels
     SaveClose,

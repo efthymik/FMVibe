@@ -2185,7 +2185,7 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     library (the factory presets, then the preset folder's, folder by folder), round from the last to the first.
     The **(i)** at its right (not on Init) opens the preset's **info card** under it: its pill, name, author, folder (or
     Factory) and the tempo it was saved at, its description, a star making it a favorite, **Show in Browser** and
-    **Edit Info…** (**Add Info…** while it has none), which opens the Save dialog's info form. A factory preset's card
+    **Edit Info…** (**Add Info…** while it has none), which opens the Save dialog as Preset Info. A factory preset's card
     says it is read-only and offers **Save Copy…** instead, the Save dialog. Escape, or a click around it, closes it.
   - Clicking the name opens the **browser**, a popup under the preset bar: a search row, then a sidebar beside the
     list, then a strip with the preset picked. It opens
@@ -2195,8 +2195,12 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     - The **sidebar**: **All**, **Favorites** and **Recent** (the presets loaded last, the last first), then
       **FOLDERS**, a tree of **Factory** and **User** (the preset folder) with every subfolder at any depth, each
       opened and closed by its chevron and with how many presets it holds, and its **+**, which makes a new folder in
-      the folder shown; a folder's right-click menu (none on Factory) has the Save dialog's tree's items (see Save As
-      below), its New Folder showing the folder it makes one in; then **CATEGORIES**, each with how many of the presets listed are in it (of All, Favorites,
+      the folder shown; a folder's right-click menu (none on Factory) offers **New Folder** (one in it, the browser
+      showing the folder it makes one in) and **Open in Explorer**, and on a subfolder **Rename…** (a form holding its
+      name; a name another folder there has is refused, and the presets in it, the favorites and recent presets among
+      them, go with it) and **Delete…** (asking first, with how many presets go with it, then moving it to the Recycle
+      Bin; they leave the favorites and recent presets, and a patch that was one of them stays as it sounds, as an
+      edited patch with no preset); then **CATEGORIES**, each with how many of the presets listed are in it (of All, Favorites,
       Recent or the folder picked above, and what the search finds, whatever the categories filter by; the user's own
       after a line, then
       **None**), a click filtering the list by it or taking the filter off (several at once list the presets in any
@@ -2217,9 +2221,9 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
       that shows its file in Explorer, picked (greyed out while nothing is picked, and for a factory preset, which has
       none), and **Close**, which closes the browser as a click around it does. While the sidebar shows **User** or a
       folder in it, **Save Here…** sits beside Close: it opens the Save dialog (see Save As below) with that folder
-      picked, its row scrolled into sight, and is greyed out when Save As is. Factory, All, Favorites and Recent, which
-      nothing can be saved in, don't show it, nor does the browser demo, which has no files. A preset's info
-      is edited from the info card, for the preset loaded.
+      picked, and is greyed out when Save As is. Factory, All, Favorites and Recent, which nothing can be saved in,
+      don't show it, nor does the browser demo, which has no files. A preset's info is edited from the info card, for
+      the preset loaded.
     - Favorites and the recent presets are kept in the user's settings, which every instance shares: what one instance
       changes there leaves what another changed, and shows in the others as their browsers open.
     - A click in its **search**, in its first row, gives it the keyboard, and a click anywhere else takes it away (while
@@ -2235,21 +2239,29 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
       copy, cut and paste (line breaks pasted as spaces, up to 40 characters in all). A search longer than the field
       scrolls to keep the caret in sight. A value typed into a knob copies and pastes too, while all of it is
       selected. The Save dialog's fields edit the same way.
-  - **Save As** (a disk with a plus) opens the **Save dialog**, dropping from the preset bar as the info card does: **Name** (the preset's, all selected, to type over),
-    **Author** (the preset's, a factory preset's copy's FMVibe, empty for one without), **Category** (a chip
-    for each, **None**, and **+ New**, which opens the New Category form), **Description** (with how many of its 80
-    characters are used) and **Folder**, a tree of the preset folder's subfolders with Factory locked, the preset's own
-    folder picked to begin with and **New Folder** making one in the folder picked; a folder's right-click menu offers
-    **New Folder** (one in it) and **Open in Explorer**, and on a subfolder **Rename…** (a form holding its name; a
-    name another folder there has is refused, and the presets in it, the favorites and recent presets among them, go
-    with it) and **Delete…** (asking first, with how many presets go with it, then moving it to the Recycle Bin; they leave the
-    favorites and recent presets, and a patch that was one of them stays as it sounds, as an edited patch with no preset). A name the folder already has says
-    so, and the button reads **Replace**. Tab moves on to the next text field (Name, Author, Description, then round to
-    Name) and Shift+Tab back to the one before, the field's text all selected to type over. Enter or **Save** saves it there, with its info, and it is the patch's preset
-    then; Escape, Cancel or the × close it. **Save to File…** saves it anywhere through the standard file dialog
-    instead. Editing a preset's info (Edit Info… on the info card) opens the same dialog without the name and folder to change: Save
-    writes the author, category and description into the preset's file and leaves its sound alone (and the patch, if
-    it is that preset, keeps its changes; only its info is the file's). In the browser demo, which has no files, Save As says so.
+  - **Save As** (a disk with a plus) opens the **Save dialog**, one column 540 px wide dropping from the preset bar as
+    the info card does: **Name** (the preset's, all selected, to type over) and **Author**, **Category** (a chip for
+    each, **None**, and **+ New**, which opens the New Category form), **Description** (with how many of its 80
+    characters are used) and **Folder**. The author is the preset's (a factory preset's copy's FMVibe); for a preset
+    without one, it is the author the user typed into the dialog last (kept in the user's settings, which every
+    instance shares, once a preset is saved with an author typed in; empty until then). The folder is a list button
+    naming it from User down ("User / Live Set / Act 1"): the preset's own folder to begin with, for a preset of the
+    user's; else the folder the browser was left on, if it was left on one; else User (Save Here… picks the folder
+    the browser shows). Its list opens under it (over
+    it where the editor ends), eight rows at most, scrolling under the wheel: Factory, locked, then User and every
+    subfolder, the one picked marked, then **New Folder** under a line, which makes a folder in the one picked and
+    picks it. A click on a folder picks it and closes the list; Escape or a click around the list closes it alone.
+    Folders are renamed and deleted in the browser. A name the folder already has says so, and the button reads
+    **Replace**. Tab moves on to the next text field (Name, Author, Description, then round to Name) and Shift+Tab back
+    to the one before, the field's text all selected to type over. Enter or **Save** saves it there, with its info, and
+    it is the patch's preset then; Escape, Cancel or the × close it. **Save to File…** saves it anywhere through the
+    standard file dialog instead. Editing a preset's info (Edit Info… on the info card) opens the same dialog, titled
+    **Preset Info**, its name shown and not edited: Save writes the author, category and description into the
+    preset's file and leaves its sound alone (and the patch, if it is that preset, keeps its changes; only its info is
+    the file's); another folder picked moves the preset's file there too (a preset of its name there asking to be
+    replaced, as Save As does), the patch, a favorite and a recent preset that are that preset following it, and
+    "Could not move preset" says when it couldn't, the dialog staying open. In the browser demo, which has no files,
+    Save As says so.
   - **Init** sets every param and the routing layout back to their defaults (the zoom stays), the preset's info
     too. **Load**, and Save to File in the Save dialog, read and write a `.fmv` file through the standard file dialog,
     which always starts in the preset folder, wherever the host's last file dialog was left; Save to File suggests the

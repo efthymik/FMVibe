@@ -1,11 +1,11 @@
 #pragma once
 
 // The editor's presets panel: the preset bar's info (the preset's name, category and author, the (i) beside them) and
-// what opens from it over the editor: the info card, the preset browser with its sidebar, list and search, the Save
-// dialog (which also edits a preset's info) and its New Category, New Folder and Rename forms, with the folders'
-// context menus. What the editor shows of the preset library and of a preset's info (see PresetInfo), through the
+// what opens from it over the editor: the info card, the preset browser with its sidebar, list and search (and its
+// folders' context menus), the Save sheet (which also edits a preset's info, and moves it) with its list of folders,
+// and the New Category, New Folder and Rename forms. What the editor shows of the preset library and of a preset's info (see PresetInfo), through the
 // controller's PresetStore. The preset bar's other buttons (Init, Load, Save, Save As and the arrows) are the View's,
-// which loads a preset of the library through openPreset() and opens the Save dialog through openSave().
+// which loads a preset of the library through openPreset() and opens the Save sheet through openSave().
 
 #include "controller.h"
 #include "panel.h"
@@ -28,18 +28,18 @@ public:
     static constexpr int kConfirmLoad = 1;
     static constexpr int kConfirmCategoryRemove = 8; // asking before one of the user's own categories goes
     static constexpr int kConfirmFolderDelete = 9;   // asking before a preset folder goes to the Recycle Bin
-    // The Save dialog's folder tree's context menu (and the browser's): a new folder in the folder the menu was opened
-    // on, that folder in Explorer, renaming it and deleting it (see View::menuCommand(), which numbers the others).
+    // The browser's folder tree's context menu: a new folder in the folder the menu was opened on, that folder in Explorer, renaming it and deleting it (see View::menuCommand(), which numbers the others).
     static constexpr int kNewFolderCommand = 44;
     static constexpr int kOpenFolderCommand = 45;
     static constexpr int kRenameFolderCommand = 46;
     static constexpr int kDeleteFolderCommand = 47;
 
-    // What the preset browser, the info card and the Save dialog show: whether each is open, the presets the browser
+    // What the preset browser, the info card and the Save sheet show: whether each is open, the presets the browser
     // lists (in its order) and the one picked.
     bool browserShown() const { return browserOpen_; }
     bool infoCardShown() const { return infoCardOpen_; }
     bool saveShown() const { return saveMode_ != SaveMode::None; }
+    bool saveFolderListShown() const { return saveMode_ != SaveMode::None && saveFolderList_; }
     bool nameMenuShown() const { return nameMenu_ != 0; }
     std::vector<int> browserListed() const { return browserRows(); }
     int browserPicked() const { return browserPick_; }
@@ -47,8 +47,8 @@ public:
     std::vector<int> browserCategoryCounted() const { return browserCategoryCounts(); } // by browserCategoryList()'s rows
     // Loads a preset of the library, asking first if the patch changed since the last.
     void openPreset(int index, bool close = true);
-    // Opens the Save dialog: to save the patch as a preset (Save As), or to edit the info of the library's preset
-    // `index`.
+    // Opens the Save sheet: to save the patch as a preset (Save As), or to edit the info of the library's preset
+    // `index` and move it to another folder.
     void openSave(int index = -1);
 
     bool modal() const override;
@@ -111,7 +111,7 @@ private:
     // Scrolls the list so the preset's row shows: about in the middle, or just inside the list.
     void revealBrowserRow(int preset, bool middle);
 
-    // The preset bar's info, the info card, the browser and the Save dialog.
+    // The preset bar's info, the info card, the browser and the Save sheet.
     void paintPresetBar(Canvas &c, const Widget &w, bool hovered);
     std::vector<Widget> infoCardWidgets() const;
     void paintInfoCard(Canvas &c);
@@ -121,7 +121,7 @@ private:
     // Save Here: offered while the browser shows a folder presets can be saved in, and on as Save As is.
     bool saveHereShown() const;
     bool saveHereOn() const;
-    void openSaveIn(const std::string &folder); // the Save dialog, that folder picked and its row in sight
+    void openSaveIn(const std::string &folder); // the Save sheet, that folder picked
     Rect browserListArea() const;
     int browserVisible() const;
     std::vector<TreeRow> browserTree() const;
@@ -130,7 +130,7 @@ private:
     int presetsInCategory(const std::string &name) const; // of all of the library's, whatever the case
     int presetsInFolder(const std::string &folder) const;
     std::vector<int> browserCategoryCounts() const;
-    // The category rows the Save dialog offers: the built-in ones and the user's own.
+    // The category rows the Save sheet offers: the built-in ones and the user's own.
     std::vector<CategoryRow> saveCategoryList() const;
     // How the browser's sidebar lays out its rows, scrolled: each its kind, its row and where it is.
     struct SideItem {
@@ -150,13 +150,24 @@ private:
     void saveKey(Key key);
     void stepSaveField(int step);
     void runSave();
+    // Whether saving writes over a preset: one of the name in the folder picked, which isn't the one whose info is
+    // edited.
+    bool saveReplaces() const;
     struct SaveLayout {
-        Rect panel, name, author, description, folders, warning, toFile, cancel, save, close;
+        Rect panel, name, author, description, folder, warning, toFile, cancel, save, close;
         std::vector<Rect> chips; // saveCategoryList(), then None, then + New
+        // The list of folders while it is open: its panel, where its rows scroll (Factory's, then saveFolders()'s) and
+        // New Folder under them.
+        Rect list, listRows, listNew;
     };
     SaveLayout saveLayout() const;
-    // The folders the Save dialog lists: the preset folder ("") first, then presetFolders().
+    // The folders the Save sheet lists: the preset folder ("") first, then presetFolders().
     std::vector<std::string> saveFolders() const;
+    // Opens the list of folders (or closes it), the folder picked in sight.
+    void toggleSaveFolderList();
+    // How far the list's rows scroll, at most.
+    float saveFolderListEnd() const;
+    void paintSaveFolderList(Canvas &c, const SaveLayout &l);
     // The New Category or New Folder form.
     void openNameMenu(int mode, Point at);
     std::vector<Widget> nameMenuWidgets() const;
@@ -171,7 +182,7 @@ private:
     float paintCategoryPill(Canvas &c, Point at, float height, const std::string &category, float textSize);
 
     PanelHost &host_;
-    std::optional<std::string> menuFolder_;  // the Save dialog's folder the open context menu was opened on
+    std::optional<std::string> menuFolder_;  // the browser's folder the open context menu was opened on
     Rect menuFolderRow_;                     // and where its row is
     std::string confirmFolder_;              // the folder kConfirmFolderDelete asks about, by its parts joined by '/'
     std::string renameFolder_;               // the folder the name form renames (nameMenu_ 4)
@@ -192,12 +203,14 @@ private:
     enum class SaveMode { None, Save, Info };
     SaveMode saveMode_ = SaveMode::None;
     int saveIndex_ = -1;          // editing info: the library's preset
-    std::string saveFolder_;      // saving: where
+    std::string saveFolder_;      // where it goes (editing info, where it is to begin with)
     std::string saveCategory_;    // the category picked, as stored ("" for None)
-    float saveFolderScroll_ = 0.0f;
+    bool saveFolderList_ = false; // the list of folders open
+    float saveFolderScroll_ = 0.0f; // how far its rows are scrolled, in px
+    bool saveAuthorTyped_ = false;  // the author typed into since the sheet opened, which saving then remembers
     TextField saveName_, saveAuthor_, saveDescription_, newName_;
     Field saveFocus_ = Field::SaveName;
-    int nameMenu_ = 0; // the form open: 1 New Category, 2 New Folder from the browser, 3 from the Save dialog, 4 Rename
+    int nameMenu_ = 0; // the form open: 1 New Category, 2 New Folder from the browser, 3 from the Save sheet, 4 Rename
     Point nameMenuAt_;
     int nameColor_ = kBuiltInCategories;
     int browserScroll_ = 0;                  // rows scrolled past, before clamping
