@@ -130,6 +130,12 @@ public:
     void setMpe(bool on) override;
     int mpeBendRange() const override { return mpeBendRange_.load(); }
     void setMpeBendRange(int semitones) override;
+    // A host that lets the editor set its tempo stands in for a transport of the plugin's own: the synth always plays
+    // its own tempo there, and the title bar shows no H.
+    bool tempoSync() const override { return !hasTempo() && tempoSync_.load(std::memory_order_relaxed); }
+    void setTempoSync(bool on) override;
+    double ownTempo() const override { return ownTempo_.load(); }
+    void setOwnTempo(double bpm) override;
     // The editor's look is the user's settings file's (see usersettings.h).
     gui::EditorSettings editorSettings() const override {
         gui::EditorSettings settings;
@@ -271,6 +277,10 @@ protected:
     // Main thread: tells the host when the remote pages differ.
     void sectionsChanged();
 
+    // Main thread, once the plugin knows its host: in a host that lets the editor set its tempo, the synth's own tempo
+    // starts at the host's (fmvibe-uihost's --tempo).
+    void startAtHostTempo();
+
 private:
     void applyPlayMode();
     void playKeys();
@@ -325,6 +335,9 @@ private:
     std::atomic<bool> outOfMemory_{false}; // see outOfMemory()
     std::atomic<bool> mpe_{false};
     std::atomic<int> mpeBendRange_{kDefaultMpeBendRange};
+    // Whether the synth plays at the host's tempo, and its own while it doesn't (see Settings): likewise.
+    std::atomic<bool> tempoSync_{true};
+    std::atomic<double> ownTempo_{gui::kDefaultTempo};
     // Written by the audio thread (param events) and the main thread (editor,
     // state load), read by both, hence atomics. The audio thread works from a
     // copy taken at the start of each block, which the block's param events update.
@@ -364,7 +377,8 @@ private:
     const std::unique_ptr<const Telemetry> noTelemetry_ = std::make_unique<const Telemetry>(); // what nothing playing shows
     std::atomic<bool> editorOpen_{false};
     std::atomic<bool> idleLfosShown_{false}; // see setIdleLfosShown()
-    // The tempo the synth played the last block at (the host's), 0 before the first: what a preset saved records.
+    // The tempo the synth played the last block at (the host's, or its own), 0 before the first: what a preset saved
+    // records.
     std::atomic<double> playedTempo_{0.0};
     std::atomic<int> scopeOp_{-1}; // what the editor's scope shows (see Controller::setScope())
     std::atomic<int> scopeCycles_{2};

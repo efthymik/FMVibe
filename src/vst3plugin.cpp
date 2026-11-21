@@ -718,12 +718,12 @@ tresult PLUGIN_API Plugin::process(ProcessData &data) {
     if (data.processContext && (data.processContext->state & ProcessContext::kTempoValid))
         synth().setTempo(data.processContext->tempo);
     // Where it plays, for anchored LFOs: in quarter notes when the host gives them, else from its samples, which are
-    // always there, at the tempo.
+    // always there, at its tempo.
     if (const ProcessContext *context = data.processContext; context && context->sampleRate > 0.0) {
         const double seconds = static_cast<double>(context->projectTimeSamples) / context->sampleRate;
         const bool music = (context->state & ProcessContext::kProjectTimeMusicValid) != 0;
         synth().setTransport((context->state & ProcessContext::kPlaying) != 0,
-                             music ? context->projectTimeMusic : seconds * synth().tempo() / 60.0, seconds);
+                             music ? context->projectTimeMusic : seconds * synth().hostTempo() / 60.0, seconds);
     } else {
         synth().setTransport(false, 0.0, 0.0);
     }

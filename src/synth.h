@@ -237,17 +237,32 @@ public:
     // Host tempo in BPM, for synced LFOs and delay times.
     void setTempo(double bpm) {
         if (std::isfinite(bpm) && bpm > 0.0)
-            tempo_ = std::clamp(bpm, 10.0, 999.0);
+            hostTempo_ = std::clamp(bpm, 10.0, 999.0);
+        tempo_ = ownTempo_ > 0.0 ? ownTempo_ : hostTempo_;
     }
+    // A tempo of the synth's own, in BPM, played in place of the host's (the title bar's tempo with its H off); 0
+    // follows the host's again. The host's transport then counts beats from its seconds at this tempo.
+    void setOwnTempo(double bpm) {
+        const double own = std::isfinite(bpm) && bpm > 0.0 ? std::clamp(bpm, 10.0, 999.0) : 0.0;
+        if (own == ownTempo_)
+            return;
+        ownTempo_ = own;
+        tempo_ = ownTempo_ > 0.0 ? ownTempo_ : hostTempo_;
+        if (ownTempo_ > 0.0)
+            songBeats_ = songSeconds_ * ownTempo_ / 60.0;
+    }
+    // The tempo played, the synth's own or else the host's, and the host's alone.
     double tempo() const { return tempo_; }
+    double hostTempo() const { return hostTempo_; }
     // The host's transport as the next render() starts: whether it plays, and where, in beats (quarter notes) and in
     // seconds from the song's start. Anchored LFOs stand where that puts them (see SourceParam); render() moves the
     // position on through its frames while the transport plays, so a block split by events keeps it. Without a call,
-    // or while stopped, they run on as free ones. A position that isn't a number counts as stopped.
+    // or while stopped, they run on as free ones. A position that isn't a number counts as stopped. At a tempo of its
+    // own (see setOwnTempo()), the synth counts the beats from the seconds.
     void setTransport(bool playing, double beats, double seconds) {
         playing_ = playing && std::isfinite(beats) && std::isfinite(seconds);
         if (playing_) {
-            songBeats_ = beats;
+            songBeats_ = ownTempo_ > 0.0 ? seconds * ownTempo_ / 60.0 : beats;
             songSeconds_ = seconds;
         }
     }
@@ -609,7 +624,9 @@ private:
     // The sustain pedals (see setPedal()): every note's, and with MPE on, each member channel's for its own notes.
     bool pedal_ = false;
     std::array<bool, 16> channelPedals_{};
-    double tempo_ = 120.0;
+    double tempo_ = 120.0;     // what plays: ownTempo_, or while that is 0, hostTempo_
+    double hostTempo_ = 120.0;
+    double ownTempo_ = 0.0;    // see setOwnTempo()
     bool playing_ = false;     // the host's transport, as of the start of the next render() (see setTransport())
     double songBeats_ = 0.0;   // where, in beats
     double songSeconds_ = 0.0; // and in seconds

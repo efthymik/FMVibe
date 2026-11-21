@@ -798,7 +798,8 @@ gui::UiLayout readLayout(const clap_istream_t *stream) {
 bool writeSettings(const clap_ostream_t *stream, const Settings &settings) {
     // Settings chunk fields, in order; later versions only append.
     const float stored[] = {static_cast<float>(settings.oversampling), settings.mpe ? 1.0f : 0.0f,
-                            static_cast<float>(settings.mpeBendRange)};
+                            static_cast<float>(settings.mpeBendRange), settings.tempoSync ? 1.0f : 0.0f,
+                            static_cast<float>(gui::clampTempo(settings.ownTempo))};
     const uint32_t settingsChunk[] = {kSettingsMagic, static_cast<uint32_t>(std::size(stored))};
     return writeAll(stream, settingsChunk, sizeof(settingsChunk)) && writeAll(stream, stored, sizeof(stored));
 }
@@ -814,6 +815,9 @@ Settings readSettings(const clap_istream_t *stream) {
     settings.mpe = field(1, 0.0f) >= 0.5f;
     settings.mpeBendRange =
         std::clamp(static_cast<int>(std::lround(field(2, kDefaultMpeBendRange))), 1, kMaxMpeBendRange);
+    static_assert(Settings{}.ownTempo == gui::kDefaultTempo);
+    settings.tempoSync = field(3, 1.0f) >= 0.5f; // a project from before it follows the host, as it did
+    settings.ownTempo = gui::clampTempo(field(4, static_cast<float>(gui::kDefaultTempo)));
     return settings;
 }
 

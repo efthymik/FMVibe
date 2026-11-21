@@ -202,14 +202,17 @@ public:
     int mpeBendRange() const override { return mpeBendRange_; }
     void setMpeBendRange(int semitones) override { mpeBendRange_ = std::clamp(semitones, 1, 96); }
     EditorSettings editorSettings() const override { return settings_; }
-    // The page stands in for a host's transport: the editor's title bar shows its tempo, which the page hands the
-    // synth and keeps in the browser's storage.
+    // The page stands in for a host's transport: its tempo is the synth's own, never the host's (the title bar shows
+    // no H), which the title bar shows to set and the page hands the synth and keeps in the browser's storage.
     bool hasTempo() const override { return true; }
     double tempo() const override { return tempo_; }
     void setTempo(double bpm) override {
         tempo_ = clampTempo(bpm);
         js_tempo(tempo_);
     }
+    bool tempoSync() const override { return false; }
+    double ownTempo() const override { return tempo_; }
+    void setOwnTempo(double bpm) override { setTempo(bpm); }
     void openManual() override { js_open(kManualUrl); } // in a tab of its own
 
     // Opens on an example rather than Init, so the first note sounds like something; nothing to undo yet.

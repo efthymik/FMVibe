@@ -203,6 +203,7 @@ bool Plugin::init() {
     hostTempo_ = static_cast<const HostTempo *>(host_->get_extension(host_, kExtHostTempo));
     if (hostTempo_ && (!hostTempo_->get || !hostTempo_->set))
         hostTempo_ = nullptr;
+    startAtHostTempo();
     hostRemoteControls_ =
         static_cast<const clap_host_remote_controls_t *>(host_->get_extension(host_, CLAP_EXT_REMOTE_CONTROLS));
     if (!hostRemoteControls_)
@@ -286,10 +287,10 @@ clap_process_status Plugin::process(const clap_process_t *process) {
 void Plugin::applyTransport(const clap_event_transport_t &transport) {
     if (transport.flags & CLAP_TRANSPORT_HAS_TEMPO)
         synth().setTempo(transport.tempo);
-    // Where it plays, for anchored LFOs: a timeline the host doesn't give is worked out from the other at the tempo.
+    // Where it plays, for anchored LFOs: a timeline the host doesn't give is worked out from the other at its tempo.
     const bool beats = (transport.flags & CLAP_TRANSPORT_HAS_BEATS_TIMELINE) != 0;
     const bool seconds = (transport.flags & CLAP_TRANSPORT_HAS_SECONDS_TIMELINE) != 0;
-    const double tempo = synth().tempo();
+    const double tempo = synth().hostTempo();
     const double inBeats = static_cast<double>(transport.song_pos_beats) / CLAP_BEATTIME_FACTOR;
     const double inSeconds = static_cast<double>(transport.song_pos_seconds) / CLAP_SECTIME_FACTOR;
     synth().setTransport((transport.flags & CLAP_TRANSPORT_IS_PLAYING) != 0 && (beats || seconds),
