@@ -1,9 +1,9 @@
 # AGENTS.md
 
 Notes for anyone (human or agent) working on FMVibe, a six-operator FM synthesizer as a CLAP and a VST3 instrument
-plugin for Windows. The README introduces the plugin and says how to build and install it. What the plugin does and how
-its editor works, in full, is in [docs/features.md](docs/features.md): read the parts you need before changing a
-feature. How to use it, for the plugin's users, is in the user manual, [docs/manual.md](docs/manual.md).
+plugin for Windows and Linux. The README introduces the plugin and says how to build and install it. What the plugin
+does and how its editor works, in full, is in [docs/features.md](docs/features.md): read the parts you need before
+changing a feature. How to use it, for the plugin's users, is in the user manual, [docs/manual.md](docs/manual.md).
 
 ## Ground rules
 
@@ -18,6 +18,13 @@ feature. How to use it, for the plugin's users, is in the user manual, [docs/man
 - Both plugins sit on one core, `PluginCore` (`src/plugincore.cpp`): the params, the state, the editor's
   `Controller`, presets and the editor window. What one format does goes in its own file (`src/plugin.cpp` for CLAP,
   `src/vst3plugin.cpp` for VST3), and what both do in the core, which tells each host through its `host...()` hooks.
+- The plugins build on Windows and Linux: keep both working. A source file goes into both `CMakeLists.txt` and
+  `cmake/linux.cmake`, which list their files apart. A change to code under `#ifdef _WIN32` (files, settings, dialogs,
+  windows, the host's main thread) needs its Linux branch too, and the other way round, and what the editor's window
+  does goes into both `src/gui/editor.cpp` and `src/gui/editor_x11.cpp`. Neither build compiles the other's files, so
+  say in the commit which platform a change wasn't built on: `build.ps1 -Validate` on Windows and `./build.sh` on
+  Linux are the checks (see [Linux development build](#linux-development-build)). Where a feature behaves otherwise
+  on Linux, the "On Linux" section of [docs/features.md](docs/features.md) and the manual say so.
 - When a feature changes, update [docs/features.md](docs/features.md), and the user manual,
   [docs/manual.md](docs/manual.md), where it says how to use what changed: the manual is for the plugin's users, so
   it says what a control does and how to work it, not how the engine does it, in short, plain sentences. Keep
@@ -1536,15 +1543,16 @@ itself.
   `endBlock()` keeps in `keysHeld_`): a key let go while the plugin is inactive would reach no voice, so the audio
   thread has the main-thread callback ask once they are all up, and an activate keeps the voices only while none is
   held. A voice limit still settling holds every restart off, so they come as one. What VST3 only allows on the main
-  thread, and the audio thread may ask for, goes through a message-only window there. Each voice takes about
-  86 KB at 48 kHz, mostly the two comb filters' delay lines, which grow with the oversampling: at the default
+  thread, and the audio thread may ask for, goes through a message-only window there (on Linux, a pipe the host's
+  run loop watches). Each voice takes about 86 KB at 48 kHz, mostly the two comb filters' delay lines, which grow with the oversampling: at the default
   2x, about 125 KB, so 512 voices reserve about 64 MB. Voices isn't automatable for the same reason. The comb lines,
   and the effects' delay lines (every slot has every type's, a few MB a slot), are `ZeroBuffer`s
-  (`src/zerobuffer.h`): pages Windows hands out as zeros once they are first written, so the lines no voice or
-  effect uses take address space, not memory, and allocating them fills nothing.
+  (`src/zerobuffer.h`): pages Windows hands out as zeros once they are first written (on Linux, `calloc()`'s, whose
+  large blocks glibc maps as zero pages too), so the lines no voice or effect uses take address space, not memory, and
+  allocating them fills nothing.
 - The CRT is linked statically. The `.clap` and the `.vst3`'s DLL depend only on Windows system DLLs (kernel32,
   user32, Direct2D, DirectWrite, and ole32 and shell32 for the preset file dialogs), not on the VC++ redistributable. The `.vst3` is a
-  bundle: `FMVibe.vst3\Contents\x86_64-win\FMVibe.vst3`.
+  bundle: `FMVibe.vst3\Contents\x86_64-win\FMVibe.vst3`, on Linux `FMVibe.vst3/Contents/x86_64-linux/FMVibe.so`.
 
 ## Updating the CLAP and VST3 SDKs
 
@@ -1559,5 +1567,6 @@ see.
 - Presets: the `clap.preset-load` extension and preset discovery, so hosts can browse FMVibe's presets too.
 - Sound: fixed-frequency operators, key scaling, oversampling for high-index patches.
 - AU and standalone builds: [clap-wrapper](https://github.com/free-audio/clap-wrapper) builds these from the
-  CLAP plugin. The plugins' editor is Windows-only for now (the browser demo has its own drawing backend).
-- VST3: a `moduleinfo.json` in the bundle, for hosts that scan with it.
+  CLAP plugin. The plugins' editor runs on Windows and Linux (X11), not yet on macOS (the browser demo has its own
+  drawing backend).
+- VST3: a `moduleinfo.json` in the Windows bundle, as the Linux one has, for hosts that scan with it.

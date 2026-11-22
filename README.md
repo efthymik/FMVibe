@@ -1,8 +1,8 @@
 # FMVibe
 
 A six-operator FM synthesizer as a [CLAP](https://github.com/free-audio/clap) and a
-[VST3](https://github.com/steinbergmedia/vst3sdk) instrument plugin for Windows. It works in the spirit of other
-popular FM synths.
+[VST3](https://github.com/steinbergmedia/vst3sdk) instrument plugin for Windows and Linux. It works in the spirit of
+other popular FM synths.
 
 In-browser demo: [https://pcdlin.github.io/FMVibe/](https://pcdlin.github.io/FMVibe/)
 
@@ -100,6 +100,10 @@ fontconfig is loaded into the DAW. See [AGENTS.md](AGENTS.md#linux-development-b
 The manual's source is [docs/manual.md](docs/manual.md), and the full feature reference is in
 [docs/features.md](docs/features.md).
 Information about working on the code, its tests and the plugin's internals are in [AGENTS.md](AGENTS.md).
+
+## Contributions
+
+- Linux support by [@efthymik](https://github.com/efthymik)
 
 ## License
 

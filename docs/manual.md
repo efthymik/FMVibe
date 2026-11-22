@@ -1,7 +1,7 @@
 # FMVibe User Manual
 
-FMVibe is a six-operator FM synthesizer for Windows, available as a CLAP and a VST3 instrument plugin. This manual
-explains how to use it. It assumes you are familiar with your DAW and with basic synthesis terms such as
+FMVibe is a six-operator FM synthesizer for Windows and Linux, available as a CLAP and a VST3 instrument plugin. This
+manual explains how to use it. It assumes you are familiar with your DAW and with basic synthesis terms such as
 oscillators, envelopes, LFOs and filters.
 
 ## Contents
