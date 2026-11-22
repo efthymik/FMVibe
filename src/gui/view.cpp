@@ -6602,6 +6602,7 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::KeysToggle:
         layout.keysCollapsed = !layout.keysCollapsed;
         controller_.layoutChanged();
+        controller_.keysCollapsedSet(layout.keysCollapsed);
         break;
     case Kind::ViewTab:
         showView(static_cast<RoutingView>(w.a));

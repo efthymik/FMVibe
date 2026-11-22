@@ -56,6 +56,9 @@ public:
     void telemetry(Telemetry &out) const override { out = live; }
     UiLayout &layout() override { return ui; }
     void layoutChanged() override {}
+    // As the user's settings keep it: -1 until the editor sets it.
+    void keysCollapsedSet(bool collapsed) override { savedKeysCollapsed = collapsed ? 1 : 0; }
+    int savedKeysCollapsed = -1;
     void playNote(int note, bool on, int velocity) override {
         if (on) {
             lastNote = note;
@@ -7911,6 +7914,7 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
         const float open = view.height();
         click(view, toggle);
         const bool shorter = model.ui.keysCollapsed && view.height() == open - (detail::kKeyboardH - detail::kKeyboardBarH);
+        const bool savedCollapsed = model.savedKeysCollapsed == 1;
         drag(view, {87.0f, y + 21.0f}, ins(918.0f, 242.0f));
         drag(view, {47.0f, y + 21.0f}, ins(918.0f, 242.0f));
         const bool wheelMapped =
@@ -7921,6 +7925,8 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
         click(view, title);
         check(shorter && wheelMapped && collapsedShot && !model.ui.keysCollapsed && view.height() == open,
               "the keyboard panel collapses to its top row, the wheels' handles staying in it, and opens again");
+        check(savedCollapsed && model.savedKeysCollapsed == 0,
+              "the keyboard panel collapsed and opened again is kept in the user's settings each time");
     }
 
     // Bend's knob, in the header after Pitch: the wheel turns it a semitone.

@@ -86,6 +86,8 @@ UserSettings parsed(const std::string &text) {
             settings.grid = std::clamp(std::atof(line.c_str() + 14), 0.0, 1.0);
         else if (line.starts_with("zoom="))
             settings.zoom = std::clamp(std::atof(line.c_str() + 5), 0.0, 3.0);
+        else if (line.starts_with("keysCollapsed="))
+            settings.keysCollapsed = std::atoi(line.c_str() + 14) != 0;
         else if (line.starts_with("favorite=") && line.size() > 9)
             settings.favorites.push_back(line.substr(9));
         else if (line.starts_with("recent=") && line.size() > 7 && settings.recent.size() < kMaxRecentPresets)
@@ -152,6 +154,8 @@ bool writeFile(const std::filesystem::path &file, const UserSettings &settings) 
             out << "hue=" << settings.hue << '\n';
         if (settings.zoom > 0.0)
             out << "zoom=" << settings.zoom << '\n';
+        if (settings.keysCollapsed)
+            out << "keysCollapsed=1\n";
         if (!settings.browserPlace.empty())
             out << "browser=" << settings.browserPlace << '\n';
         if (!settings.author.empty())
@@ -235,6 +239,8 @@ UserSettings merged(const UserSettings &base, const UserSettings &mine, const Us
         out.grid = mine.grid;
     if (mine.zoom != base.zoom)
         out.zoom = mine.zoom;
+    if (mine.keysCollapsed != base.keysCollapsed)
+        out.keysCollapsed = mine.keysCollapsed;
     if (mine.browserPlace != base.browserPlace)
         out.browserPlace = mine.browserPlace;
     if (mine.author != base.author)
@@ -279,10 +285,10 @@ void writeUserSettings() {
     asRead = writeFile(file, userSettings) ? userSettings : std::move(theirs);
 }
 
-double savedEditorZoom() {
+UserSettings savedUserSettings() {
     const std::filesystem::path file = userSettingsFile();
     UserSettings settings;
-    return !file.empty() && readFile(file, settings) ? settings.zoom : 0.0;
+    return !file.empty() && readFile(file, settings) ? settings : UserSettings{};
 }
 
 bool replaceFile(const std::wstring &part, const std::wstring &target) {

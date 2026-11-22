@@ -18,6 +18,7 @@ struct UserSettings {
     double links = 0.75; // how strongly the dashed lines from a source to its targets are drawn
     double grid = 0.5;   // how strongly the SEQ view's roll draws its grid lines
     double zoom = 0.0; // the editor size new instances open at, relative to the default; 0 if never resized
+    bool keysCollapsed = false; // whether new instances open with the keyboard panel collapsed, as it was left last
     // The preset library's: the favorite presets' files and the ones loaded last (the last first), in UTF-8 (a factory
     // preset's as its "file", see PresetLibrary::kFactoryPrefix), the user's own categories (each its name and its
     // color), where the browser opens (see gui::PresetStore::presetBrowserPlace()) and the author the user typed last
@@ -39,9 +40,10 @@ void readUserSettings();
 // file can't be read or replaced just now, the change stays in userSettings, to go with the next read or write.
 void writeUserSettings();
 
-// The editor size the file says new instances open at (see UserSettings::zoom). Any thread: hosts may create instances
-// on any, and it leaves userSettings alone.
-double savedEditorZoom();
+// What the file says new instances open with: the editor's size and whether the keyboard panel is collapsed (see
+// UserSettings::zoom and UserSettings::keysCollapsed). Any thread: hosts may create instances on any, and it leaves
+// userSettings alone.
+UserSettings savedUserSettings();
 
 // Puts the file written at part in target's place, waiting out another process that reads target meanwhile (another
 // instance's process, a virus scanner, the search indexer), which keeps it from being replaced for a moment. If it

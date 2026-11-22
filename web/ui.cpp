@@ -97,6 +97,7 @@ public:
             grid.empty() ? EditorSettings::kDefaultGridIntensity : std::clamp(std::atof(grid.c_str()), 0.0, 1.0);
         const std::string tempo = setting("tempo");
         tempo_ = tempo.empty() ? kDefaultTempo : clampTempo(std::atof(tempo.c_str()));
+        layout_.keysCollapsed = setting("keysCollapsed") == "1";
     }
 
     const ParamValues &values() const { return values_; }
@@ -118,6 +119,8 @@ public:
     }
     UiLayout &layout() override { return layout_; }
     void layoutChanged() override { js_layout_changed(); }
+    // Kept in the browser's storage, as the plugin keeps it in the user's settings: the page opens with it.
+    void keysCollapsedSet(bool collapsed) override { js_set_setting("keysCollapsed", collapsed ? "1" : "0"); }
     void playNote(int note, bool on, int velocity) override { js_note(note, on, velocity); }
     void auditionNote(int note, bool on) override { js_audition(note, on); }
     // The view asks every poll; only a change goes to the worklet.

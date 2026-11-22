@@ -566,6 +566,9 @@ public:
     // The editor's window would be this size (physical pixels): the plugin asks its host to resize it (see
     // Editor::followDpi()). A host that won't leaves it as it is.
     virtual void requestEditorSize(uint32_t, uint32_t) {}
+    // The user collapsed or opened the keyboard panel (UiLayout::keysCollapsed, set already): the plugin keeps it in the
+    // user's settings, so that a new instance opens with the panel as it was left last.
+    virtual void keysCollapsedSet(bool) {}
 
     // The virtual keyboard: a MIDI note number (60 is middle C) at a MIDI velocity (0-127; a note off ignores it).
     // (Its bend wheel is the Pitch Bend param, edited.)

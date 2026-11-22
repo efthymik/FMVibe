@@ -489,8 +489,15 @@ void checkSharedSettings(const std::wstring &dir) {
     check(userSettings.categories.size() == 2 + 4 * 40, "settings: four processes editing at once lose no edit");
 
     userSettings.zoom = 1.5;
+    userSettings.keysCollapsed = true;
     writeUserSettings();
-    check(savedEditorZoom() == 1.5, "settings: a new instance reads the editor's size without taking up the rest");
+    const UserSettings saved = savedUserSettings();
+    check(saved.zoom == 1.5 && saved.keysCollapsed && fileText().find("keysCollapsed=1") != std::string::npos,
+          "settings: a new instance reads the editor's size and the keyboard's fold without taking up the rest");
+    userSettings.keysCollapsed = false;
+    writeUserSettings();
+    check(!savedUserSettings().keysCollapsed && fileText().find("keysCollapsed") == std::string::npos,
+          "settings: the keyboard opened again is written as open");
 }
 
 // A noise operator's first note on an instance of its own: the left channel.

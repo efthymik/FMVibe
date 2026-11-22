@@ -36,9 +36,12 @@ PluginCore::PluginCore() {
     const ParamTable &table = paramTable();
     for (int i = 0; i < kParamCount; ++i)
         values_[i].store(table[i].def);
-    // A new instance opens at the size the user last gave an editor; a state loaded after it brings its own.
-    if (const double zoom = savedEditorZoom(); zoom >= 0.5)
-        layout_.zoom = static_cast<float>(zoom);
+    // A new instance opens at the size the user last gave an editor, its keyboard panel collapsed or open as the user
+    // left one last; a state loaded after it brings its own.
+    const UserSettings saved = savedUserSettings();
+    if (saved.zoom >= 0.5)
+        layout_.zoom = static_cast<float>(saved.zoom);
+    layout_.keysCollapsed = saved.keysCollapsed;
     // Randomness of its own, so that instances layered don't play the same noise. The tests and fmvibe-bench, which
     // compare what plays sample for sample, ask for the same every time.
     if (GetEnvironmentVariableW(L"FMVIBE_FIXED_SEED", nullptr, 0) == 0)

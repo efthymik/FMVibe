@@ -1184,7 +1184,7 @@ breakpoints in `src/` then hit.
 | `src/state.cpp` | The state's bytes: the patch (params, then the editor layout chunk, whose fields one list describes for writing and reading), the settings and preset chunks; independent of Windows |
 | `src/remotepages.cpp` | The remote control pages hosts show, built from the patch and the editor's source order |
 | `src/presets.cpp` | The preset library: the factory presets, built in, and the preset folder and its scan |
-| `src/usersettings.cpp` | The user's settings file in the roaming app data (theme, hue, glow, handle size, line strength, the editor's size, favorite and recent presets, the user's own categories, where the preset browser opens and the author typed into the Save dialog last), which processes share under a lock, each merging its own edits into the file as it is |
+| `src/usersettings.cpp` | The user's settings file in the roaming app data (theme, hue, glow, handle size, line strength, the editor's size, whether the keyboard strip is collapsed, favorite and recent presets, the user's own categories, where the preset browser opens and the author typed into the Save dialog last), which processes share under a lock, each merging its own edits into the file as it is |
 | `src/sharedtelemetry.h` | The telemetry the audio thread hands the editor, in atomics |
 | `src/params.h` | Parameter layout (index ↔ id), slot targets, value mappings |
 | `src/params.cpp` | Parameter table (names, ranges, defaults) and value text |

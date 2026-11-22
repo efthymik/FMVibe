@@ -2054,7 +2054,9 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   row, taking the wheels, the keys and the octave shift away; the wheels' handles stay, their names (BEND, MOD) then
   under them, so the wheels can still be assigned. Whether it is
   collapsed is kept with the editor, like the modulation panel's, and loading a
-  preset leaves it as it is. A key plays as hard as where it is clicked: velocity 1 at its top, 127 at its bottom
+  preset leaves it as it is. It is also kept in the user's settings (`keysCollapsed`), written as it is collapsed or
+  opened: a new instance opens with the strip as it was left last, while a project keeps its own (in the browser
+  demo, the browser's storage keeps it). A key plays as hard as where it is clicked: velocity 1 at its top, 127 at its bottom
   (a black key along its own height). Drag across the keys to glide between notes, each key struck as hard as where
   the mouse enters it. Keys light up while they are held, whether clicked here or
   played by the host, rising and fading a moment as the roll's keys do rather than switching. The **Bend** wheel is the Pitch Bend param: it bends the pitch by the Bend Range and springs
@@ -2357,7 +2359,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   switch along. An editor writes only what it changed into that file, leaving what another one changed meanwhile. The dialog's bottom line shows the version number and that FMVibe is released under the MIT
   license. A book before its x (its tooltip "Open the user manual") opens the user manual online, at the address the
   README links, in the web browser (in the browser demo, a new tab), leaving the dialog open. The editor's size is kept there too (`zoom`), written when an editor you resized closes: a new instance
-  opens at it, while a project that saved a size keeps its own.
+  opens at it, while a project that saved a size keeps its own. So is whether the keyboard strip is collapsed
+  (`keysCollapsed`, see the keyboard strip).
 
 ### Remote-control pages (Bitwig, CLAP)
 

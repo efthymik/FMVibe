@@ -249,6 +249,10 @@ protected:
         writeUserSettings();
     }
     void requestEditorSize(uint32_t width, uint32_t height) override { hostResizeEditor(width, height); }
+    void keysCollapsedSet(bool collapsed) override {
+        userSettings.keysCollapsed = collapsed;
+        writeUserSettings();
+    }
 
     // How each format tells its host. Main thread, unless they say otherwise.
     // An edit in the editor (or a preset load) of param `index`, one hosts are given (see hostListed()): a gesture's

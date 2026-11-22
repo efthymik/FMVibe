@@ -1285,7 +1285,8 @@ host; patterns, notes and curves are edited in the plugin only.
 - **Bend** and **Mod** wheels, with their handles above them. Right-click a wheel or its handle to make it unipolar or
   bipolar.
 - The eight **macros**, the **Note** display and the **Velocity** display, each with its handle.
-- **KEYBOARD** collapses the strip to its top row; the wheels' handles stay available.
+- **KEYBOARD** collapses the strip to its top row; the wheels' handles stay available. New instances open with the
+  strip as you last left it.
 
 ### Play modes
 
@@ -1479,7 +1480,7 @@ your web browser.
 - **Handles**: the size of the depth handles: Small (default), Medium or Large.
 
 Double-click a slider to reset it. The plugin window's size is also remembered: new instances open at the size you last
-resized a plugin window to. Enter or Escape closes the dialog.
+resized a plugin window to, and with the keyboard strip collapsed or open as you last left it. Enter or Escape closes the dialog.
 
 ## 16. Working with the plugin
 
@@ -1580,7 +1581,7 @@ in a way that changes the latency has the host restart the plugin briefly. Most 
 | --- | --- |
 | Presets and projects | The whole patch: parameters, routing and its layout, modulation, effects, sequencer patterns, macro names, preset info. |
 | Projects only | Oversampling, MPE settings, the preset the patch came from and whether it changed. |
-| Personal settings file | Theme, hue, glow, lines, grid, handle size, window size, favorites, recent presets, your categories, where the browser opens. |
+| Personal settings file | Theme, hue, glow, lines, grid, handle size, window size, whether the keyboard strip is collapsed, favorites, recent presets, your categories, where the browser opens. |
 
 ### CPU
 
