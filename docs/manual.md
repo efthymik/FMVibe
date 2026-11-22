@@ -1139,7 +1139,7 @@ The display shows the stereo field over frequency, with handles for each control
 FMVibe has a built-in sequencer that plays the synth's own notes. Edit it in the **SEQ** view; switch it on with the
 power switch on its settings card. At full size the view also takes the space of the modulation panel, for a taller
 piano roll and the patterns overview. The button next to the power switch, or a double-click on the **SEQ** tab,
-switches it to half size, with the modulation panel in view, and back. The size is your setting, not the preset's.
+switches it to half size, with the modulation panel in view, and back.
 
 ![Sequencer](seq.png)
 
@@ -1197,9 +1197,6 @@ part of it the piano roll shows, and the one playing shows the playhead.
 - **Drag the rectangle** in the selected pattern to scroll the piano roll there, when you have zoomed in.
 - **Right-click** a pattern for **Copy Pattern**, **Paste Pattern** and **Clear Pattern**. **Ctrl+C** and **Ctrl+V**
   with the mouse over a pattern copy and paste too.
-
-Pasting or dragging onto a pattern that already holds notes asks first: "Are you sure you want to overwrite this
-pattern?" Clearing asks first as well. Undo brings back whatever was there.
 
 ### The piano roll
 
