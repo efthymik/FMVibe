@@ -288,7 +288,12 @@ bool writeFile(const std::filesystem::path &file, const UserSettings &settings) 
 #endif
     }
     if (!error)
+#ifdef _WIN32
+        // The path's own wide form, as wideOf() is on Windows: the smoke test builds this file without presets.cpp.
+        return replaceFile(part.wstring(), file.wstring());
+#else
         return replaceFile(wideOf(part), wideOf(file));
+#endif
     std::error_code ignored;
     std::filesystem::remove(part, ignored);
     return false;

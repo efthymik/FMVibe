@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <cwchar>
+#include <cwctype>
 #include <exception>
 #include <fstream>
 #include <system_error>

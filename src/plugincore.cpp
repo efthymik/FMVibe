@@ -59,10 +59,17 @@ PluginCore::PluginCore() {
         layout_.zoom = static_cast<float>(saved.zoom);
     layout_.keysCollapsed = saved.keysCollapsed;
     // Randomness of its own, so that instances layered don't play the same noise. The tests and fmvibe-bench, which
-    // compare what plays sample for sample, ask for the same every time. An empty variable counts as none.
+    // compare what plays sample for sample, ask for the same every time. On Windows the process's own environment,
+    // which the tests change as they run: the statically linked CRT's getenv() reads a copy taken as the DLL loaded.
+#ifdef _WIN32
+    if (GetEnvironmentVariableW(L"FMVIBE_FIXED_SEED", nullptr, 0) == 0)
+        synth_.seedNotes(std::random_device{}());
+#else
+    // An empty variable counts as none.
     const char *fixedSeed = std::getenv("FMVIBE_FIXED_SEED");
     if (fixedSeed == nullptr || *fixedSeed == '\0')
         synth_.seedNotes(std::random_device{}());
+#endif
 }
 
 PluginCore::~PluginCore() = default;
