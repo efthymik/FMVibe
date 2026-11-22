@@ -9719,6 +9719,30 @@ void testSelectedNode(const std::filesystem::path &dir, Renderer &renderer) {
     }
 }
 
+// With an LFO in every place, a MODS row's source menu lists them in two columns of 16 beside LFOs (the level 22 px a
+// row from y 198, under the first row's source at y 182), inside the editor: the last place's LFO, at the second
+// column's foot, takes the row's modulation.
+void testModsManyLfos(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    for (int place = 0; place < kMaxSources; ++place)
+        model.set(paramIndex(place, SourceParam::Type), static_cast<double>(SourceType::Lfo));
+    model.set(slotTargetIndex(0, 0), slotTargetValue(paramIndex(0, OpParam::Ratio)));
+    model.set(slotAmountIndex(0, 0), 0.4);
+    view.poll();
+    click(view, {382.0f, 116.0f}); // MODS
+    click(view, {90.0f, 182.0f});  // the row's source
+    view.mouseMove({80.0f, 198.0f + 4.0f + 11.0f}, {}); // LFOs
+    const Point last{380.0f, 198.0f + 4.0f + 15.0f * 22.0f + 11.0f};
+    view.mouseMove(last, {});
+    const bool shot = renderer.save(view, dir / "35p-mods-source-menu-columns.png");
+    click(view, last);
+    const bool moved = slotTarget(model.value(slotTargetIndex(0, 0))) < 0 &&
+                       slotTarget(model.value(slotTargetIndex(kMaxSources - 1, 0))) == paramIndex(0, OpParam::Ratio);
+    check(shot && moved && 198.0f + 8.0f + 16.0f * 22.0f < view.height(),
+          "a source menu lists 32 LFOs in two columns inside the editor, the last at the second's foot");
+}
+
 // The MODS tab: every modulation as a row (LFO 1's eleven, Env 1's and Macro 1's, more than fit, so a bar scrolls
 // them). A row's Amount bar, aux and its menu, target and source change it from the table, and the switch after a
 // source's name its polarity; the menus cascade by category; and a source's handle dropped on a depth handle makes it
@@ -14538,12 +14562,20 @@ void run(const std::filesystem::path &dir, float scale) {
     view.mouseMove({400.0f, 328.0f}, {});
     check(renderer.save(view, dir / "11c-card-mods.png"), "render a card counting its modulations");
 
-    // Up to 16: then the add buttons go.
+    // Up to 32: then the add buttons go. The row scrolls on to the last place's card.
     for (int n = static_cast<int>(shown(model).size()); n < kMaxSources; ++n)
         addSource(view, n % 2 ? SourceType::Env : SourceType::Lfo);
-    check(shown(model).size() == static_cast<size_t>(kMaxSources), "the panel holds 16 sources");
+    std::vector<int> full = shown(model);
+    std::sort(full.begin(), full.end());
+    check(shown(model).size() == static_cast<size_t>(kMaxSources) && full.back() == kMaxSources - 1 &&
+              model.value(paramIndex(kMaxSources - 1, SourceParam::Type)) != static_cast<double>(SourceType::None),
+          "the panel holds 32 sources, every place taken");
     view.mouseMove({400.0f, 328.0f}, {});
-    check(renderer.save(view, dir / "12-sources-full.png"), "render 16 sources");
+    check(renderer.save(view, dir / "12-sources-full.png"), "render 32 sources");
+    for (int k = 0; k < kMaxSources; ++k)
+        view.wheel(kModTitle, -10.0f, {}); // on to the row's end
+    view.mouseMove({400.0f, 328.0f}, {});
+    check(renderer.save(view, dir / "12b-sources-full-end.png"), "render 32 sources, scrolled to the last");
 
     // The SEQ view covers the modulation panel, as tall as the editor was: its cards take no clicks, and its title
     // none either.
@@ -14895,6 +14927,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testOpNameHandle(dir, renderer);
     testNewSources(dir, renderer);
     testMods(dir, renderer);
+    testModsManyLfos(dir, renderer);
     testSeq(dir, renderer);
     testModsMoveDepth(dir, renderer);
     testModsLive(dir, renderer);

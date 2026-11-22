@@ -37,7 +37,7 @@ FMVibe works in the spirit of classic and modern FM synthesizers. Its main featu
   Exp FM and Ring). Routes can be edited as a graph or a matrix, or set from one of the classic FM algorithms.
 - **Two filters and two shapers per voice**, which can be placed anywhere in the routing, fed back into themselves
   and each other, and used as modulators.
-- **Flexible modulation**: up to 16 sources (LFOs, envelopes, drawn curves, random and MIDI sources), plus eight
+- **Flexible modulation**: up to 32 sources (LFOs, envelopes, drawn curves, random and MIDI sources), plus eight
   macros, the mod wheel, pitch bend, note pitch, velocity and the operators' outputs, which also give filter FM. Each
   modulation has its own depth, curve, amount and an optional auxiliary source that scales it.
 - **Effects**: up to 32 effects from 17 types, in a chain that can be split into frequency bands.
@@ -622,7 +622,7 @@ recent note. With no notes playing, it shows where the macros and mod wheel take
 The panel's title row has:
 
 - **+ SOURCE**, which opens the list of source types (Envelope, LFO, Curve, Random, MIDI), and a count of sources
-  used (for example 4/16).
+  used (for example 4/32).
 
 Source cards show four at a time. After the last card, a dashed **ADD SOURCE** card opens the same list.
 

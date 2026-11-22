@@ -233,7 +233,7 @@ What the plugin does and how its editor works, in full. Building and installing 
   +18 dB, so a loop that lifts itself past unity (a resonant filter, or shapers feeding back, with a shaper's Mix
   below 100 %) grows loud but never without end. It runs only while something goes in and its output goes
   somewhere (a shaper feeding only itself goes nowhere; one feeding a shaper that goes somewhere does).
-- **Modulation**: up to 16 sources, any mix of LFOs (sine, triangle, saw or square; 0.02–100 Hz,
+- **Modulation**: up to 32 sources, any mix of LFOs (sine, triangle, saw or square; 0.02–100 Hz,
   and at the Rate knob's bottom 0 Hz, where an LFO stands still at its Phase), mod envelopes (AHDSR, starting at full sustain and with an operator's 15 ms release; times as an
   operator's envelope has them), Curve sources (LFOs of a drawn shape), and two that follow what a note or the
   controller brings:
@@ -1561,7 +1561,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
       right-click menu does. A click on the source or the target opens a cascading menu, the next level opening beside
       an entry under the mouse. The source's lists the sources by category (LFOs, the Random and Curve sources among them, Envelopes,
       Note & MIDI for the MIDI sources, Macros, Keyboard:
-      Note, Velocity, Mod Wheel and Pitch Bend, and Operators: Op A to Op F); picking one moves the modulation there, into a free slot, with its depth,
+      Note, Velocity, Mod Wheel and Pitch Bend, and Operators: Op A to Op F; a category of more than 16 sources, and the
+      target's Modulation, go on in a second column of about as many beside the first); picking one moves the modulation there, into a free slot, with its depth,
       curve, Amount, aux and bypass, as one undo step; it then swings as its new source does. What modulates its depth
       follows it to its new slot, or, moved to a macro, the note source, the mod wheel, velocity, the pitch bend or an operator (whose depths
       can't be modulated), goes. A source that modulates the
@@ -1863,7 +1864,7 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
 - **Modulation**: the panel's title row has its title, **MODULATION** (the panel doesn't collapse; the SEQ view
   covers it), then **+ SOURCE**,
   shaped like + EFFECT (a drawn plus, the word and a chevron), which opens the list of source types under it to add
-  one, and beside it how many of the 16 places are taken, as in 4/16 (with every
+  one, and beside it how many of the 32 places are taken, as in 4/32 (with every
   place taken it is dimmed, and a click says so). Random and Curve cards are laid out as an LFO's (see below), but
   have **Unipolar** | **Bipolar** (as icons) where an LFO's shape list is, one of them lit, which sets which way their
   depths swing, as the polarity in its title's menu does, and no Unipolar switch; a Random card has no Phase knob. A MIDI card has its input's list (CC,
@@ -2436,9 +2437,9 @@ switched off and on again, say) allocates the voices again and ends the notes pl
 next block. A VST3 host stopping processing ends them too, unless a restart was asked for: then they end only if
 processing starts again without it.
 
-Hosts are given 1,515 of FMVibe's 32,712 parameters: the globals, the operators, the matrix and the routes' modes,
+Hosts are given 2,027 of FMVibe's 38,008 parameters: the globals, the operators, the matrix and the routes' modes,
 the filters, the shapers, the macros' knobs, the note source's, the mod wheel's, velocity's, the pitch bend's and the
-operators' own as sources, and every modulation's depth and Amount (16 slots for each of the 34 sources, used or not). The rest are set in the editor only:
+operators' own as sources, and every modulation's depth and Amount (16 slots for each of the 50 sources, used or not). The rest are set in the editor only:
 the effects, the LFOs', envelopes' and other sources' own knobs, what each modulation targets and its aux, curve and
 bypass, the Curve sources' drawn shapes, the shaper curves and the note source's curve, the Custom waves' partials and their
 counts, the effects graph (its splits, joins and wires), the chain's retired order, the feedback's route modes and the

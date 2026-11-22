@@ -523,8 +523,13 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
         op.env.start();
     for (Envelope &env : v.modEnvs)
         env.start();
-    for (Lfo &lfo : v.lfos) { // the first step and the start phase come in the voice's first block
-        lfo.from = lfo.held = nextRandom(v.rng);
+    // The first step and the start phase come in the voice's first block. The places past the first kFirstSources draw
+    // their steps from a stream of their own, so that the voice's (its noise, its other draws) goes on as it did
+    // before they came.
+    uint32_t laterRng = static_cast<uint32_t>(v.order * 2246822519u) | 1u;
+    for (int s = 0; s < kMaxSources; ++s) {
+        Lfo &lfo = v.lfos[s];
+        lfo.from = lfo.held = nextRandom(s < kFirstSources ? v.rng : laterRng);
         lfo.restart = true;
     }
 }

@@ -1020,6 +1020,7 @@ private:
         uint32_t lfoMask = 0; // the LFOs (a bit a place) whose slots modulate the effects in the last block
         uint32_t rng = 1;
     };
+    static_assert(kMaxSources <= 32, "a bit a place: lfoMask, Telemetry::fxTailLfos and UiLayout::sourcesFolded");
     FxTail fxTail_;
     std::array<SlotMod, kAllSources * kSlots> fxTailMods_{};
     int fxTailModCount_ = 0; // fxTailMods_ in use, as of the last control block

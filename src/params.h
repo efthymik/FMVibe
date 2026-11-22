@@ -17,7 +17,8 @@ namespace fmvibe {
 
 constexpr int kOps = 6;     // operators A..F
 constexpr int kMacros = 8;  // macro knobs, under the keyboard
-constexpr int kMaxSources = 16; // places for LFOs and mod envelopes; see SourceType
+constexpr int kMaxSources = 32; // places for LFOs and mod envelopes; see SourceType
+constexpr int kFirstSources = 16; // the places there were at first; see idOfIndex() and storedSource()
 constexpr int kSlots = 16;  // target slots per source
 constexpr int kFirstSlots = 4; // the slots sources had at first; see idOfIndex()
 constexpr int kFilters = 2;
@@ -1502,6 +1503,40 @@ inline int slotAuxSource(double value) {
     return source >= 0 && source < kAllSources ? static_cast<int>(source) : -1;
 }
 inline double slotAuxValue(int source) { return source < 0 ? 0.0 : source + 1.0; }
+// A source's number as states and presets store it (an aux's value, the MODS view's empty modulations) and as the ids
+// of its slots' auxes, curves and aux depths are laid out: the numbers sources had when there were kFirstSources places
+// (the places, the macros, the note source, the mod wheel, velocity, the pitch bend and the operators), then the places
+// added later. In memory the places come first, all of them.
+constexpr int kStripSources = kAllSources - kMaxSources; // the sources after the places
+constexpr int storedSource(int source) {
+    return source < kFirstSources ? source
+           : source < kMaxSources ? source + kStripSources
+                                  : source - (kMaxSources - kFirstSources);
+}
+constexpr int sourceOfStored(int stored) {
+    return stored < kFirstSources                 ? stored
+           : stored < kFirstSources + kStripSources ? stored + (kMaxSources - kFirstSources)
+                                                    : stored - kStripSources;
+}
+constexpr bool storedSourcesRoundTrip() {
+    for (int source = 0; source < kAllSources; ++source)
+        if (sourceOfStored(storedSource(source)) != source || storedSource(source) < 0 ||
+            storedSource(source) >= kAllSources)
+            return false;
+    return true;
+}
+static_assert(storedSourcesRoundTrip() && storedSource(kMaxSources) == kFirstSources &&
+                  storedSource(kFirstSources) == kFirstSources + kStripSources,
+              "the stored source numbers moved");
+// An Aux param's value as a state stores it (its source by its stored number), and back.
+inline double storedAuxValue(double value) {
+    const int source = slotAuxSource(value);
+    return slotAuxValue(source < 0 ? -1 : storedSource(source));
+}
+inline double auxValueOfStored(double value) {
+    const int stored = slotAuxSource(value);
+    return slotAuxValue(stored < 0 ? -1 : sourceOfStored(stored));
+}
 // The sources that run in each voice (the places, the note source, velocity, the pitch bend and the operators), whose
 // output differs from voice to voice; the macros and the mod wheel are the same for all.
 constexpr bool runsPerVoice(int source) { return !hasKnob(source); }
@@ -1553,7 +1588,9 @@ constexpr Section kSections[] = {
     {kFilterLinkBase, 1, kFilterLinks, 900, 100},
     {kShaperBase, kShapers, kShaperParamCount, 600, 50},
 
-    {kSlotBypassBase, kMaxSources, kSlots, 9000, 20},
+    // The places' bypasses: the first kFirstSources', then those added later, after the strip sources' (below).
+    {kSlotBypassBase, kFirstSources, kSlots, 9000, 20},
+    {kSlotBypassBase + kFirstSources * kSlots, kMaxSources - kFirstSources, kSlots, 9680, 20},
     {kPartialBase, kOps, 2 * kFirstPartials, 10000, 100},
     {kMacroBase, kMacros, kMacroParamCount, 11000, 40},
     {kNoteBase, 1, kNoteParamCount, 11400, 100},
@@ -1562,14 +1599,26 @@ constexpr Section kSections[] = {
     {kLaterPartialBase, kOps, 2 * (kPartials - kFirstPartials), 14100, 100},
     {kVelocityBase, 1, kVelocityParamCount, 11600, 100},
     {kBendBase, 1, kBendParamCount, 11700, 100},
-    // A block per source, in source order: sources added later take blocks after these.
-    {kSlotAuxBase, kAllSources, kSlots * kSlotAuxFields, 22000, 40},
-    // A block per source under the keyboard, in source order, after the places' bypasses.
-    {kStripBypassBase, kAllSources - kMaxSources, kSlots, 9320, 20},
-    // A block per source, in source order, as the auxes'.
-    {kSlotCurveBase, kAllSources, kSlots, 24000, 20},
-    // A block per source, in source order, as the auxes'.
-    {kSlotAuxDepthBase, kAllSources, kSlots, 49000, 20},
+    // A block per source, by its stored number (see storedSource()): the first kFirstSources places, the places added
+    // later, then the strip sources, in memory's order. The blocks fill their room: a source added later needs a
+    // range of its own.
+    {kSlotAuxBase, kFirstSources, kSlots * kSlotAuxFields, 22000, 40},
+    {kSlotAuxBase + kFirstSources * kSlots * kSlotAuxFields, kMaxSources - kFirstSources, kSlots * kSlotAuxFields,
+     22000 + (kFirstSources + kStripSources) * 40, 40},
+    {kSlotAuxBase + kMaxSources * kSlots * kSlotAuxFields, kStripSources, kSlots * kSlotAuxFields,
+     22000 + kFirstSources * 40, 40},
+    // A block per source under the keyboard, in source order, after the first places' bypasses.
+    {kStripBypassBase, kStripSources, kSlots, 9320, 20},
+    // A block per source, by its stored number, as the auxes'.
+    {kSlotCurveBase, kFirstSources, kSlots, 24000, 20},
+    {kSlotCurveBase + kFirstSources * kSlots, kMaxSources - kFirstSources, kSlots,
+     24000 + (kFirstSources + kStripSources) * 20, 20},
+    {kSlotCurveBase + kMaxSources * kSlots, kStripSources, kSlots, 24000 + kFirstSources * 20, 20},
+    // A block per source, by its stored number, as the auxes'.
+    {kSlotAuxDepthBase, kFirstSources, kSlots, 49000, 20},
+    {kSlotAuxDepthBase + kFirstSources * kSlots, kMaxSources - kFirstSources, kSlots,
+     49000 + (kFirstSources + kStripSources) * 20, 20},
+    {kSlotAuxDepthBase + kMaxSources * kSlots, kStripSources, kSlots, 49000 + kFirstSources * 20, 20},
     // A block per node a route comes from, in the routing graph's order: ids that were never used, between the
     // shapers' and the filters'.
     {kRouteModeBase, kRouteSources, kOps, 700, 10},
@@ -1594,7 +1643,8 @@ constexpr Section kSections[] = {
 };
 
 // Sources had kFirstSlots slots at first. Their fields keep the ids they had
-// then, from 2800 on, and the slots added later have ids of their own, from 6000 on.
+// then, from 2800 on, and the slots added later have ids of their own, from 6000 on. So for the first kFirstSources
+// places: those added later have every field from 58000 on (see kSplitSections).
 constexpr int kFirstSlotsEnd = static_cast<int>(SourceParam::Slots) + 2 * kFirstSlots; // first later slot field
 constexpr int kLaterSlotFields = 2 * (kSlots - kFirstSlots);
 constexpr int kSourceFields = kSourceParamCount - kLaterSlotFields; // the fields with ids from 2800 on
@@ -1628,8 +1678,14 @@ constexpr SplitSection kSplitSections[] = {
      kFxParamCount,
      {{80, 1400, 80}, {20, 12000, 20}, {40, 25000, 40}, {20, 36000, 20}, {kRestFields, 36400, 40}}},
     {kFxBase + kFirstFxSlots * kFxParamCount, kFxSlots - kFirstFxSlots, kFxParamCount, {{kRestFields, 26000, 200}}},
-    // Freeform LFO shapes and shaper curves: the points past the 16 they had at first (33 for an LFO's).
-    {kShapeBase, kMaxSources, kShapeParamCount, {{100, 4000, 100}, {kRestFields, 15000, 100}}},
+    // The places added later: every field in a range of their own.
+    {kSourceBase + kFirstSources * kSourceParamCount, kMaxSources - kFirstSources, kSourceParamCount,
+     {{kRestFields, 58000, 100}}},
+    // Freeform LFO shapes and shaper curves: the points past the 16 they had at first (33 for an LFO's). The places
+    // added later have every field in a range of their own.
+    {kShapeBase, kFirstSources, kShapeParamCount, {{100, 4000, 100}, {kRestFields, 15000, 100}}},
+    {kShapeBase + kFirstSources * kShapeParamCount, kMaxSources - kFirstSources, kShapeParamCount,
+     {{kRestFields, 60000, 200}}},
     {kClipCurveBase, kFirstFxSlots, kShapeParamCount, {{49, 7000, 50}, {kRestFields, 17000, 200}}},
     {kClipCurveBase + kFirstFxSlots * kShapeParamCount, kFxSlots - kFirstFxSlots, kShapeParamCount,
      {{kRestFields, 30000, 200}}},
@@ -1686,7 +1742,7 @@ constexpr int indexOfId(clap_id id) {
             start += std::min(r.fields, s.fields);
         }
     }
-    if (id >= ids::kSourceIdBase && id < ids::kSourceIdBase + kMaxSources * ids::kSourceIdStride) {
+    if (id >= ids::kSourceIdBase && id < ids::kSourceIdBase + kFirstSources * ids::kSourceIdStride) {
         const int source = static_cast<int>((id - ids::kSourceIdBase) / ids::kSourceIdStride);
         const int field = static_cast<int>((id - ids::kSourceIdBase) % ids::kSourceIdStride);
         if (field >= ids::kSourceFields)
@@ -1694,7 +1750,7 @@ constexpr int indexOfId(clap_id id) {
         return kSourceBase + source * kSourceParamCount +
                (field < ids::kFirstSlotsEnd ? field : field + ids::kLaterSlotFields);
     }
-    if (id >= ids::kLaterSlotIdBase && id < ids::kLaterSlotIdBase + kMaxSources * ids::kLaterSlotIdStride) {
+    if (id >= ids::kLaterSlotIdBase && id < ids::kLaterSlotIdBase + kFirstSources * ids::kLaterSlotIdStride) {
         const int source = static_cast<int>((id - ids::kLaterSlotIdBase) / ids::kLaterSlotIdStride);
         const int field = static_cast<int>((id - ids::kLaterSlotIdBase) % ids::kLaterSlotIdStride);
         return field < ids::kLaterSlotFields ? kSourceBase + source * kSourceParamCount + ids::kFirstSlotsEnd + field
@@ -1761,7 +1817,7 @@ static_assert(idOfIndex(shapeFieldIndex(clipCurveCountIndex(1), 15, PointField::
 // The counts the layout comes from. Each one moves the fields laid out after it: OpParam's ShaperSends after its
 // Sends (kFilters), ShaperParam's Mods and Out (kFilters, kOps), the fields after the slots of sources, macros, the
 // note source and the mod wheel (kSlots), and blocks past the room their section has.
-static_assert(kOps == 6 && kMacros == 8 && kMaxSources == 16 && kSlots == 16 && kFirstSlots == 4 && kFilters == 2 &&
+static_assert(kOps == 6 && kMacros == 8 && kMaxSources == 32 && kFirstSources == 16 && kSlots == 16 && kFirstSlots == 4 && kFilters == 2 &&
                   kShapers == 2 && kFxSlots == 32 && kFirstFxSlots == 16 && kMaxShapePoints == 64 && kMaxNotePoints == 16 &&
                   kPartials == 64 && kFirstPartials == 32,
               "a count the param ids are laid out by changed: see Pinned ids");
@@ -1824,17 +1880,17 @@ static_assert(idOfIndex(paramIndex(0, ShaperParam::Enabled)) == 600 && idOfIndex
                   idOfIndex(paramIndex(kShapers - 1, ShaperParam::Stack)) == 668,
               "shaper param ids moved");
 static_assert(idOfIndex(paramIndex(0, SourceParam::Type)) == 2800 &&
-                  idOfIndex(slotAmountIndex(kMaxSources - 1, kFirstSlots - 1)) == 3409 &&
+                  idOfIndex(slotAmountIndex(kFirstSources - 1, kFirstSlots - 1)) == 3409 &&
                   idOfIndex(paramIndex(0, SourceParam::Shape)) == 2810 &&
-                  idOfIndex(paramIndex(kMaxSources - 1, SourceParam::EnvBipolar)) == 3427 &&
+                  idOfIndex(paramIndex(kFirstSources - 1, SourceParam::EnvBipolar)) == 3427 &&
                   idOfIndex(paramIndex(0, SourceParam::Phase)) == 2828 &&
-                  idOfIndex(paramIndex(kMaxSources - 1, SourceParam::Phase)) == 3428 &&
+                  idOfIndex(paramIndex(kFirstSources - 1, SourceParam::Phase)) == 3428 &&
                   idOfIndex(paramIndex(0, SourceParam::Slew)) == 2829 &&
-                  idOfIndex(paramIndex(kMaxSources - 1, SourceParam::MidiInput)) == 3432 &&
+                  idOfIndex(paramIndex(kFirstSources - 1, SourceParam::MidiInput)) == 3432 &&
                   idOfIndex(paramIndex(0, SourceParam::Anchor)) == 2833 &&
-                  idOfIndex(paramIndex(kMaxSources - 1, SourceParam::Anchor)) == 3433 &&
+                  idOfIndex(paramIndex(kFirstSources - 1, SourceParam::Anchor)) == 3433 &&
                   idOfIndex(slotTargetIndex(0, kFirstSlots)) == 6000 &&
-                  idOfIndex(slotAmountIndex(kMaxSources - 1, kSlots - 1)) == 6473,
+                  idOfIndex(slotAmountIndex(kFirstSources - 1, kSlots - 1)) == 6473,
               "source param ids moved");
 static_assert(idOfIndex(paramIndex(0, FxParam::Type)) == 1400 &&
                   idOfIndex(paramIndex(kFirstFxSlots - 1, FxParam::ReverbType)) == 2679 &&
@@ -1883,9 +1939,9 @@ static_assert(idOfIndex(paramIndex(0, FxParam::Type)) == 1400 &&
                   idOfIndex(paramIndex(kFxSlots - 1, FxParam::LoFiMix)) == 29179,
               "effect slot param ids moved");
 static_assert(idOfIndex(shapeCountIndex(0)) == 4000 &&
-                  idOfIndex(shapePointIndex(kMaxSources - 1, 32, PointField::Curve)) == 5599 &&
+                  idOfIndex(shapePointIndex(kFirstSources - 1, 32, PointField::Curve)) == 5599 &&
                   idOfIndex(shapePointIndex(0, 33, PointField::X)) == 15000 &&
-                  idOfIndex(shapePointIndex(kMaxSources - 1, kMaxShapePoints - 1, PointField::Curve)) == 16592,
+                  idOfIndex(shapePointIndex(kFirstSources - 1, kMaxShapePoints - 1, PointField::Curve)) == 16592,
               "freeform LFO shape param ids moved");
 static_assert(idOfIndex(clipCurveCountIndex(0)) == 7000 &&
                   idOfIndex(shapeFieldIndex(clipCurveCountIndex(kFirstFxSlots - 1), 15, PointField::Curve)) == 7798 &&
@@ -1897,9 +1953,9 @@ static_assert(idOfIndex(clipCurveCountIndex(0)) == 7000 &&
                                             PointField::Curve)) == 33192,
               "shaper effect curve param ids moved");
 static_assert(idOfIndex(slotBypassIndex(0, 0)) == 9000 &&
-                  idOfIndex(slotBypassIndex(kMaxSources - 1, kSlots - 1)) == 9315,
+                  idOfIndex(slotBypassIndex(kFirstSources - 1, kSlots - 1)) == 9315,
               "slot bypass param ids moved");
-static_assert(kOpSource == 28 && kAllSources == 34 && idOfIndex(slotTargetIndex(kOpSource, 0)) == 57000 &&
+static_assert(kOpSource == 44 && kAllSources == 50 && idOfIndex(slotTargetIndex(kOpSource, 0)) == 57000 &&
                   idOfIndex(slotAmountIndex(kAllSources - 1, kSlots - 1)) == 57231 &&
                   idOfIndex(paramIndex(kOps - 1, OpSourceParam::Bipolar)) == 57232 &&
                   idOfIndex(slotBypassIndex(kOpSource, 0)) == 9560 &&
@@ -1951,6 +2007,25 @@ static_assert(idOfIndex(slotCurveIndex(0, 0)) == 24000 && idOfIndex(slotCurveInd
 static_assert(idOfIndex(slotAuxDepthIndex(0, 0)) == 49000 && idOfIndex(slotAuxDepthIndex(0, kSlots - 1)) == 49015 &&
                   idOfIndex(slotAuxDepthIndex(kBendSource, kSlots - 1)) == 49555,
               "slot aux depth param ids moved");
+// The places past the first kFirstSources: their fields and shapes in ranges of their own, their bypasses after the
+// strip sources', and their auxes, curves and aux depths after the operators', by their stored numbers.
+static_assert(idOfIndex(paramIndex(kFirstSources, SourceParam::Type)) == 58000 &&
+                  idOfIndex(slotAmountIndex(kFirstSources, kSlots - 1)) == 58033 &&
+                  idOfIndex(paramIndex(kMaxSources - 1, SourceParam::Anchor)) == 59557 &&
+                  kSourceParamCount <= 100 && idOfIndex(shapeCountIndex(kFirstSources)) == 60000 &&
+                  idOfIndex(shapePointIndex(kMaxSources - 1, kMaxShapePoints - 1, PointField::Curve)) == 63192 &&
+                  kShapeParamCount <= 200 && idOfIndex(slotBypassIndex(kFirstSources, 0)) == 9680 &&
+                  idOfIndex(slotBypassIndex(kMaxSources - 1, kSlots - 1)) == 9995 &&
+                  idOfIndex(slotAuxIndex(kMaxSources, 0)) == 22640 &&
+                  idOfIndex(slotAuxIndex(kFirstSources, 0)) == 23360 &&
+                  idOfIndex(slotScaleIndex(kMaxSources - 1, kSlots - 1)) == 23991 &&
+                  idOfIndex(slotCurveIndex(kMaxSources, 0)) == 24320 &&
+                  idOfIndex(slotCurveIndex(kFirstSources, 0)) == 24680 &&
+                  idOfIndex(slotCurveIndex(kMaxSources - 1, kSlots - 1)) == 24995 &&
+                  idOfIndex(slotAuxDepthIndex(kMaxSources, 0)) == 49320 &&
+                  idOfIndex(slotAuxDepthIndex(kFirstSources, 0)) == 49680 &&
+                  idOfIndex(slotAuxDepthIndex(kMaxSources - 1, kSlots - 1)) == 49995,
+              "the later places' param ids moved");
 static_assert(idOfIndex(routeModeIndex(0, 0)) == 700 && idOfIndex(routeModeIndex(1, 0)) == 710 &&
                   idOfIndex(routeModeIndex(kRouteSources - 1, kOps - 1)) == 795,
               "route mode param ids moved");
@@ -2063,9 +2138,9 @@ constexpr clap_id maxParamId() {
             start += r.fields;
         }
     }
-    highest = std::max(highest, ids::kSourceIdBase + (kMaxSources - 1) * ids::kSourceIdStride + ids::kSourceFields - 1);
+    highest = std::max(highest, ids::kSourceIdBase + (kFirstSources - 1) * ids::kSourceIdStride + ids::kSourceFields - 1);
     return std::max(highest,
-                    ids::kLaterSlotIdBase + (kMaxSources - 1) * ids::kLaterSlotIdStride + ids::kLaterSlotFields - 1);
+                    ids::kLaterSlotIdBase + (kFirstSources - 1) * ids::kLaterSlotIdStride + ids::kLaterSlotFields - 1);
 }
 constexpr clap_id kMaxParamId = maxParamId();
 

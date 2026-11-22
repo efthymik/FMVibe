@@ -2292,6 +2292,63 @@ void effectsChainChecks() {
         check(std::equal(now.begin(), now.end(), p.begin()), "a version 15 state loads its warps as saved");
     }
     {
+        // The places past the first 16: a patch with an LFO in the last place on operator A's level, the 17th place's
+        // aux Macro 3 and Macro 3's aux the 17th place, its drawn shape and its slot's curve, loads back as saved, the
+        // auxes stored by the numbers sources are stored by (the macros' as before the later places came, the later
+        // places' after the operators); and so does the editor's layout, the later places' order and folds at its end
+        // and an empty modulation's source likewise.
+        ParamValues p = defaults();
+        const int last = kMaxSources - 1, later = kFirstSources, macro = kMaxSources + 2;
+        p[paramIndex(last, SourceParam::Type)] = static_cast<double>(SourceType::Lfo);
+        p[paramIndex(later, SourceParam::Type)] = static_cast<double>(SourceType::Env);
+        p[slotTargetIndex(last, 0)] = slotTargetValue(paramIndex(0, OpParam::Out));
+        p[slotAmountIndex(last, 0)] = -0.5;
+        p[slotCurveIndex(last, 0)] = 0.25;
+        p[slotTargetIndex(later, 0)] = slotTargetValue(paramIndex(0, OpParam::Pan));
+        p[slotAmountIndex(later, 0)] = 0.4;
+        p[slotAuxIndex(later, 0)] = slotAuxValue(macro);
+        p[slotTargetIndex(macro, 0)] = slotTargetValue(paramIndex(1, OpParam::Out));
+        p[slotAmountIndex(macro, 0)] = 0.2;
+        p[slotAuxIndex(macro, 0)] = slotAuxValue(later);
+        p[shapeCountIndex(last)] = 3.0;
+        p[shapePointIndex(last, 2, PointField::Y)] = -0.75;
+        gui::UiLayout ui;
+        std::reverse(ui.sourceOrder.begin(), ui.sourceOrder.end());
+        ui.sourcesFolded = 1u | 1u << last | 1u << later;
+        ui.emptyMods = {{later, -1}, {macro, paramIndex(0, OpParam::Detune)}, {-1, -1}};
+        std::vector<unsigned char> bytes;
+        const clap_ostream_t out = memoryOut(bytes);
+        writePatch(&out, p, ui, true);
+        MemoryReader reader{bytes.data(), bytes.size(), 0};
+        const clap_istream_t in = memoryIn(reader);
+        ParamValues loaded;
+        const bool read = readParams(&in, loaded);
+        const gui::UiLayout back = readLayout(&in);
+        auto storedAs = [&](int index) { // the value the sparse patch holds for the param
+            uint32_t count = 0;
+            std::memcpy(&count, bytes.data() + 2 * sizeof(uint32_t), sizeof(count));
+            const uint32_t id = idOfIndex(index);
+            for (uint32_t k = 0; k < count; ++k) {
+                const unsigned char *at = bytes.data() + 3 * sizeof(uint32_t) + k * (sizeof(uint32_t) + sizeof(double));
+                uint32_t got;
+                std::memcpy(&got, at, sizeof(got));
+                if (got == id) {
+                    double v;
+                    std::memcpy(&v, at + sizeof(got), sizeof(v));
+                    return v;
+                }
+            }
+            return -1.0;
+        };
+        std::printf("      the 17th place's aux on Macro 3 stored as %.0f, Macro 3's on the 17th place as %.0f\n",
+                    storedAs(slotAuxIndex(later, 0)), storedAs(slotAuxIndex(macro, 0)));
+        check(read && std::equal(loaded.begin(), loaded.end(), p.begin()) && storedAs(slotAuxIndex(later, 0)) == 19.0 &&
+                  storedAs(slotAuxIndex(macro, 0)) == 35.0,
+              "a patch using the places past the 16th loads back as saved, its auxes stored by the sources' stored numbers");
+        check(back.sourceOrder == ui.sourceOrder && back.sourcesFolded == ui.sourcesFolded && back.emptyMods == ui.emptyMods,
+              "the editor's layout keeps the later places' order and folds, and an empty modulation's source");
+    }
+    {
         // The filter effect switched to another type or slope and back: the stage it left out starts from silence,
         // rather than playing back what it held then.
         auto stale = [&](FilterType first, int firstSlope, FilterType second, int secondSlope) {
@@ -5433,6 +5490,9 @@ void sequencerChecks() {
     }
 }
 
+// The layout chunk's floats after the preset's info: the order of the places past the first 16 and their folds.
+constexpr uint32_t kAfterInfo = kMaxSources - kFirstSources + 1;
+
 // The layout chunk, the patch's last, cut short by its last `floats` floats: as saved before they came.
 void cutLayout(std::vector<unsigned char> &bytes, uint32_t floats) {
     for (size_t at = bytes.size() - 4; at >= 4; at -= 4) {
@@ -5510,7 +5570,7 @@ void presetInfoChecks() {
     files = files && !fromFile(cut, cutInfo) && cutInfo.empty();
     check(files, "a preset file's info read past its params by seeking, as written, and none from one cut short");
     std::vector<unsigned char> old = bytesOf(true, {});
-    cutLayout(old, 3);
+    cutLayout(old, 3 + kAfterInfo);
     MemoryReader reader{old.data(), old.size(), 0};
     const clap_istream_t in = memoryIn(reader);
     gui::PresetInfo none{"x", "y", "z"};
@@ -5557,9 +5617,9 @@ void savedTempoChecks() {
         std::vector<unsigned char> bytes;
         const clap_ostream_t out = memoryOut(bytes);
         writePatch(&out, *values, ui, true);
-        if (cut) // the layout, the patch's last chunk, as saved before the field came: without it and the preset's
-                 // info after it (three empty texts, a float each)
-            cutLayout(bytes, 4);
+        if (cut) // the layout, the patch's last chunk, as saved before the field came: without it, the preset's info
+                 // after it (three empty texts, a float each) and what came after that
+            cutLayout(bytes, 4 + kAfterInfo);
         MemoryReader reader{bytes.data(), bytes.size(), 0};
         const clap_istream_t in = memoryIn(reader);
         const auto loaded = std::make_unique<ParamValues>();

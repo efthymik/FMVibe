@@ -36,7 +36,7 @@ constexpr uint32_t kMaxLayoutFloats = 4096;
 constexpr int kMaxRoutes = gui::kNodes * (gui::kNodes + 1);
 static_assert(2 * kOps + 2 * (kFilters + kShapers) + 4 + kMaxSources + 1 + kMaxRoutes + 2 +
                   kMacros * (1 + kMaxMacroName) + 2 + 3 + 1 + 2 * kMaxRoutes + 1 + 2 * gui::kMaxEmptyMods + 2 + 1 +
-                  2 + kFxSplits + 1 + 5 + 1 + 3 + kMaxInfoAuthor + kMaxInfoCategory + kMaxInfoDescription <=
+                  2 + kFxSplits + 1 + 5 + 1 + 3 + kMaxInfoAuthor + kMaxInfoCategory + kMaxInfoDescription + 1 <=
               kMaxLayoutFloats);
 constexpr uint32_t kMaxSettingsFloats = 64; // likewise for the settings chunk
 // The most bytes of a preset chunk read and written: its flag and a preset file's path in UTF-8, past the longest a
@@ -80,9 +80,12 @@ constexpr size_t kMaxPresetChunk = 65536;
 //    at the pattern's start and end that hold those values, playing as they played (see holdSeqCurveEnds()).
 // 15: An operator's Sync warp plays its wave up to 16 times a cycle rather than 8 (kMaxSyncWarp), so an earlier state's
 //    Warp Amount on an operator with the Sync warp, and the depths on it, load 7/15 as large, to play as they did.
+// 16: There are 32 source places rather than 16 (kMaxSources). Sources are stored by the numbers they had, the places
+//    added later after the operators (see storedSource()), so an earlier state loads as it was saved; the version
+//    rises so that an earlier build refuses a state whose later places it would leave out.
 // One version a release at most: what changes between two tagged releases goes into a single step, so the version
 // rises once from one release to the next (see AGENTS.md, Plugin facts).
-constexpr uint32_t kStateVersion = 15;
+constexpr uint32_t kStateVersion = 16;
 
 bool writeAll(const clap_ostream_t *stream, const void *data, size_t size) {
     auto *bytes = static_cast<const uint8_t *>(data);
@@ -190,6 +193,16 @@ struct LayoutWriter {
         for (const T &value : values)
             number(value, min, max, take);
     }
+    // Values `from` to `to` of an array whose parts are fields apart, which check() then checks as a whole.
+    template <class T, size_t N, class Take = AsIs>
+    void numbers(const std::array<T, N> &values, size_t from, size_t to, float min, float max, Take take = {}) {
+        for (size_t i = from; i < to; ++i)
+            number(values[i], min, max, take);
+    }
+    template <class T, class Check>
+    void check(const T &, const T &, Check) {}
+    // 16 bits of a mask from `shift` on, exact as a float.
+    void bits(const uint32_t &mask, int shift) { out.push_back(static_cast<float>(mask >> shift & 0xFFFFu)); }
     // Param indices, as their count and then their ids.
     void paramIds(const std::vector<int> &indices) {
         out.push_back(static_cast<float>(indices.size()));
@@ -213,11 +226,12 @@ struct LayoutWriter {
             out.push_back(value);
         }
     }
-    // Empty modulations, as their count and then each one's source + 1 and its target's id + 1 (0 for none).
+    // Empty modulations, as their count and then each one's source + 1 (by its stored number, see storedSource()) and
+    // its target's id + 1 (0 for none).
     void emptyMods(const std::vector<std::pair<int, int>> &mods) {
         out.push_back(static_cast<float>(mods.size()));
         for (const auto &[source, target] : mods) {
-            out.push_back(static_cast<float>(source + 1));
+            out.push_back(source < 0 ? 0.0f : static_cast<float>(storedSource(source) + 1));
             out.push_back(target < 0 ? 0.0f : static_cast<float>(idOfIndex(target)) + 1.0f);
         }
     }
@@ -255,6 +269,23 @@ struct LayoutReader {
         if (!check(values))
             values = fallback;
     }
+    // Values `from` to `to` of an array whose parts are fields apart, which check() then checks as a whole.
+    template <class T, size_t N, class Take = AsIs>
+    void numbers(std::array<T, N> &values, size_t from, size_t to, float min, float max, Take take = {}) {
+        for (size_t i = from; i < to; ++i)
+            number(values[i], min, max, take);
+    }
+    // What `valid` refuses falls back to `fallback`.
+    template <class T, class Check>
+    void check(T &value, const T &fallback, Check valid) {
+        if (!valid(value))
+            value = fallback;
+    }
+    // 16 bits of a mask from `shift` on; the others are left as they are.
+    void bits(uint32_t &mask, int shift) {
+        const auto part = static_cast<uint32_t>(std::lround(next(static_cast<float>(mask >> shift & 0xFFFFu), 0.0f, 65535.0f)));
+        mask = (mask & ~(0xFFFFu << shift)) | part << shift;
+    }
     // Ids that name no param, and repeated ones, are left out.
     void paramIds(std::vector<int> &indices) {
         const int count = static_cast<int>(std::lround(next(0.0f, 0.0f, static_cast<float>(kParamCount))));
@@ -288,7 +319,8 @@ struct LayoutReader {
         mods.clear();
         const int count = static_cast<int>(std::lround(next(0.0f, 0.0f, static_cast<float>(gui::kMaxEmptyMods))));
         for (int k = 0; k < count && field < stored.size(); ++k) {
-            const int source = static_cast<int>(std::lround(next(0.0f, 0.0f, static_cast<float>(kAllSources)))) - 1;
+            const int saved = static_cast<int>(std::lround(next(0.0f, 0.0f, static_cast<float>(kAllSources)))) - 1;
+            const int source = saved < 0 ? -1 : sourceOfStored(saved);
             const long id = std::lround(next(0.0f, 0.0f, 1.0e6f)) - 1;
             int target = id < 0 ? -1 : indexOfId(static_cast<clap_id>(id));
             for (int op = 0; op < kOps; ++op) // from before Ratio: a Coarse or Fine moves onto it, as the slots do
@@ -312,8 +344,8 @@ void layoutFields(Io &io, Layout &ui) {
     io.number(ui.zoom, 0.5f, 3.0f);
     io.number(ui.view, 0.0f, static_cast<float>(gui::RoutingView::Seq), rounded<gui::RoutingView>);
     io.number(ui.retiredSourcesCollapsed, 0.0f, 1.0f, [](float value) { return value >= 0.5f; }); // does nothing
-    // The source order lists every place once; anything else falls back to the default.
-    io.numbers(ui.sourceOrder, 0.0f, kMaxSources - 1.0f, rounded<int>, everyPlaceOnce);
+    // The source order: where the first kFirstSources places show, the rest at the end (see below).
+    io.numbers(ui.sourceOrder, 0, kFirstSources, 0.0f, kMaxSources - 1.0f, rounded<int>);
     // The routes kept at 0 %, by param id.
     io.paramIds(ui.keptRoutes);
     // A grid the editor doesn't offer falls back to the default.
@@ -324,7 +356,7 @@ void layoutFields(Io &io, Layout &ui) {
     for (auto &name : ui.macroNames)
         io.text(name, kMaxMacroName);
     io.number(ui.fxFolded, 0.0f, 65535.0f, rounded<uint32_t>); // 16 bits each: exact as floats
-    io.number(ui.sourcesFolded, 0.0f, 65535.0f, rounded<uint32_t>);
+    io.bits(ui.sourcesFolded, 0); // the first kFirstSources places' (the rest at the end)
     io.number(ui.keysCollapsed, 0.0f, 1.0f, [](float value) { return value >= 0.5f; });
     io.number(ui.opTab, 0.0f, static_cast<float>(gui::InspectorTab::Count) - 1.0f, rounded<gui::InspectorTab>);
     io.number(ui.scopeCycles, 0.0f, 4.0f, rounded<int>, oneOf(gui::kScopeCycleChoices));
@@ -356,6 +388,11 @@ void layoutFields(Io &io, Layout &ui) {
     io.text(ui.presetInfo.author, kMaxInfoAuthor);
     io.text(ui.presetInfo.category, kMaxInfoCategory);
     io.text(ui.presetInfo.description, kMaxInfoDescription);
+    // The places past the first kFirstSources: where they show, which then lists every place once (anything else falls
+    // back to the default), and which are folded. A layout from before them shows them after the first, unfolded.
+    io.numbers(ui.sourceOrder, kFirstSources, kMaxSources, 0.0f, kMaxSources - 1.0f, rounded<int>);
+    io.check(ui.sourceOrder, gui::identitySourceOrder(), everyPlaceOnce);
+    io.bits(ui.sourcesFolded, kFirstSources);
 }
 
 } // namespace
@@ -412,8 +449,10 @@ bool writePatch(const clap_ostream_t *stream, const ParamValues &values, const g
         if (!written(i))
             continue;
         const uint32_t id = idOfIndex(i);
+        // An aux names its source by the number it is stored by (see storedSource()).
+        const double value = table[i].kind == ParamKind::SlotAux ? storedAuxValue(values[i]) : values[i];
         std::memcpy(at, &id, sizeof(id));
-        std::memcpy(at + sizeof(id), &values[i], sizeof(values[i]));
+        std::memcpy(at + sizeof(id), &value, sizeof(value));
         at += kPair;
     }
     if (!writeAll(stream, pairs.data(), pairs.size()))
@@ -630,6 +669,8 @@ bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
             value -= 12.0; // as loud as it was
         if (i >= 0)
             loaded[i] = std::clamp(value, table[i].min, table[i].max);
+        if (i >= 0 && table[i].kind == ParamKind::SlotAux) // by the number it is stored by (see storedSource())
+            loaded[i] = auxValueOfStored(loaded[i]);
         if (i >= outFirst && i < outFirst + kFxOutInputs * kFxInputFields && (i - outFirst) % kFxInputFields == 0 &&
             fxPortOf(value) >= 0)
             outWired = true;
