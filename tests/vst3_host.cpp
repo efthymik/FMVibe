@@ -1133,12 +1133,15 @@ int main(int argc, char **argv) {
                                          return static_cast<int64_t>(n);
                                      }};
             writePatch(&out, values, layout);
+            // The editor's size as the state loads: 900 wide as resized above, unless the preset the arrow loaded
+            // since held it within a small screen's work area (a CI runner's), the full height not fitting there.
+            ViewRect before;
+            view->getSize(&before);
             frame.resizes.clear();
             const bool loaded = plugin.component->setState(&collapsed) == kResultOk;
             // The editor keeps its width, unless the shorter window still doesn't fit the screen's work area (less
-            // 16 px around it for the host's frame): then it is held down to fit, as a small screen (a CI runner's)
-            // has it.
-            ViewRect fitted(0, 0, 900, 100);
+            // 16 px around it for the host's frame): then it is held down to fit.
+            ViewRect fitted(0, 0, before.getWidth(), 100);
             view->checkSizeConstraint(&fitted);
             MONITORINFO monitor{};
             monitor.cbSize = sizeof(monitor);
@@ -1147,12 +1150,13 @@ int main(int argc, char **argv) {
             const int workHeight = static_cast<int>(monitor.rcWork.bottom - monitor.rcWork.top) - 32;
             const bool fits = fitted.getWidth() <= workWidth && fitted.getHeight() <= workHeight;
             for (const auto &[w, h] : frame.resizes)
-                std::printf("      collapsed: asked for %d x %d (%d x %d at 900 wide), %d x %d to fit in\n", w, h,
-                            fitted.getWidth(), fitted.getHeight(), workWidth, workHeight);
+                std::printf("      collapsed: %d x %d before, asked for %d x %d (%d x %d as wide), %d x %d to fit in\n",
+                            before.getWidth(), before.getHeight(), w, h, fitted.getWidth(), fitted.getHeight(),
+                            workWidth, workHeight);
             const bool asked =
-                frame.resizes.size() == 1 && frame.resizes[0].second < 752 &&
-                (fits ? frame.resizes[0].first == 900 && frame.resizes[0].second == fitted.getHeight()
-                      : frame.resizes[0].first < 900 && frame.resizes[0].first <= workWidth &&
+                frame.resizes.size() == 1 && frame.resizes[0].second < before.getHeight() &&
+                (fits ? frame.resizes[0].first == before.getWidth() && frame.resizes[0].second == fitted.getHeight()
+                      : frame.resizes[0].first < before.getWidth() && frame.resizes[0].first <= workWidth &&
                             frame.resizes[0].second <= workHeight &&
                             (frame.resizes[0].first >= workWidth - 1 || frame.resizes[0].second >= workHeight - 1));
             check(loaded && asked, "a shorter editor asks the host for a smaller window");
