@@ -257,6 +257,15 @@ ModsPanel::MenuNode ModsPanel::cascadeCategories() const {
         if (!node.children.empty())
             root.children.push_back(std::move(node));
     };
+    // A list of sources longer than a column holds (every place holding an LFO, say) goes on in columns beside it, about
+    // as tall, so it stays inside the editor.
+    auto inColumns = [](MenuNode node) {
+        const size_t columns = (node.children.size() + kCascadeColumnRows - 1) / kCascadeColumnRows;
+        const size_t rows = columns > 1 ? (node.children.size() + columns - 1) / columns : node.children.size();
+        for (size_t i = rows; i < node.children.size(); i += rows)
+            node.children[i].newColumn = true;
+        return node;
+    };
 
     if (menu.kind != CascadeKind::Target) {
         // A source can't take a modulation it has already, nor one past its slots; an aux can't be the row's own source.
@@ -296,9 +305,9 @@ ModsPanel::MenuNode ModsPanel::cascadeCategories() const {
              : mods_.sourceTypeOf(source) == SourceType::Env ? envs
                                                              : others)
                 .children.push_back(sourcePick(source));
-        keep(std::move(lfos));
-        keep(std::move(envs));
-        keep(std::move(others));
+        keep(inColumns(std::move(lfos)));
+        keep(inColumns(std::move(envs)));
+        keep(inColumns(std::move(others)));
         MenuNode macros = category(tr(Str::CascadeMacros));
         for (int macro = 0; macro < kMacros; ++macro)
             macros.children.push_back(sourcePick(kMaxSources + macro));
@@ -483,7 +492,7 @@ ModsPanel::MenuNode ModsPanel::cascadeCategories() const {
         }
         modulation.children.push_back(std::move(node));
     }
-    keep(std::move(modulation));
+    keep(inColumns(std::move(modulation)));
 
     // Then the macros' knobs, by their names and in their colors.
     MenuNode macroKnobs = category(tr(Str::CascadeMacros));

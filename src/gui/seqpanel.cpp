@@ -2740,7 +2740,7 @@ void SeqPanel::paintBack(Canvas &c) {
                 c.line({roll().keys.x, y}, {roll().keys.x + roll().keys.w, y}, seam, 1.0f);
             if (isBlackKey(pitch)) {
                 c.line({roll().keys.x + bw, y + rh * 0.5f}, {roll().keys.x + roll().keys.w, y + rh * 0.5f}, seam, 1.0f);
-                c.fillRect({roll().keys.x - 3.0f, y + 0.6f, bw + 3.0f, rh - 1.2f}, blackKey, 2.0f);
+                c.fillRect({roll().keys.x - 3.0f, y + 0.6f, bw + 3.0f, rh - 1.2f}, blackKey, kRadiusMark);
             }
             if (pc == 0)
                 c.text({roll().keys.x, y, roll().keys.w - 4.0f, rh}, pitchName(pitch), kTextSmall, Color::hex(0x5D6075),

@@ -757,6 +757,9 @@ int main(int argc, char **argv) {
                   listed(slotAmountIndex(kMaxSources, 0)) && listed(slotScaleIndex(0, 0)) &&
                   listed(slotScaleIndex(kVelocitySource, kSlots - 1)) &&
                   listed(slotAmountIndex(kAllSources - 1, kSlots - 1)) && !listed(slotTargetIndex(kOpSource, 0)) &&
+                  listed(slotAmountIndex(kMaxSources - 1, kSlots - 1)) &&
+                  listed(slotScaleIndex(kMaxSources - 1, kSlots - 1)) &&
+                  !listed(slotTargetIndex(kMaxSources - 1, 0)) && !listed(paramIndex(kMaxSources - 1, SourceParam::Rate)) &&
                   listed(paramIndex(0, MacroParam::Value)) &&
                   !listed(paramIndex(GlobalParam::RetiredFxOrder)) && !listed(fxPositionIndex(0)) &&
                   !listed(fxPositionIndex(kFxSlots - 1)) && !listed(paramIndex(kFxSlots - 1, FxParam::Type)) &&
@@ -4661,15 +4664,19 @@ int main(int argc, char **argv) {
               "the latency is the voices' and an oversampled effect's, and a state that moves it restarts the plugin, "
               "telling the host");
 
-        // A note held as a shaper effect goes into the line (a state holding one loaded, which asks for the restart its
-        // latency takes) plays on through the restart: at its sustain level, with no new attack (a slow one, which
-        // would start it from silence again), and its NOTE_END once after its release. An activate the plugin didn't
-        // ask for ends the notes, reporting each one's end.
+        // A note held as a shaper effect goes into the line (a state holding one loaded) holds the restart its latency
+        // takes off until its key is let go: a key let go while the plugin is inactive would reach no voice. Asked for
+        // then, from the main-thread callback, the restart keeps the voices: the note plays on through it in its
+        // release, with no new attack (a slow one, which would start it from silence again), and its NOTE_END comes
+        // once. A key held as the restart comes ends its note, reported; as does an activate the plugin didn't ask for.
         {
             setParams(none);
-            setParams({{paramIndex(0, OpParam::Attack), normFromEnvTime(0.3)}, {paramIndex(0, OpParam::Sustain), 0.5}});
+            setParams({{paramIndex(0, OpParam::Attack), normFromEnvTime(0.3)}, {paramIndex(0, OpParam::Sustain), 0.5},
+                       {paramIndex(0, OpParam::Release), normFromEnvTime(1.0)}});
             reactivate(); // at the latency without a shaper
             const uint32_t unshaped = latency ? latency->get(plugin) : 0;
+            MemoryStream unshapedState;
+            const bool unshapedSaved = state->save(plugin, &unshapedState.out);
             setParams({{paramIndex(0, FxParam::Type), static_cast<double>(FxType::Shaper)}});
             MemoryStream shaperState;
             const bool shaperSaved = state->save(plugin, &shaperState.out);
@@ -4681,29 +4688,50 @@ int main(int argc, char **argv) {
             runBlocks(blocksPerSecond * 3 / 2); // past the attack and the decay, at the sustain
             restartRequests = 0;
             const bool shaperLoaded = state->load(plugin, &shaperState.in);
-            const int restartsAsked = restartRequests;
             runBlocks(blocksPerSecond / 4); // the shaper fades in
+            plugin->on_main_thread(plugin);
+            const int whileHeld = restartRequests;
             const float sustained = runBlocks(blocksPerSecond / 10);
+            runBlock({&off.header});
+            plugin->on_main_thread(plugin); // the callback the audio thread asked for as the key came up
+            const int letGo = restartRequests;
+            runBlocks(blocksPerSecond / 10);
+            const float before = runBlock();
             reactivate(); // as the host restarts it
             const float firstAfter = runBlock();
-            const float after = runBlocks(blocksPerSecond / 10);
             const uint32_t shapedLatency = latency ? latency->get(plugin) : 0;
-            const bool heldOn = out.noteEnds.empty();
-            runBlock({&off.header});
-            for (uint32_t b = 0; b < 2 * blocksPerSecond && out.noteEnds.empty(); ++b)
+            const bool playedOn = out.noteEnds.empty();
+            for (uint32_t b = 0; b < 3 * blocksPerSecond && out.noteEnds.empty(); ++b)
                 runBlock();
             runBlocks(blocksPerSecond); // the shaper's DC blocker settling (see Effects)
             const float released = runBlock();
             const bool endedOnce = out.noteEnds.size() == 1 && out.noteEnds[0].note_id == 900;
-            std::printf("      a note held through the restart a shaper effect asks for: %.4f before it, %.4f in its "
-                        "first block after and %.4f on (the attack's first block %.4f); latency %u, then %u\n",
-                        sustained, firstAfter, after, attackStart, unshaped, shapedLatency);
-            check(shaperSaved && shaperLoaded && restartsAsked == 1 && shapedLatency > unshaped && heldOn &&
-                      sustained > 0.01f && attackStart < 0.2f * sustained &&
-                      std::fabs(firstAfter / sustained - 1.0f) < 0.1f && std::fabs(after / sustained - 1.0f) < 0.1f &&
-                      endedOnce && released < 1e-4f,
-                  "a note held through the restart a shaper effect asks for plays on at its sustain, with no new "
-                  "attack, and ends once after its release");
+            std::printf("      a note let go of before the restart a shaper effect asks for: restarts asked for while "
+                        "held %d, let go %d; %.4f at its sustain, %.4f before the restart, %.4f in its first block "
+                        "after (the attack's first block %.4f); latency %u, then %u\n",
+                        whileHeld, letGo, sustained, before, firstAfter, attackStart, unshaped, shapedLatency);
+            check(shaperSaved && shaperLoaded && whileHeld == 0 && letGo == 1 && shapedLatency > unshaped && playedOn &&
+                      sustained > 0.01f && attackStart < 0.2f * sustained && before > 0.01f &&
+                      firstAfter > 0.8f * before && firstAfter < 1.1f * before && endedOnce && released < 1e-4f,
+                  "a restart for the latency waits for the keys held to come up, and the note then plays on through "
+                  "it in its release, with no new attack, and ends once");
+
+            // The latency back without the shaper, asked for with no key down; a key struck before the host restarts
+            // ends its note at the restart, reported.
+            out.noteEnds.clear();
+            restartRequests = 0;
+            const bool unshapedLoaded = state->load(plugin, &unshapedState.in);
+            const int askedUp = restartRequests;
+            const clap_event_note_t struck = noteEvent(CLAP_EVENT_NOTE_ON, 902, 57);
+            runBlock({&struck.header});
+            runBlocks(blocksPerSecond / 2);
+            reactivate();
+            const float cutStruck = runBlock();
+            const bool struckReported = out.noteEnds.size() == 1 && out.noteEnds[0].note_id == 902;
+            runBlocks(blocksPerSecond / 4);
+            check(unshapedSaved && unshapedLoaded && askedUp == 1 && cutStruck == 0.0f && struckReported &&
+                      out.noteEnds.size() == 1 && latency && latency->get(plugin) == unshaped,
+                  "a key held as the restart asked for comes ends its note, reporting its end once");
 
             out.noteEnds.clear();
             const clap_event_note_t again = noteEvent(CLAP_EVENT_NOTE_ON, 901, 57);
@@ -5671,30 +5699,100 @@ int main(int argc, char **argv) {
               "envelope times stored past 10 s load as 10 s, and hosts are told the 10 s top");
     }
 
-    // Every remote control page has an id of its own, the macros' too, also with a source in place 0, whose page
-    // goes by that place.
+    // Every remote control page has an id of its own, the macros' too, also with sources in the first place and the
+    // last, whose pages go by their places, the last's depths on its page.
     {
         MemoryStream first;
-        const uint32_t header[] = {0x38454C43, 1, 1};
-        const uint32_t id = idOfIndex(paramIndex(0, SourceParam::Type));
+        const uint32_t header[] = {0x38454C43, 1, 2};
         const double lfo = static_cast<double>(SourceType::Lfo);
         const auto *parts = reinterpret_cast<const uint8_t *>(header);
         first.data.assign(parts, parts + sizeof(header));
-        first.data.insert(first.data.end(), reinterpret_cast<const uint8_t *>(&id),
-                          reinterpret_cast<const uint8_t *>(&id) + sizeof(id));
-        first.data.insert(first.data.end(), reinterpret_cast<const uint8_t *>(&lfo),
-                          reinterpret_cast<const uint8_t *>(&lfo) + sizeof(lfo));
+        for (const int place : {0, kMaxSources - 1}) {
+            const uint32_t id = idOfIndex(paramIndex(place, SourceParam::Type));
+            first.data.insert(first.data.end(), reinterpret_cast<const uint8_t *>(&id),
+                              reinterpret_cast<const uint8_t *>(&id) + sizeof(id));
+            first.data.insert(first.data.end(), reinterpret_cast<const uint8_t *>(&lfo),
+                              reinterpret_cast<const uint8_t *>(&lfo) + sizeof(lfo));
+        }
         const bool loaded = state->load(plugin, &first.in);
         plugin->on_main_thread(plugin);
         std::set<clap_id> pageIds;
-        bool unique = true, sourcePage = false;
+        bool unique = true, sourcePage = false, lastPage = false;
         for (uint32_t i = 0; i < remote->count(plugin); ++i) {
             clap_remote_controls_page_t page;
             remote->get(plugin, i, &page);
             unique = unique && pageIds.insert(page.page_id).second;
             sourcePage = sourcePage || std::strcmp(page.section_name, tr(Str::ModuleModulation)) == 0;
+            lastPage = lastPage || (page.page_id == 2000 + kMaxSources - 1 &&
+                                    page.param_ids[0] == idOfIndex(slotAmountIndex(kMaxSources - 1, 0)));
         }
-        check(loaded && sourcePage && unique, "every remote control page has an id of its own");
+        check(loaded && sourcePage && lastPage && unique,
+              "every remote control page has an id of its own, the last place's source with a page of its own");
+    }
+
+    // A slot's aux names its source by the number it is stored by: a version 15 state's auxes (from before the places
+    // past the 16th) naming Macro 1 and operator A load naming them still, and one naming the 17th place (stored after
+    // the operators) loads naming it; saved again, each is stored as it was.
+    {
+        // As stored: a source's number + 1, the places 0 to 15, the macros 16 to 23, the note source, the mod wheel,
+        // velocity, the pitch bend, the operators 28 to 33, then the places past the 16th.
+        const std::pair<int, double> stored[] = {{slotAuxIndex(0, 0), 17.0},           // Macro 1
+                                                 {slotAuxIndex(0, 1), 29.0},           // operator A
+                                                 {slotAuxIndex(kMaxSources, 0), 1.0},  // Macro 1's, the first place
+                                                 {slotAuxIndex(0, 2), 35.0}};          // the 17th place
+        MemoryStream old;
+        const uint32_t header[] = {0x38454C43, 15, static_cast<uint32_t>(std::size(stored))};
+        old.data.assign(reinterpret_cast<const uint8_t *>(header),
+                        reinterpret_cast<const uint8_t *>(header) + sizeof(header));
+        for (const auto &[index, v] : stored) {
+            const uint32_t id = idOfIndex(index);
+            old.data.insert(old.data.end(), reinterpret_cast<const uint8_t *>(&id),
+                            reinterpret_cast<const uint8_t *>(&id) + sizeof(id));
+            old.data.insert(old.data.end(), reinterpret_cast<const uint8_t *>(&v),
+                            reinterpret_cast<const uint8_t *>(&v) + sizeof(v));
+        }
+        const bool loaded = state->load(plugin, &old.in);
+        plugin->on_main_thread(plugin);
+        auto value = [&](int index) {
+            double v = -1.0;
+            params->get_value(plugin, idOfIndex(index), &v);
+            return v;
+        };
+        const bool named = value(slotAuxIndex(0, 0)) == slotAuxValue(kMaxSources) &&
+                           value(slotAuxIndex(0, 1)) == slotAuxValue(kOpSource) &&
+                           value(slotAuxIndex(kMaxSources, 0)) == slotAuxValue(0) &&
+                           value(slotAuxIndex(0, 2)) == slotAuxValue(kFirstSources);
+        MemoryStream again;
+        const bool saved = state->save(plugin, &again.out);
+        auto savedValue = [&](int index) { // the full state's pair for the param
+            const uint32_t id = idOfIndex(index);
+            for (size_t at = 12; at + 12 <= 12 + static_cast<size_t>(kParamCount) * 12 && at + 12 <= again.data.size();
+                 at += 12) {
+                uint32_t got;
+                std::memcpy(&got, again.data.data() + at, sizeof(got));
+                if (got == id) {
+                    double v;
+                    std::memcpy(&v, again.data.data() + at + sizeof(got), sizeof(v));
+                    return v;
+                }
+            }
+            return -1.0;
+        };
+        const bool kept = savedValue(slotAuxIndex(0, 0)) == stored[0].second &&
+                          savedValue(slotAuxIndex(0, 1)) == stored[1].second &&
+                          savedValue(slotAuxIndex(kMaxSources, 0)) == stored[2].second &&
+                          savedValue(slotAuxIndex(0, 2)) == stored[3].second;
+        std::printf("      auxes stored as %.0f, %.0f, %.0f and %.0f load as %.0f, %.0f, %.0f and %.0f\n", stored[0].second,
+                    stored[1].second, stored[2].second, stored[3].second, value(slotAuxIndex(0, 0)),
+                    value(slotAuxIndex(0, 1)), value(slotAuxIndex(kMaxSources, 0)), value(slotAuxIndex(0, 2)));
+        check(loaded && named && saved && kept,
+              "a slot's aux keeps its source by the number it is stored by, a version 15 state's and a later place's");
+        const uint32_t initHeader[] = {0x38454C43, 15, 0};
+        MemoryStream init;
+        init.data.assign(reinterpret_cast<const uint8_t *>(initHeader),
+                         reinterpret_cast<const uint8_t *>(initHeader) + sizeof(initHeader));
+        state->load(plugin, &init.in);
+        plugin->on_main_thread(plugin);
     }
 
     // A layout as large as one gets (every route kept at 0 % and its wire bent, every macro's name at full length, as
@@ -5705,7 +5803,8 @@ int main(int argc, char **argv) {
         for (int node = 0; node < 2 * kOps + 2 * (kFilters + kShapers); ++node) // the node places
             layout.push_back(0.05f * static_cast<float>(node + 1));
         layout.insert(layout.end(), {2.0f, 1.0f, 1.0f, 0.0f}); // selected node, zoom, the matrix, panel open
-        for (int source = kMaxSources; source-- > 0;) // the sources the other way round
+        // The sources the other way round: the first kFirstSources places' places here, the rest at the end.
+        for (int source = kMaxSources; source-- > kMaxSources - kFirstSources;)
             layout.push_back(static_cast<float>(source));
         std::vector<int> routes;
         for (int node = 0; node < kOps; ++node)
@@ -5774,6 +5873,9 @@ int main(int argc, char **argv) {
             for (int k = 0; k < most; ++k)
                 layout.push_back(static_cast<float>(32 + (k * 7 + most) % 224));
         }
+        for (int source = kMaxSources - kFirstSources; source-- > 0;) // the rest of the sources' places
+            layout.push_back(static_cast<float>(source));
+        layout.push_back(9.0f); // the places past the first kFirstSources folded
 
         MemoryStream big;
         auto put = [&](const void *data, size_t size) {

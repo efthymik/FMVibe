@@ -37,7 +37,7 @@ FMVibe works in the spirit of classic and modern FM synthesizers. Its main featu
   Exp FM and Ring). Routes can be edited as a graph or a matrix, or set from one of the classic FM algorithms.
 - **Two filters and two shapers per voice**, which can be placed anywhere in the routing, fed back into themselves
   and each other, and used as modulators.
-- **Flexible modulation**: up to 16 sources (LFOs, envelopes, drawn curves, random and MIDI sources), plus eight
+- **Flexible modulation**: up to 32 sources (LFOs, envelopes, drawn curves, random and MIDI sources), plus eight
   macros, the mod wheel, pitch bend, note pitch, velocity and the operators' outputs, which also give filter FM. Each
   modulation has its own depth, curve, amount and an optional auxiliary source that scales it.
 - **Effects**: up to 32 effects from 17 types, in a chain that can be split into frequency bands.
@@ -629,7 +629,7 @@ recent note. With no notes playing, it shows where the macros and mod wheel take
 The panel's title row has:
 
 - **+ SOURCE**, which opens the list of source types (Envelope, LFO, Curve, Random, MIDI), and a count of sources
-  used (for example 4/16).
+  used (for example 4/32).
 
 Source cards show four at a time. After the last card, a dashed **ADD SOURCE** card opens the same list.
 
@@ -1540,7 +1540,11 @@ List buttons (filter types, shaper curves, amp models and cabinets, reverb algor
 - **Middle-button drag** pans any area that scrolls.
 - A touchpad's two-finger scrolling acts as the wheel, sideways too.
 - On a touchscreen, two fingers pan. In the browser demo, one finger works as the mouse: it drags controls, pans
-  scrolling areas, taps to click and long-presses for the right-click menu.
+  scrolling areas, taps to click and long-presses for the right-click menu. Two fingers scroll and zoom the web page
+  there, so you can always scroll past the editor.
+- The browser demo's **Full screen** button, under the editor, shows the editor alone on the whole screen. The
+  button in the top right corner, or the browser's own way out (Esc, or Back on a phone), leaves full screen. An
+  iPhone's Safari can't show a page in full screen, so the button isn't there.
 
 ### Undo and redo
 
@@ -1609,8 +1613,9 @@ In hosts that show CLAP remote control pages (such as Bitwig Studio), FMVibe off
 FMVibe reports its latency to the host. Raising the voice limit, changing the oversampling, or editing the effects
 in a way that changes the latency has the host restart the plugin briefly. Most hosts do this automatically.
 
-Notes you hold play on through a restart for the effects' latency. Raising the voice limit or changing the
-oversampling stops them.
+When an edit changes the effects' latency while you hold notes, the restart waits until you let go of every key
+(and the sustain pedal), so held notes aren't cut off. The notes then ring out through it. Raising the voice limit or
+changing the oversampling stops them.
 
 ### What is saved where
 

@@ -191,7 +191,9 @@ add_test(NAME quality COMMAND sh -c "ulimit -s 65536 2>/dev/null; exec \"$0\"" $
 add_executable(fmvibe-uishot tools/uishot.cpp)
 target_link_libraries(fmvibe-uishot PRIVATE fmvibe-core)
 fmvibe_options(fmvibe-uishot)
-add_test(NAME ui COMMAND fmvibe-uishot ${CMAKE_CURRENT_BINARY_DIR}/ui-shots)
+# Likewise its editors and param sets: run with the 16 MB the Windows build links in, past Linux's usual 8 MB.
+add_test(NAME ui COMMAND sh -c "ulimit -s 16384 2>/dev/null; exec \"$0\" \"$1\"" $<TARGET_FILE:fmvibe-uishot>
+                         ${CMAKE_CURRENT_BINARY_DIR}/ui-shots)
 include(cmake/manual.cmake)
 
 # Steinberg's validator, on the VST3 bundle: `ctest -R vst3-validator`, or `--target validate`.

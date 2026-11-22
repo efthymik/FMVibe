@@ -134,7 +134,7 @@ void PluginCore::endDenormals() {
 }
 
 bool PluginCore::activate(double sampleRate) {
-    const bool keep = restartPending() && !outOfMemory() && deactivatedAt_ >= 0 &&
+    const bool keep = restartPending() && !outOfMemory() && !keysHeld_.load() && deactivatedAt_ >= 0 &&
                       steadyMs() - deactivatedAt_ < kKeepVoicesMs &&
                       synth_.fits(sampleRate, voiceLimit(), oversampling_.load());
     sampleRate_ = sampleRate;
@@ -145,7 +145,10 @@ bool PluginCore::activate(double sampleRate) {
             outOfMemory_.store(true);
             return false;
         }
+        keysHeld_.store(false); // their notes ended
     }
+    latencyWaiting_.store(false); // the latency is taken now
+    latencyDue_.store(false);
     outOfMemory_.store(false);
     pathDelays_ = fxLagDelays(sampleRate);
     voicesDelay_ = decimatorDelay(sampleRate, synth_.oversampling());
@@ -164,7 +167,7 @@ void PluginCore::onMainThread() {
             askRestart();
         }
     }
-    if (latencyEdited_) {
+    if (latencyEdited_ || latencyDue_.exchange(false)) { // an edit, or the keys a latency waited for are up
         latencyEdited_ = false;
         askRestart();
     }
@@ -225,15 +228,25 @@ void PluginCore::performStepEnd() {
 
 // Thread-safe: each format's hostRequestRestart() may be called from any thread.
 void PluginCore::askRestart() {
-    const int capacity = synth_.capacity(), factor = oversampling_.load();
-    int voices = voiceLimit();
+    // A voice limit still settling holds every restart off: onTimer() asks for one once it has, for whatever needs
+    // it by then, so that an edit meanwhile (the latency, the oversampling) doesn't make two in a row.
     if (voicesSettleAt_.load() != 0)
-        voices = std::min(voices, capacity); // asked for once the limit has settled (see onTimer())
+        return;
+    const int capacity = synth_.capacity(), factor = oversampling_.load(), voices = voiceLimit();
     const int latency = capacity > 0 ? latencyNow() : 0;
-    if (capacity <= 0 || (voices <= capacity && factor == synth_.oversampling() && latency == latency_.load())) {
+    const bool voicesFit = voices <= capacity && factor == synth_.oversampling();
+    if (capacity <= 0 || (voicesFit && latency == latency_.load())) {
+        latencyWaiting_.store(false);
         restartAskedFor_.store(0); // so the same need, should it come back, asks again
         return;
     }
+    // The latency alone, while a key or a pedal holds a note: once they are all up (see endBlock()).
+    if (voicesFit && keysHeld_.load()) {
+        latencyWaiting_.store(true);
+        restartAskedFor_.store(0);
+        return;
+    }
+    latencyWaiting_.store(false);
     const int need = (std::max(voices, capacity) * 16 + factor) * 4096 + std::clamp(latency, 0, 4095);
     if (restartAskedFor_.exchange(need) != need)
         hostRequestRestart();
@@ -354,6 +367,13 @@ void PluginCore::endBlock() {
     }
     telemetryOpen_ = open;
     playedTempo_.store(synth_.tempo(), std::memory_order_relaxed);
+    // A restart for the latency waits while keys hold notes (see askRestart()): asked for once they are all up.
+    const bool held = synth_.holdsKeys();
+    keysHeld_.store(held);
+    if (!held && latencyWaiting_.exchange(false)) {
+        latencyDue_.store(true);
+        hostRequestCallback();
+    }
     endDenormals();
 }
 

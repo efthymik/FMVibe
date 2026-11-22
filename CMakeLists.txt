@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(FMVibe VERSION 0.14 LANGUAGES CXX)
+project(FMVibe VERSION 0.15 LANGUAGES CXX)
 
 # The version hosts are told and the settings dialog shows, for every target (the browser demo's too). Change it
 # in project() above.
@@ -289,7 +289,7 @@ fmvibe_options(fmvibe-uishot)
 # engines' synths and its effects checks' effects (about a megabyte each) go on the heap.
 if (MSVC)
     target_link_options(fmvibe-quality PRIVATE /STACK:67108864)
-    target_link_options(fmvibe-uishot PRIVATE /STACK:8388608)
+    target_link_options(fmvibe-uishot PRIVATE /STACK:16777216) # 8 MB ran out once a param set grew past 300 KB
 endif()
 add_test(NAME ui COMMAND fmvibe-uishot ${CMAKE_CURRENT_BINARY_DIR}/ui-shots)
 include(cmake/manual.cmake)

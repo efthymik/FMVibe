@@ -499,6 +499,7 @@ inline Rect modsFilter(bool open) {
 constexpr float kCascadeItemH = 22.0f;
 constexpr float kCascadeHeaderH = 20.0f;
 constexpr float kCascadePad = 4.0f;
+constexpr int kCascadeColumnRows = 16; // the most sources a list of them has in a column, past which it goes on beside it
 // The target menu's search, atop its first level, which is at least as wide as kCascadeSearchW; the most targets it
 // lists.
 constexpr float kCascadeSearchH = 30.0f;

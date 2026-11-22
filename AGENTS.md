@@ -183,9 +183,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     requests one at once;
   - the latency extension reporting the voices' decimator's couple of samples, and about 5 more with a shaper effect
     in the line, a state that moves it, loaded while active, asking for a restart, and the reactivation telling the
-    host's latency extension; a note held through that restart playing on at its sustain level, with no new attack,
-    and its `NOTE_END` coming once after its release, where an activate the plugin didn't ask for ends the notes,
-    reporting each one's end.
+    host's latency extension; a note held as the state loads holding that restart off until its key is let go
+    (asked for then, from the main-thread callback) and playing on through it in its release, with no new attack,
+    its `NOTE_END` coming once, where a key struck after the restart was asked for and still down as it comes ends
+    its note, as does an activate the plugin didn't ask for, reporting each one's end.
 
   It opens the editor inside a hidden host window, where the preset bar's next arrow loads a preset with no param
   events, the host asked to rescan the values and marking the project changed, and drags the Volume knob with mouse
@@ -209,8 +210,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   stored past 10 s loading as 10 s, a version 6 state's Glide of 20 s loading as 6 s and its depth on Glide scaled
   by as much as the range shrank, a version 7 state's chain order loading as the effects graph's line (a version
   8 state's retired one doing nothing, its places putting the effects in order), a layout as large as one gets among them (and one of NaNs,
-  which loads as the defaults), and checks that
-  every remote control page has an id of its own. It also reports CPU cost: on the development machine, 16 voices × 6
+  which loads as the defaults), a slot's aux keeping its source by the number it is stored by (a version 15 state's
+  Macro 1 and operator A, and the 17th place, each saved back as it was), and checks that
+  every remote control page has an id of its own, a source in the last place given its page. It also reports CPU cost: on the development machine, 16 voices × 6
   operators take about 13 % of one core at the default 2x oversampling and about 30 % with every operator at 8
   unison copies (the smoke test prints the figures). Time a change to the voices' loop in this build, with one copy
   and with eight, against the commit before (`tools\bench.ps1`, under More checks below): a Linux measurement doesn't
@@ -339,6 +341,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - each factory preset's file being sparse, as the preset tool writes it, and each saying it is FMVibe's, in a
     built-in category, with a line of 80 characters at most; and a name from up to 0.11 ("LD Screamer") naming the
     preset as it is named now;
+  - a patch using the places past the 16th (the last's LFO, its shape and slot curve, an aux between the 17th place
+    and a macro) loading back as saved, its auxes stored by the numbers sources are stored by, and the layout keeping
+    the later places' order and folds and an empty modulation's source;
   - a preset's author, category and description reading back as written (UTF-8 too, from a sparse patch and a full
     one, and as the library's scan reads them past the params), as none from a layout before them, and nothing from a
     stream that isn't a state;
@@ -598,6 +603,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     with, setting its polarity (read off the rendered pixels), undoably; a Curve source added second from the list,
     unipolar and widened, its Unipolar | Bipolar in the same place setting its Unipolar, undoably, and folded showing
     CRV and its number (read off the rendered pixels);
+  - with an LFO in each of the 32 places, a MODS row's source menu listing them in two columns of 16 inside the
+    editor, the last place's at the second's foot taking the row's modulation;
   - adding an empty modulation in the MODS tab: it opens its source's menu, takes a source and modulates nothing,
     then a target from Global (which offers no Mod Wheel or Pitch Bend) makes it its source's modulation, each pick undoable, and
     its × removes it; one given a source that has rows going among them, its source menu, open over the rows,
@@ -979,9 +986,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     controller's copy of a value from the host left alone while processing, and a voice limit past the voices
     allocated, stepped up a block at a time, asking the host for one restart once it has settled (the plugin's
     window's timer), the latency the CLAP plugin reports (the voices' decimator's), asked for
-    while inactive what the next activation makes it, a note held as a state with a shaper effect loads playing on
-    through the restart it asks for (setProcessing(false), setActive(false) and back) at its sustain level with no new
-    attack, processing stopped and started again with that restart asked for and none made ending the note, and
+    while inactive what the next activation makes it, a note held as a state with a shaper effect loads holding the
+    restart it asks for off until its key is let go, then playing on through it (setProcessing(false),
+    setActive(false) and back) in its release with no new attack, processing stopped and started again with that
+    restart asked for and none made ending the note, and
     `setActive()` out of memory answering `kOutOfMemory` and going through once there is room;
   - the state: the CLAP plugin's bytes, through a stream that moves 5 bytes at a time, the controller's own state
     empty, a value from the host taken while not processing, loading bringing the saved value back and having the
@@ -1155,7 +1163,17 @@ version pinned at its top. After that it loads Visual Studio's environment for C
   the velocity (1, 20, 40 … 100, 120, 127; 100 to begin with). The editor's keyboard plays as hard as where its keys are
   clicked.
 - On a touchscreen, `main.js` hands the editor one finger (`View::touchDown()` and on: it drags what drags, pans
-  what scrolls, and taps) and two (`View::touchPanBegin()` and on: a pan), with its own slop and double tap.
+  what scrolls, and taps), with its own slop and double tap, preventing its moves so the page doesn't scroll. Two
+  fingers are the page's: the canvas's `touch-action: manipulation` lets the browser scroll and pinch-zoom the page
+  with them, so a phone can always scroll past the editor. A second finger landing (on the canvas or off it), or a
+  move the browser won't let be cancelled once the finger is past the slop (the page scrolling already), ends the
+  first's gesture with `View::touchCancel()`, and the editor takes nothing more until every finger is lifted; a
+  finger left over from two, while the page isn't scrolling, is cancelled too.
+  `View::touchPanBegin()` and on, the plugin window's two-finger pan, go unused there (uishot still tests them).
+- The page's Full screen button puts the whole page (so the editor's menu and messages show) in full screen through
+  the Fullscreen API, with the `webkit` calls as a fallback, and hides where neither is (an iPhone's Safari). In full
+  screen, `resize()` fits the editor to the screen, keeping the top right corner clear for the button, and asks for
+  landscape (`screen.orientation.lock()`, where the browser takes it).
 - The page stands in for a host's transport: its `Controller` offers the tempo (`hasTempo()`), which is the synth's
   own (`ownTempo()`; `tempoSync()` is never on there, and the title bar shows no H), for the editor's title bar to
   drag, scroll or type (20–999 BPM, kept in the browser's storage), and which `dsp_tempo()` hands the synth as
@@ -1190,9 +1208,9 @@ raises the minor version in `project()` at the top of `CMakeLists.txt` (`-Versio
 `build.ps1 -Validate` (every test and both validators), and copies the snapshots the tests render, in the Spectrum theme, over the README's:
 Screamer's routing view over `docs/editor.png`, Crystal Motion's effects' panel as a chain over `docs/fx-chain.png`, and
 Neon Pluck's effects' panel, a graph split low and high, over `docs/fx-graph.png`, and Future Plucks' SEQ view over `docs/seq.png`. It then lists what it would do and asks; only an answer of `yes` commits
-`CMakeLists.txt` and the three screenshots as "Version X.Y" on `main`, tags it `vX.Y` and pushes `main` and the tag.
+`CMakeLists.txt` and the four screenshots as "Version X.Y" on `main`, tags it `vX.Y` and pushes `main` and the tag.
 Any other answer puts those files back as they were. `.\release.ps1 -Screenshots` does only the screenshots, on any
-branch: it builds and runs `fmvibe-uishot` and copies its renders over the three, leaving the version, the other tests
+branch: it builds and runs `fmvibe-uishot` and copies its renders over the four, leaving the version, the other tests
 and git alone.
 
 By hand, instead:
@@ -1341,10 +1359,12 @@ itself.
   first 16 every field
   26000 + 200·(slot - 16)), source places
   2800 + 40·place, freeform shapes 4000 + 100·place (their points past the 33rd 15000 + 100·place), the sources'
-  later slots 6000 + 30·place, shaper effects' curves 7000 + 50·slot (their points past the 16th
+  later slots 6000 + 30·place (the places past the first 16 every field 58000 + 100·(place - 16), and their shapes
+  every field 60000 + 200·(place - 16)), shaper effects' curves 7000 + 50·slot (their points past the 16th
   17000 + 200·slot; the slots past the first 16 every field 30000 + 200·(slot - 16)), the chain's order 33400 + place,
   slot bypasses 9000 + 20·place (then the macros', the note source's, the mod wheel's,
-  velocity's, the pitch bend's and the operators', 9320 + 20 a source by the sources' number), Custom waves' first 32 partials
+  velocity's, the pitch bend's and the operators', 9320 + 20 a source by the sources' number, then the places past the
+  first 16, 9680 + 20·(place - 16)), Custom waves' first 32 partials
   10000 + 100·op, macros 11000 + 40·macro, the note source 11400+ (its slots, then its range and curve), the mod
   wheel's slots 11500+, velocity 11600+ (its slots, then its curve and Bipolar), the pitch bend 11700+ (its slots,
   then Bipolar), the operators as sources 57000 + 40·op (their slots, then Bipolar), the
@@ -1352,9 +1372,10 @@ itself.
   700 + 10·from + to (from by the routing graph's node order: the operators, the filters, the shapers; to an
   operator; an operator's own field, its feedback, hidden and always Phase), the voice shapers'
   curves 13000 + 50·shaper (their points past the 16th 21000 + 200·shaper), every slot's aux and Amount
-  22000 + 40·source (a pair per slot, by the sources' number: the places, the macros, the note source, the mod wheel,
-  velocity and the pitch bend; a source added later takes the next block), and every slot's curve 24000 + 20·source (by the
-  sources' number likewise), and every slot's aux depth 49000 + 20·source (likewise); the effects graph's splits 34000 + 20·split, the wires into its
+  22000 + 40·source (a pair per slot, by the sources' stored number, see below: the first 16 places, the macros, the
+  note source, the mod wheel, velocity, the pitch bend, the operators, then the places past the 16th; the blocks fill
+  their room, so a source added later needs a range of its own), and every slot's curve 24000 + 20·source (by the
+  sources' stored number likewise), and every slot's aux depth 49000 + 20·source (likewise); the effects graph's splits 34000 + 20·split, the wires into its
   slots and splits 34200 + 20·node (the slots, then the splits; a From and a Level an input) and the wires into its
   output 35000+, its sums 35100 + 20·sum and the wires into them 35200 + 20·sum. A wire's From stores its port + 1
   (0 = none): the input, then each slot's output, each split's bands, low to high, then each sum's output. The graph's
@@ -1384,7 +1405,7 @@ itself.
   the shape list doesn't offer it, a state from before version 11 loads an LFO with it as a Random source, and an LFO
   a later state holds with it plays it as a Random source does; and the LFO's Custom shape (`LfoShape::Custom`),
   which the Curve source took over, a state from before version 12 loading an LFO with it as a Curve source.
-- Like an effect slot, each of the 16 source places has the fields of every type (an LFO's, an envelope's, and
+- Like an effect slot, each of the 32 source places has the fields of every type (an LFO's, an envelope's, and
   Slew, CC, Bipolar and Input for Random and MIDI), and a Type param (Empty, LFO, Envelope, Random, MIDI or Curve) that
   picks which are used (`sourceFieldUsedBy()`). A Random source is a random LFO: it runs through the LFOs' code with
   the LFO's clock fields, Smooth and Chaos, as an LFO of the retired Random shape (`lfoShape()`), its polarity its own
@@ -1394,8 +1415,8 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 1,515 of the 32,712 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
-  `src/params.h`), 1,088 of them the slots' depths and Amounts. The editor's alone are those the table marks
+- Hosts are given 2,027 of the 38,008 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+  `src/params.h`), 1,600 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain's retired order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'
   fields, the effects graph (its splits, joins and wires), the source places' own fields (a place's slot
@@ -1413,6 +1434,13 @@ itself.
   modulates them for every note at once.
 - A slot's *target* param stores the target's id + 1 (0 = unused). Each slot also has a depth, an aux (the
   source + 1 that scales it, 0 = none) and an Amount (0–1, 1 to begin with), whose defaults leave a slot as it was.
+- Sources are numbered two ways. In memory the 32 places come first (`kMaxSources`), then the macros, the note source,
+  the mod wheel, velocity, the pitch bend and the operators. States and presets store a source by the number it had
+  when there were 16 places (`kFirstSources`), the places added later after the operators (`storedSource()`,
+  `sourceOfStored()` in `src/params.h`): an aux's value (`writePatch()` and `readParams()` turn it), the MODS view's
+  empty modulations, and the ids of the slots' auxes, Amounts, curves and aux depths. So a project from before keeps
+  its sources. The layout's source order and folded cards keep the first 16 places' where they were and put the rest at
+  the chunk's end.
   Depths and Amounts are automatable params; targets and auxes are wiring, set in the editor and not given to
   hosts, but saved like any other param. A slot swings its target one way or both as its source's
   own switch says.
@@ -1430,7 +1458,7 @@ itself.
   differently goes into the step already made since the last tag, if there is one (its comment in `src/state.cpp`
   and the checks that load a state from before it), rather than adding another. States saved by a build between two
   tags are not kept loading as they were: only released versions are.
-- The state blob holds `(id, value)` pairs with a version number (currently 15: version 1's Volume loads 12 dB
+- The state blob holds `(id, value)` pairs with a version number (currently 16: version 1's Volume loads 12 dB
   lower, since Volume now gives back the 12 dB the voices go into the effects with; before version 3, a state in
   poly loads Legato off, since it did nothing there then and acts there now; before version 4, a modulation's depth on an
   envelope's attack, decay or release loads scaled by `kMaxEnvNorm / (kMaxEnvNorm - kMinEnvNorm)`, since their
@@ -1456,7 +1484,9 @@ itself.
   pattern's bend and mod wheel curves, which held their first and last points' values and now wrap around the pattern's
   end, load with points at the pattern's start and end that hold them (`holdSeqCurveEnds()`); before version 15, an
   operator's Warp Amount on a Sync warp and the depths on it load scaled by
-  `(kRetiredMaxSyncWarp - 1) / (kMaxSyncWarp - 1)`, since it now plays its wave up to 16 times a cycle rather than 8),
+  `(kRetiredMaxSyncWarp - 1) / (kMaxSyncWarp - 1)`, since it now plays its wave up to 16 times a cycle rather than 8;
+  version 16 has 32 source places rather than 16, and loads an earlier state as saved, its sources stored by the numbers
+  they had, the version rising so that an earlier build refuses a state whose later places it would leave out),
   followed by the editor layout:
   node, filter and shaper positions, selected node, zoom, the routing view, a retired field (once whether the modulation panel was collapsed, which it no longer is),
   the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names, which
@@ -1502,10 +1532,13 @@ itself.
   oversampling factor need one). So does an edit or a state that moves the latency (`PluginCore::latency()`: the
   voices' decimator's delay and the effects' latest path's, see `src/fxlag.h`), which the plugin reports to hosts as
   of its last activate (CLAP's latency extension, telling the host's `changed()` from activate, and VST3's
-  `getLatencySamples()`). What VST3 only allows on the main thread, and the audio thread may ask for,
-  goes through a message-only window there. Each voice takes about
-  66 KB at 48 kHz, mostly the two comb filters' delay lines, which grow with the oversampling: at the default
-  2x, about 105 KB, so 512 voices reserve about 54 MB. Voices isn't automatable for the same reason. The comb lines,
+  `getLatencySamples()`), but not while a key or a sustain pedal holds a note (`Synth::holdsKeys()`, which
+  `endBlock()` keeps in `keysHeld_`): a key let go while the plugin is inactive would reach no voice, so the audio
+  thread has the main-thread callback ask once they are all up, and an activate keeps the voices only while none is
+  held. A voice limit still settling holds every restart off, so they come as one. What VST3 only allows on the main
+  thread, and the audio thread may ask for, goes through a message-only window there. Each voice takes about
+  86 KB at 48 kHz, mostly the two comb filters' delay lines, which grow with the oversampling: at the default
+  2x, about 125 KB, so 512 voices reserve about 64 MB. Voices isn't automatable for the same reason. The comb lines,
   and the effects' delay lines (every slot has every type's, a few MB a slot), are `ZeroBuffer`s
   (`src/zerobuffer.h`): pages Windows hands out as zeros once they are first written, so the lines no voice or
   effect uses take address space, not memory, and allocating them fills nothing.

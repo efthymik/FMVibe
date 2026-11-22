@@ -233,7 +233,7 @@ What the plugin does and how its editor works, in full. Building and installing 
   +18 dB, so a loop that lifts itself past unity (a resonant filter, or shapers feeding back, with a shaper's Mix
   below 100 %) grows loud but never without end. It runs only while something goes in and its output goes
   somewhere (a shaper feeding only itself goes nowhere; one feeding a shaper that goes somewhere does).
-- **Modulation**: up to 16 sources, any mix of LFOs (sine, triangle, saw or square; 0.02–100 Hz,
+- **Modulation**: up to 32 sources, any mix of LFOs (sine, triangle, saw or square; 0.02–100 Hz,
   and at the Rate knob's bottom 0 Hz, where an LFO stands still at its Phase), mod envelopes (AHDSR, starting at full sustain and with an operator's 15 ms release; times as an
   operator's envelope has them), Curve sources (LFOs of a drawn shape), and two that follow what a note or the
   controller brings:
@@ -913,7 +913,8 @@ What the plugin does and how its editor works, in full. Building and installing 
   out the ones past it at once, as stealing does. Raising it past the voices allocated takes a restart (see
   Restarting, under CLAP and VST3), which waits until the limit has settled: while the Voices knob is held, and then
   until it (or a host stepping the param) has left it alone for half a second, so a drag or a run of steps asks once,
-  for where it stops. A project or a preset loaded asks at once. Voices are stereo all the way through the filters.
+  for where it stops; any other restart needed meanwhile (a new latency, another oversampling) waits with it, so
+  they come as one. A project or a preset loaded asks at once. Voices are stereo all the way through the filters.
   Voices without any unison spread run their filters once, so they cost no more than mono voices.
 - **Oversampling**: the voices (operators, shapers, filters and their drive) run at 1, 2, 4 or 8 times the host rate, 2 by
   default, and come back down through a polyphase IIR half-band decimator: flat to 20 kHz, about 2 samples late at
@@ -1032,7 +1033,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     after the arrows at the lane tabs' right do (across from the whole pattern to two steps, the rows from 0.6 to 3
     times as high). A bar at the roll's right scrolls the rows (dragged, a click on its track jumping there, or the
     wheel). Zoomed in across, a bar after the lane tabs shows and scrolls what the roll shows, as Shift+wheel
-    and the wheel turned sideways do; the middle button (or two fingers) drags the roll across and up and down. The
+    and the wheel turned sideways do; the middle button (or two fingers, outside the browser demo) drags the roll
+    across and up and down. The
     zoom and what is scrolled across belong to the editor and aren't saved. Notes are brighter as they are louder (at full velocity
     at full strength, and a little dimmer while the sequencer is off), dashed with their chance at less than full,
     hollow while muted, a hook off their end with Slide; those picked are ringed, a handle at their end. As the
@@ -1564,7 +1566,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
       right-click menu does. A click on the source or the target opens a cascading menu, the next level opening beside
       an entry under the mouse. The source's lists the sources by category (LFOs, the Random and Curve sources among them, Envelopes,
       Note & MIDI for the MIDI sources, Macros, Keyboard:
-      Note, Velocity, Mod Wheel and Pitch Bend, and Operators: Op A to Op F); picking one moves the modulation there, into a free slot, with its depth,
+      Note, Velocity, Mod Wheel and Pitch Bend, and Operators: Op A to Op F; a category of more than 16 sources, and the
+      target's Modulation, go on in a second column of about as many beside the first); picking one moves the modulation there, into a free slot, with its depth,
       curve, Amount, aux and bypass, as one undo step; it then swings as its new source does. What modulates its depth
       follows it to its new slot, or, moved to a macro, the note source, the mod wheel, velocity, the pitch bend or an operator (whose depths
       can't be modulated), goes. A source that modulates the
@@ -1866,7 +1869,7 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
 - **Modulation**: the panel's title row has its title, **MODULATION** (the panel doesn't collapse; the SEQ view
   covers it), then **+ SOURCE**,
   shaped like + EFFECT (a drawn plus, the word and a chevron), which opens the list of source types under it to add
-  one, and beside it how many of the 16 places are taken, as in 4/16 (with every
+  one, and beside it how many of the 32 places are taken, as in 4/32 (with every
   place taken it is dimmed, and a click says so). Random and Curve cards are laid out as an LFO's (see below), but
   have **Unipolar** | **Bipolar** (as icons) where an LFO's shape list is, one of them lit, which sets which way their
   depths swing, as the polarity in its title's menu does, and no Unipolar switch; a Random card has no Phase knob. A MIDI card has its input's list (CC,
@@ -2046,8 +2049,11 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   either end the row stops, and dragged back it follows at once. A middle press on another open list or menu does
   nothing, and one that starts a drag closes it;
   while the left button drags something, the middle one does nothing. Two fingers on a touchscreen pan the same
-  panels as the middle button, along with them (in the browser demo, on a phone too): what the first finger pressed
-  ends as they land, nothing dropped, and over a dialog they pan nothing. A precision touchpad's two-finger
+  panels as the middle button, along with them: what the first finger pressed ends as they land, nothing dropped,
+  and over a dialog they pan nothing. In the browser demo two fingers are the page's instead: they scroll and zoom
+  the page as the browser does, so on a phone the page can always be scrolled past the editor, and what the first
+  finger pressed ends as the second lands, nothing dropped, the editor taking no more of either until both are
+  lifted. A precision touchpad's two-finger
   scrolling comes as the wheel, up and down as above and sideways as a tilted wheel does, which scrolls what scrolls
   sideways under the mouse (the effects' row and graph, the source cards) and turns nothing. In the browser demo on
   a phone (or any touchscreen), one finger works the editor too: where nothing scrolls it is the mouse at once;
@@ -2351,7 +2357,10 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   **Theme**: Spectrum (deep indigo, the default), Porcelain (Spectrum in light: white panels lifted off a cool gray
   by soft shadows, their cards with a slight one too), Midnight or Light (crisp: white cards and knob caps on a cool
   gray, with deep colors), each button shown in its own colors. The browser demo's page around the editor is in
-  Spectrum's colors. Spectrum and Porcelain share a flat look: each
+  Spectrum's colors. Its Full screen button, beside the links under the editor, puts the page in full screen with
+  the editor alone, as large as the screen takes it in its shape, the button in the screen's top right corner to
+  leave it (and a phone turned to landscape where the browser lets the page say so); where the browser can't put a
+  page in full screen (an iPhone's Safari) the button isn't shown. Spectrum and Porcelain share a flat look: each
   effect and source card tinted with its own color and outlined only while the mouse is over it (or it is dragged),
   a split's container and its card in the effects graph likewise, on the same shadow as the cards beside them, the
   band it shows faintly in its color behind its cards; a knob's arc, and faintly its track, in the color of what it
@@ -2429,20 +2438,23 @@ at the oversampling (about 2 samples at 2x, none at 1x) and the effects' latest 
 rounded to whole samples, as the plugin was last activated (a VST3 host asking while it is inactive hears what the next
 activation will make it). An edit, once it is whole, or a state that moves it asks the host for a restart, whose activate
 reports the new one (a CLAP host is told through its latency extension's `changed()`); an edit that leaves it as it was,
-an effect moved along the line say, asks for none.
+an effect moved along the line say, asks for none. While a key, or a sustain pedal, holds a note, the restart a new
+latency takes waits until they are all up (a key let go while the plugin is inactive would reach no voice, and its
+note would sound on), and is asked for then.
 
 The notes play on through a restart the plugin asked for (the one a new latency asks for, say), when its activate comes
-within a second of the deactivate, at the same sample rate and oversampling, with as many voices allocated as the limit
-needs or more: the voices, their envelopes, the sequencer and the effects carry on where they were, and only the latency
-is new. A note's end is reported once, after its release, as the host's key comes up (a CLAP host keeps its note ids).
-Any other activate (for more voices or another oversampling, at another rate, or one the plugin didn't ask for, a device
+within a second of the deactivate, with no key or pedal holding a note, at the same sample rate and oversampling, with
+as many voices allocated as the limit needs or more: the voices (the notes in their release, and the sequencer's), their
+envelopes, the sequencer and the effects carry on where they were, and only the latency is new, each note's end
+reported once (a CLAP host keeps its note ids). Any other activate (with a key struck since the restart was asked for
+still down, for more voices or another oversampling, at another rate, or one the plugin didn't ask for, a device
 switched off and on again, say) allocates the voices again and ends the notes playing, each one's end reported in the
 next block. A VST3 host stopping processing ends them too, unless a restart was asked for: then they end only if
 processing starts again without it.
 
-Hosts are given 1,515 of FMVibe's 32,712 parameters: the globals, the operators, the matrix and the routes' modes,
+Hosts are given 2,027 of FMVibe's 38,008 parameters: the globals, the operators, the matrix and the routes' modes,
 the filters, the shapers, the macros' knobs, the note source's, the mod wheel's, velocity's, the pitch bend's and the
-operators' own as sources, and every modulation's depth and Amount (16 slots for each of the 34 sources, used or not). The rest are set in the editor only:
+operators' own as sources, and every modulation's depth and Amount (16 slots for each of the 50 sources, used or not). The rest are set in the editor only:
 the effects, the LFOs', envelopes' and other sources' own knobs, what each modulation targets and its aux, curve and
 bypass, the Curve sources' drawn shapes, the shaper curves and the note source's curve, the Custom waves' partials and their
 counts, the effects graph (its splits, joins and wires), the chain's retired order, the feedback's route modes and the
@@ -2467,7 +2479,8 @@ What the VST3 plugin does its own way:
   (through a latency change, which has hosts do that). A voice limit raised by hand or by the host asks once it has
   settled (see Notes), from a timer on the main thread: CLAP's timer-support, where the host has it (a host without
   it is asked at its next main-thread callback), and in VST3 the plugin's own window's. Stopping processing ends the
-  notes, but not on the way to the restart asked for, which they play on through as in the CLAP plugin.
+  notes, but not on the way to the restart asked for, which the notes in their release play on through as in the CLAP
+  plugin.
 - **Not in VST3**: CLAP's per-voice and global host modulation, Bitwig's remote-control pages, and the note-end
   reports that per-voice modulation needs.
 

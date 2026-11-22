@@ -73,13 +73,15 @@ HHOOK messageHook = nullptr;
 // (Alt+wheel zooms the roll's rows, Alt+drag sets a band's Q or moves a note off the grid) isn't for a menu, so a
 // press of a key no keyboard has (0xE8, unassigned) goes with it, which makes Alt part of a combination, as AutoHotkey's
 // menu mask key does: let go of, it opens no menu. Once a time Alt goes down: the keyboard hook clears it as Alt goes up.
+// Only while the editor's top-level window is in front, where the menu would open: the key goes to the window in front,
+// and the wheel reaches an editor behind another window too, whose Alt (for its own use, or Alt+Tab's) isn't ours.
 bool altMasked = false;
-void maskAltMenu() {
+void maskAltMenu(HWND hwnd) {
     if (GetAsyncKeyState(VK_MENU) >= 0) {
         altMasked = false;
         return;
     }
-    if (altMasked)
+    if (altMasked || GetForegroundWindow() != GetAncestor(hwnd, GA_ROOT))
         return;
     altMasked = true;
     INPUT press[2]{};
@@ -452,7 +454,7 @@ LRESULT Editor::handle(UINT message, WPARAM wParam, LPARAM lParam) {
         invalidate();
         return 0;
     case WM_LBUTTONDOWN:
-        maskAltMenu(); // Alt held for the drag: no menu once it is let go of
+        maskAltMenu(hwnd_); // Alt held for the drag: no menu once it is let go of
         SetCapture(hwnd_);
         view_.mouseDown(toView(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)), modifiers(wParam));
         syncFocus();
@@ -475,7 +477,7 @@ LRESULT Editor::handle(UINT message, WPARAM wParam, LPARAM lParam) {
     case WM_LBUTTONDBLCLK:
         // Stands in for the second WM_LBUTTONDOWN, so capture like one: a key it presses
         // must still see its button-up.
-        maskAltMenu();
+        maskAltMenu(hwnd_);
         SetCapture(hwnd_);
         view_.doubleClick(toView(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)), modifiers(wParam));
         syncFocus();
@@ -484,7 +486,7 @@ LRESULT Editor::handle(UINT message, WPARAM wParam, LPARAM lParam) {
         return 0;
     case WM_MBUTTONDOWN:
     case WM_MBUTTONDBLCLK: // a quick second press is a press too
-        maskAltMenu();
+        maskAltMenu(hwnd_);
         SetCapture(hwnd_); // the drag goes on outside the window
         view_.middleDown(toView(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)));
         syncFocus();
@@ -506,7 +508,7 @@ LRESULT Editor::handle(UINT message, WPARAM wParam, LPARAM lParam) {
         return 0;
     }
     case WM_MOUSEWHEEL: {
-        maskAltMenu(); // Alt+wheel zooms the SEQ roll's rows: no menu once Alt is let go of
+        maskAltMenu(hwnd_); // Alt+wheel zooms the SEQ roll's rows: no menu once Alt is let go of
         POINT p{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
         ScreenToClient(hwnd_, &p);
         view_.wheel(toView(p.x, p.y), GET_WHEEL_DELTA_WPARAM(wParam) / static_cast<float>(WHEEL_DELTA),
@@ -516,7 +518,7 @@ LRESULT Editor::handle(UINT message, WPARAM wParam, LPARAM lParam) {
         return 0;
     }
     case WM_MOUSEHWHEEL: { // a tilted wheel, or a touchpad swiped across: to the right for more than 0
-        maskAltMenu();
+        maskAltMenu(hwnd_);
         POINT p{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
         ScreenToClient(hwnd_, &p);
         view_.wheelAcross(toView(p.x, p.y), GET_WHEEL_DELTA_WPARAM(wParam) / static_cast<float>(WHEEL_DELTA));

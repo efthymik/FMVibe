@@ -523,8 +523,13 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
         op.env.start();
     for (Envelope &env : v.modEnvs)
         env.start();
-    for (Lfo &lfo : v.lfos) { // the first step and the start phase come in the voice's first block
-        lfo.from = lfo.held = nextRandom(v.rng);
+    // The first step and the start phase come in the voice's first block. The places past the first kFirstSources draw
+    // their steps from a stream of their own, so that the voice's (its noise, its other draws) goes on as it did
+    // before they came.
+    uint32_t laterRng = static_cast<uint32_t>(v.order * 2246822519u) | 1u;
+    for (int s = 0; s < kMaxSources; ++s) {
+        Lfo &lfo = v.lfos[s];
+        lfo.from = lfo.held = nextRandom(s < kFirstSources ? v.rng : laterRng);
         lfo.restart = true;
     }
 }
@@ -1217,6 +1222,19 @@ void Synth::shareChanged(const ParamValues &params) {
             voiceParams_[i] = voiceClamped_[i]; // and where the last voice moved it, put back as its first block starts
         }
     }
+}
+
+bool Synth::holdsKeys() const {
+    auto byKey = [](const NoteRef &note) { return note.port != kSeqPort && note.port != kAuditionPort; };
+    if (keysTakenCount_ > 0)
+        return true;
+    for (const HeldNote &held : held_)
+        if (byKey(held.note))
+            return true;
+    for (const Voice *v : active_)
+        if (live(*v) && !v->released && byKey(v->note)) // a pedal's note too (sustained, not released)
+            return true;
+    return false;
 }
 
 void Synth::feedSeqFeel(const ParamValues &params) {
