@@ -29,6 +29,11 @@ find_package(Threads REQUIRED)
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+# The plugins carry the C++ runtime they were built with, as the Windows ones carry the CRT: a distribution with an
+# older GCC's libstdc++ than the one that built them still loads them, and the host's own copy is never bound (the
+# version scripts keep it local).
+set(FMVIBE_STATIC_RUNTIME -static-libstdc++ -static-libgcc)
+
 function(fmvibe_options target)
     target_compile_features(${target} PRIVATE cxx_std_20)
     target_compile_options(${target} PRIVATE -Wall)
@@ -118,7 +123,8 @@ add_library(FMVibe MODULE
 )
 target_link_libraries(FMVibe PRIVATE fmvibe-plugin)
 set_target_properties(FMVibe PROPERTIES PREFIX "" SUFFIX ".clap" CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON)
-target_link_options(FMVibe PRIVATE -Wl,--version-script=${PROJECT_SOURCE_DIR}/cmake/symbols-clap.map)
+target_link_options(FMVibe PRIVATE -Wl,--version-script=${PROJECT_SOURCE_DIR}/cmake/symbols-clap.map
+    ${FMVIBE_STATIC_RUNTIME})
 fmvibe_options(FMVibe)
 
 # The VST3 interfaces' ids and FUID, which the plugin and its test host both need.
@@ -147,7 +153,8 @@ set_target_properties(FMVibe-vst3 PROPERTIES
     VISIBILITY_INLINES_HIDDEN ON
     LIBRARY_OUTPUT_DIRECTORY ${FMVIBE_VST3_BUNDLE}/Contents/x86_64-linux
 )
-target_link_options(FMVibe-vst3 PRIVATE -Wl,--version-script=${PROJECT_SOURCE_DIR}/cmake/symbols-vst3.map)
+target_link_options(FMVibe-vst3 PRIVATE -Wl,--version-script=${PROJECT_SOURCE_DIR}/cmake/symbols-vst3.map
+    ${FMVIBE_STATIC_RUNTIME})
 fmvibe_options(FMVibe-vst3)
 
 # The bundle's moduleinfo.json (VST SDK 3.7.8 on, in Contents/Resources): what a host scans without loading the module.

@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# The Linux development build (see "Linux development build" in AGENTS.md): the engine and the editor over Cairo, the
-# audio quality test and the UI snapshots, for cloud sessions and anyone on Linux. The plugins themselves need
-# Windows: build.ps1 builds them.
+# The Linux build (see "Linux development build" in AGENTS.md): the CLAP and VST3 plugins, the engine and the editor
+# over Cairo, the audio quality test and the UI snapshots, for cloud sessions, anyone on Linux and the release.
 #
 #   ./build.sh                  # build into build/linux and run the tests
 #   ./build.sh --skip-tests     # build only
@@ -27,7 +26,7 @@ while [ $# -gt 0 ]; do
         --debug) config=Debug; dir=build/linux-debug ;;
         --shots) shots=1; tests=0
                  if [ $# -gt 1 ] && [[ "$2" =~ ^[0-9.]+$ ]]; then scale=$2; shift; fi ;;
-        -h|--help) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unknown option: $1 (see --help)" >&2; exit 2 ;;
     esac
     shift

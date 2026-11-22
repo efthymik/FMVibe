@@ -1076,7 +1076,9 @@ there is one.
 - **What leaves a module**: only the entry points (`clap_entry`; for the VST3 bundle `GetPluginFactory`, which the SDK's
   module loader also reaches through `ModuleEntry`/`ModuleExit`), through the version scripts in
   `cmake/symbols-clap.map` and `cmake/symbols-vst3.map`; the engine's own symbols stay local, so a CLAP and a VST3
-  loaded in one host process can't bind each other's.
+  loaded in one host process can't bind each other's. The plugins link libstdc++ and libgcc statically
+  (`-static-libstdc++ -static-libgcc`, `FMVIBE_STATIC_RUNTIME` in `cmake/linux.cmake`), as the Windows ones do the CRT,
+  so a distribution whose GCC is older than the one that built them still loads them.
 - **The validator**: Steinberg's VST3 validator is built from the SDK's MIT-licensed `vst3_base` and `vst3_public_sdk`
   sources (`cmake/vst3-validator.cmake`) and runs on the bundle as the `vst3-validator` test, and with `--target
   validate`; it is what showed that a Linux VST3 module must export `ModuleEntry`/`ModuleExit` as well as
@@ -1204,11 +1206,16 @@ A version tag publishes a release. `.github/workflows/release.yml` builds the pl
 of its own: `FMVibe.clap`, `LICENSE` and the CLAP SDK's license (`LICENSE-CLAP`) into
 `FMVibe-<tag>-windows-x64-clap.zip`, and the `FMVibe.vst3` folder, `LICENSE` and the VST3 SDK's license
 (`LICENSE-VST3`) into `FMVibe-<tag>-windows-x64-vst3.zip`, each with the user manual, `FMVibe-Manual.html`
-(`tools/manual.py`, from `docs/manual.md`). It then creates a GitHub release for the tag with both
-zips and notes generated from the commits since the previous tag. Meanwhile it builds the
-browser demo on Linux, with the Emscripten version `build-web.ps1` pins, and publishes it on GitHub Pages
+(`tools/manual.py`, from `docs/manual.md`). Beside it, on Ubuntu 24.04 (whose GCC 13 is the oldest the Linux build
+takes, so the plugins need a glibc about as new as its, which the job's log prints), it builds them with `./build.sh`
+under Xvfb (so the test host opens the editor), every Linux test and Steinberg's validator passing, checks that they
+don't link libstdc++ or libgcc_s, and packs them the same way into `FMVibe-<tag>-linux-x64-clap.tar.gz` and
+`FMVibe-<tag>-linux-x64-vst3.tar.gz`, each holding a folder of its name. It then creates a GitHub release for
+the tag with the zips, the tarballs and notes generated from the commits since the previous tag. Meanwhile it builds
+the browser demo on Linux, with the Emscripten version `build-web.ps1` pins, and publishes it on GitHub Pages
 (`https://pcdlin.github.io/FMVibe/`), with the manual beside it as `manual.html`, which the README links to: the
-manual online is the released version's, as the download is. Neither goes out unless both build.
+manual online is the released version's, as the download is. Nothing goes out unless the plugins on both systems and
+the demo build.
 
 `.\release.ps1` does all of it: it needs `main`, a clean working tree, `main` level with origin and a free tag. It
 raises the minor version in `project()` at the top of `CMakeLists.txt` (`-Version 1.0` picks another), runs
@@ -1232,7 +1239,12 @@ By hand, instead:
    ```
 
 The workflow refuses a tag that doesn't match the version in `CMakeLists.txt`. If a UI check fails on GitHub's
-runner, the run keeps the editor's snapshots as its `ui-shots` artifact.
+runner, the run keeps the editor's snapshots as its `ui-shots` artifact (`ui-shots-linux` from the Linux build).
+
+To try the workflow before tagging, run it by hand on a branch (*Actions > Release > Run workflow*, or
+`gh workflow run release.yml --ref <branch>`): it builds, tests and packs on both systems and the demo, keeping the
+zips and tarballs as the run's `plugin-windows` and `plugin-linux` artifacts (named after the branch), and skips the
+release and the Pages deploy.
 
 Before the first release, the repository needs two settings:
 
@@ -1553,6 +1565,8 @@ itself.
 - The CRT is linked statically. The `.clap` and the `.vst3`'s DLL depend only on Windows system DLLs (kernel32,
   user32, Direct2D, DirectWrite, and ole32 and shell32 for the preset file dialogs), not on the VC++ redistributable. The `.vst3` is a
   bundle: `FMVibe.vst3\Contents\x86_64-win\FMVibe.vst3`, on Linux `FMVibe.vst3/Contents/x86_64-linux/FMVibe.so`.
+  On Linux, libstdc++ and libgcc are linked statically likewise: the plugins depend on glibc, X11, Cairo and
+  fontconfig.
 
 ## Updating the CLAP and VST3 SDKs
 

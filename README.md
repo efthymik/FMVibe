@@ -49,6 +49,11 @@ Each [release](https://github.com/pcdlin/FMVibe/releases) has two zips for 64-bi
 
 Copying into a system-wide folder needs administrator rights.
 
+For 64-bit Linux, each release also has two tarballs, `FMVibe-v<version>-linux-x64-clap.tar.gz` and
+`FMVibe-v<version>-linux-x64-vst3.tar.gz`, built on Ubuntu 24.04 (they require a distribution about as new). Each
+unpacks into a folder of its name: put `FMVibe.clap` from it into `~/.clap` and the whole `FMVibe.vst3` folder into
+`~/.vst3`.
+
 ## Build
 
 Requirements:

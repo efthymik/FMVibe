@@ -1,14 +1,17 @@
 # Builds a release whenever a version tag (v0.1, v1.2.3, ...) is pushed: the plugins, CLAP and VST3, built and tested
 # on Windows and run through clap-validator and Steinberg's VST3 validator, go into a GitHub release as two zips, one
-# per format with the user manual, and the browser demo (web/, see AGENTS.md) goes on GitHub Pages with the manual
-# beside it. Nothing is published unless both build.
+# per format with the user manual; built and tested on Linux (build.sh, Steinberg's validator among its tests), they
+# go in beside them as two tarballs; and the browser demo (web/, see AGENTS.md) goes on GitHub Pages with the manual
+# beside it. Nothing is published unless all three build.
 # Needs Pages set to deploy from GitHub Actions, and the github-pages environment to allow v* tags (see "Releasing" in
-# AGENTS.md).
+# AGENTS.md). Run by hand on a branch (Actions > Release > Run workflow), it builds, tests and packs everything as a
+# dry run, keeping the packages as the run's artifacts, and publishes nothing.
 name: Release
 
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
 
 # One release at a time; a newer tag waits for the one under way instead of cutting it off.
 concurrency:
@@ -26,6 +29,7 @@ jobs:
 
       # The version is set once, in project() in CMakeLists.txt; the tag has to name the same one.
       - name: Check the tag against the version
+        if: github.ref_type == 'tag'
         run: |
           $match = Select-String -Path CMakeLists.txt -Pattern '^project\(FMVibe VERSION ([0-9.]+)'
           if (-not $match) { throw 'No version found in project() in CMakeLists.txt.' }
@@ -42,7 +46,7 @@ jobs:
       # offline.
       - name: Package
         run: |
-          $tag = $env:GITHUB_REF_NAME
+          $tag = $env:GITHUB_REF_NAME -replace '/', '-'
 
           python tools\manual.py docs\manual.md dist\FMVibe-Manual.html
           if ($LASTEXITCODE -ne 0) { throw 'The user manual did not build.' }
@@ -60,7 +64,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: plugin
+          name: plugin-windows
           path: FMVibe-*.zip
           if-no-files-found: error
 
@@ -70,6 +74,76 @@ jobs:
         with:
           name: ui-shots
           path: build/release/ui-shots
+          if-no-files-found: ignore
+
+  plugin-linux:
+    # Ubuntu 24.04's GCC 13 is the oldest compiler the Linux build takes, so the plugins need a glibc about as new as
+    # its (the Package step prints the newest symbol they take), and Cairo, X11 and fontconfig, which desktops have.
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      # Inter is the font the editor draws in on Linux, so the snapshots come out as on a developer's machine. Xvfb is
+      # the X server the test host opens the editor on, which it skips without a display.
+      - name: Install the build's packages
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q ninja-build g++ pkg-config libcairo2-dev libx11-dev fonts-inter xvfb
+
+      # build.sh fetches the SDKs, builds both plugins and runs every Linux test: the quality test, the UI snapshots,
+      # the manual, the test host (with the editor in a window, on Xvfb) and Steinberg's validator.
+      - name: Build and test
+        run: xvfb-run -a ./build.sh
+
+      # What the plugins ask of the system they load into: the newest glibc symbol, for the log, and no libstdc++ or
+      # libgcc_s, which they carry themselves (an older distribution's wouldn't do).
+      - name: Check the plugins' dependencies
+        run: |
+          for plugin in build/linux/FMVibe.clap build/linux/FMVibe.vst3/Contents/x86_64-linux/FMVibe.so; do
+            echo "$plugin: newest glibc symbol $(objdump -T "$plugin" | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1)"
+            ldd "$plugin"
+            if ldd "$plugin" | grep -E 'libstdc\+\+|libgcc_s'; then
+              echo "$plugin links the C++ runtime dynamically" >&2
+              exit 1
+            fi
+          done
+
+      # One tarball per format, holding a folder of the tarball's name, so it unpacks in one place: what goes into
+      # ~/.clap or ~/.vst3, FMVibe's and the SDK's licenses and the user manual.
+      - name: Package
+        run: |
+          tag=${GITHUB_REF_NAME//\//-}
+          clap=$(ls -d build/deps/clap-*)
+          clapdir=FMVibe-$tag-linux-x64-clap
+          vst3dir=FMVibe-$tag-linux-x64-vst3
+
+          mkdir -p "dist/$clapdir" "dist/$vst3dir"
+          python3 tools/manual.py docs/manual.md dist/FMVibe-Manual.html
+
+          cp build/linux/FMVibe.clap LICENSE dist/FMVibe-Manual.html "dist/$clapdir/"
+          cp "$clap/LICENSE" "dist/$clapdir/LICENSE-CLAP"
+          tar -czf "$clapdir.tar.gz" --owner=0 --group=0 --numeric-owner -C dist "$clapdir"
+
+          cp -r build/linux/FMVibe.vst3 LICENSE dist/FMVibe-Manual.html "dist/$vst3dir/"
+          cp build/deps/vst3sdk/pluginterfaces/LICENSE.txt "dist/$vst3dir/LICENSE-VST3"
+          tar -czf "$vst3dir.tar.gz" --owner=0 --group=0 --numeric-owner -C dist "$vst3dir"
+
+          tar -tzvf "$clapdir.tar.gz"
+          tar -tzvf "$vst3dir.tar.gz"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugin-linux
+          path: FMVibe-*.tar.gz
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: ui-shots-linux
+          path: build/linux/ui-shots
           if-no-files-found: ignore
 
   web:
@@ -125,23 +199,26 @@ jobs:
           path: build/web/site
 
   release:
-    needs: [plugin, web]
+    needs: [plugin, plugin-linux, web]
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: plugin
+          pattern: plugin-*
+          merge-multiple: true
 
       # The notes list the pull requests and commits since the previous tag; they can be edited on GitHub afterwards.
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" FMVibe-*.zip --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" FMVibe-*.zip FMVibe-*.tar.gz --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes
 
   pages:
-    needs: [plugin, web]
+    needs: [plugin, plugin-linux, web]
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     permissions:
       pages: write

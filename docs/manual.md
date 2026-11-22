@@ -66,10 +66,9 @@ The CLAP and VST3 versions share the same engine, plugin window, parameters and 
 either. Your DAW treats them as two different plugins, however, so a project made with the CLAP version won't open the
 VST3 version in its place, or the other way round.
 
-On Linux, both plugins build from source as well (`./build.sh`; see the README). Copy `FMVibe.clap` into `~/.clap` and
-the whole `FMVibe.vst3` folder into `~/.vst3` (`./build.sh --install` does both). The editor is an X11 window
-(XWayland included) drawn through Cairo, and file dialogs come from the desktop (`zenity` or `kdialog`). Presets live
-in `~/.local/share/FMVibe/presets` and settings in `~/.config/FMVibe`, or the XDG equivalents where set.
+For 64-bit Linux, each release also offers two `.tar.gz` files, one per format; both plugins also build from source (`./build.sh`; see the README). 
+Copy `FMVibe.clap` into `~/.clap` and the whole `FMVibe.vst3` folder into `~/.vst3` (`./build.sh --install` does both). 
+Presets live in `~/.local/share/FMVibe/presets` and settings in `~/.config/FMVibe`, or the XDG equivalents where set.
 
 ## 3. How FMVibe makes sound
 
