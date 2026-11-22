@@ -2408,14 +2408,12 @@ bool SeqPanel::dropSource(const Widget &w, int source) {
     return true;
 }
 
-// The pattern modulation picks, as the sequencer plays it (or -1 while nothing tells where): ringed among the buttons
-// while it isn't the one set.
+// The pattern modulation picks, as the dot on its reach shows it: as the sequencer plays it, or with nothing playing,
+// where the macros and the mod wheel take it (the voices' sources take it nowhere then). Ringed among the buttons while
+// it isn't the one set.
 int SeqPanel::seqPatternModulated() const {
-    const Telemetry &t = host_.telemetry();
-    if (t.voices == 0 && !t.fxTail && t.seqPosition < 0.0f)
-        return -1;
-    return std::clamp(static_cast<int>(std::lround(value(paramIndex(SeqParam::Pattern)) + t.seqFeel[4])), 0,
-                      kSeqPatterns - 1);
+    const int pattern = paramIndex(SeqParam::Pattern);
+    return std::clamp(static_cast<int>(std::lround(value(pattern) + host_.modulatedBy(pattern))), 0, kSeqPatterns - 1);
 }
 
 // --- The patterns' overview.

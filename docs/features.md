@@ -967,8 +967,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     the half size, its collapse button at the full one, its tooltip saying which); **PATTERN** A to D (the one picked plays and shows in the roll; the
     overview's tiles copy and paste them), a modulation target too, in whole steps: a source's handle dropped on its
     buttons (ringed together as one while carried) modulates it, the MODS view's target menu lists it under Sequencer,
-    a host may modulate it, and the button modulation picks, while the sequencer or a voice plays and it isn't the one
-    set, is ringed; under the row, as under a knob, its modulations' reach (a line from A's middle to D's, with the set
+    a host may modulate it, and the button modulation picks, while it isn't the one set, is ringed, as the dot on its
+    reach shows it (with nothing playing, where the macros and the mod wheel take it); under the row, as under a knob, its modulations' reach (a line from A's middle to D's, with the set
     pattern's tick and the live dot) and their depth handles, centered, PLAY sitting lower to leave them room; the sequencer takes a pattern modulation picks as it takes one clicked, at once while nothing plays
     and else where the loop comes round; **PLAY** Host | Key | Latch; the
     big knobs in two rows of four, Rate and Length (the pattern's, in bars) over Octave and Transpose at the left,

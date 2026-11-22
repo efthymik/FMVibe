@@ -6336,6 +6336,21 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
             indicated += plainUnder[i] != modulatedUnder[i];
         std::printf("      PATTERN modulated: %d pixels under its row changed\n", indicated);
         const uint32_t unringed = renderer.pixel(ringB);
+        // With nothing playing, where the macro takes it: Macro 1 full up, a third of the range deep, picks B.
+        const double depthBefore = model.value(slotAmountIndex(kMaxSources, 0));
+        const double knobBefore = model.value(paramIndex(0, MacroParam::Value));
+        model.set(slotAmountIndex(kMaxSources, 0), 1.0 / 3.0);
+        model.set(paramIndex(0, MacroParam::Value), 1.0);
+        view.poll();
+        view.mouseMove({600.0f, 300.0f}, {});
+        const bool idleShot = renderer.save(view, dir / "36t-seq-pattern-idle.png");
+        const bool idleRinged = idleShot && renderer.pixel(ringB) != unringed;
+        model.set(slotAmountIndex(kMaxSources, 0), depthBefore);
+        model.set(paramIndex(0, MacroParam::Value), knobBefore);
+        view.poll();
+        view.mouseMove({600.0f, 300.0f}, {});
+        renderer.save(view, dir / "36t-seq-pattern-modulated.png");
+        const bool idleGone = renderer.pixel(ringB) == unringed;
         model.live.seqPosition = 2.0f;
         model.live.seqFeel[4] = 1.0f;
         view.poll();
@@ -6347,10 +6362,11 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         view.poll();
         view.undo();
         const bool patternUndone = slotTarget(model.value(slotTargetIndex(kMaxSources, 0))) < 0;
-        std::printf("      PATTERN: modulated %d, ringed %d, undone %d\n", onPattern, pickRinged, patternUndone);
-        check(onPattern && indicated > 30 && pickShot && pickRinged && patternUndone,
+        std::printf("      PATTERN: modulated %d, ringed idle %d (gone %d) and playing %d, undone %d\n", onPattern,
+                    idleRinged, idleGone, pickRinged, patternUndone);
+        check(onPattern && indicated > 30 && idleRinged && idleGone && pickShot && pickRinged && patternUndone,
               "a macro's handle dropped on PATTERN modulates the pattern picked, undoably, its reach and depth handle "
-              "under the row and the button it picks ringed");
+              "under the row and the button it picks ringed, with nothing playing too");
     }
     // A bar of 16 steps across the grid, rows from C3 (48) up, as many as fit kSeqRowH high.
     const float rh = kSeqGrid.h / std::floor(kSeqGrid.h / detail::kSeqRowH);

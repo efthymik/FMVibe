@@ -553,6 +553,7 @@ private:
     double liveValue(int param) const override;
     // Under a route's label or matrix cell: each modulation's range, as on a knob's ring, and where it is now.
     void paintModRange(Canvas &c, Rect bar, int param) override;
+    float modulatedBy(int param) const override { return liveOffset(param); }
     // A pill's list: every modulation of its target, a row each, under the pill (or over it, short of room), kept
     // inside the editor. It opens from a click on the pill, or under a source's handle dragged over the pill (then it
     // closes again unless the handle is let go of on a row); a click anywhere else but on a source's handle closes it,
