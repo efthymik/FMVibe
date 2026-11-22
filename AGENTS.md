@@ -892,8 +892,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - an LFO's handle showing its "Drag to assign" tooltip only until it modulates something (read off the rendered
     pixels);
   - every factory preset's routing graph rendered (in Spectrum, into `presets/`), none with a node on or near
-    another, a wire, a line to OUT or a label over a node it doesn't join or through a loop, or two labels on each
-    other (`src/gui/arrange.h` counts them; `fmvibe-uishot <dir> 1 --presets` renders and checks these alone;
+    another, a wire, a line to OUT or a label over a node it doesn't join or through a loop, two labels on each
+    other, or two wires running on each other or into a node from nearly the same way, their arrowheads together
+    (`src/gui/arrange.h` counts them; `fmvibe-uishot <dir> 1 --presets` renders and checks these alone;
     `--seq` renders the SEQ view of each one that plays the sequencer, its roll fitted to its notes as a preset
     load fits it);
   - every algorithm (`src/gui/algorithms.h`: six operators' 32, four's 8, three's 5 and two's 2, set by
@@ -1137,6 +1138,13 @@ preset folder's `Factory` subfolder: the scan leaves the files there named as a 
 unless it holds presets of the user's own, which it lists), and `PresetLibrary::resolve()` takes a file there named as
 a factory preset for the built-in one, so a project naming it loads the built-in one.
 
+Their Volume levels them to about -14 LUFS (integrated, K-weighted and gated as BS.1770 has it): three single
+notes, an octave apart and a fifth, held 2 s (0.75 s for a Pluck, Drum or Keys preset), a Bass an octave lower, a
+riser by where it ends up. One whose note would then peak past -1 dBFS stays that far under, so the presets with
+sharp attacks (Razor Pluck, Neon Pluck, Laser Zap) come out quieter. The level was set by ear on Clubbing,
+Randomizer, Kick 1 and Snare 1, which sit at it or up to a few dB over it. A new preset comes in at about that
+level, and is tried by ear.
+
 Factory presets are not pinned by checksum, so changing or adding one needs no test edit. Don't add a checksum test
 for them: a preset is meant to change as its sound is tuned, and a pinned hash only forces an edit to the test on
 every change.
@@ -1325,7 +1333,7 @@ breakpoints in `src/` then hit.
 | `src/factory.cpp` | The factory presets' loading; the presets themselves are `presets/Factory/*.fmv`, built in by `cmake/embed_presets.cmake` (see [Factory presets](#factory-presets)) |
 | `presets/` | The factory presets' files, and `factory.txt`, the order they came in |
 | `tools/presettool.cpp` | `fmvibe-presettool`: makes preset files sparse, as the factory ones are stored, lays their routing graphs out (`--arrange`) and sets their info (`--author`, `--category`, `--description`) |
-| `src/gui/arrange.h` | Laying a routing graph out: its clashes (nodes, wires, lines to OUT, loops and labels over each other) and a search for a layout without them |
+| `src/gui/arrange.h` | Laying a routing graph out: its clashes (nodes, wires, lines to OUT, loops and labels over each other, wires on each other or meeting a node together) and a search for a layout without them |
 | `tests/smoke_host.cpp` | Headless CLAP test host |
 | `tests/vst3_host.cpp` | Headless VST3 test host |
 | `tools/uishot.cpp` | Offscreen editor renderer and interaction checks |

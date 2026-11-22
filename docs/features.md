@@ -1257,8 +1257,9 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     - lays its operators out afresh, their wires bowing as new ones do: the carriers in the column where A and D start,
       clear of the shapers and filters nearer OUT, each operator two columns left of the furthest down the stack it
       modulates, the rows spread over the graph's height (past five, every other one a column further left); an
-      operator landing on a filter or shaper shown there is moved clear of it, and a feedback route back up a stack
-      bows round the operators between.
+      operator landing on a filter or shaper shown there is moved clear of it, a feedback route back up a stack
+      bows round the operators between, and the lines of three carriers or more fan out into OUT, bowing apart so
+      their arrowheads come in clear of each other.
     Filters, shapers, their routes and places, the carriers' sends into them and every operator's own sound (wave,
     ratio, envelope, unison) stay as they are. Nothing is stored for it: which algorithm the operators form is read
     from the routes each time (one above 0 % or kept at 0 % counting, whatever its depth).

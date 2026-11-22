@@ -369,29 +369,66 @@ void RoutingModel::applyAlgorithm(int index) {
     }
     for (int op = 0; op < a.ops; ++op) // clear of a filter or shaper shown where it lands
         placeSwitchedOn(op);
-    if (a.feedbackFrom != a.feedbackTo) {
-        // A loop back up a stack would run straight through the operators between: it bows round them, as far and
-        // which way the layout's clashes and cost are least.
-        const auto values = std::make_unique<ParamValues>();
-        for (int i = 0; i < kParamCount; ++i)
-            (*values)[i] = value(i);
-        const int param = routeParam(a.feedbackFrom, a.feedbackTo);
-        auto bendTo = [&](float bend) {
-            std::erase_if(layout.wireBends, [&](const auto &b) { return b.first == param; });
-            if (bend != kDefaultWireBend)
-                layout.wireBends.push_back({param, bend});
-        };
-        float best = kDefaultWireBend;
-        ArrangeScore least{std::numeric_limits<int>::max(), 0.0f};
-        for (float bend : {kDefaultWireBend, -kDefaultWireBend, 0.3f, -0.3f, 0.45f, -0.45f, 0.6f, -0.6f}) {
-            bendTo(bend);
-            const ArrangeScore s = arrangeScore(*values, layout);
-            if (s.clashes < least.clashes || (s.clashes == least.clashes && s.cost < least.cost)) {
+    const auto values = std::make_unique<ParamValues>();
+    for (int i = 0; i < kParamCount; ++i)
+        (*values)[i] = value(i);
+    auto bendTo = [&](int param, float bend, float rest) {
+        std::erase_if(layout.wireBends, [&](const auto &b) { return b.first == param; });
+        if (bend != rest)
+            layout.wireBends.push_back({param, bend});
+    };
+    auto better = [](const ArrangeScore &s, const ArrangeScore &than) {
+        return s.clashes < than.clashes || (s.clashes == than.clashes && s.cost < than.cost - 0.01f);
+    };
+    // A wire given the bow, the one it has or among `bends` (the first its own), at which the layout's clashes and
+    // cost are least.
+    auto bowBest = [&](int param, std::initializer_list<float> bends) {
+        const float rest = *bends.begin();
+        float best = rest;
+        for (const auto &[p, bend] : layout.wireBends)
+            if (p == param)
+                best = bend;
+        ArrangeScore least = arrangeScore(*values, layout);
+        for (float bend : bends) {
+            bendTo(param, bend, rest);
+            if (const ArrangeScore s = arrangeScore(*values, layout); better(s, least)) {
                 least = s;
                 best = bend;
             }
         }
-        bendTo(best);
+        bendTo(param, best, rest);
+    };
+    // A loop back up a stack would run straight through the operators between: it bows round them, as far and which
+    // way the layout's clashes and cost are least.
+    if (a.feedbackFrom != a.feedbackTo)
+        bowBest(routeParam(a.feedbackFrom, a.feedbackTo),
+                {kDefaultWireBend, -kDefaultWireBend, 0.3f, -0.3f, 0.45f, -0.45f, 0.6f, -0.6f});
+    // Many carriers' lines would come into OUT together, their arrowheads on each other: they fan out, bowing the
+    // further the further from the middle of them, as far as the clashes and cost are least, and then each as far and
+    // which way they are least.
+    std::vector<int> outs;
+    for (int op = 0; op < a.ops; ++op)
+        if ((a.carriers >> op & 1) && wired(outParam(op)))
+            outs.push_back(op);
+    if (outs.size() > 2) {
+        std::sort(outs.begin(), outs.end(), [&](int x, int y) { return layout.nodeY[x] < layout.nodeY[y]; });
+        auto fan = [&](float reach) {
+            for (size_t i = 0; i < outs.size(); ++i)
+                bendTo(outParam(outs[i]), reach * (2.0f * i / (outs.size() - 1) - 1.0f), 0.0f);
+        };
+        float best = 0.0f;
+        ArrangeScore least = arrangeScore(*values, layout);
+        for (float reach : {0.1f, -0.1f, 0.2f, -0.2f, 0.3f, -0.3f, 0.4f, -0.4f, 0.5f, -0.5f}) {
+            fan(reach);
+            if (const ArrangeScore s = arrangeScore(*values, layout); better(s, least)) {
+                least = s;
+                best = reach;
+            }
+        }
+        fan(best);
+        for (int pass = 0; pass < 2; ++pass)
+            for (int op : outs)
+                bowBest(outParam(op), {0.0f, 0.12f, -0.12f, 0.24f, -0.24f, 0.36f, -0.36f, 0.48f, -0.48f});
     }
     controller_.layoutChanged();
 }

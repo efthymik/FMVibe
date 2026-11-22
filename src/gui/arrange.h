@@ -1,7 +1,8 @@
 #pragma once
 
-// Laying a patch's routing graph out: where its nodes go and how its wires bow, so that no node sits on another and
-// no wire, line to OUT or label runs over a node it doesn't join. fmvibe-presettool --arrange lays the factory presets
+// Laying a patch's routing graph out: where its nodes go and how its wires bow, so that no node sits on another, no
+// wire, line to OUT or label runs over a node it doesn't join, and no two wires run on each other or into one node
+// together. fmvibe-presettool --arrange lays the factory presets
 // out with it, and the UI checks keep them clear by its count of clashes. In namespace detail, as routing.h, whose
 // geometry (the wires' curves, the lines to OUT, the loops) it measures with.
 
@@ -98,8 +99,9 @@ inline float arrangeGap(int a, Point ca, int b, Point cb) {
     return std::hypot(std::max(dx, 0.0f), std::max(dy, 0.0f));
 }
 
-// How a layout fares: its clashes (nodes on each other, wires or lines to OUT through a node they don't join), and a
-// cost that also weighs wires crossing, running backward and their lengths, by which layouts are compared.
+// How a layout fares: its clashes (nodes on each other, wires or lines to OUT through a node they don't join, labels on
+// each other, wires running on each other or meeting at a node from nearly the same way), and a cost that also weighs
+// wires crossing, running backward and their lengths, by which layouts are compared.
 struct ArrangeScore {
     int clashes = 0;
     float cost = 0.0f;
@@ -153,10 +155,15 @@ inline ArrangeScore arrangeScore(const ArrangeGraph &graph, const UiLayout &layo
                 ++score.clashes;
         }
     }
+    constexpr int kFine = 48; // samples along a wire, for how far it runs beside another
     struct Path {
         int from, to;
         std::array<Point, kSamples + 1> points;
         Rect label;
+        std::array<Point, kFine + 1> fine;
+        float step = 0.0f; // between two of `fine`
+        Rect bounds;
+        float leaves = 0.0f, arrives = 0.0f; // the angles it leaves `from` and comes into `to` at, from the node
     };
     std::vector<Path> paths;
     for (const auto &r : graph.routes) {
@@ -179,6 +186,19 @@ inline ArrangeScore arrangeScore(const ArrangeGraph &graph, const UiLayout &layo
             if (k > 0)
                 length += std::hypot(path.points[k].x - path.points[k - 1].x, path.points[k].y - path.points[k - 1].y);
         }
+        float left = 1e9f, top = 1e9f, right = -1e9f, bottom = -1e9f;
+        for (int k = 0; k <= kFine; ++k) {
+            const float t = static_cast<float>(k) / kFine, s = 1.0f - t;
+            const Point p{s * s * start.x + 2.0f * s * t * control.x + t * t * end.x,
+                          s * s * start.y + 2.0f * s * t * control.y + t * t * end.y};
+            path.fine[k] = p;
+            left = std::min(left, p.x), top = std::min(top, p.y);
+            right = std::max(right, p.x), bottom = std::max(bottom, p.y);
+        }
+        path.step = length / kFine;
+        path.leaves = std::atan2(control.y - start.y, control.x - start.x);
+        path.arrives = std::atan2(control.y - end.y, control.x - end.x);
+        path.bounds = {left, top, right - left, bottom - top};
         // Long enough for its label and arrowhead, with room either side; and no longer than it needs.
         constexpr float kShortest = 96.0f;
         if (length < kShortest)
@@ -254,9 +274,58 @@ inline ArrangeScore arrangeScore(const ArrangeGraph &graph, const UiLayout &layo
             if (other != node && overNode(other, centers[other], label, 2.0f))
                 score.cost += 150.0f;
     }
+    // The longest stretch of wire `p` running on wire `q` (within a few pixels of it), away from the nodes they both
+    // join, where wires out of one node or into it meet.
+    auto alongside = [&](const Path &p, const Path &q) {
+        constexpr float kNear = 5.0f;
+        const Rect qb = q.bounds.inset(-kNear);
+        auto shared = [&](int node) { return node == q.from || node == q.to; };
+        auto reach = [](int node) {
+            return node == kNodes ? kOutCoreRadius + 16.0f : (isBoxNode(node) ? kFilterHalfW : kNodeRadius) + 16.0f;
+        };
+        float run = 0.0f, longest = 0.0f;
+        for (const Point &a : p.fine) {
+            bool on = qb.contains(a);
+            for (int node : {p.from, p.to})
+                if (on && shared(node) && std::hypot(a.x - centers[node].x, a.y - centers[node].y) < reach(node))
+                    on = false;
+            if (on) {
+                float closest = 1e9f;
+                for (int m = 0; m < kFine && closest >= kNear; ++m) {
+                    const Point b = q.fine[m], c = q.fine[m + 1];
+                    const float dx = c.x - b.x, dy = c.y - b.y, len2 = dx * dx + dy * dy;
+                    const float t =
+                        len2 > 0.0f ? std::clamp(((a.x - b.x) * dx + (a.y - b.y) * dy) / len2, 0.0f, 1.0f) : 0.0f;
+                    closest = std::min(closest, std::hypot(a.x - b.x - t * dx, a.y - b.y - t * dy));
+                }
+                on = closest < kNear;
+            }
+            run = on ? run + p.step : 0.0f;
+            longest = std::max(longest, run);
+        }
+        return longest;
+    };
     for (size_t i = 0; i < paths.size(); ++i)
         for (size_t j = i + 1; j < paths.size(); ++j) {
             const Path &p = paths[i], &q = paths[j];
+            // Wires running on each other, whose ends can't be told apart.
+            if (const float on = std::max(alongside(p, q), alongside(q, p)); on > 0.0f) {
+                score.cost += 25.0f * on;
+                if (on > 16.0f)
+                    ++score.clashes;
+            }
+            // Wires meeting at a node from nearly the same way, their arrowheads or starts on each other.
+            auto at = [](const Path &w, int node) { return node == w.from ? w.leaves : w.arrives; };
+            for (int node : {p.from, p.to})
+                if (node == q.from || node == q.to) {
+                    float apart = std::abs(at(p, node) - at(q, node));
+                    apart = std::min(apart, 2.0f * kPi - apart) * 180.0f / kPi;
+                    constexpr float kApart = 16.0f, kTooClose = 11.0f; // degrees
+                    if (apart < kApart)
+                        score.cost += 80.0f * (kApart - apart);
+                    if (apart < kTooClose)
+                        ++score.clashes;
+                }
             const Rect &a = p.label, &b = q.label;
             if (a.x < b.right() && b.x < a.right() && a.y < b.bottom() && b.y < a.bottom()) {
                 score.cost += 400.0f;
