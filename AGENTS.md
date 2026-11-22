@@ -415,7 +415,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     stretches it plans, each note once where stretches start on its step with the host's position a hair early or
     late there (as a position in seconds rounds), the transport starting in a note's middle playing the rest of it
     once (not one its chance leaves out), a note put down under the playhead playing at once, and neither a key nor
-    another pattern taking over chasing a note from before it, Swing at 75 % delaying the step after the beat by half a step and Gate at 50 % halving a note,
+    another pattern taking over chasing a note from before it, Swing at 75 % delaying the step after the beat by half a step and Gate at 50 % halving a note
+    (and a Gate of 50 % handed it as modulation halving one set at 100 %; through the synth, a macro's slot on Gate,
+    the host's modulation of Swing and an LFO's slot on Velocity taking them where the telemetry says it plays them,
+    and a macro's slot on the pattern picking B at its full knob and still A at 0.4, in whole steps),
     Reverse playing a note on the first step on the last (the playhead moving steadily backward, as on Ping-Pong's way
     back, and forward otherwise), a loop playing only the notes in it, a muted note and one at
     no chance silent and one at half playing about half the passes (alike each time), another pattern taking over where
@@ -775,7 +778,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the dashed cards that add effects and sources (opening the list of types at the mouse, the effects' moved back
     inside the editor at the chain's right end and staying over a switched-off card's dimming, read off the rendered
     pixels; the sources' closing
-    at a click around it, and shutting with the panel for good), and the arrow between two effects adding one there;
+    at a click around it, and shutting for good as the SEQ view covers their panel), and the arrow between two effects adding one there;
   - picking the oversampling, MPE and its bend range (leaving the patch alone), the theme (Spectrum, the default, and Porcelain first in its list) and the depth handles'
     size (drawn bigger at each, read off the rendered pixels), and dragging the hue slider (the accent taking its hue, read off the rendered pixels), the glow slider, the lines slider (a source's dashed line drawn as strongly as it says, and not at all when off, read off the rendered pixels) and the grid slider, a double-click putting each back where it starts and each showing its tooltip under it while the mouse rests on it and not while it is dragged (read off the rendered pixels), in the settings dialog (with the editor rendered in each theme, and glowing), its book opening the user manual and
     leaving it open, closing it with its x
@@ -821,7 +824,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     tools inverting, reversing and shifting the shape (each one undo step) and copying it into another Curve source (one card
     widened at a time), its title row's expand button widening it as a click on its display does, Steps drawing a step with a plain click and Snap snapping a point unless Ctrl is held, its
     full-size editor greying the card's editor out (taking no clicks) until it closes, by its done button or a view
-    tab, the card staying widened, also while the modulation panel collapses, and the
+    tab, the card staying widened, also while the SEQ view covers the modulation panel, and the
     card back to its size by its collapse button;
   - an LFO's shape list (going with the LFO undone, offering no Random or Custom shape, the wheel stepping along it
     to Square), a Random
@@ -892,12 +895,30 @@ the plain CMake commands and installing into a host are in the [README](README.m
     whole ones (a tenth with Shift), held to 20-999, and typed after a double-click or Ctrl+Click (`BPM` after it
     taken, text that isn't a tempo and Escape leaving it), none of it touching the patch, its undo history or the
     host's tempo;
+  - the SEQ view covering the modulation panel, as tall as the editor was, its source cards and title taking no clicks;
+  - the SEQ card's size button and a double-click on its tab (while the view shows) switching the view to its half size,
+    the modulation panel back under it (read off the rendered pixels) and the overview gone, and back, kept in the user's
+    settings with no param edited and nothing to undo, and a double-click whose first click shows the view leaving it;
+    Speed, Length, Octave and Transpose as steppers, Length's + and - stepping it, and Transpose's track filled to its
+    value with no line across it (read off the rendered pixels); and a macro's handle dropped on the card's Gate knob modulating it, its ring drawn (read off the rendered pixels),
+    undoably, and on Octave's nothing, and on PATTERN's buttons modulating the pattern picked, undoably, its reach and
+    depth handle showing under the row, above PLAY (read off the rendered pixels), and the button it picks ringed, with
+    nothing playing where the macro takes it and as the telemetry tells while it plays (read off the rendered pixels);
+  - the SEQ view's PATTERNS: a pattern's notes drawn in its tile where an empty one's has none (read off the rendered
+    pixels), what the roll shows a rectangle in the shown pattern's tile, narrowing as the roll zooms in, and no other
+    tile changing (read off the rendered pixels), a click on a tile picking its pattern, undoably, a tile carried onto another ringing it (read off the
+    rendered pixels) and let go of there copying its pattern, undoably, let go of on its own place copying nothing, and
+    the pattern that plays showing the playhead in its tile (read off the rendered pixels); a tile's menu offering Copy
+    Pattern, Paste Pattern once one is copied and Clear Pattern while its pattern holds notes, pasting over an empty
+    pattern without asking, over one holding notes asking first (Escape keeping it, Enter overwriting it, undoably), a
+    tile dragged onto one holding notes asking too, Clear Pattern asking and clearing, undoably, Ctrl+C and Ctrl+V over
+    tiles copying and pasting, and the rectangle dragged in its tile scrolling the roll two steps;
   - the SEQ tab, between FX and MODS (a note put down by a double-click and held dragged across lengthening it, to the right its end, to the left its start): its card and an empty roll, and a dot on the tab while the sequencer is on (read
     off the rendered pixels), as on FX's while an effect in the line is switched on; a slight line parting the roll from the lane in every theme (read off the rendered pixels); a double-click putting a note down on its step (a
     step long at 1/16) and on the note deleting it; the notes and the playhead where the telemetry puts it (read off
     the rendered pixels); a note the playhead reaches glowing, and not with the glow setting off (read off the rendered
     pixels); a note landing on another's start and pitch (dragged, or by the arrows) taking its place,
-    undoably; a note dragged past the roll's top scrolling the rows, the note going along; a patch loaded fitting the
+    undoably; a note dragged past the roll's top scrolling the rows, the note going along; a box held there scrolling them too, its start staying on the roll, and picking a note that was above the rows with one that showed from the start; one held past its right edge, zoomed in, scrolling it on by a step or two in half a second, not to the pattern's end; a patch loaded fitting the
     roll to its notes; a note dragged moving on the grid by steps and rows, undoably, its end dragged setting
     its length and its start moving it with its end staying (the cursor left-right over either end), and either with Shift set off the
     grid, as a note moved with Shift lands (a Shift+click on a note picked, not dragged, unpicking it); a box picking the notes it reaches and the field's VEL dragged up turning every one picked up; the
@@ -917,16 +938,16 @@ the plain CMake commands and installing into a host are in the [README](README.m
     one of several picked picking it alone, and the arrow over empty space; Delete removing the notes picked; a note or key clicked in the
     roll heard alone while held (not played as the keyboard's, a key clicked quickly twice heard twice), a note moved heard on its new row; the middle button
     panning it across and up and down, and Alt+wheel zooming the rows
-    in about the row under the mouse, the rows' bar at its right scrolling them; the scale's list opening above its button with both panels collapsed; a note put down by a double-click heard
+    in about the row under the mouse, the rows' bar at its right scrolling them; the scale's list opening under its button in the shortest editor (the keyboard collapsed); a note put down by a double-click heard
     while the button is held; the lane
     on CHANCE setting a note's chance; on BEND the lane's grid lines (read off the rendered pixels), with Select a
     click doing nothing (no pen) and a Ctrl+double-click putting a point down on the grid and a Ctrl+drag moving it
     onto the grid (the cursor moving over it), undoably, with Draw a click putting one down where the mouse is (a pen)
     and a double-click there leaving it, a segment's middle dragged up bending it (the cursor up and down) and
     double-clicked straightening it, the last segment's too, round the pattern's end, with Select a point double-clicked going, and the curve drawn where the lane was
-    bare (read off the rendered pixels); on MOD WHEEL Draw's Shift+drag drawing a point a step; the MACRO tab looking as the lane's other tabs do, lit only while picked and with no border (read off the rendered pixels), its list of macros picking the one the lane shows, a point drawn on its curve alone, undoably, a macro with a curve showing it small in its row and its dot full where one without has it faint, on the tab and in the list (read off the rendered pixels), a click around the list and Escape closing it, the wheel stepping the tab along the macros, and where the curve holds the macro's knob showing on the knob with no param edited (read off the rendered pixels); a double-click on the ruler looping the whole pattern; the scale's list picking Minor and FOLD showing
+    bare (read off the rendered pixels); on MOD WHEEL Draw's Shift+drag drawing a point a step; the MACRO tab looking as the lane's other tabs do, lit only while picked and with no border (read off the rendered pixels), its label and arrow lit apart under the mouse (read off the rendered pixels), a click on the label showing its macro with the list shut and one on the arrow opening it, the arrow pointing down while it is shut and up while it is open (read off the rendered pixels), its list of macros picking the one the lane shows, a point drawn on its curve alone, undoably, a macro with a curve showing it small in its row and its dot full where one without has it faint, on the tab and in the list (read off the rendered pixels), a click around the list and Escape closing it, the wheel stepping the tab along the macros, and where the curve holds the macro's knob showing on the knob with no param edited (read off the rendered pixels); a double-click on the ruler looping the whole pattern; the scale's list picking Minor and FOLD showing
     only its rows, and a note off it keeping its row, hatched (read off the rendered pixels); the snap's list, and the roll's lines falling at its length and as strong as the GRID setting
-    says (read off the rendered pixels); copying the pattern into the next empty one; and the bin clearing the pattern,
+    says (read off the rendered pixels); no copy button by PATTERN, A's tile dragged onto an empty B copying A there; and the bin clearing the pattern,
     asking first, undoably.
 
   Pass a scale to render larger: `build\release\fmvibe-uishot.exe out 2`.
@@ -958,7 +979,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the editor in a hidden host window: one at a time, resized keeping its aspect ratio, a preset loaded by the
     preset bar's arrow with no edits (kParamValuesChanged and the project marked changed instead), the Volume knob dragged
     (beginEdit, performEdit, endEdit, and an older value the host hands back right after not taken), a state with
-    the modulation panel collapsed asking the host for a shorter window, its window gone once it is removed, and
+    the keyboard strip collapsed asking the host for a shorter window, its window gone once it is removed, and
     opening again after.
 - **User manual** (`tools/manual.py`, `cmake/manual.cmake`): turns `docs/manual.md` into the one self-contained
   HTML file the release ships, `FMVibe-Manual.html` in the build folder (its styles inline, the screenshots as data
@@ -1184,7 +1205,7 @@ breakpoints in `src/` then hit.
 | `src/state.cpp` | The state's bytes: the patch (params, then the editor layout chunk, whose fields one list describes for writing and reading), the settings and preset chunks; independent of Windows |
 | `src/remotepages.cpp` | The remote control pages hosts show, built from the patch and the editor's source order |
 | `src/presets.cpp` | The preset library: the factory presets, built in, and the preset folder and its scan |
-| `src/usersettings.cpp` | The user's settings file in the roaming app data (theme, hue, glow, handle size, line strength, the editor's size, whether the keyboard strip is collapsed, favorite and recent presets, the user's own categories, where the preset browser opens and the author typed into the Save dialog last), which processes share under a lock, each merging its own edits into the file as it is |
+| `src/usersettings.cpp` | The user's settings file in the roaming app data (theme, hue, glow, handle size, line strength, the editor's size, whether the keyboard strip is collapsed, favorite and recent presets, the user's own categories, where the preset browser opens, the author typed into the Save dialog last and the SEQ view's size), which processes share under a lock, each merging its own edits into the file as it is |
 | `src/sharedtelemetry.h` | The telemetry the audio thread hands the editor, in atomics |
 | `src/params.h` | Parameter layout (index ↔ id), slot targets, value mappings |
 | `src/params.cpp` | Parameter table (names, ranges, defaults) and value text |
@@ -1350,6 +1371,12 @@ itself.
   `getParameterCount()`/`getParameterInfo()` index that list; a value sent for any known id is still taken. The
   state, presets, undo and the editor's modulation cover every param. The core tells hosts of edits to listed ones
   only, and marks the project dirty for the others.
+- The sequencer's Swing, Gate, Velocity and Humanize, and its pattern picked (in whole steps, `modulatedInSteps()`),
+  (`isSeqFeel()` in `src/params.h`) are modulation targets past
+  `kModulatedCount`, the params the voices and the effects read: the synth hands them to the sequencer before each
+  stretch it plans (`Synth::feedSeqFeel()`) as set with the host's and the macros' modulation and the newest voice's
+  slots, or the last one's as the effects ring out, and the telemetry's `seqFeel` says how far it took them. A host
+  modulates them for every note at once.
 - A slot's *target* param stores the target's id + 1 (0 = unused). Each slot also has a depth, an aux (the
   source + 1 that scales it, 0 = none) and an Amount (0–1, 1 to begin with), whose defaults leave a slot as it was.
   Depths and Amounts are automatable params; targets and auxes are wiring, set in the editor and not given to
@@ -1397,7 +1424,7 @@ itself.
   operator's Warp Amount on a Sync warp and the depths on it load scaled by
   `(kRetiredMaxSyncWarp - 1) / (kMaxSyncWarp - 1)`, since it now plays its wave up to 16 times a cycle rather than 8),
   followed by the editor layout:
-  node, filter and shaper positions, selected node, zoom, the routing view, whether the modulation panel is collapsed,
+  node, filter and shaper positions, selected node, zoom, the routing view, a retired field (once whether the modulation panel was collapsed, which it no longer is),
   the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names, which
   effect and source cards are folded, whether the keyboard strip is collapsed, the operator page's tab, the
   scope's cycle count, the wires bent away from their first bow (by route), the MODS view's empty modulations

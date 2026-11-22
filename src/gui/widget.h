@@ -80,7 +80,6 @@ enum class WidgetKind {
     SourceGrip,   // a = source, b = its position among the sources: drag to reorder
     SourceMenuButton, // + SOURCE: opens the list of source types under it
     SourceRemove, // a = source
-    SourcesToggle, // collapses the modulation panel to its title row, or opens it again
     KeysToggle,    // collapses the keyboard panel to its top row, or opens it again
     SlotBar,      // param = slot amount, a = source, b = slot
     SlotRemove,   // a = source, b = slot
@@ -262,14 +261,16 @@ enum class WidgetKind {
     SeqSnap,      // the snap's button: opens its list
     SeqSnapMenu,  // a = 1 on the open list, 0 around it (a click there closes it)
     SeqSnapItem,  // b = the snap it picks (see kSeqSnaps)
-    SeqMacroTab,  // the lane's tab of the macros' curves: shows the macro last shown and opens their list
+    SeqMacroTab,  // the lane's tab of the macros' curves, its label: shows the macro it names
+    SeqMacroArrow, // and its arrow, at its right end: opens the list of macros
     SeqMacroMenu, // a = 1 on the open list, 0 around it (a click there closes it)
     SeqMacroItem, // b = the macro whose curve it shows
     SeqStretch,   // b = 2 twice as long, -2 half as long: the notes picked, or the whole pattern
     SeqField,     // b = 0 pitch, 1 velocity, 2 chance, 3 length, 4 offset: a value of the notes picked, dragged
     SeqFlag,      // b = 0 Slide, 1 Mute: switches it for the notes picked
     SeqClear,     // removes every note of the pattern, asking first
-    SeqCopy,      // copies the pattern into the next empty one
+    SeqSize,      // the SEQ view at its full size, over the modulation panel too, or at its half (EditorSettings::seqFull)
+    SeqTile,      // b = a pattern, in the overview: a click shows it, a drag onto another tile copies it there
     SeqRoot,      // param = Root: dragged up and down, or scrolled, a semitone a step
     SeqFold,      // shows only the scale's rows, or every row
     SeqRuler,     // the bars over the roll: drag the loop's ends, or across it for a new loop

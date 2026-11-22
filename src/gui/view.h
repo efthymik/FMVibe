@@ -382,6 +382,11 @@ private:
     // The FX view, the shaper's curve editor that opens from it, or an LFO's shape editor takes the inspector's
     // place (see InspectorPanel::covered()).
     bool inspectorCovered() const;
+    // The SEQ view reaches down over the modulation panel too: while it shows, the source cards and the panel's title
+    // row are hidden (a full-size editor over the panels' row leaves them in view).
+    bool sourcesHidden() const;
+    // The band the panels' row keeps to: kPanelsBand, or kSeqBand while the SEQ view shows.
+    Rect panelsBand() const;
     void flipSwitch(int param); // as a click on its switch flips it
     // While an LFO's or envelope's handle, or a card of the row, is dragged near either end of a row of cards, the
     // row scrolls that way.
@@ -548,6 +553,7 @@ private:
     double liveValue(int param) const override;
     // Under a route's label or matrix cell: each modulation's range, as on a knob's ring, and where it is now.
     void paintModRange(Canvas &c, Rect bar, int param) override;
+    float modulatedBy(int param) const override { return liveOffset(param); }
     // A pill's list: every modulation of its target, a row each, under the pill (or over it, short of room), kept
     // inside the editor. It opens from a click on the pill, or under a source's handle dragged over the pill (then it
     // closes again unless the handle is let go of on a row); a click anywhere else but on a source's handle closes it,
@@ -764,7 +770,7 @@ private:
     mutable std::array<std::array<char, 32>, kMacros> macroLabels_{};
     // What the macros and the mod wheel add to each param, worked out from their settings at each paint, so it shows
     // with no note playing too, while the host may have let the plugin sleep.
-    std::vector<float> macroOffsets_ = std::vector<float>(kModulatedCount, 0.0f);
+    std::vector<float> macroOffsets_ = std::vector<float>(kParamCount, 0.0f); // the sequencer's past kModulatedCount too
     std::array<float, kAllSources * kSlots> macroSlotOffsets_{}; // their slots', as a share of each target's range
     // Where the macros' and the mod wheel's slots on the macros' knobs take those knobs, against their set values, and
     // the macros a source of each voice moves (see MacroGraph), worked out with them.
@@ -780,6 +786,9 @@ private:
         if (isMacroKnob(index))
             return telemetry_.seqMacro[macroOf(index)] +
                    (telemetry_.voices > 0 ? telemetry_.macroOffset[macroOf(index)] : macroKnobOffsets_[macroOf(index)]);
+        if (const int k = seqFeelOf(index); k >= 0) // as the sequencer plays it, while the synth runs it
+            return telemetry_.voices > 0 || telemetry_.fxTail || telemetry_.seqPosition >= 0.0f ? telemetry_.seqFeel[k]
+                                                                                               : macroOffsets_[index];
         if (index < 0 || index >= kModulatedCount)
             return 0.0f;
         if (telemetry_.voices > 0)
@@ -822,6 +831,7 @@ private:
     // the View's: the preset browser's 1, 8 and 9 (PresetBrowser::kConfirmLoad and on), the FX view's 4 to 6
     // (FxPanel::kConfirmFxClear and on), the SEQ view's 7 (SeqPanel::kConfirmClear).
     int confirm_ = -1;
+    bool seqTabPressedShown_ = false; // the SEQ view showed as a view tab was last pressed (see doubleClick())
     Panel *confirmFrom_ = nullptr; // the panel that asked (see askConfirm()), or none for the View's own questions
     static_assert(FxPanel::kConfirmFxClear > static_cast<int>(PresetAction::SaveAs) &&
                   SeqPanel::kConfirmClear > FxPanel::kConfirmSplitRemove &&

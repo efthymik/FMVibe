@@ -286,7 +286,7 @@ Point envSegmentPoint(const EnvShape &s, int segment, double t, double curve, do
 } // namespace
 
 float View::heightFor(const UiLayout &layout) {
-    return keyboardPanel(keyboardTop(layout.sourcesCollapsed), layout.keysCollapsed).bottom() + 16.0f;
+    return keyboardPanel(keyboardTop(), layout.keysCollapsed).bottom() + 16.0f;
 }
 
 View::View(Controller &controller)
@@ -527,6 +527,14 @@ bool View::inspectorCovered() const {
     return inspector_.covered();
 }
 
+bool View::sourcesHidden() const {
+    return seq_.wide() && seq_.full();
+}
+
+Rect View::panelsBand() const {
+    return sourcesHidden() ? kSeqBand : kPanelsBand;
+}
+
 void View::showView(RoutingView view) {
     controller_.layout().view = view;
     for (Panel *panel : panels_) // their menus (the MODS view's), opened on what showed before
@@ -649,6 +657,8 @@ float View::scrollLength(ScrollArea area) const {
 }
 
 bool View::sourceMenuShown() const {
+    if (sourcesHidden()) // the SEQ view over the panel
+        return false;
     if (sourceMenuAt_.x < 0.0f) // under + SOURCE, while there is a free place
         return sourceShadow();
     return sourceShadowCard().has_value();
@@ -667,7 +677,7 @@ bool View::sourceShadow() const {
 std::optional<Rect> View::sourceShadowCard() const {
     const std::vector<int> shown = sourcesShown();
     const float place = sourceOffset(shown, shown.size()) - sourceScroll();
-    if (!sourceShadow() || controller_.layout().sourcesCollapsed || !onScreen(place, kVisibleCards, kSourceShadowSpan))
+    if (!sourceShadow() || sourcesHidden() || !onScreen(place, kVisibleCards, kSourceShadowSpan))
         return std::nullopt;
     return sourceCard(place, kSourceShadowSpan);
 }
@@ -734,8 +744,8 @@ bool View::edgeScroll() {
     if (!handle && !card)
         return false;
     const Point p = drag_.now;
-    if (!controller_.layout().sourcesCollapsed) {
-        const float speed = edgePull(modPanel(false), p, card ? std::optional(drag_.start.x) : std::nullopt);
+    if (!sourcesHidden()) {
+        const float speed = edgePull(kModPanel, p, card ? std::optional(drag_.start.x) : std::nullopt);
         if (speed != 0.0f) {
             const float before = scrollFirst(ScrollArea::Sources);
             setScroll(ScrollArea::Sources, before + edgeScrollStep(speed));
@@ -846,7 +856,7 @@ float View::cardOf(int source) const {
     if (source >= 0 && source < kMaxSources && derived_.cards[source]) // only kept while a scope goes on
         return *derived_.cards[source];
     float card = kOffScreen;
-    if (!controller_.layout().sourcesCollapsed) {
+    if (!sourcesHidden()) {
         const std::vector<int> shown = sourcesShown();
         const auto at = std::find(shown.begin(), shown.end(), source);
         const float place = sourceOffset(shown, static_cast<size_t>(at - shown.begin())) - sourceScroll();
@@ -1031,7 +1041,7 @@ bool View::poll() {
     if (changed)
         routing_.keepRoutes(); // whatever turned a route on, the editor or the host
     if (bendMoved)
-        in(keyboardPanel(keyboardTop(controller_.layout().sourcesCollapsed), controller_.layout().keysCollapsed));
+        in(keyboardPanel(keyboardTop(), controller_.layout().keysCollapsed));
     closeGoneLists(); // the host may have changed what a list belongs to
     // The audio thread captures the operator whose scope shows, and nothing while none does.
     controller_.setScope(inspector_.scopeShown(), controller_.layout().scopeCycles);
@@ -1039,20 +1049,20 @@ bool View::poll() {
     controller_.telemetry(t);
     // Where the bend stands, and what the sequencer's curve adds to the mod wheel: the wheels.
     if (t.bend != telemetry_.bend || t.bendSet != telemetry_.bendSet || t.seqWheel != telemetry_.seqWheel)
-        in(keyboardPanel(keyboardTop(controller_.layout().sourcesCollapsed), controller_.layout().keysCollapsed));
+        in(keyboardPanel(keyboardTop(), controller_.layout().keysCollapsed));
     // Where the sequencer's curves hold the macros' knobs: the knobs, and with no voice to tell where they take their
     // targets, whatever those are.
     for (int m = 0; m < kMacros; ++m)
         if (t.seqMacro[m] != telemetry_.seqMacro[m]) {
-            in(keyboardPanel(keyboardTop(controller_.layout().sourcesCollapsed), controller_.layout().keysCollapsed));
+            in(keyboardPanel(keyboardTop(), controller_.layout().keysCollapsed));
             everywhere = everywhere || t.voices == 0;
         }
     everywhere = everywhere || changed; // a param: it may show anywhere
     const Rect header{0.0f, 0.0f, kWidth, kHeaderH};
     // The editor's bands, as paint() leaves out those an area doesn't reach: the panels' row (the routing panel or
-    // the FX view, and the inspector, or the shape and partial editors over them), and what lies under it (the source
-    // cards and the keyboard strip).
-    const Rect panels = kPanelsBand;
+    // the FX view, and the inspector, or the shape and partial editors over them; or the SEQ view, reaching down over
+    // the source cards), and what lies under it (the source cards and the keyboard strip).
+    const Rect panels = panelsBand();
     const Rect lower{0.0f, kRouting.bottom(), kWidth, wholeArea().bottom() - kRouting.bottom()};
     // A source's card, where its output, its LFO's dot, its envelope's and its own params' modulation show; or the
     // full-size shape editor, while it shows that source. A folded card or one scrolled away shows none of them.
@@ -1062,7 +1072,7 @@ bool View::poll() {
             everywhere = true;
             return;
         }
-        if (controller_.layout().sourcesCollapsed || sourceFolded(s))
+        if (sourcesHidden() || sourceFolded(s))
             return;
         const auto at = std::find(shown.begin(), shown.end(), s);
         if (at == shown.end())
@@ -1108,6 +1118,9 @@ bool View::poll() {
         for (int i = 0; i < kModulatedCount && !everywhere; ++i)
             if (t.modOffset[i] != telemetry_.modOffset[i])
                 inTarget(i);
+        for (int k = 0; k < kSeqFeelCount && !everywhere; ++k)
+            if (t.seqFeel[k] != telemetry_.seqFeel[k])
+                inTarget(seqFeelIndex(k));
         for (int m = 0; m < kMacros && !everywhere; ++m)
             if (t.macroOffset[m] != telemetry_.macroOffset[m])
                 inTarget(paramIndex(m, MacroParam::Value));
@@ -1150,8 +1163,7 @@ bool View::poll() {
             light = next;
         }
         if (t.keys != telemetry_.keys || moved) {
-            const bool collapsed = controller_.layout().sourcesCollapsed;
-            in(keyboardPanel(keyboardTop(collapsed), controller_.layout().keysCollapsed));
+            in(keyboardPanel(keyboardTop(), controller_.layout().keysCollapsed));
         }
     }
     // The output meter falls while it shows anything, also once the audio has stopped and the snapshot ages, and
@@ -1203,7 +1215,7 @@ bool View::poll() {
                 continue;
             if (shapeEditing() == s) {
                 everywhere = true;
-            } else if (!controller_.layout().sourcesCollapsed && !sourceFolded(s)) {
+            } else if (!sourcesHidden() && !sourceFolded(s)) {
                 const float card = sourceOffset(shown, position) - sourceScroll();
                 if (onScreen(card, kVisibleCards, sourceSpan(s)))
                     in(sourceCard(card, sourceSpan(s)));
@@ -1277,13 +1289,19 @@ bool View::isRatioTarget(int param) {
 }
 
 bool View::isStepperParam(int param) {
-    // The voice limit, an operator's unison count and fixed Mult, a shaper's Stack (a voice's and an effect's) and a
-    // MIDI source's controller number; every other stepped value stays a knob.
+    // The voice limit, an operator's unison count and fixed Mult, a shaper's Stack (a voice's and an effect's), a
+    // MIDI source's controller number, and the sequencer's Speed, patterns' Length, Octave and Transpose; every other
+    // stepped value stays a knob.
     if (param < 0)
         return false;
     if (param == paramIndex(GlobalParam::Voices) || opOfField(param, OpParam::Unison) >= 0 ||
-        opOfField(param, OpParam::FixedMult) >= 0 || fxFieldOf(param) == FxParam::ShaperStack)
+        opOfField(param, OpParam::FixedMult) >= 0 || fxFieldOf(param) == FxParam::ShaperStack ||
+        param == paramIndex(SeqParam::Rate) || param == paramIndex(SeqParam::Octave) ||
+        param == paramIndex(SeqParam::Transpose))
         return true;
+    for (int p = 0; p < kSeqPatterns; ++p)
+        if (param == paramIndex(p, SeqPatternParam::Length))
+            return true;
     for (int s = 0; s < kShapers; ++s)
         if (param == paramIndex(s, ShaperParam::Stack))
             return true;
@@ -1506,7 +1524,7 @@ std::vector<View::Widget> View::widgets() const {
     std::vector<int> envs;
     // Cards partly scrolled out are there too, cut off at the row's ends: (position, screen place).
     const std::vector<int> cardSources = sourcesShown();
-    const bool collapsed = controller_.layout().sourcesCollapsed;
+    const bool collapsed = sourcesHidden(); // under the SEQ view
     std::vector<std::pair<int, float>> cards;
     for (int position = 0; position < static_cast<int>(cardSources.size()) && !collapsed; ++position)
         if (const float place = sourceOffset(cardSources, position) - sourceScroll();
@@ -1519,9 +1537,9 @@ std::vector<View::Widget> View::widgets() const {
         envelopeWidgets(list, env);
 
     const Str envLabels[] = {Str::LabelAttack, Str::LabelHold, Str::LabelDecay, Str::LabelSustain, Str::LabelRelease};
-    // Modulation panel: the collapse toggle, the add buttons, the scrollbar, then the cards.
-    add(Kind::SourcesToggle, sourcesToggle());
-    add(Kind::SourceMenuButton, sourceMenuButton());
+    // Modulation panel, unless the SEQ view covers it: the add button, the scrollbar, then the cards.
+    if (!collapsed)
+        add(Kind::SourceMenuButton, sourceMenuButton());
     if (scrollLength(ScrollArea::Sources) > kVisibleCards + 0.01f && !collapsed)
         add(Kind::Scrollbar, sourceScrollTrack().inset(-4.0f), -1, static_cast<int>(ScrollArea::Sources));
     const size_t sourceCardsStart = list.size();
@@ -1623,7 +1641,7 @@ std::vector<View::Widget> View::widgets() const {
 
     // The macros: their knobs, the names under them and their handles, before the depth handles, which a macro's knob
     // takes too.
-    const float macros = keyboardTop(controller_.layout().sourcesCollapsed);
+    const float macros = keyboardTop();
     for (int macro = 0; macro < kMacros; ++macro) {
         const Point center = macroKnob(macros, macro);
         std::snprintf(macroLabels_[macro].data(), macroLabels_[macro].size(), "%s",
@@ -1696,8 +1714,11 @@ std::vector<View::Widget> View::widgets() const {
     std::vector<Assignment> here;
     for (size_t i = 0; i < count; ++i) {
         const Kind kind = list[i].kind;
+        // PATTERN's row of buttons takes them once, under its first (see seqPatternRow()), as a knob does.
+        const bool patternRow =
+            kind == Kind::Choice && list[i].param == paramIndex(SeqParam::Pattern) && list[i].b == 0;
         if (kind != Kind::Knob && kind != Kind::WireLabel && kind != Kind::OutLabel && kind != Kind::GridCell &&
-            kind != Kind::SlotBar)
+            kind != Kind::SlotBar && !patternRow)
             continue;
         here.clear();
         forEachMod(list[i].param, [&](const Assignment &m) { here.push_back(m); });
@@ -1711,7 +1732,7 @@ std::vector<View::Widget> View::widgets() const {
             list.back().clip = list[i].clip;
             list.back().disabled = list[i].disabled;
         };
-        if (kind != Kind::Knob) {
+        if (kind != Kind::Knob && !patternRow) {
             // Leftwards from the corner, 8 px apart on a label and 7 on a cell or depth bar, no further out than
             // stays inside it at the user's size; past what fits, as many as leave room for the pill. A wire's or
             // OUT label, in the graph and on the operator page's INPUTS tab, has them centered just under it and its
@@ -1759,13 +1780,15 @@ std::vector<View::Widget> View::widgets() const {
         // A stepper's go under its field, across it.
         const bool stepper = isStepper(list[i]);
         const Rect well = list[i].well;
-        const Point base = isRatioDisplay(list[i])         ? Point{r.center().x, kRatioBox.bottom() - 1.0f}
+        const Point base = patternRow                       ? Point{seqPatternRow().center().x, kSeqPatternHandlesY}
+                           : isRatioDisplay(list[i])         ? Point{r.center().x, kRatioBox.bottom() - 1.0f}
                            : stepper && list[i].compact ? Point{well.center().x, well.bottom() + 4.5f}
                            : list[i].compact            ? Point{r.x + 18.0f, r.y + 37.0f}
                                                         : Point{r.center().x, r.y + r.w - 1.0f};
         // The Ratio readout keeps its handles clear of its box's rounded corners.
         constexpr float kStep = 10.0f;
-        const float width = isRatioDisplay(list[i]) ? r.w - 9.0f
+        const float width = patternRow                ? seqPatternRow().w
+                            : isRatioDisplay(list[i]) ? r.w - 9.0f
                             : stepper               ? well.w - 6.0f
                             : list[i].compact       ? 34.0f
                                                     : r.w;
@@ -1802,7 +1825,7 @@ std::vector<View::Widget> View::widgets() const {
 
     // Keyboard strip. The white keys come first, so the black keys on top win the hits. Collapsed, only its top row
     // stays, where the wheels' handles are anyway.
-    const float keys = keyboardTop(controller_.layout().sourcesCollapsed);
+    const float keys = keyboardTop();
     const bool keysCollapsed = controller_.layout().keysCollapsed;
     add(Kind::KeysToggle, keysToggle(keys));
     add(Kind::MacroHandle, bendHandle(keys), -1, kBendSource);
@@ -2348,7 +2371,7 @@ void View::paint(Canvas &c, Rect area) {
     };
     const float lowerTop = kRouting.bottom();
     const bool headerShown = touches({0.0f, 0.0f, kWidth, kHeaderH});
-    const bool panelsShown = touches({0.0f, kHeaderH, kWidth, lowerTop - kHeaderH});
+    const bool panelsShown = touches(panelsBand()); // the SEQ view's reaches down past lowerTop
     const bool lowerShown = touches({0.0f, lowerTop, kWidth, whole.bottom() - lowerTop});
     constexpr float kWidgetReach = 64.0f;
     if (partial)
@@ -2416,8 +2439,8 @@ void View::paint(Canvas &c, Rect area) {
         inspector_.paintBack(c);
     if (lowerShown) {
         paintKeyboard(c);
-        paintNoteSource(c, keyboardTop(controller_.layout().sourcesCollapsed));
-        paintVelocitySource(c, keyboardTop(controller_.layout().sourcesCollapsed));
+        paintNoteSource(c, keyboardTop());
+        paintVelocitySource(c, keyboardTop());
         paintSources(c);
     }
     // A switched-off card's displays are dimmed under an overlay of its own face, which leaves the face as it is: as
@@ -2520,13 +2543,14 @@ void View::paint(Canvas &c, Rect area) {
 }
 
 void View::paintPanels(Canvas &c) {
-    const bool collapsed = controller_.layout().sourcesCollapsed;
-    std::vector<Rect> panels = {modPanel(collapsed),
-                                keyboardPanel(keyboardTop(collapsed), controller_.layout().keysCollapsed)};
-    if (shapeEditing() >= 0 && isClipCurve(shapeEditing()))
-        panels.push_back(shapes_.shapePanel()); // the shaper curve's editor, narrower than the effects it covers
+    const Rect keyboard = keyboardPanel(keyboardTop(), controller_.layout().keysCollapsed);
+    std::vector<Rect> panels;
+    if (sourcesHidden()) // the SEQ view, over the routing panel's place and the modulation panel's
+        panels = {keyboard, kSeqPanel};
+    else if (shapeEditing() >= 0 && isClipCurve(shapeEditing()))
+        panels = {kModPanel, keyboard, shapes_.shapePanel()}; // the shaper curve's editor, narrower than the effects
     else // the effects or the modulations across it, or the routing panel with the inspector floating over it
-        panels.push_back(kFxPanel);
+        panels = {kModPanel, keyboard, kFxPanel};
     // A theme with soft shadows lifts its panels off the background with one, instead of an outline.
     if (look.panelShadow > 0.0f) {
         auto shadow = [&](Rect p, float radius) { softShadow(c, p, radius, 5, 1.2f, 2.0f, look.panelShadow); };
@@ -2628,7 +2652,7 @@ void View::paintHeader(Canvas &c) {
 }
 
 void View::paintKeyboard(Canvas &c) {
-    const float top = keyboardTop(controller_.layout().sourcesCollapsed);
+    const float top = keyboardTop();
     if (controller_.layout().keysCollapsed) { // the wheels' names under their handles, with the wheels folded away
         for (const auto &[handle, name] : {std::pair{bendHandle(top), Str::HeadingBend}, std::pair{wheelHandle(top), Str::HeadingMod}})
             c.text({handle.x - 10.0f, handle.bottom() + 1.0f, handle.w + 20.0f, 12.0f}, tr(name), kTextLabel, kFaint,
@@ -4043,8 +4067,12 @@ void View::paintLfo(Canvas &c, Rect r, int lfo) {
 }
 
 void View::paintSources(Canvas &c) {
-    if (controller_.layout().sourcesCollapsed)
-        return; // the chips and the toggle are widgets
+    if (sourcesHidden())
+        return; // under the SEQ view
+    // The panel's title, at its top left, in line with the cards' left edges.
+    const Rect title = modTitle();
+    c.text({kModPanel.x + 12.0f, title.y, title.w, title.h}, tr(Str::HeadingModulation), kTextBody, kDim, Align::Left,
+           true);
     const std::vector<int> shown = sourcesShown();
     if (shown.empty()) {
         c.text({kModPanel.x, kCardTop + kCardH * 0.5f - 10.0f, kModPanel.w, 20.0f}, tr(Str::HintNoSources), kTextValue,
@@ -4348,16 +4376,13 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             c.line({x, bar.y - 2.5f}, {x, bar.bottom() + 2.5f}, kText, 2.0f);
         }
         break;
-    case Kind::SourcesToggle:
     case Kind::KeysToggle: {
-        // A chevron pointing down while open, right while collapsed, and the panel's title beside it.
-        const bool sources = w.kind == Kind::SourcesToggle;
-        const bool collapsed = sources ? controller_.layout().sourcesCollapsed : controller_.layout().keysCollapsed;
+        // A chevron pointing down while open, right while collapsed, and the strip's title beside it.
+        const bool collapsed = controller_.layout().keysCollapsed;
         paintChevron(c, {w.rect.x + 9.0f, w.rect.center().y}, hovered ? kText : kDim,
                      collapsed ? ChevronWay::Right : ChevronWay::Down);
-        c.text({w.rect.x + 20.0f, w.rect.y, w.rect.w - 20.0f, w.rect.h},
-               tr(sources ? Str::HeadingModulation : Str::HeadingKeyboard), kTextBody, hovered ? kText : kDim, Align::Left,
-               true);
+        c.text({w.rect.x + 20.0f, w.rect.y, w.rect.w - 20.0f, w.rect.h}, tr(Str::HeadingKeyboard), kTextBody,
+               hovered ? kText : kDim, Align::Left, true);
         break;
     }
     case Kind::SourceHandle:
@@ -5321,8 +5346,8 @@ void View::paintRatio(Canvas &c, const Widget &w) {
 
 // A stepper: its number in a field, a unit after it smaller and dimmer, and - and + at the field's ends, faint at rest
 // where the number leaves them room and lit under the mouse (the unit making way where they need its room). Along the
-// field's foot its steps: a tick each where they fit, else a track, with each modulation's reach in its source's color
-// over them, as the Ratio readout's track has it, and the value's place.
+// field's foot its steps: a tick each where they fit, else a track filled to the value, with each modulation's reach in
+// its source's color over them, as the Ratio readout's track has it.
 void View::paintStepper(Canvas &c, const Widget &w) {
     const ParamDef &def = table_[w.param];
     const bool dragged = drag_.kind == DragKind::Value && drag_.widget.same(w);
@@ -5442,7 +5467,6 @@ void View::paintStepper(Canvas &c, const Widget &w) {
             const float a = along(span.first), b = along(span.second);
             c.fillRect({a, track.y, std::max(b - a, 1.0f), track.h}, reach, kRadiusMark);
         }
-        c.fillRect({along(n) - 1.0f, track.y - 1.5f, 2.0f, track.h + 3.0f}, kText, kRadiusMark);
     }
     // Where modulation currently takes the newest voice, or with no note playing where the macros take it; one modulated
     // in steps on the step it plays.
@@ -6556,7 +6580,7 @@ void View::mouseDown(Point p, Modifiers mods) {
             flash(trf(Str::MsgSourcesFull, {std::to_string(kMaxSources)}));
         } else {
             sourceMenuOpen_ = !sourceMenuOpen_ || sourceMenuAt_.x >= 0.0f; // from the dashed card's, to the button's
-            sourceMenuAt_ = {-1.0f, -1.0f}; // collapsed, the panel opens with the source picked (addSource())
+            sourceMenuAt_ = {-1.0f, -1.0f};
         }
         break;
     case Kind::SourceShadow: // the list at the mouse, kept inside the editor
@@ -6595,16 +6619,13 @@ void View::mouseDown(Point p, Modifiers mods) {
         fxPanel_.showBand(w.a, w.b);
         edit(w.param, value(w.param) >= 0.5 ? 0.0 : 1.0);
         break;
-    case Kind::SourcesToggle:
-        layout.sourcesCollapsed = !layout.sourcesCollapsed;
-        controller_.layoutChanged(); // asks the host for the new window size
-        break;
     case Kind::KeysToggle:
         layout.keysCollapsed = !layout.keysCollapsed;
-        controller_.layoutChanged();
+        controller_.layoutChanged(); // asks the host for the new window size
         controller_.keysCollapsedSet(layout.keysCollapsed);
         break;
     case Kind::ViewTab:
+        seqTabPressedShown_ = seq_.wide(); // a double-click on its tab, while it shows, changes its size
         showView(static_cast<RoutingView>(w.a));
         break;
     case Kind::SourceGrip:
@@ -7059,7 +7080,7 @@ std::vector<View::DimArea> View::dimmedAreas() const {
     std::vector<DimArea> areas;
     auto body = [](Rect p) { return Rect{p.x + 1.0f, p.y + 36.0f, p.w - 2.0f, p.h - 37.0f}; };
     // A switched-off source's card below its title row (a folded one's name is already dim).
-    if (!controller_.layout().sourcesCollapsed)
+    if (!sourcesHidden())
         for (int s : sources()) {
             const float card = cardOf(s);
             if (card == kOffScreen || mods_.sourceOn(s) || sourceFolded(s))
@@ -7115,7 +7136,7 @@ std::optional<View::PanStart> View::panAt(Point p) const {
             std::any_of(panels_.begin(), panels_.end(), [&](const Panel *panel) { return panel->blocksPan(*hit); }))
             return std::nullopt;
     }
-    if (!controller_.layout().sourcesCollapsed && modPanel(false).contains(p))
+    if (!sourcesHidden() && kModPanel.contains(p))
         return PanStart{PanArea::Sources, sourceScroll()};
     for (Panel *panel : panels_) // what the panels shown in their places pan (the SEQ view's roll, the MODS rows, the
                                  // FX view's row and graph, the INPUTS tab's rows)
@@ -7279,7 +7300,7 @@ void View::wheelAcross(Point p, float steps) {
     if (hit && (hit->popup || hit->kind == Kind::ModPill)) // a pill's list scrolls only up and down
         return;
     // As the wheel scrolls them, the other way round: a notch to the right moves on as a notch down does.
-    if (modPanel(controller_.layout().sourcesCollapsed).contains(p)) {
+    if (!sourcesHidden() && kModPanel.contains(p)) {
         setScroll(ScrollArea::Sources, sourceScroll() + steps * 0.4f);
         closeGoneLists();
     } else { // the panels' (the SEQ view's roll, the FX view's row and graph)
@@ -7334,6 +7355,12 @@ void View::doubleClick(Point p, Modifiers mods) {
     if (hit && std::any_of(panels_.begin(), panels_.end(),
                            [&](Panel *panel) { return panel->doubleClick(*hit, p, mods); }))
         return; // the panels' own (the presets', the SEQ view's, the routing graph's)
+    // The SEQ tab double-clicked while the SEQ view shows (already as its first click came): its full size or its half.
+    if (hit && hit->kind == Kind::ViewTab && hit->a == static_cast<int>(RoutingView::Seq) && seqTabPressedShown_ &&
+        seq_.wide()) {
+        seq_.toggleSize();
+        return;
+    }
     if (hit && (hit->kind == Kind::Key || hit->kind == Kind::Octave || hit->kind == Kind::UndoButton ||
                 hit->kind == Kind::PresetStep ||
                 hit->kind == Kind::SlotBypass || hit->kind == Kind::ListStep || stepperButton(*hit, p) != 0 ||
@@ -7513,7 +7540,7 @@ void View::wheel(Point p, float steps, Modifiers mods) {
             fxPanel_.setSplitBands(hit->a, steps < 0.0f ? 3 : 2);
         return;
     }
-    if ((!hit || hit->param < 0) && modPanel(controller_.layout().sourcesCollapsed).contains(p) && steps != 0.0f) {
+    if ((!hit || hit->param < 0) && !sourcesHidden() && kModPanel.contains(p) && steps != 0.0f) {
         setScroll(ScrollArea::Sources, sourceScroll() - steps * 0.4f);
         closeGoneLists(); // an LFO's list scrolled out with its card
         return;

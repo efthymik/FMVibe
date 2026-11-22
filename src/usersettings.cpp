@@ -84,6 +84,8 @@ UserSettings parsed(const std::string &text) {
             settings.links = std::clamp(std::atof(line.c_str() + 14), 0.0, 1.0);
         else if (line.starts_with("gridIntensity="))
             settings.grid = std::clamp(std::atof(line.c_str() + 14), 0.0, 1.0);
+        else if (line.starts_with("seqFull="))
+            settings.seqFull = std::atoi(line.c_str() + 8) != 0;
         else if (line.starts_with("zoom="))
             settings.zoom = std::clamp(std::atof(line.c_str() + 5), 0.0, 3.0);
         else if (line.starts_with("keysCollapsed="))
@@ -149,7 +151,8 @@ bool writeFile(const std::filesystem::path &file, const UserSettings &settings) 
     {
         std::ofstream out(part);
         out << "theme=" << settings.theme << "\nglowLevel=" << settings.glow << "\nhandleSize=" << settings.handleSize
-            << "\nlinkIntensity=" << settings.links << "\ngridIntensity=" << settings.grid << '\n';
+            << "\nlinkIntensity=" << settings.links << "\ngridIntensity=" << settings.grid
+            << "\nseqFull=" << (settings.seqFull ? 1 : 0) << '\n';
         if (settings.hue >= 0.0)
             out << "hue=" << settings.hue << '\n';
         if (settings.zoom > 0.0)
@@ -237,6 +240,8 @@ UserSettings merged(const UserSettings &base, const UserSettings &mine, const Us
         out.links = mine.links;
     if (mine.grid != base.grid)
         out.grid = mine.grid;
+    if (mine.seqFull != base.seqFull)
+        out.seqFull = mine.seqFull;
     if (mine.zoom != base.zoom)
         out.zoom = mine.zoom;
     if (mine.keysCollapsed != base.keysCollapsed)

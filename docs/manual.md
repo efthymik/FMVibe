@@ -118,12 +118,13 @@ From top to bottom, the plugin window has:
 - The **view tabs**: **ROUTING**, **MATRIX**, **FX**, **SEQ** and **MODS**, which choose what the main panel shows.
   While ROUTING or MATRIX is shown, an **ALGORITHM** button sits at the right end of the row.
 - The **main panel**. In ROUTING and MATRIX it shows the routing graph or matrix, with the **inspector** floating
-  over its left end. FX, SEQ and MODS use the whole panel.
+  over its left end. FX, SEQ and MODS use the whole panel. At full size, SEQ also covers the modulation panel, for a
+  taller piano roll.
 - The **modulation panel**: the source cards.
 - The **keyboard strip**: macros, the note and velocity sources, the pitch and mod wheels and a six-octave keyboard.
 
-The plugin window can be resized and keeps its aspect ratio. The modulation panel and the keyboard strip can each be
-collapsed to their title row, which makes the plugin window shorter.
+The plugin window can be resized and keeps its aspect ratio. The keyboard strip can be collapsed to its title row,
+which makes the plugin window shorter.
 
 Tabs use two small marks in their top-right corner, with the same meaning everywhere:
 
@@ -620,7 +621,6 @@ recent note. With no notes playing, it shows where the macros and mod wheel take
 
 The panel's title row has:
 
-- **MODULATION**, which collapses the panel to its title row and opens it again.
 - **+ SOURCE**, which opens the list of source types (Envelope, LFO, Curve, Random, MIDI), and a count of sources
   used (for example 4/16).
 
@@ -1137,7 +1137,9 @@ The display shows the stereo field over frequency, with handles for each control
 ## 12. Sequencer
 
 FMVibe has a built-in sequencer that plays the synth's own notes. Edit it in the **SEQ** view; switch it on with the
-power switch on its settings card.
+power switch on its settings card. At full size the view also takes the space of the modulation panel, for a taller
+piano roll and the patterns overview. The button next to the power switch, or a double-click on the **SEQ** tab,
+switches it to half size, with the modulation panel in view, and back. The size is your setting, not the preset's.
 
 ![Sequencer](seq.png)
 
@@ -1157,7 +1159,10 @@ Each pattern has a **loop** (the whole pattern by default), which is what plays.
 ### The settings card
 
 - **Power** switch.
-- **PATTERN A–D**, and a button that copies the current pattern into the next empty one.
+- **PATTERN A–D**: the pattern you edit and play. To copy one, use the patterns overview below the card. You can
+  modulate it too: drag a source's handle onto the buttons. Modulation moves it in whole patterns, and the pattern it
+  picks gets a ring (with nothing playing, the one the macros and mod wheel pick). Under the buttons, a line shows how far each modulation reaches, with depth handles
+  you can drag, as under a knob. A pattern picked this way takes over at the end of the loop, as a click does.
 - **PLAY**:
   - **Host**: plays with the host's transport, locked to its bars. You can still play the synth from the keyboard
     on top. The browser demo's transport always runs, so there a preset set to Host starts playing as soon as you
@@ -1170,14 +1175,31 @@ Each pattern has a **loop** (the whole pattern by default), which is what plays.
   triplets. ×1/4 plays quarter notes.
 - **Length**: the pattern's length in bars.
 - **Octave** (±3) and **Transpose** (±24 semitones).
+- Speed, Length, Octave and Transpose are steppers: click **−** or **+** to step, or drag the number up and down.
 - **Swing** (50–75 %), **Gate** (5–200 % of each note's length), **Humanize** (repeatable timing and velocity
-  variation) and **Velocity** (scales the notes' velocities; at 0 % every note plays at 100).
+  variation) and **Velocity** (scales the notes' velocities; at 0 % every note plays at 100). You can modulate these
+  four: drag a source's handle onto the knob, as with any other control.
 - **ORDER**: forward, backward, ping-pong or random.
 - **SCALE**: the **Root** (drag or scroll; double-click for C4), the scale (Chromatic, Major, Minor, Dorian,
   Phrygian, Lydian, Mixolydian, Harmonic Minor, Melodic Minor, Pentatonic Major and Minor, Blues) and **FOLD**,
   which shows only the scale's rows. Notes off the scale are hatched.
 
 In Key and Latch, the keys you press play no notes of their own; they only start and transpose the pattern.
+
+### The patterns overview
+
+Under the settings card, **PATTERNS** shows the four patterns, A to D, one under another, each with its notes drawn
+small, so you can see what each holds at a glance. The selected pattern is highlighted, with a rectangle showing the
+part of it the piano roll shows, and the one playing shows the playhead.
+
+- **Click** a pattern to select it.
+- **Drag** a pattern onto another to copy it there: its notes, curves, length and loop replace what was there.
+- **Drag the rectangle** in the selected pattern to scroll the piano roll there, when you have zoomed in.
+- **Right-click** a pattern for **Copy Pattern**, **Paste Pattern** and **Clear Pattern**. **Ctrl+C** and **Ctrl+V**
+  with the mouse over a pattern copy and paste too.
+
+Pasting or dragging onto a pattern that already holds notes asks first: "Are you sure you want to overwrite this
+pattern?" Clearing asks first as well. Undo brings back whatever was there.
 
 ### The piano roll
 
@@ -1235,8 +1257,9 @@ Under the roll, the **lane** shows a stem for each note. Its tabs select what it
 - **BEND**, **MOD WHEEL** and **MACRO**: automation **curves** for the pattern, up to 64 points each.
   - The **bend** curve adds to the pitch bend (as a share of the Bend range).
   - The **mod wheel** curve adds to the Mod Wheel.
-  - A **macro** curve replaces its macro's knob position while it plays. The MACRO tab opens a list of the eight
-    macros; a macro with a curve in this pattern shows it in the list.
+  - A **macro** curve replaces its macro's knob position while it plays. Click the MACRO tab's label to show the
+    macro it names; click its arrow to choose another from the list of the eight. A macro with a curve in this pattern
+    shows it in the list.
 
 On a curve:
 

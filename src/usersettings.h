@@ -17,6 +17,7 @@ struct UserSettings {
     int handleSize = 0; // the depth handles' and pills' size, 0 to kMaxHandleSize
     double links = 0.75; // how strongly the dashed lines from a source to its targets are drawn
     double grid = 0.5;   // how strongly the SEQ view's roll draws its grid lines
+    bool seqFull = true; // the SEQ view at its full size, over the modulation panel too, or at its half
     double zoom = 0.0; // the editor size new instances open at, relative to the default; 0 if never resized
     bool keysCollapsed = false; // whether new instances open with the keyboard panel collapsed, as it was left last
     // The preset library's: the favorite presets' files and the ones loaded last (the last first), in UTF-8 (a factory

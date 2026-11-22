@@ -529,10 +529,6 @@ int ModulationModel::addSource(SourceType type, int copyOf) {
     setSourceOrder(shown);
     setFolded(false, source, false);
     editMany(changes);
-    if (controller_.layout().sourcesCollapsed) {
-        controller_.layout().sourcesCollapsed = false;
-        controller_.layoutChanged();
-    }
     return source;
 }
 

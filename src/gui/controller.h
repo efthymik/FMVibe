@@ -131,7 +131,9 @@ struct UiLayout {
     std::array<int, kMaxSources> sourceOrder = identitySourceOrder();
     RoutingView view = RoutingView::Graph;
     float zoom = 1.0f;       // editor size relative to the default, before DPI scaling
-    bool sourcesCollapsed = false; // the modulation panel shows only its title row; the editor is shorter
+    // Retired: the modulation panel collapsed to its title row once, and no longer does. Kept for its place in the
+    // layout chunk, read and written and otherwise left alone.
+    bool retiredSourcesCollapsed = false;
     bool keysCollapsed = false;    // the keyboard panel shows only its top row, without the wheels and keys
     // Routes (param indices) that keep their wire at 0 %, so modulation can still be dropped on
     // them. A route joins once it is on, and leaves only when it is disconnected.
@@ -192,12 +194,11 @@ struct UiLayout {
     PresetInfo presetInfo;
 };
 
-// What a preset or Init leaves as it is, taken from the layout before it: how big the editor is, which panels are
-// collapsed, the shape editor's grid, the operator page's tab and the scope's cycles, and the view shown (the routing
+// What a preset or Init leaves as it is, taken from the layout before it: how big the editor is, whether the keyboard
+// strip is collapsed, the shape editor's grid, the operator page's tab and the scope's cycles, and the view shown (the routing
 // view's tab, and the FX view's row or graph). A host's project brings them all back.
 inline void keepEditorLayout(UiLayout &to, const UiLayout &from) {
     to.zoom = from.zoom;
-    to.sourcesCollapsed = from.sourcesCollapsed;
     to.keysCollapsed = from.keysCollapsed;
     to.shapeGridX = from.shapeGridX;
     to.shapeGridY = from.shapeGridY;
@@ -415,6 +416,9 @@ struct EditorSettings {
     // How strongly the SEQ view's roll draws its grid lines, 0 (none) to 1; kDefaultGridIntensity to begin with, the
     // lines as they were before it could be set.
     double gridIntensity = kDefaultGridIntensity;
+    // Whether the SEQ view shows at its full size, over the modulation panel too, or at its half size, over the panels'
+    // row alone (see SeqPanel::full()); full to begin with.
+    bool seqFull = true;
 
     // Each held to its range, as Controller::setEditorSettings() stores them. A hue below 0 stays as it is: any such
     // is the theme's own (the settings dialog sets -1), and one the user's settings file holds is written back as read.

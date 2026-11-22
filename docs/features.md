@@ -927,7 +927,7 @@ switching one on and wiring it in is the whole job.
 ## Editor
 
 The editor is drawn with Direct2D and scales freely: hosts can resize it, and it keeps its aspect ratio. Collapsing
-the modulation panel or the keyboard strip makes it shorter (the plugin asks the host to resize the window). It keeps
+the keyboard strip makes it shorter (the plugin asks the host to resize the window). It keeps
 its size as it is scaled on the monitor its window is on: in a host aware of each monitor's scaling, opened on (or
 moved to) one scaled otherwise than the main one, it asks the host for the size at that scaling. While
 only what keeps to its place moves (the output meter and scope and the playing count in the header, the keys, an
@@ -948,7 +948,11 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
 
 - **ROUTING / MATRIX / FX / SEQ / MODS** tabs, under the header, pick what the panel below them shows: the routing
   graph or the matrix (two views of the same connections) with the inspector floating over the panel's left end, or
-  across the whole panel the effects chain, the sequencer or every modulation. The
+  across the whole panel the effects chain, the sequencer or every modulation. The sequencer's view, at its full size,
+  reaches down over the modulation panel too, as tall as the two together, the source cards coming back with another
+  view; at its half size it covers the panel alone, as the FX view does. Its card's size button and a double-click on
+  its tab while it shows switch between them (a double-click whose first click shows it leaves it); the size is the
+  user's setting, kept in their settings file (full to begin with), not the patch's, and nothing to undo. The
   choice is saved with the project, but loading a preset or Init leaves the tab shown (and the FX view's row or graph)
   as it is. They are folder tabs: the one shown is part of the panel under it, its outline
   curving into the panel's edge (ROUTING, in line with the panel's left edge, runs straight on down it), with the
@@ -959,12 +963,22 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   modulated knob has, says a control on the tab, shown or hidden, is modulated (an operator page's tabs). While the full-size shape, shaper curve or partial editor has the panels, no tab
   is shown, and clicking one closes the editor (a widened LFO card's shape stays in its card).
 - **SEQ** (the sequencer, see [Sound engine](#sound-engine)): its settings on a card where the inspector floats, and
-  the roll of the pattern picked in the rest.
-  - **The card**: the sequencer's power switch; **PATTERN** A to D (the one picked plays and shows in the roll) and a
-    button that copies it, its length, loop, notes and curves, into the next empty pattern (no notes, and no points
-    on its curves); **PLAY** Host | Key | Latch; the
-    big knobs in two rows of four, Rate and Length (the pattern's, in bars) over Octave and Transpose at the left,
-    Swing and Gate over Humanize and Velocity at the right; **ORDER** as
+  the roll of the pattern picked in the rest, at its full size down to the modulation panel's bottom, which it covers,
+  with the patterns' overview under the card; at its half size, down to the panels' row's bottom, without it.
+  - **The card**: the sequencer's power switch, and left of it the size button (the Curve card's expand button at
+    the half size, its collapse button at the full one, its tooltip saying which); **PATTERN** A to D (the one picked plays and shows in the roll; the
+    overview's tiles copy and paste them), a modulation target too, in whole steps: a source's handle dropped on its
+    buttons (ringed together as one while carried) modulates it, the MODS view's target menu lists it under Sequencer,
+    a host may modulate it, and the button modulation picks, while it isn't the one set, is ringed, as the dot on its
+    reach shows it (with nothing playing, where the macros and the mod wheel take it); under the row, as under a knob, its modulations' reach (a line from A's middle to D's, with the set
+    pattern's tick and the live dot) and their depth handles, centered, PLAY sitting lower to leave them room; the sequencer takes a pattern modulation picks as it takes one clicked, at once while nothing plays
+    and else where the loop comes round; **PLAY** Host | Key | Latch; the
+    controls in two rows of four, Speed and Length (the pattern's, in bars) over Octave and Transpose at the left, as
+    steppers, and the knobs Swing and Gate over Humanize and Velocity at the right (those four modulation targets, as an effect's knobs
+    are: the sources' handles drop on them, the MODS view's target menu lists them under Sequencer, and the host may
+    modulate them, for every note at once; the sequencer plays them, before each stretch it plans, as set with the
+    host's and the macros' modulation and the newest voice's slots, or the last one's as the effects ring out, and
+    the knobs' dots show where it plays them); **ORDER** as
     arrows (forward, back, to and fro, a die for random); **SCALE**: the root (dragged up and down or scrolled, a
     semitone a step; a double-click puts it back on C4), the scale's list (Chromatic, Major, Minor, Dorian, Phrygian,
     Lydian, Mixolydian, Harmonic Minor, Melodic Minor, Pentatonic Major and Minor, Blues; wider than its button, and
@@ -972,6 +986,25 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     those of notes off it all the same, their names faint. The rows' ground follows the keys alone, whatever the scale:
     a black key's row darker and a white key's a little lighter, and folded, all of them plain. Notes off the scale are
     hatched across, folded or not. Its switches say what they do in their tooltips (PLAY's what each mode does).
+  - **PATTERNS**, a card like it under it, down to the panel's bottom: a tile a pattern, A to D, one under another,
+    its letter at its left (lit, and the tile tinted and ringed, while it is the pattern picked) and its notes drawn
+    small after it: across, the longest pattern's length (a shorter one's tile ends short, a line at each bar, outside
+    its loop dimmed); up and down, the pattern's own notes, at least an octave of rows, fainter the softer and a muted
+    one faintest. The pattern that plays shows the playhead in its tile, and the pattern picked what the roll shows
+    of it, as a rectangle: across the steps it shows, up and down its rows (as far as the tile reaches; all the way
+    while the pattern has no notes), moving as the roll scrolls and zooms. While the roll has somewhere to scroll to,
+    the rectangle (or just round it) drags it there, across and up and down, the cursor moving over it and the
+    rectangle brighter under the mouse and while dragged. A click elsewhere on a tile picks its pattern (one undo
+    step); a tile carried onto another (half seen, following the mouse) rings that one, and let go of there copies its
+    pattern there as the copy button does, length, loop, notes and curves, over what was there (one undo step, and a
+    message says so); let go of on its own place or off the tiles, it does nothing. The hand shows over a tile, and
+    its tooltip says so. A tile's right-click menu has **Copy Pattern**, **Paste Pattern** (once one is copied) and,
+    under a line, **Clear Pattern** (while it holds notes or curve points); Ctrl+C over a tile copies its pattern and
+    Ctrl+V over one pastes the pattern copied there. The pattern copied (length, loop, notes and curves) is the
+    editor's, kept as patches load. Pasted, or copied by a carried tile, over a pattern that holds notes or curve points
+    other than those, it asks first ("Overwrite pattern B?", "Are you sure you want to overwrite this pattern?",
+    Cancel | Overwrite); over an empty pattern it doesn't. Clear Pattern asks as the bin does, and clears that pattern
+    (its length and loop staying). Each is one undo step.
   - **The grid**: a line at every snap's length across the roll (a step with the snap off), the beats and bars
     stronger, as strong as the settings dialog's **GRID** says (50 % to begin with).
   - **The tools** over the roll: select | draw (select to begin with), **SNAP** and its list (Off, 1/4, 1/8, 1/16 to
@@ -1013,8 +1046,9 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   - **The lane** under the roll, a slight line parting the two: a stem for each note at its start, as high as its velocity or its chance, as the
     **VELOCITY | CHANCE | BEND | MOD WHEEL** tabs under it pick, a note picked ringed there too. After the tabs,
     a **MACRO** tab, with a dot in its macro's color (faint while the macro has no curve in this pattern, here and in the
-    list) and that macro's number, shows the macro last shown and opens
-    the list of the eight over it: each with its color, its name and its curve in this pattern drawn small (a faint line
+    list) and that macro's number, in two parts lit apart under the mouse: its label, a click on which shows the macro
+    it names (the macro last shown), and at its right end its arrow (pointing down, and up while the list is open), a thin line parting the two while either is lit,
+    a click on which opens the list of the eight over it ("Choose macro" its tooltip): each with its color, its name and its curve in this pattern drawn small (a faint line
     without one). A row picked shows that macro's curve in the lane, the tab lit as a tab picked is; a click around the list or Escape closes it, and the wheel over the tab steps along the macros. With **Draw**, dragged
     across, the notes there take the height of the mouse (the cursor a pen, and up and down over a dot and while one is
     dragged); with more than one note picked, a drag from one of their dots moves them all up or down together, each
@@ -1049,7 +1083,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     the roll, sound alone while the button is held (a note moved to another row sounding that row's), whatever Play is: never the sequencer's
     pattern, which only the keyboard strip's keys and the host's notes start in Key and Latch.
   - **Following what is dragged**: a note, a box or a paint stroke dragged to the roll's edge (or past it) scrolls the
-    roll that way, faster the further past it, what is dragged going along. A patch loaded (a preset, Init, a
+    roll that way, faster the further past it, what is dragged going along (a box's start staying on the notes where
+    it began, so it reaches notes that didn't show as it started). A patch loaded (a preset, Init, a
     project) fits the roll to its pattern's notes: the whole pattern across, and the rows about the notes, lower where
     they don't all fit.
   - **No two notes on one spot**: a note put down, moved, stretched or transposed onto another's start and pitch takes
@@ -1591,8 +1626,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     full-size button (two arrows pointing apart); another shape, folding the card and removing it take it back to
     its size too. Every edit applies as it is
     made, so there is no done button. One card is widened at a time: widening another takes the first one back.
-    Collapsing the modulation panel leaves the card as it was, widened or not, for when the panel opens again; it
-    isn't saved with the patch. The full-size button opens the shape over the routing panel and the inspector,
+    The SEQ view covering the modulation panel leaves the card as it was, widened or not, for when the panel shows
+    again; it isn't saved with the patch. The full-size button opens the shape over the routing panel and the inspector,
     which it hides while it is open, the card staying widened under it with its own editor greyed out (it takes no
     input there meanwhile); the done button (a check mark, top right) closes it, as a view tab does, and the card's
     editor is back in use.
@@ -1822,10 +1857,10 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     like the filter effect's, is what the filter puts out, all voices together, measured before its output level
     (the Param EQ's analyzer: a 2048-point FFT in 96 bands, 0 dB at the top), while the editor is open; a filter
     that is off shows none. Underneath are the send knobs of everything that feeds the filter.
-- **Modulation**: the panel's title row has the **MODULATION** toggle, which collapses the panel to that row and
-  opens it again (the editor gets shorter; saved with the project, but not part of presets), then **+ SOURCE**,
+- **Modulation**: the panel's title row has its title, **MODULATION** (the panel doesn't collapse; the SEQ view
+  covers it), then **+ SOURCE**,
   shaped like + EFFECT (a drawn plus, the word and a chevron), which opens the list of source types under it to add
-  one (which opens a collapsed panel), and beside it how many of the 16 places are taken, as in 4/16 (with every
+  one, and beside it how many of the 16 places are taken, as in 4/16 (with every
   place taken it is dimmed, and a click says so). Random and Curve cards are laid out as an LFO's (see below), but
   have **Unipolar** | **Bipolar** (as icons) where an LFO's shape list is, one of them lit, which sets which way their
   depths swing, as the polarity in its title's menu does, and no Unipolar switch; a Random card has no Phase knob. A MIDI card has its input's list (CC,
@@ -1973,9 +2008,10 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     modulation's range, a tick where the amount is set and a white dot where it is now, and its label each
     modulation's range just above it, clear of its solid fill.
 - **Steppers**: the header's Voices, an operator's Unison and Mult (fixed), a shaper's Stack (a voice's and an
-  effect's, without a label) and a MIDI source's CC show as steppers
+  effect's, without a label), a MIDI source's CC and the SEQ card's Speed, Length, Octave and Transpose show as steppers
   rather than knobs: the number in a field, − and + at the field's ends and its steps along the field's foot, a tick
-  each where they fit 2.5 px apart or more (the one set lit), else a track with the value's place marked. Every other
+  each where they fit 2.5 px apart or more (the one set lit), else a track filled to the value (from its middle where
+  the range has 0 there), with no line across it. Every other
   stepped value stays a knob. A stepper takes what a knob takes: a drag up and down a step every 10 px (Voices
   doubling every 40), the wheel a step a notch, a double-click to reset, Ctrl+Click or a double-click on its label to
   type, a source's handle dropped on it where its value takes modulation, its depth handles under it; − and + step it
@@ -2050,10 +2086,10 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   right end, velocity; under them the
   wheels and six octaves of virtual keys, from C1 to C7 (the small − and + buttons under their right end, the
   range between them, shift them by an octave). Each wheel's handle sits over it, under the strip's title. The toggle
-  (a chevron and the title, like the modulation panel's, as far from the strip's top) collapses the strip to its top
+  (a chevron and the title, as far from the strip's top as the modulation panel's title from its) collapses the strip to its top
   row, taking the wheels, the keys and the octave shift away; the wheels' handles stay, their names (BEND, MOD) then
   under them, so the wheels can still be assigned. Whether it is
-  collapsed is kept with the editor, like the modulation panel's, and loading a
+  collapsed is kept with the editor, and loading a
   preset leaves it as it is. It is also kept in the user's settings (`keysCollapsed`), written as it is collapsed or
   opened: a new instance opens with the strip as it was left last, while a project keeps its own (in the browser
   demo, the browser's storage keeps it). A key plays as hard as where it is clicked: velocity 1 at its top, 127 at its bottom

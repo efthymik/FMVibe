@@ -21,6 +21,10 @@
 
 namespace fmvibe::gui {
 
+namespace detail {
+struct SeqRoll; // see layout.h
+}
+
 class SeqPanel : public Panel {
 public:
     explicit SeqPanel(PanelHost &host);
@@ -28,17 +32,29 @@ public:
     // The confirm dialog's question this panel asks (see View::confirm_, whose other kinds are the View's and the
     // preset browser's): every note of the pattern going.
     static constexpr int kConfirmClear = 7;
+    static constexpr int kConfirmOverwrite = 10; // a pattern pasted or copied over one that holds notes
     // The roll's right-click menu's commands, numbered from kMenuCommands (as many as kMenuCount; see
     // View::menuCommand(), which numbers the others).
-    static constexpr int kMenuCommands = 50, kMenuCount = 10;
+    static constexpr int kMenuCommands = 50, kMenuCount = 12;
 
     // The SEQ view shows, with no shape editor over it.
     bool wide() const;
+    // At its full size (the user's setting, EditorSettings::seqFull): as tall as the panels' row and the modulation
+    // panel, the patterns' overview under the card; else the panels' row alone. The roll's places at its size.
+    bool full() const;
+    const detail::SeqRoll &roll() const;
+    void toggleSize(); // the full size or the half, kept in the user's settings
 
     void widgets(std::vector<Widget> &list) const override;
     void popups(std::vector<Widget> &list) const override; // the scale's and the snap's lists, over everything
     void paintBack(Canvas &c) override;
+    void paintDrag(Canvas &c) override; // a pattern's tile carried onto another
     bool paintWidget(Canvas &c, const Widget &w, bool hovered) override;
+    bool doublePress(const Widget &w) const override { return w.kind == Kind::SeqSize; } // a quick second click too
+    // A source's handle over PATTERN: its buttons take it, as one, ringed together, modulating the pattern picked.
+    bool takesSource(const Widget &w, int source) const override;
+    void paintSourceRing(Canvas &c, const Widget &w, bool over, Color color) override;
+    bool dropSource(const Widget &w, int source) override;
     std::string tooltip(const Widget &w) const override;
     bool tipAtMouse(const Widget &w) const override;
     // The cursor over the roll (a pen while drawing, moving and stretching over a note), none elsewhere.
@@ -82,6 +98,8 @@ private:
     };
     int seqPattern() const;
     std::vector<SeqNote> seqNotes() const; // the pattern's, in slot order
+    std::vector<SeqNote> seqNotesOf(int pattern) const; // another's
+    int seqStepsOf(int pattern) const;                  // and how long it is
     int seqSteps() const;                  // how long it is, in steps
     // The pitches the roll's rows show, bottom first: every one from layout's seqLow up, or only the scale's, as many
     // as fit.
@@ -209,8 +227,40 @@ private:
     void stepSeqField(int field, double steps);
     void flipSeqFlag(int flag);
     void stretchSeq(double factor);
-    void clearSeqPattern();
-    void copySeqPattern();
+    void clearSeqPattern(int pattern);    // its notes and its curves' points, one undo step
+    void askClearSeqPattern(int pattern); // asking first (kConfirmClear), unless it is empty
+    int seqClearing_ = 0;                 // the pattern kConfirmClear asks about
+    void copySeqPattern(int from, int to); // every note, curve, length and loop, one undo step
+    // The overview's tile under `p`, -1 for none; and one tile painted, `carried` as a drag carries it.
+    int seqPatternModulated() const;
+    int seqTileAt(Point p) const;
+    void paintSeqTile(Canvas &c, int pattern, Rect tile, bool hovered, bool carried);
+    struct TileScale {
+        Rect notes;         // the tile's notes area
+        int steps = 1;      // the pattern's
+        float stepW = 0.0f; // a step across, the longest pattern's steps filling the area
+        float from = 0.0f;  // the pitch whose row's bottom is the area's bottom
+        float rowH = 0.0f;  // a pitch's row, 0 while the pattern has no notes
+    };
+    TileScale seqTileScale(int pattern) const;
+    std::optional<Rect> seqViewRect(int pattern) const;
+    bool seqViewGrabbed(int pattern, Point p) const;
+    // A pattern's params in one order (its length and loop, its notes, its curves), the values the pattern clipboard
+    // holds; a pattern's values written over another's, one undo step, and the message saying so flashed; or, while
+    // the other holds notes or curve points and would change, asked about first (kConfirmOverwrite).
+    std::vector<int> seqPatternParams(int pattern) const;
+    std::vector<double> seqPatternValues(int pattern) const;
+    void writeSeqPattern(const std::vector<double> &values, int to, const std::string &done);
+    void offerSeqPattern(std::vector<double> values, int to, std::string done);
+    void copySeqPatternToClip(int pattern); // into the pattern clipboard, which the editor keeps for any patch
+    void pasteSeqPattern(int to);           // from it, asking first over notes
+    std::vector<double> seqPatternClip_; // the pattern copied (Copy Pattern, Ctrl+C over a tile), empty for none
+    struct {
+        std::vector<double> values;
+        int to = -1;
+        std::string done;
+    } seqOverwrite_;       // the paste or copy kConfirmOverwrite asks about
+    int seqMenuTile_ = -1; // the tile the right-click menu opened on
     // The notes copied (Ctrl+C, Ctrl+X, the roll's menu), kept by the editor for any pattern: each note's fields, its
     // start from the first one's; and how far they reach, from that start to the last one's end on the grid.
     struct SeqClip {
@@ -230,7 +280,7 @@ private:
     struct SeqDrag {
         enum class Mode { None, Move, Resize, ResizeStart, Box, Paint, Velocity, Lane, LaneGroup, Loop, LoopStart,
                           LoopEnd, LoopMove, Field, Audition, Scroll, ScrollY, CurvePoint, CurveBend, CurvePaint,
-                          CurveBox, LaneBox };
+                          CurveBox, LaneBox, Tile, ViewRect };
         Mode mode = Mode::None;
         Point start, now;                // where the mouse went down, and where it is now
         int anchor = -1;                 // the note grabbed (Move, Resize), the field (Field), the key (Audition)
@@ -254,13 +304,19 @@ private:
         bool narrow = false;
         bool curveUnpick = false; // a point picked, pressed with Ctrl or Shift: let go of if let go unmoved
         std::vector<int> curveBase;
+        bool carried = false; // Tile: moved off where it was pressed, so carried onto another
+        // Box: where it started on the roll, in rows up from the first of seqPitchList()'s (and across in grabStep's
+        // steps), so that corner stays on the notes it started by as the roll scrolls under a drag held at its edge.
+        float boxRow = 0.0f;
     };
+    Point seqBoxStart() const; // the Box's starting corner, where the roll shows it now
     void seqHear(int pitch); // that note heard from now on in the drag, the one before let go; -1 lets it go
     SeqDrag seqDrag_;
     bool dragging() const { return seqDrag_.mode != SeqDrag::Mode::None; } // a drag of its own goes on
     // The pattern's loop, in steps, as its params have it (the end, 0 for the pattern's, as the pattern's end), and
     // what a press on the ruler at `x` drags: an end of it, the whole of it, or a new one across the bars.
     std::pair<int, int> seqLoop() const;
+    std::pair<int, int> seqLoopOf(int pattern) const;
     SeqDrag::Mode seqRulerMode(float x) const;
     std::vector<int> seqSelection_; // the slots picked (of the pattern shown)
     int seqSelectionPattern_ = 0;   // and which pattern that was: another one's picks are forgotten

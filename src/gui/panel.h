@@ -170,6 +170,9 @@ public:
     // Each modulation of `param`'s range along `bar` (a route's label, a matrix cell), as a knob's ring shows them, the
     // one whose depth handle is under the mouse over the others, and where the set value is and modulation takes it now.
     virtual void paintModRange(Canvas &c, Rect bar, int param) = 0;
+    // Where modulation takes `param` now from its set value, as the dots on knobs show it: the newest voice's, or with
+    // none playing, what the macros and the mod wheel add (see View::liveOffset()).
+    virtual float modulatedBy(int param) const = 0;
     // A switch's face, as the View paints its own: lit, a tint of `color` (`tint` strong); hot (under the mouse, say);
     // its part of a row merged into a pill (see mergeButtons()).
     virtual void paintButtonFace(Canvas &c, const Widget &w, bool lit, bool hot, Color color, float tint,

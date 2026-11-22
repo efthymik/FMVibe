@@ -4875,6 +4875,94 @@ void sequencerChecks() {
         check(e.size() == 2 && near(e[0].frame, 1.5 * kStep) && near(e[1].frame, 1.75 * kStep),
               "Swing delays every other step and Gate shortens the notes");
     }
+    // Swing, Gate, Velocity and Humanize as modulation takes them (Sequencer::setFeel()), in place of what configure()
+    // read: a Gate of 50 % handed it halves a note set at 100 %.
+    {
+        ParamValues p = blank();
+        note(p, 0, 0.0, 1.0, 60);
+        Sequencer seq;
+        seq.prepare(kSampleRate);
+        seq.configure(p);
+        seq.setFeel({0.5, 0.5, 1.0, 0.0});
+        std::array<SeqEvent, Sequencer::kMaxEvents> out;
+        std::vector<Event> events;
+        for (double done = 0.0; done < 4.0 * kStep;) {
+            uint32_t covered = 0;
+            const int n = seq.plan(512, 120.0, true, done / kStep / 4.0, out, covered);
+            for (int i = 0; i < n; ++i)
+                events.push_back({done + out[i].frame, out[i].on, out[i].key});
+            done += covered;
+        }
+        check(events.size() == 2 && near(events[0].frame, 0.0) && near(events[1].frame, 0.5 * kStep),
+              "the sequencer plays Swing, Gate, Velocity and Humanize as modulation hands them to it");
+    }
+    // Through the synth, playing from a key: a macro's slot on Gate, the host's modulation of Swing and an LFO's slot on
+    // Velocity take them where the sequencer plays them, and the telemetry says how far: the macro's full knob a quarter
+    // of Gate's range down, the host's 0.1 up, the LFO swinging Velocity as the notes play.
+    {
+        auto t = std::make_unique<Telemetry>();
+        Engine e(1);
+        e.p[paramIndex(SeqParam::Enabled)] = 1.0;
+        e.p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Key);
+        note(e.p, 0, 0.0, 1.0, 69);
+        note(e.p, 1, 2.0, 1.0, 69);
+        const int gate = paramIndex(SeqParam::Gate), swing = paramIndex(SeqParam::Swing);
+        const int velocity = paramIndex(SeqParam::Velocity);
+        e.p[paramIndex(0, MacroParam::Value)] = 1.0;
+        e.p[slotTargetIndex(kMaxSources, 0)] = slotTargetValue(gate);
+        e.p[slotAmountIndex(kMaxSources, 0)] = -0.25;
+        e.p[paramIndex(0, SourceParam::Type)] = static_cast<double>(SourceType::Lfo);
+        e.p[paramIndex(0, SourceParam::Sync)] = 0.0;
+        e.p[paramIndex(0, SourceParam::Rate)] = 0.8; // a few Hz
+        e.p[slotTargetIndex(0, 0)] = slotTargetValue(velocity);
+        e.p[slotAmountIndex(0, 0)] = -0.5;
+        e.synth().setTempo(120.0);
+        e.render(256);
+        e.synth().paramMod(swing, {-1, -1, -1, -1}, 0.1);
+        e.synth().noteOn({1, 0, 0, 60}, 1.0);
+        float lfoMost = 0.0f;
+        for (int i = 0; i < 40; ++i) {
+            e.render(480);
+            e.synth().telemetry(*t);
+            lfoMost = std::max(lfoMost, std::abs(t->seqFeel[2]));
+        }
+        const double gateRange = paramTable()[gate].max - paramTable()[gate].min;
+        std::printf("      the sequencer's feel modulated: Gate %+.4f (a quarter of its range down is %+.4f), Swing %+.4f, "
+                    "Velocity up to %.4f\n",
+                    t->seqFeel[1], -0.25 * gateRange, t->seqFeel[0], lfoMost);
+        check(std::abs(t->seqFeel[1] + 0.25 * gateRange) < 1e-4 && std::abs(t->seqFeel[0] - 0.1f) < 1e-5f &&
+                  lfoMost > 0.05f && isModTarget(gate) && isModTarget(swing) && isModTarget(velocity) &&
+                  isModTarget(paramIndex(SeqParam::Humanize)) && !isModTarget(paramIndex(SeqParam::Octave)),
+              "a macro, the host and an LFO modulate the sequencer's Gate, Swing and Velocity");
+    }
+    // The pattern picked takes modulation in whole steps: a macro's slot on it, a third of its range at the macro's full
+    // knob, plays B from a key where A is set; at the knob's middle (half a step) it still plays A; and the telemetry
+    // says how far it takes the pattern.
+    {
+        auto t = std::make_unique<Telemetry>();
+        auto playing = [&](double knob) {
+            Engine e(1);
+            e.p[paramIndex(SeqParam::Enabled)] = 1.0;
+            e.p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Key);
+            note(e.p, 0, 0.0, 4.0, 60, 0);
+            note(e.p, 0, 0.0, 4.0, 72, 1);
+            e.p[paramIndex(0, MacroParam::Value)] = knob;
+            e.p[slotTargetIndex(kMaxSources, 0)] = slotTargetValue(paramIndex(SeqParam::Pattern));
+            e.p[slotAmountIndex(kMaxSources, 0)] = 1.0 / 3.0;
+            e.synth().setTempo(120.0);
+            e.render(256);
+            e.synth().noteOn({1, 0, 0, 60}, 1.0);
+            e.render(2400);
+            e.synth().telemetry(*t);
+            return std::pair{t->seqPattern, t->seqFeel[4]};
+        };
+        const auto [full, fullOffset] = playing(1.0);
+        const auto [half, halfOffset] = playing(0.4);
+        std::printf("      a macro on the pattern: pattern %d at its full knob (%+.3f), %d at 0.4 (%+.3f)\n", full,
+                    fullOffset, half, halfOffset);
+        check(full == 1 && std::abs(fullOffset - 1.0f) < 1e-4f && half == 0 && isModTarget(paramIndex(SeqParam::Pattern)),
+              "modulation picks the sequencer's pattern in whole steps");
+    }
     // Reversed, the step a bar plays first is its last: a note on step 0 plays at step 15. Its loop from step 4 to 8
     // leaves out a note on step 0, and plays one on step 5 every four steps.
     {

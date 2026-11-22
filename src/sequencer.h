@@ -43,6 +43,11 @@ public:
     // Takes the settings from the params, at the start of each render(), and the notes and curves too where `changed`
     // (a sequencer param may have) or the pattern to play isn't the one last read.
     void configure(const ParamValues &params, bool changed = true);
+    // Swing, Gate, Velocity and Humanize, and the pattern picked, as modulation takes them now, in plain units (each in
+    // its range), from the next stretch planned on, in place of what configure() read (see Synth::feedSeqFeel()). The
+    // pattern, rounded to a whole one, takes over where a pattern picked does: at once while nothing plays, else where
+    // the loop comes round.
+    void setFeel(const std::array<double, kSeqFeelCount> &feel);
 
     bool enabled() const { return enabled_; }
     // Whether keys go to the sequencer rather than playing notes: in Key and Latch, while it is on.

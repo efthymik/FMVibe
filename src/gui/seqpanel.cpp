@@ -60,18 +60,19 @@ Rect seqFieldRect(int field) { // left of Slide, the note first
         x -= kFieldWidths[f];
     return {x, kSeqTools.y, kFieldWidths[field], kSeqTools.h};
 }
-Rect seqCopyButton() { return {kSeqCard.x + kSeqCard.w - 12.0f - 26.0f, kSeqPatternY, 26.0f, 22.0f}; }
 // The scale's row: its root, the scale, then FOLD at the card's right.
 Rect seqRootBox() { return {kSeqCardControls, kSeqScaleY, 48.0f, 22.0f}; }
 Rect seqScaleButton() { return {kSeqCardControls + 52.0f, kSeqScaleY, 102.0f, 22.0f}; }
 Rect seqFoldButton() { return {kSeqCard.x + kSeqCard.w - 12.0f - 54.0f, kSeqScaleY, 54.0f, 22.0f}; }
-Rect seqLaneTab(int lane) { return {kSeqGrid.x + lane * kSeqLaneTabStep, kSeqLaneTabs.y + 3.0f, 72.0f, kSeqLaneTabs.h - 6.0f}; }
+Rect seqLaneTab(const SeqRoll &r, int lane) {
+    return {r.grid.x + lane * kSeqLaneTabStep, r.laneTabs.y + 3.0f, 72.0f, r.laneTabs.h - 6.0f};
+}
 // The zoom's buttons at the lane tabs' right: across out and in, then up and down out and in, each pair after its
 // arrow.
-Rect seqZoomButton(int b) {
-    const float right = kSeqBox.x + kSeqBox.w - 6.0f;
+Rect seqZoomButton(const SeqRoll &r, int b) {
+    const float right = r.box.x + r.box.w - 6.0f;
     const float x = right - (4 - b) * 20.0f - (b < 2 ? 22.0f : 0.0f);
-    return {x, kSeqLaneTabs.y + 2.0f, 18.0f, kSeqLaneTabs.h - 4.0f};
+    return {x, r.laneTabs.y + 2.0f, 18.0f, r.laneTabs.h - 4.0f};
 }
 constexpr float kSeqMaxZoomY = 3.0f, kSeqMinZoomY = 0.6f;
 
@@ -87,6 +88,20 @@ SeqPanel::SeqPanel(PanelHost &host)
     seqLoadsSeen_ = controller().patchLoads();
 }
 
+bool SeqPanel::full() const {
+    return controller().editorSettings().seqFull;
+}
+
+const detail::SeqRoll &SeqPanel::roll() const {
+    return seqRoll(full());
+}
+
+void SeqPanel::toggleSize() {
+    EditorSettings settings = controller().editorSettings();
+    settings.seqFull = !settings.seqFull;
+    controller().setEditorSettings(settings);
+}
+
 bool SeqPanel::wide() const {
     return controller().layout().view == RoutingView::Seq && !host_.shapeEditorOpen() && !host_.partialEditorOpen();
 }
@@ -96,12 +111,19 @@ int SeqPanel::seqPattern() const {
 }
 
 int SeqPanel::seqSteps() const {
-    return kSeqStepsPerBar * stepped(value(paramIndex(seqPattern(), SeqPatternParam::Length)), 1, kSeqBars);
+    return seqStepsOf(seqPattern());
+}
+
+int SeqPanel::seqStepsOf(int pattern) const {
+    return kSeqStepsPerBar * stepped(value(paramIndex(pattern, SeqPatternParam::Length)), 1, kSeqBars);
 }
 
 std::vector<SeqPanel::SeqNote> SeqPanel::seqNotes() const {
+    return seqNotesOf(seqPattern());
+}
+
+std::vector<SeqPanel::SeqNote> SeqPanel::seqNotesOf(int pattern) const {
     std::vector<SeqNote> notes;
-    const int pattern = seqPattern();
     for (int slot = 0; slot < kSeqNotes; ++slot) {
         const double length = value(seqNoteIndex(pattern, slot, SeqNoteParam::Length));
         if (!(length > 0.0))
@@ -171,26 +193,26 @@ void SeqPanel::zoomSeq(bool across, float factor, Point at) {
         const double step = seqStepAt(at.x);
         const float steps = static_cast<float>(seqSteps());
         seqZoomX_ = std::clamp(seqZoomX_ * factor, 1.0f, std::max(steps / 2.0f, 1.0f));
-        seqScrollX_ = static_cast<float>(step) - (at.x - kSeqGrid.x) / kSeqGrid.w * seqShownSteps();
+        seqScrollX_ = static_cast<float>(step) - (at.x - roll().grid.x) / roll().grid.w * seqShownSteps();
         seqScrollX_ = seqScroll();
         return;
     }
-    const float y = std::clamp(at.y, kSeqGrid.y, kSeqGrid.y + kSeqGrid.h - 1.0f);
-    const float rowBelow = (kSeqGrid.y + kSeqGrid.h - y) / seqRowH(); // rows under the mouse
+    const float y = std::clamp(at.y, roll().grid.y, roll().grid.y + roll().grid.h - 1.0f);
+    const float rowBelow = (roll().grid.y + roll().grid.h - y) / seqRowH(); // rows under the mouse
     const float row = static_cast<float>(seqFirstRow()) + rowBelow;
     seqZoomY_ = std::clamp(seqZoomY_ * factor, kSeqMinZoomY, kSeqMaxZoomY);
-    seqShowFromRow(row - (kSeqGrid.y + kSeqGrid.h - y) / seqRowH());
+    seqShowFromRow(row - (roll().grid.y + roll().grid.h - y) / seqRowH());
 }
 
 Rect SeqPanel::seqScrollTrack() const {
-    const float x = kSeqMacroTab.right() + 10.0f;
-    return {x, kSeqLaneTabs.y + kSeqLaneTabs.h * 0.5f - 3.0f, seqZoomButton(0).x - 30.0f - x, 6.0f};
+    const float x = roll().macroTab.right() + 10.0f;
+    return {x, roll().laneTabs.y + roll().laneTabs.h * 0.5f - 3.0f, seqZoomButton(roll(), 0).x - 30.0f - x, 6.0f};
 }
 
 Rect SeqPanel::seqScrollYThumb() const {
     const float total = static_cast<float>(std::max<size_t>(seqPitchList().size(), 1));
     const float count = static_cast<float>(seqRows().size()), first = static_cast<float>(seqFirstRow());
-    const Rect track = kSeqScrollYTrack;
+    const Rect track = roll().scrollY;
     const float h = std::max(count / total * track.h, 16.0f);
     const float top = track.y + track.h - (first + count) / total * track.h;
     return {track.x, std::clamp(top, track.y, track.y + track.h - h), track.w, h};
@@ -212,7 +234,7 @@ void SeqPanel::seqFit() {
         return static_cast<float>(std::lower_bound(pitches.begin(), pitches.end(), pitch) - pitches.begin());
     };
     const float span = indexOf(high) - indexOf(low) + 1.0f;
-    seqZoomY_ = std::clamp(kSeqGrid.h / (kSeqRowH * span), kSeqMinZoomY, 1.0f);
+    seqZoomY_ = std::clamp(roll().grid.h / (kSeqRowH * span), kSeqMinZoomY, 1.0f);
     const float count = static_cast<float>(seqRows().size());
     seqShowFromRow(indexOf(low) - std::max(count - span, 0.0f) * 0.5f);
 }
@@ -229,17 +251,20 @@ bool SeqPanel::seqEdgeScroll() {
     constexpr float kZone = 10.0f;
     const Point p = seqDrag_.now;
     bool moved = false;
-    // Across, faster the further past the edge, up to a sixteenth of what shows a poll.
-    const float left = kSeqGrid.x + kZone - p.x, right = p.x - (kSeqGrid.x + kSeqGrid.w - kZone);
-    const float pull = left > 0.0f ? -std::min(left / 40.0f, 1.0f) : right > 0.0f ? std::min(right / 40.0f, 1.0f) : 0.0f;
+    // Across, faster the further past the edge (all the way 60 px on): from a quarter of the most at the zone's edge up
+    // to a 96th of what shows a poll, about 0.6 of it a second at the editor's 60 polls, as fast as the rows go (half a
+    // row a poll, of the 50 or so that show).
+    const float left = roll().grid.x + kZone - p.x, right = p.x - (roll().grid.x + roll().grid.w - kZone);
+    const float pull = left > 0.0f ? -std::min(left / 60.0f, 1.0f) : right > 0.0f ? std::min(right / 60.0f, 1.0f) : 0.0f;
     if (pull != 0.0f) {
         const float before = seqScroll();
-        seqScrollX_ = seqScroll() + pull * seqShownSteps() / 16.0f;
+        const float speed = std::copysign(0.25f + 0.75f * std::abs(pull), pull);
+        seqScrollX_ = seqScroll() + speed * seqShownSteps() / 96.0f;
         seqScrollX_ = seqScroll();
         moved = seqScrollX_ != before;
     }
     // Up and down, by rows: up to half a row a poll, whole rows at a time.
-    const float above = kSeqGrid.y + kZone - p.y, below = p.y - (kSeqGrid.y + kSeqGrid.h - kZone);
+    const float above = roll().grid.y + kZone - p.y, below = p.y - (roll().grid.y + roll().grid.h - kZone);
     const float rise = above > 0.0f ? std::min(above / 30.0f, 1.0f) : below > 0.0f ? -std::min(below / 30.0f, 1.0f) : 0.0f;
     if (rows && rise != 0.0f) {
         seqEdgeRows_ += rise * 0.5f;
@@ -269,7 +294,7 @@ void SeqPanel::poll(const Telemetry &t, std::vector<Rect> &repaint) {
     if (seqFollowKeys(t) && wide())
         moved = true;
     if (moved)
-        repaint.push_back(kPanelsBand);
+        repaint.push_back(full() ? kSeqBand : kPanelsBand); // at the full size, down over the modulation panel's place
 }
 
 // The roll scrolling under a drag held at its edge; and a patch loaded (a preset, Init, the host's state), the roll
@@ -340,7 +365,7 @@ Rect SeqPanel::seqScrollThumb() const {
 
 std::vector<int> SeqPanel::seqRows() const {
     const UiLayout &layout = controller().layout();
-    const int count = std::max(static_cast<int>(kSeqGrid.h / (kSeqRowH * std::clamp(seqZoomY_, kSeqMinZoomY, kSeqMaxZoomY))), 4);
+    const int count = std::max(static_cast<int>(roll().grid.h / (kSeqRowH * std::clamp(seqZoomY_, kSeqMinZoomY, kSeqMaxZoomY))), 4);
     const std::vector<int> pitches = seqPitchList();
     const auto from = std::lower_bound(pitches.begin(), pitches.end(), layout.seqLow);
     const long first = std::clamp(static_cast<long>(from - pitches.begin()), 0L,
@@ -349,30 +374,35 @@ std::vector<int> SeqPanel::seqRows() const {
 }
 
 float SeqPanel::seqRowH() const {
-    return kSeqGrid.h / static_cast<float>(std::max<size_t>(seqRows().size(), 1));
+    return roll().grid.h / static_cast<float>(std::max<size_t>(seqRows().size(), 1));
 }
 
 float SeqPanel::seqStepX(double step) const {
-    return kSeqGrid.x + static_cast<float>((step - seqScroll()) / seqShownSteps()) * kSeqGrid.w;
+    return roll().grid.x + static_cast<float>((step - seqScroll()) / seqShownSteps()) * roll().grid.w;
 }
 
 double SeqPanel::seqStepAt(float x) const {
-    return seqScroll() + (x - kSeqGrid.x) / kSeqGrid.w * seqShownSteps();
+    return seqScroll() + (x - roll().grid.x) / roll().grid.w * seqShownSteps();
 }
 
 float SeqPanel::seqRowY(int pitch) const {
     const std::vector<int> rows = seqRows();
     const auto at = std::find(rows.begin(), rows.end(), pitch);
     if (at == rows.end())
-        return kSeqGrid.y + kSeqGrid.h + 100.0f;
-    return kSeqGrid.y + kSeqGrid.h - static_cast<float>(at - rows.begin() + 1) * seqRowH();
+        return roll().grid.y + roll().grid.h + 100.0f;
+    return roll().grid.y + roll().grid.h - static_cast<float>(at - rows.begin() + 1) * seqRowH();
+}
+
+Point SeqPanel::seqBoxStart() const {
+    return {seqStepX(seqDrag_.grabStep),
+            roll().grid.y + roll().grid.h - (seqDrag_.boxRow - static_cast<float>(seqFirstRow())) * seqRowH()};
 }
 
 int SeqPanel::seqPitchAt(float y) const {
     const std::vector<int> rows = seqRows();
     if (rows.empty())
         return 60;
-    const int row = static_cast<int>(std::floor((kSeqGrid.y + kSeqGrid.h - y) / seqRowH()));
+    const int row = static_cast<int>(std::floor((roll().grid.y + roll().grid.h - y) / seqRowH()));
     return rows[static_cast<size_t>(std::clamp(row, 0, static_cast<int>(rows.size()) - 1))];
 }
 
@@ -439,7 +469,9 @@ void SeqPanel::widgets(std::vector<Widget> &list) const {
     for (int p = 0; p < kSeqPatterns; ++p)
         add(Kind::Choice, {kSeqCardControls + p * 30.0f, kSeqPatternY, 28.0f, 22.0f}, paramIndex(SeqParam::Pattern), -1, p);
     mergeButtons(list, from);
-    add(Kind::SeqCopy, seqCopyButton());
+    add(Kind::SeqSize, kSeqSizeButton);
+    for (int p = 0; p < kSeqPatterns && full(); ++p) // the overview under the card, at the full size
+        add(Kind::SeqTile, seqTile(p), -1, -1, p);
     from = list.size();
     for (int p = 0; p < static_cast<int>(SeqPlay::Count); ++p)
         add(Kind::Choice, {kSeqCardControls + p * 62.0f, kSeqPlayY, 60.0f, 22.0f}, paramIndex(SeqParam::Play), -1, p);
@@ -480,18 +512,19 @@ void SeqPanel::widgets(std::vector<Widget> &list) const {
     add(Kind::SeqClear, seqClearButton());
 
     // The roll: its ruler, its keys, the grid, the lane and its tabs.
-    add(Kind::SeqRuler, kSeqRuler);
-    add(Kind::SeqKeys, kSeqKeys);
-    add(Kind::SeqGrid, kSeqGrid);
-    add(Kind::SeqLane, kSeqLaneArea);
+    add(Kind::SeqRuler, roll().ruler);
+    add(Kind::SeqKeys, roll().keys);
+    add(Kind::SeqGrid, roll().grid);
+    add(Kind::SeqLane, roll().laneArea);
     for (int lane = 0; lane < static_cast<int>(SeqLane::Macro1); ++lane)
-        add(Kind::SeqLaneTab, seqLaneTab(lane), -1, -1, lane);
-    add(Kind::SeqMacroTab, kSeqMacroTab);
+        add(Kind::SeqLaneTab, seqLaneTab(roll(), lane), -1, -1, lane);
+    add(Kind::SeqMacroTab, seqMacroLabel(roll().macroTab));
+    add(Kind::SeqMacroArrow, seqMacroArrow(roll().macroTab));
     for (int b = 0; b < 4; ++b)
-        add(Kind::SeqZoom, seqZoomButton(b), -1, -1, b);
+        add(Kind::SeqZoom, seqZoomButton(roll(), b), -1, -1, b);
     if (seqShownSteps() < static_cast<float>(seqSteps()))
         add(Kind::SeqScroll, seqScrollTrack().inset(-4.0f));
-    add(Kind::SeqScrollY, {kSeqScrollYTrack.x - 3.0f, kSeqScrollYTrack.y, kSeqScrollYTrack.w + 5.0f, kSeqScrollYTrack.h});
+    add(Kind::SeqScrollY, {roll().scrollY.x - 3.0f, roll().scrollY.y, roll().scrollY.w + 5.0f, roll().scrollY.h});
 }
 
 Rect SeqPanel::seqList(Rect button, int count, float width) const {
@@ -531,10 +564,10 @@ void SeqPanel::popups(std::vector<Widget> &list) const {
     if (seqMacroMenu_) {
         add(Kind::SeqMacroMenu, {0.0f, 0.0f, View::kWidth, host_.height()}, -1, 0);
         list.back().popup = true;
-        add(Kind::SeqMacroMenu, kSeqMacroList, -1, 1);
+        add(Kind::SeqMacroMenu, roll().macroList, -1, 1);
         list.back().popup = true;
         for (int macro = 0; macro < kMacros; ++macro) {
-            add(Kind::SeqMacroItem, seqMacroRow(macro), -1, -1, macro);
+            add(Kind::SeqMacroItem, seqMacroRow(roll().macroList, macro), -1, -1, macro);
             list.back().popup = true;
         }
     }
@@ -775,13 +808,13 @@ void SeqPanel::setSeqCurve(SeqCurve curve, const std::vector<SeqCurvePoint> &poi
 }
 
 float SeqPanel::seqCurveY(SeqCurve curve, double v) const {
-    const float top = kSeqLaneArea.y + 6.0f, h = kSeqLaneArea.h - 12.0f;
+    const float top = roll().laneArea.y + 6.0f, h = roll().laneArea.h - 12.0f;
     const double share = curve == SeqCurve::Bend ? (v + 1.0) * 0.5 : v;
     return top + h - static_cast<float>(std::clamp(share, 0.0, 1.0)) * h;
 }
 
 double SeqPanel::seqCurveValueAt(SeqCurve curve, float y) const {
-    const float top = kSeqLaneArea.y + 6.0f, h = kSeqLaneArea.h - 12.0f;
+    const float top = roll().laneArea.y + 6.0f, h = roll().laneArea.h - 12.0f;
     const double share = std::clamp((top + h - y) / h, 0.0f, 1.0f);
     return curve == SeqCurve::Bend ? share * 2.0 - 1.0 : share;
 }
@@ -942,26 +975,46 @@ void SeqPanel::paintSeqCurve(double from, double fromValue, double step, double 
     setSeqCurve(curve, points);
 }
 
-void SeqPanel::clearSeqPattern() {
-    std::vector<int> slots;
-    for (const SeqNote &n : seqNotes())
-        slots.push_back(n.slot);
+void SeqPanel::clearSeqPattern(int pattern) {
+    // Its notes' and curves' params back to their defaults, so a preset saved sparse leaves them out; its length and
+    // loop stay.
+    std::vector<std::pair<int, double>> changes;
+    const std::vector<int> params = seqPatternParams(pattern);
+    for (size_t i = kSeqPatternParamCount; i < params.size(); ++i) // past its length and loop
+        if (value(params[i]) != table_[params[i]].def)
+            changes.push_back({params[i], table_[params[i]].def});
+    if (changes.empty())
+        return;
+    if (pattern == seqPattern()) // what was picked goes with its notes
+        seqSelection_.clear();
     controller().beginStep();
-    removeSeqNotes(slots);
-    for (int c = 0; c < kSeqCurves; ++c)
-        setSeqCurve(static_cast<SeqCurve>(c), {});
+    editMany(changes);
     controller().endStep();
 }
 
-// Asked before every note of the pattern (and its curves) goes, which undo brings back.
-Panel::ConfirmWords SeqPanel::confirmWords(int) const {
-    return {trf(Str::ConfirmSeqClearTitle, {seqPatternName(seqPattern())}), tr(Str::ConfirmSeqClear),
-            tr(Str::ButtonClearSeq), false};
+// Asked before every note of a pattern (and its curves) goes, and before a pattern pasted or copied over one that
+// holds notes replaces them; undo brings them back.
+Panel::ConfirmWords SeqPanel::confirmWords(int kind) const {
+    if (kind == kConfirmOverwrite)
+        return {trf(Str::ConfirmSeqOverwriteTitle, {seqPatternName(seqOverwrite_.to)}), tr(Str::ConfirmSeqOverwrite),
+                tr(Str::ButtonOverwrite), false};
+    return {trf(Str::ConfirmSeqClearTitle, {seqPatternName(seqClearing_)}), {}, tr(Str::ButtonClearSeq), false};
 }
 
 void SeqPanel::confirmed(int kind, int button) {
     if (kind == kConfirmClear && button == 1)
-        clearSeqPattern();
+        clearSeqPattern(seqClearing_);
+    if (kind == kConfirmOverwrite && button == 1)
+        writeSeqPattern(seqOverwrite_.values, seqOverwrite_.to, seqOverwrite_.done);
+    if (kind == kConfirmOverwrite)
+        seqOverwrite_ = {};
+}
+
+void SeqPanel::askClearSeqPattern(int pattern) {
+    if (seqPatternEmpty(pattern))
+        return;
+    seqClearing_ = pattern;
+    host_.askConfirm(*this, kConfirmClear);
 }
 
 bool SeqPanel::seqPatternEmpty(int pattern) const {
@@ -975,43 +1028,69 @@ bool SeqPanel::seqPatternEmpty(int pattern) const {
     return true;
 }
 
-void SeqPanel::copySeqPattern() {
-    const int from = seqPattern();
-    int to = -1;
-    for (int i = 1; i < kSeqPatterns && to < 0; ++i) {
-        const int p = (from + i) % kSeqPatterns;
-        if (seqPatternEmpty(p))
-            to = p;
+void SeqPanel::copySeqPattern(int from, int to) {
+    offerSeqPattern(seqPatternValues(from), to, trf(Str::MsgSeqCopied, {seqPatternName(from), seqPatternName(to)}));
+}
+
+std::vector<int> SeqPanel::seqPatternParams(int pattern) const {
+    std::vector<int> params;
+    for (int f = 0; f < kSeqPatternParamCount; ++f)
+        params.push_back(paramIndex(pattern, static_cast<SeqPatternParam>(f)));
+    for (int slot = 0; slot < kSeqNotes; ++slot)
+        for (int f = 0; f < kSeqNoteParamCount; ++f)
+            params.push_back(seqNoteIndex(pattern, slot, static_cast<SeqNoteParam>(f)));
+    for (int c = 0; c < kSeqCurves; ++c)
+        for (int f = 0; f < kSeqCurveParamCount; ++f)
+            params.push_back(seqCurveCountIndex(pattern, static_cast<SeqCurve>(c)) + f);
+    return params;
+}
+
+std::vector<double> SeqPanel::seqPatternValues(int pattern) const {
+    std::vector<double> values;
+    for (int index : seqPatternParams(pattern))
+        values.push_back(value(index));
+    return values;
+}
+
+void SeqPanel::writeSeqPattern(const std::vector<double> &values, int to, const std::string &done) {
+    const std::vector<int> params = seqPatternParams(to);
+    if (values.size() != params.size())
+        return;
+    std::vector<std::pair<int, double>> changes;
+    for (size_t i = 0; i < params.size(); ++i)
+        if (value(params[i]) != values[i])
+            changes.push_back({params[i], values[i]});
+    if (!changes.empty()) {
+        controller().beginStep();
+        editMany(changes);
+        controller().endStep();
     }
-    if (to < 0) {
-        host_.flash(tr(Str::MsgSeqNoEmpty));
+    host_.flash(done);
+}
+
+void SeqPanel::copySeqPatternToClip(int pattern) {
+    if (pattern < 0 || pattern >= kSeqPatterns)
+        return;
+    seqPatternClip_ = seqPatternValues(pattern);
+    host_.flash(trf(Str::MsgSeqPatternCopied, {seqPatternName(pattern)}));
+}
+
+void SeqPanel::pasteSeqPattern(int to) {
+    if (!seqPatternClip_.empty())
+        offerSeqPattern(seqPatternClip_, to, trf(Str::MsgSeqPatternPasted, {seqPatternName(to)}));
+}
+
+void SeqPanel::offerSeqPattern(std::vector<double> values, int to, std::string done) {
+    if (to < 0 || to >= kSeqPatterns)
+        return;
+    if (seqPatternEmpty(to) || values == seqPatternValues(to)) { // nothing there to lose
+        writeSeqPattern(values, to, done);
         return;
     }
-    std::vector<std::pair<int, double>> changes;
-    for (int f = 0; f < kSeqPatternParamCount; ++f) {
-        const int src = paramIndex(from, static_cast<SeqPatternParam>(f));
-        const int dst = paramIndex(to, static_cast<SeqPatternParam>(f));
-        if (value(dst) != value(src))
-            changes.push_back({dst, value(src)});
-    }
-    for (int slot = 0; slot < kSeqNotes; ++slot)
-        for (int f = 0; f < kSeqNoteParamCount; ++f) {
-            const int src = seqNoteIndex(from, slot, static_cast<SeqNoteParam>(f));
-            const int dst = seqNoteIndex(to, slot, static_cast<SeqNoteParam>(f));
-            if (value(dst) != value(src))
-                changes.push_back({dst, value(src)});
-        }
-    for (int c = 0; c < kSeqCurves; ++c)
-        for (int f = 0; f < kSeqCurveParamCount; ++f) {
-            const int src = seqCurveCountIndex(from, static_cast<SeqCurve>(c)) + f;
-            const int dst = seqCurveCountIndex(to, static_cast<SeqCurve>(c)) + f;
-            if (value(dst) != value(src))
-                changes.push_back({dst, value(src)});
-        }
-    controller().beginStep();
-    editMany(changes);
-    controller().endStep();
-    host_.flash(trf(Str::MsgSeqCopied, {seqPatternName(from), seqPatternName(to)}));
+    seqOverwrite_.values = std::move(values);
+    seqOverwrite_.to = to;
+    seqOverwrite_.done = std::move(done);
+    host_.askConfirm(*this, kConfirmOverwrite);
 }
 
 // --- The notes copied, cut and pasted, and the roll's menu.
@@ -1078,10 +1157,24 @@ bool SeqPanel::seqPaste(const SeqClip &clip, double at) {
 
 namespace {
 // The roll's menu's commands, after SeqPanel::kMenuCommands.
-enum SeqMenu { kSeqCut, kSeqCopy, kSeqPaste, kSeqDuplicate, kSeqDelete, kSeqSelectAll, kSeqSlide, kSeqMute, kSeqQuantize };
+enum SeqMenu {
+    kSeqCut, kSeqCopy, kSeqPaste, kSeqDuplicate, kSeqDelete, kSeqSelectAll, kSeqSlide, kSeqMute, kSeqQuantize,
+    kSeqCopyPattern, kSeqPastePattern, kSeqClearPattern
+};
 } // namespace
 
 bool SeqPanel::contextMenu(const std::optional<Widget> &hit, Point p, std::vector<MenuItem> &items) {
+    if (hit && wide() && hit->kind == Kind::SeqTile) { // a pattern's tile: copying, pasting over and clearing it
+        seqMenuTile_ = hit->b;
+        items.push_back({kMenuCommands + kSeqCopyPattern, tr(Str::MenuSeqCopyPattern)});
+        if (!seqPatternClip_.empty())
+            items.push_back({kMenuCommands + kSeqPastePattern, tr(Str::MenuSeqPastePattern)});
+        if (!seqPatternEmpty(seqMenuTile_)) {
+            items.push_back({0, ""});
+            items.push_back({kMenuCommands + kSeqClearPattern, tr(Str::MenuSeqClearPattern)});
+        }
+        return true;
+    }
     if (!hit || !wide() || hit->kind != Kind::SeqGrid)
         return false;
     const int pattern = seqPattern();
@@ -1135,6 +1228,15 @@ bool SeqPanel::menuCommand(int command) {
     const int pattern = seqPattern();
     const std::vector<int> picked = seqPicked();
     switch (command) {
+    case kSeqCopyPattern:
+        copySeqPatternToClip(seqMenuTile_);
+        break;
+    case kSeqPastePattern:
+        pasteSeqPattern(seqMenuTile_);
+        break;
+    case kSeqClearPattern:
+        askClearSeqPattern(seqMenuTile_);
+        break;
     case kSeqCut:
     case kSeqCopy:
         host_.sendKey(command == kSeqCut ? Key::Cut : Key::Copy, false); // as the keys do, through the editor
@@ -1242,6 +1344,16 @@ bool SeqPanel::key(Key key, bool shift) {
         setSeqCurvePick(std::move(all));
         return true;
     }
+    // Over a pattern's tile, Ctrl+C copies its pattern and Ctrl+V pastes the one copied over it.
+    if ((key == Key::Copy || key == Key::Paste) && host_.hovered() && host_.hovered()->kind == Kind::SeqTile) {
+        if (key == Key::Copy)
+            copySeqPatternToClip(host_.hovered()->b);
+        else if (!seqPatternClip_.empty())
+            pasteSeqPattern(host_.hovered()->b);
+        else
+            return false;
+        return true;
+    }
     const int pattern = seqPattern();
     if (seqSelectionPattern_ != pattern) { // another pattern shown: what was picked was another's
         seqSelection_.clear();
@@ -1260,7 +1372,7 @@ bool SeqPanel::key(Key key, bool shift) {
         if (seqClip_.notes.empty())
             return false;
         const Point mouse = host_.mouse();
-        const double at = kSeqGrid.contains(mouse)
+        const double at = roll().grid.contains(mouse)
                               ? std::clamp(seqSnapped(seqStepAt(mouse.x), false), 0.0, static_cast<double>(seqSteps()))
                               : seqClipNext_;
         if (seqPaste(seqClip_, at))
@@ -1434,12 +1546,25 @@ bool SeqPanel::pressAs(const Widget &w, Point p, Modifiers mods, const Widget &h
         flipSeqFlag(w.b);
         return true;
     case Kind::SeqClear:
-        if (!seqPatternEmpty(seqPattern()))
-            host_.askConfirm(*this, kConfirmClear);
+        askClearSeqPattern(seqPattern());
         return true;
-    case Kind::SeqCopy:
-        copySeqPattern();
+    case Kind::SeqSize:
+        toggleSize();
         return true;
+    case Kind::SeqTile: {
+        // What the roll shows, in the shown pattern's tile: dragged, it scrolls the roll (see seqDrag()).
+        if (seqViewGrabbed(w.b, p)) {
+            const std::vector<int> rows = seqRows();
+            startDrag(SeqDrag::Mode::ViewRect, false);
+            seqDrag_.grabStep = seqScroll();
+            seqDrag_.grabPitch = rows.empty() ? 0 : rows.front();
+            return true;
+        }
+        // Elsewhere, the tile: shown once let go of unmoved, copied once let go of on another tile (see drop()).
+        startDrag(SeqDrag::Mode::Tile, false);
+        seqDrag_.anchor = w.b;
+        return true;
+    }
     case Kind::SeqRoot: // up and down, as a knob
         host_.dragValue(w, p, mods);
         return true;
@@ -1450,8 +1575,11 @@ bool SeqPanel::pressAs(const Widget &w, Point p, Modifiers mods, const Widget &h
         seqLastMacro_ = seqTabMacro();
         layout.seqLane = static_cast<SeqLane>(w.b);
         return true;
-    case Kind::SeqMacroTab:
+    case Kind::SeqMacroTab: // the macro its label names, the list left shut
         showSeqMacro(seqTabMacro());
+        seqMacroMenu_ = false;
+        return true;
+    case Kind::SeqMacroArrow:
         seqMacroMenu_ = true;
         return true;
     case Kind::SeqMacroMenu:
@@ -1463,13 +1591,13 @@ bool SeqPanel::pressAs(const Widget &w, Point p, Modifiers mods, const Widget &h
         seqMacroMenu_ = false;
         return true;
     case Kind::SeqZoom:
-        zoomSeq(w.b < 2, w.b % 2 == 1 ? 1.5f : 1.0f / 1.5f, kSeqGrid.center());
+        zoomSeq(w.b < 2, w.b % 2 == 1 ? 1.5f : 1.0f / 1.5f, roll().grid.center());
         return true;
     case Kind::SeqScrollY: { // as the bar across: on the thumb, drag it; elsewhere it jumps to center on the click
         const Rect thumb = seqScrollYThumb();
         const float total = static_cast<float>(seqPitchList().size());
         if (p.y < thumb.y || p.y >= thumb.y + thumb.h)
-            seqShowFromRow((kSeqScrollYTrack.y + kSeqScrollYTrack.h - p.y) / kSeqScrollYTrack.h * total -
+            seqShowFromRow((roll().scrollY.y + roll().scrollY.h - p.y) / roll().scrollY.h * total -
                            0.5f * static_cast<float>(seqRows().size()));
         startDrag(SeqDrag::Mode::ScrollY, false);
         seqDrag_.grabStep = seqFirstRow();
@@ -1631,6 +1759,7 @@ bool SeqPanel::pressAs(const Widget &w, Point p, Modifiers mods, const Widget &h
         }
         if (hit < 0) { // a box picking what it reaches; with Shift, adding to what is picked
             startDrag(SeqDrag::Mode::Box, false);
+            seqDrag_.boxRow = static_cast<float>(seqFirstRow()) + (roll().grid.y + roll().grid.h - p.y) / seqRowH();
             seqDrag_.boxBase = mods.shift ? seqPicked() : std::vector<int>{};
             seqSelection_ = seqDrag_.boxBase;
             return true;
@@ -1686,6 +1815,7 @@ void SeqPanel::drag(const DragState &d) {
     const Point p = d.now;
     const Modifiers mods = d.mods;
     seqDrag_.now = p;
+    seqDrag_.carried = seqDrag_.carried || d.moved; // a tile, off its place
     // A note moved, or its end, follows the mouse off the grid while Shift or Alt is held.
     if (seqDrag_.mode == SeqDrag::Mode::Move || seqDrag_.mode == SeqDrag::Mode::Resize ||
         seqDrag_.mode == SeqDrag::Mode::ResizeStart)
@@ -1750,9 +1880,10 @@ void SeqPanel::seqDrag(Point p) {
         editMany(changes);
         break;
     }
-    case SeqDrag::Mode::Box: {
-        const float x0 = std::min(d.start.x, p.x), x1 = std::max(d.start.x, p.x);
-        const float y0 = std::min(d.start.y, p.y), y1 = std::max(d.start.y, p.y);
+    case SeqDrag::Mode::Box: { // from where it started on the roll, which may have scrolled since
+        const Point from = seqBoxStart();
+        const float x0 = std::min(from.x, p.x), x1 = std::max(from.x, p.x);
+        const float y0 = std::min(from.y, p.y), y1 = std::max(from.y, p.y);
         seqSelection_ = d.boxBase;
         for (const SeqNote &n : seqNotes()) {
             const Rect r = seqNoteRect(n);
@@ -1784,7 +1915,7 @@ void SeqPanel::seqDrag(Point p) {
         break;
     }
     case SeqDrag::Mode::Paint: { // a note in each cell of the grid the mouse goes over that has none starting there
-        if (!kSeqGrid.contains(p))
+        if (!roll().grid.contains(p))
             break;
         const double at = seqSnapped(seqStepAt(p.x), d.free);
         const int pitch = seqPitchAt(p.y);
@@ -1799,7 +1930,7 @@ void SeqPanel::seqDrag(Point p) {
         break;
     }
     case SeqDrag::Mode::LaneGroup: { // the notes picked, each as far up or down as the mouse has gone
-        const double moved = (d.start.y - p.y) / (kSeqLaneArea.h - 12.0f);
+        const double moved = (d.start.y - p.y) / (roll().laneArea.h - 12.0f);
         const bool velocity = controller().layout().seqLane == SeqLane::Velocity;
         std::vector<std::pair<int, double>> changes;
         for (const SeqNote &n : d.origin)
@@ -1878,7 +2009,7 @@ void SeqPanel::seqDrag(Point p) {
         break;
     }
     case SeqDrag::Mode::Lane: { // the notes starting under the mouse take the height it is at
-        const double level = std::clamp((kSeqLaneArea.y + kSeqLaneArea.h - 6.0f - p.y) / (kSeqLaneArea.h - 12.0f), 0.0f, 1.0f);
+        const double level = std::clamp((roll().laneArea.y + roll().laneArea.h - 6.0f - p.y) / (roll().laneArea.h - 12.0f), 0.0f, 1.0f);
         const bool velocity = controller().layout().seqLane == SeqLane::Velocity;
         std::vector<std::pair<int, double>> changes;
         for (const SeqNote &n : seqLaneNotesAt(p.x)) {
@@ -1928,12 +2059,26 @@ void SeqPanel::seqDrag(Point p) {
         break;
     case SeqDrag::Mode::ScrollY: // up for higher rows
         seqShowFromRow(static_cast<float>(d.grabStep) +
-                       (d.start.y - p.y) / kSeqScrollYTrack.h * static_cast<float>(seqPitchList().size()));
+                       (d.start.y - p.y) / roll().scrollY.h * static_cast<float>(seqPitchList().size()));
         break;
     case SeqDrag::Mode::Audition:
         d.anchor = seqPitchAt(p.y);
         seqHear(d.anchor);
         break;
+    case SeqDrag::Mode::ViewRect: { // the roll scrolled as far as the rectangle goes in the tile, across and up and down
+        const TileScale scale = seqTileScale(pattern);
+        if (scale.stepW > 0.0f) {
+            seqScrollX_ = static_cast<float>(d.grabStep) + (p.x - d.start.x) / scale.stepW;
+            seqScrollX_ = seqScroll();
+        }
+        if (scale.rowH > 0.0f) {
+            const int low = std::clamp(d.grabPitch + static_cast<int>(std::lround((d.start.y - p.y) / scale.rowH)), 0, 127);
+            const std::vector<int> pitches = seqPitchList();
+            seqShowFromRow(static_cast<float>(std::lower_bound(pitches.begin(), pitches.end(), low) - pitches.begin()));
+        }
+        break;
+    }
+    case SeqDrag::Mode::Tile: // carried (see paintDrag()) until it is let go of
     case SeqDrag::Mode::None:
         break;
     }
@@ -1943,6 +2088,17 @@ void SeqPanel::drop(const DragState &d) {
     seqHear(-1);
     const SeqDrag::Mode mode = seqDrag_.mode;
     const bool moved = d.moved;
+    if (mode == SeqDrag::Mode::Tile) {
+        const int from = seqDrag_.anchor, to = seqTileAt(d.now);
+        seqDrag_ = SeqDrag{};
+        if (!moved) {
+            if (from != seqPattern())
+                edit(paramIndex(SeqParam::Pattern), from);
+        } else if (to >= 0 && to != from) {
+            copySeqPattern(from, to);
+        }
+        return;
+    }
     if (seqDrag_.unpick && !moved) // a Shift+click on a note picked: no longer picked
         std::erase(seqSelection_, seqDrag_.anchor);
     if (mode == SeqDrag::Mode::LaneGroup && seqDrag_.narrow && !moved) // a click on one of several dots picked
@@ -2070,6 +2226,7 @@ bool SeqPanel::doubleClick(const Widget &w, Point p, Modifiers mods) {
     case Kind::SeqTool:
     case Kind::SeqSnap:
     case Kind::SeqMacroTab:
+    case Kind::SeqMacroArrow:
     case Kind::SeqStretch:
     case Kind::SeqFlag:
         return true; // a double-click is two clicks of theirs, which the first press took
@@ -2080,20 +2237,21 @@ bool SeqPanel::doubleClick(const Widget &w, Point p, Modifiers mods) {
 
 bool SeqPanel::wheelOn(const Widget &w, Point p, float steps, Modifiers mods) {
     UiLayout &layout = controller().layout();
-    const bool roll = w.kind == Kind::SeqGrid || w.kind == Kind::SeqKeys || w.kind == Kind::SeqRuler ||
+    const bool onRoll = w.kind == Kind::SeqGrid || w.kind == Kind::SeqKeys || w.kind == Kind::SeqRuler ||
                       w.kind == Kind::SeqLane || w.kind == Kind::SeqScroll || w.kind == Kind::SeqScrollY ||
-                      w.kind == Kind::SeqZoom || w.kind == Kind::SeqLaneTab || w.kind == Kind::SeqMacroTab;
+                      w.kind == Kind::SeqZoom || w.kind == Kind::SeqLaneTab || w.kind == Kind::SeqMacroTab ||
+                      w.kind == Kind::SeqMacroArrow;
     // Over the roll, Ctrl zooms across and Alt up and down, at the mouse; Shift scrolls across, as the wheel turned
     // sideways does.
-    if (roll && mods.ctrl) {
+    if (onRoll && mods.ctrl) {
         zoomSeq(true, std::pow(1.25f, steps), p);
         return true;
     }
-    if (roll && mods.alt) {
+    if (onRoll && mods.alt) {
         zoomSeq(false, std::pow(1.25f, steps), p);
         return true;
     }
-    if (roll && (mods.shift || w.kind == Kind::SeqScroll || w.kind == Kind::SeqRuler)) {
+    if (onRoll && (mods.shift || w.kind == Kind::SeqScroll || w.kind == Kind::SeqRuler)) {
         seqScrollX_ = seqScroll() - steps * seqShownSteps() * 0.125f;
         seqScrollX_ = seqScroll();
         return true;
@@ -2121,17 +2279,17 @@ bool SeqPanel::wheelOn(const Widget &w, Point p, float steps, Modifiers mods) {
         layout.seqSnap = std::clamp(layout.seqSnap + (steps > 0.0f ? -1 : 1), 0, kSeqSnapCount - 1);
         return true;
     case Kind::SeqMacroTab: // along the list, as the snap's button does
+    case Kind::SeqMacroArrow:
         showSeqMacro(seqTabMacro() + (steps > 0.0f ? -1 : 1));
         return true;
     case Kind::SeqZoom: // its axis, in or out a notch
-        zoomSeq(w.b < 2, std::pow(1.25f, steps), kSeqGrid.center());
+        zoomSeq(w.b < 2, std::pow(1.25f, steps), roll().grid.center());
         return true;
     case Kind::SeqLane:
     case Kind::SeqTool:
     case Kind::SeqStretch:
     case Kind::SeqFlag:
     case Kind::SeqClear:
-    case Kind::SeqCopy:
     case Kind::SeqFold:
     case Kind::SeqLaneTab:
         return true;
@@ -2141,7 +2299,7 @@ bool SeqPanel::wheelOn(const Widget &w, Point p, float steps, Modifiers mods) {
 }
 
 bool SeqPanel::wheelAcross(Point p, float steps) {
-    if (!(wide() && kSeqBox.contains(p)))
+    if (!(wide() && roll().box.contains(p)))
         return false;
     seqScrollX_ = seqScroll() + steps * seqShownSteps() * 0.125f; // the roll, an eighth of what it shows a notch
     seqScrollX_ = seqScroll();
@@ -2150,7 +2308,7 @@ bool SeqPanel::wheelAcross(Point p, float steps) {
 
 // The roll, across and up and down (one part, 0): what was under the mouse follows it, never held at an end.
 std::optional<std::pair<int, float>> SeqPanel::panAt(Point p) const {
-    if (wide() && Rect{kSeqBox.x, kSeqRuler.y, kSeqBox.w, kSeqLaneArea.y + kSeqLaneArea.h - kSeqRuler.y}.contains(p))
+    if (wide() && Rect{roll().box.x, roll().ruler.y, roll().box.w, roll().laneArea.y + roll().laneArea.h - roll().ruler.y}.contains(p))
         return std::pair{0, seqScroll()};
     return std::nullopt;
 }
@@ -2160,7 +2318,7 @@ void SeqPanel::panBegin(int) {
 }
 
 std::optional<float> SeqPanel::pan(int, float, float across, float down) {
-    seqScrollX_ = seqPanStart_.x - across / kSeqGrid.w * seqShownSteps();
+    seqScrollX_ = seqPanStart_.x - across / roll().grid.w * seqShownSteps();
     seqScrollX_ = seqScroll();
     seqShowFromRow(seqPanStart_.y + down / seqRowH());
     return std::nullopt;
@@ -2181,6 +2339,10 @@ std::string SeqPanel::tooltip(const Widget &w) const {
             return tr(orders[std::clamp(w.b, 0, static_cast<int>(SeqOrder::Count) - 1)]);
         }
     }
+    if (w.kind == Kind::SeqTile)
+        return trf(Str::TipSeqTile, {seqPatternName(w.b)});
+    if (w.kind == Kind::SeqSize)
+        return tr(full() ? Str::TipSeqHalf : Str::TipSeqFull);
     switch (w.kind) {
     case Kind::SeqTool:
         return tr(w.b == 1 ? Str::TipSeqDraw : Str::TipSeqSelect);
@@ -2194,8 +2356,6 @@ std::string SeqPanel::tooltip(const Widget &w) const {
         return tr(w.b == 0 ? Str::TipSeqSlide : Str::TipSeqMute);
     case Kind::SeqClear:
         return tr(Str::TipSeqClear);
-    case Kind::SeqCopy:
-        return tr(Str::TipSeqCopy);
     case Kind::SeqRoot:
         return tr(Str::TipSeqRoot);
     case Kind::SeqFold:
@@ -2214,6 +2374,8 @@ std::string SeqPanel::tooltip(const Widget &w) const {
         return tr(Str::TipSeqScrollY);
     case Kind::SeqMacroTab:
         return seqMacroMenu_ ? std::string() : std::string(tr(Str::TipSeqLaneMacro));
+    case Kind::SeqMacroArrow:
+        return seqMacroMenu_ ? std::string() : std::string(tr(Str::TipSeqLaneMacroPick));
     case Kind::SeqLaneTab:
         return w.b == static_cast<int>(SeqLane::Bend)       ? std::string(tr(Str::TipSeqLaneBend))
                : w.b == static_cast<int>(SeqLane::ModWheel) ? std::string(tr(Str::TipSeqLaneWheel))
@@ -2226,6 +2388,176 @@ std::string SeqPanel::tooltip(const Widget &w) const {
 // The keys and the ruler are tall or wide: their tooltips go under the mouse.
 bool SeqPanel::tipAtMouse(const Widget &w) const {
     return w.kind == Kind::SeqKeys || w.kind == Kind::SeqRuler;
+}
+
+// --- PATTERN as a modulation target.
+
+namespace {
+bool patternButton(const Widget &w) {
+    return w.kind == WidgetKind::Choice && w.param == paramIndex(SeqParam::Pattern);
+}
+Rect patternButtons() { return seqPatternRow(); } // the four, merged into one row
+} // namespace
+
+bool SeqPanel::takesSource(const Widget &w, int source) const {
+    return wide() && patternButton(w) && host_.modulationModel().canModulate(source, w.param);
+}
+
+void SeqPanel::paintSourceRing(Canvas &c, const Widget &w, bool over, Color color) {
+    if (w.b != 0) // the row's ring, once
+        return;
+    const bool on = over || patternButtons().contains(host_.mouse());
+    c.strokeRect(patternButtons().inset(-2.0f), color.alpha(on ? 1.0f : 0.35f), on ? 2.0f : 1.0f, kRadiusControl + 2.0f);
+}
+
+bool SeqPanel::dropSource(const Widget &w, int source) {
+    if (!takesSource(w, source))
+        return false;
+    host_.modulationModel().assign(source, w.param);
+    return true;
+}
+
+// The pattern modulation picks, as the dot on its reach shows it: as the sequencer plays it, or with nothing playing,
+// where the macros and the mod wheel take it (the voices' sources take it nowhere then). Ringed among the buttons while
+// it isn't the one set.
+int SeqPanel::seqPatternModulated() const {
+    const int pattern = paramIndex(SeqParam::Pattern);
+    return std::clamp(static_cast<int>(std::lround(value(pattern) + host_.modulatedBy(pattern))), 0, kSeqPatterns - 1);
+}
+
+// --- The patterns' overview.
+
+int SeqPanel::seqTileAt(Point p) const {
+    for (int pattern = 0; pattern < kSeqPatterns; ++pattern)
+        if (seqTile(pattern).contains(p))
+            return pattern;
+    return -1;
+}
+
+// A pattern's tile's notes area, as its tile draws it: the longest pattern's steps across, and up and down its own
+// notes' pitches, at least an octave of them (none while it has no notes).
+SeqPanel::TileScale SeqPanel::seqTileScale(int pattern) const {
+    TileScale scale;
+    scale.notes = seqTileNotes(seqTile(pattern));
+    int longest = 1;
+    for (int p = 0; p < kSeqPatterns; ++p)
+        longest = std::max(longest, seqStepsOf(p));
+    scale.steps = seqStepsOf(pattern);
+    scale.stepW = scale.notes.w / static_cast<float>(longest);
+    int low = 128, high = -1;
+    for (const SeqNote &n : seqNotesOf(pattern)) {
+        low = std::min(low, n.pitch);
+        high = std::max(high, n.pitch);
+    }
+    if (high >= low) {
+        const int span = std::max(high - low + 1, 12);
+        scale.from = static_cast<float>(low) - 0.5f * static_cast<float>(span - (high - low + 1));
+        scale.rowH = scale.notes.h / static_cast<float>(span);
+    }
+    return scale;
+}
+
+// What the roll shows of the pattern shown, in its tile: across the steps it shows and up and down its rows (as far as
+// the tile reaches; all the way while the pattern has no notes to scale its rows by). None for another pattern.
+std::optional<Rect> SeqPanel::seqViewRect(int pattern) const {
+    if (pattern != seqPattern())
+        return std::nullopt;
+    const TileScale scale = seqTileScale(pattern);
+    const Rect r = scale.notes;
+    const float x0 = r.x + seqScroll() * scale.stepW, x1 = x0 + seqShownSteps() * scale.stepW;
+    float y0 = r.y, y1 = r.bottom();
+    if (const std::vector<int> rows = seqRows(); scale.rowH > 0.0f && !rows.empty()) {
+        y0 = std::clamp(r.bottom() - (static_cast<float>(rows.back()) - scale.from + 1.0f) * scale.rowH, r.y,
+                        r.bottom() - 2.0f);
+        y1 = std::clamp(r.bottom() - (static_cast<float>(rows.front()) - scale.from) * scale.rowH, y0 + 2.0f,
+                        r.bottom());
+    }
+    return Rect{std::round(x0) + 0.5f, std::round(y0) + 0.5f, std::round(x1) - std::round(x0) - 1.0f,
+                std::round(y1) - std::round(y0) - 1.0f};
+}
+
+// Whether a press at `p` on a pattern's tile grabs what the roll shows of it: on the rectangle (or just round it), while
+// the roll has somewhere to scroll to, across or up and down the tile's rows. Otherwise the tile is grabbed, to pick
+// its pattern or copy it.
+bool SeqPanel::seqViewGrabbed(int pattern, Point p) const {
+    const std::optional<Rect> view = seqViewRect(pattern);
+    if (!view || !view->inset(-2.0f).contains(p))
+        return false;
+    const Rect notes = seqTileNotes(seqTile(pattern));
+    return seqShownSteps() < static_cast<float>(seqSteps()) - 1e-3f || view->h < notes.h - 3.0f;
+}
+
+// A pattern's tile: its letter, lit while it is the one shown, and its notes drawn small after it (see
+// seqTileScale(); bar lines in it, outside its loop dimmed), fainter the softer it is and muted faintest; the pattern
+// shown what the roll shows of it (seqViewRect(), brighter under the mouse and while it is dragged), and the playhead
+// while it plays. Ringed while it is shown, and while one carried would land on it.
+void SeqPanel::paintSeqTile(Canvas &c, int pattern, Rect tile, bool hovered, bool carried) {
+    const bool shown = pattern == seqPattern();
+    const bool landing = !carried && dragging() && seqDrag_.mode == SeqDrag::Mode::Tile && seqDrag_.carried &&
+                         pattern != seqDrag_.anchor && seqTileAt(seqDrag_.now) == pattern;
+    const Color light = lightTheme() ? Color{0.0f, 0.0f, 0.0f, 1.0f} : Color{1.0f, 1.0f, 1.0f, 1.0f};
+    c.fillRect(tile, wellColor(), kRadiusControl);
+    if (shown || landing)
+        c.fillRect(tile, kAccent.alpha(landing ? 0.2f : 0.12f), kRadiusControl);
+    else if (hovered)
+        c.fillRect(tile, light.alpha(0.04f), kRadiusControl);
+    c.text({tile.x, tile.y, kSeqTileLetterW, tile.h}, seqPatternName(pattern), kTextBody,
+           shown ? kAccent : hovered ? kText : kDim, Align::Center, true);
+
+    const TileScale scale = seqTileScale(pattern);
+    const Rect r = scale.notes;
+    const int steps = scale.steps;
+    const float stepW = scale.stepW;
+    const float end = r.x + static_cast<float>(steps) * stepW;
+    c.fillRect({r.x, r.y, end - r.x, r.h}, light.alpha(0.05f), kRadiusMark);
+    for (int bar = kSeqStepsPerBar; bar < steps; bar += kSeqStepsPerBar) {
+        const float x = std::round(r.x + static_cast<float>(bar) * stepW) + 0.5f;
+        c.line({x, r.y}, {x, r.bottom()}, light.alpha(0.08f), 1.0f);
+    }
+    if (scale.rowH > 0.0f) {
+        const float h = std::clamp(scale.rowH - 1.0f, 1.5f, 4.0f);
+        c.pushClip({r.x, r.y, end - r.x, r.h});
+        for (const SeqNote &n : seqNotesOf(pattern)) {
+            const float x = r.x + static_cast<float>(n.start) * stepW;
+            const float w = std::max(static_cast<float>(n.length) * stepW - 1.0f, 1.5f);
+            const float y = r.bottom() - (static_cast<float>(n.pitch) - scale.from + 0.5f) * scale.rowH - 0.5f * h;
+            const float alpha = n.mute ? 0.3f : 0.55f + 0.45f * static_cast<float>(std::clamp(n.velocity, 0.0, 1.0));
+            c.fillRect({x, y, w, h}, kAccent.alpha(alpha), std::min(1.0f, 0.5f * h));
+        }
+        c.popClip();
+    }
+    const auto [loopStart, loopEnd] = seqLoopOf(pattern);
+    if (loopStart > 0)
+        c.fillRect({r.x, r.y, static_cast<float>(loopStart) * stepW, r.h}, wellColor().alpha(0.6f));
+    if (loopEnd < steps)
+        c.fillRect({r.x + static_cast<float>(loopEnd) * stepW, r.y, static_cast<float>(steps - loopEnd) * stepW, r.h},
+                   wellColor().alpha(0.6f));
+    if (const std::optional<Rect> view = seqViewRect(pattern); view && !carried) {
+        const bool hot = (dragging() && seqDrag_.mode == SeqDrag::Mode::ViewRect) ||
+                         (!dragging() && hovered && seqViewGrabbed(pattern, host_.mouse()));
+        c.fillRect(*view, light.alpha(hot ? 0.1f : 0.06f), kRadiusMark);
+        c.strokeRect(*view, kText.alpha(hot ? 0.85f : 0.55f), 1.0f, kRadiusMark);
+    }
+    const Telemetry &t = host_.telemetry();
+    if (t.seqPosition >= 0.0f && t.seqPattern == pattern && t.seqPosition <= static_cast<float>(steps)) {
+        const float x = std::round(r.x + t.seqPosition * stepW) + 0.5f;
+        c.line({x, r.y - 2.0f}, {x, r.bottom() + 2.0f}, kText, 1.0f);
+    }
+    if (landing)
+        c.strokeRect(tile, kAccent, 1.5f, kRadiusControl);
+    else if (shown)
+        c.strokeRect(tile, kAccent.alpha(0.6f), 1.0f, kRadiusControl);
+}
+
+// A tile carried onto another, half seen, following the mouse.
+void SeqPanel::paintDrag(Canvas &c) {
+    if (!wide() || !dragging() || seqDrag_.mode != SeqDrag::Mode::Tile || !seqDrag_.carried)
+        return;
+    const Rect from = seqTile(seqDrag_.anchor);
+    const Point offset{seqDrag_.now.x - seqDrag_.start.x, seqDrag_.now.y - seqDrag_.start.y};
+    c.pushLayer(offset, 0.6f, from.inset(-2.0f));
+    paintSeqTile(c, seqDrag_.anchor, from, true, true);
+    c.popLayer();
 }
 
 // --- Painting.
@@ -2247,10 +2579,19 @@ void SeqPanel::paintBack(Canvas &c) {
     label(kSeqOrderY, Str::LabelSeqOrder);
     label(kSeqScaleY, Str::LabelSeqScale);
     label(kSeqTools.y + 1.0f, Str::LabelSeqSnap, kSeqTools.x + 70.0f, 36.0f);
+    // At the full size, the patterns' overview under it, a card alike; its tiles are widgets (see paintSeqTile()).
+    if (full()) {
+        softShadow(c, kSeqOverview, kRadiusPanel, 4, 1.25f, 4.0f, lightTheme() ? 0.05f : 0.16f);
+        c.fillRect(kSeqOverview, kRaised.alpha(0.92f), kRadiusPanel);
+        if (outlined())
+            c.strokeRect(kSeqOverview, kAccent.alpha(0.35f), 1.0f, kRadiusPanel);
+        c.text({kSeqCardX, kSeqOverviewTitleY, 200.0f, 22.0f}, tr(Str::HeadingSeqPatterns), kTextBody, kText,
+               Align::Left, true);
+    }
 
     // The roll's box.
-    c.fillRect(kSeqBox, wellColor(), kRadiusCard);
-    c.pushClip(kSeqBox);
+    c.fillRect(roll().box, wellColor(), kRadiusCard);
+    c.pushClip(roll().box);
     const int steps = seqSteps();
     const std::vector<int> rows = seqRows();
     const float rh = seqRowH();
@@ -2262,20 +2603,20 @@ void SeqPanel::paintBack(Canvas &c) {
     const float gridLines = static_cast<float>(std::clamp(host_.shownGrid(), 0.0f, 1.0f)) * 2.0f;
     for (size_t i = 0; i < rows.size(); ++i) {
         const int pitch = rows[i];
-        const float y = kSeqGrid.y + kSeqGrid.h - (i + 1) * rh;
+        const float y = roll().grid.y + roll().grid.h - (i + 1) * rh;
         // The rows' ground follows the keys alone, whatever the scale: a black key's darker, a white key's a little
         // lighter than the well; folded, the well as it is.
         if (!fold)
-            c.fillRect({kSeqGrid.x, y, kSeqGrid.w, rh},
+            c.fillRect({roll().grid.x, y, roll().grid.w, rh},
                        isBlackKey(pitch) ? kBackground.alpha(0.35f)
                                          : Color{1.0f, 1.0f, 1.0f, lightTheme() ? 0.4f : 0.03f});
-        c.line({kSeqGrid.x, y + rh}, {kSeqGrid.x + kSeqGrid.w, y + rh},
+        c.line({roll().grid.x, y + rh}, {roll().grid.x + roll().grid.w, y + rh},
                light.alpha((pitch % 12 == 0 ? 0.10f : 0.035f) * gridLines), 1.0f);
     }
-    const float stepW = kSeqGrid.w / seqShownSteps(); // a step's width, as zoomed
+    const float stepW = roll().grid.w / seqShownSteps(); // a step's width, as zoomed
     const int firstStep = static_cast<int>(std::floor(seqScroll()));
     const int lastStep = std::min(static_cast<int>(std::ceil(seqScroll() + seqShownSteps())), steps);
-    c.pushClip({kSeqGrid.x, kSeqRuler.y, kSeqGrid.w, kSeqLaneArea.y + kSeqLaneArea.h - kSeqRuler.y});
+    c.pushClip({roll().grid.x, roll().ruler.y, roll().grid.w, roll().laneArea.y + roll().laneArea.h - roll().ruler.y});
     // A line at every snap (a step with it off; for triplets, a third of two steps), the beats and bars stronger
     // where they fall; lines closer than 4 px left out but for the beats and bars.
     {
@@ -2290,12 +2631,12 @@ void SeqPanel::paintBack(Canvas &c) {
                 continue;
             const float alpha = bar ? 0.16f : beat ? 0.08f : 0.03f;
             const float x = seqStepX(s);
-            c.line({x, kSeqRuler.y}, {x, kSeqLaneArea.y + kSeqLaneArea.h}, light.alpha(alpha * gridLines), 1.0f);
+            c.line({x, roll().ruler.y}, {x, roll().laneArea.y + roll().laneArea.h}, light.alpha(alpha * gridLines), 1.0f);
         }
         // Beats the snap's lines miss (a triplet's), drawn all the same.
         for (int s = (firstStep / 4) * 4; s <= lastStep; s += 4)
             if (std::abs(s / every - std::round(s / every)) > 1e-6)
-                c.line({seqStepX(s), kSeqRuler.y}, {seqStepX(s), kSeqLaneArea.y + kSeqLaneArea.h},
+                c.line({seqStepX(s), roll().ruler.y}, {seqStepX(s), roll().laneArea.y + roll().laneArea.h},
                        light.alpha((s % kSeqStepsPerBar == 0 ? 0.16f : 0.08f) * gridLines), 1.0f);
     }
     // The loop: what lies outside it dimmed, and its bar on the ruler.
@@ -2303,30 +2644,30 @@ void SeqPanel::paintBack(Canvas &c) {
     const int storedEnd = stepped(value(paramIndex(pattern, SeqPatternParam::LoopEnd)), 0, kSeqMaxSteps);
     const int loopEnd = storedEnd <= 0 ? steps : std::clamp(storedEnd, loopStart + 1, steps);
     const float lx0 = seqStepX(loopStart), lx1 = seqStepX(loopEnd);
-    if (lx0 > kSeqGrid.x)
-        c.fillRect({kSeqGrid.x, kSeqGrid.y, lx0 - kSeqGrid.x, kSeqGrid.h + kSeqLaneH}, kBackground.alpha(0.45f));
-    if (lx1 < kSeqGrid.x + kSeqGrid.w)
-        c.fillRect({lx1, kSeqGrid.y, kSeqGrid.x + kSeqGrid.w - lx1, kSeqGrid.h + kSeqLaneH}, kBackground.alpha(0.45f));
-    c.fillRect({kSeqRuler.x, kSeqRuler.y, kSeqRuler.w, kSeqRuler.h}, kPanel.alpha(0.6f));
-    c.fillRect({lx0, kSeqRuler.y + 3.0f, lx1 - lx0, 5.0f}, kAccent.alpha(on ? 0.85f : 0.4f), kRadiusMark);
+    if (lx0 > roll().grid.x)
+        c.fillRect({roll().grid.x, roll().grid.y, lx0 - roll().grid.x, roll().grid.h + kSeqLaneH}, kBackground.alpha(0.45f));
+    if (lx1 < roll().grid.x + roll().grid.w)
+        c.fillRect({lx1, roll().grid.y, roll().grid.x + roll().grid.w - lx1, roll().grid.h + kSeqLaneH}, kBackground.alpha(0.45f));
+    c.fillRect({roll().ruler.x, roll().ruler.y, roll().ruler.w, roll().ruler.h}, kPanel.alpha(0.6f));
+    c.fillRect({lx0, roll().ruler.y + 3.0f, lx1 - lx0, 5.0f}, kAccent.alpha(on ? 0.85f : 0.4f), kRadiusMark);
     for (int bar = 0; bar < steps / kSeqStepsPerBar; ++bar)
         for (int beat = 0; beat < 4; ++beat) {
             const float x = seqStepX(bar * kSeqStepsPerBar + beat * 4);
-            if (x < kSeqGrid.x - 40.0f || x > kSeqGrid.x + kSeqGrid.w || (beat > 0 && stepW * 4.0f < 30.0f))
+            if (x < roll().grid.x - 40.0f || x > roll().grid.x + roll().grid.w || (beat > 0 && stepW * 4.0f < 30.0f))
                 continue; // out of sight, or no room for the beats' numbers
             const std::string text = beat == 0 ? std::to_string(bar + 1)
                                                : std::to_string(bar + 1) + "." + std::to_string(beat + 1);
-            c.text({x + 3.0f, kSeqRuler.y + 7.0f, 40.0f, 13.0f}, text, kTextSmall, beat == 0 ? kDim : kFaint, Align::Left);
+            c.text({x + 3.0f, roll().ruler.y + 7.0f, 40.0f, 13.0f}, text, kTextSmall, beat == 0 ? kDim : kFaint, Align::Left);
         }
     c.popClip();
 
     // The notes: brighter as they are louder, dashed at a chance below full, hollow while muted; those picked ringed.
     const std::vector<SeqNote> notes = seqNotes();
     const Color ink = kAccent;
-    c.pushClip(kSeqGrid);
+    c.pushClip(roll().grid);
     for (const SeqNote &n : notes) {
         const Rect r = seqNoteRect(n);
-        if (r.y > kSeqGrid.y + kSeqGrid.h)
+        if (r.y > roll().grid.y + roll().grid.h)
             continue; // its row isn't shown
         const bool picked = seqSelected(n.slot);
         // Full strength at full velocity, down to 40 % at none; a little dimmer while the sequencer is off.
@@ -2363,46 +2704,46 @@ void SeqPanel::paintBack(Canvas &c) {
     }
     // The box being dragged, picking what it reaches.
     if (dragging() && seqDrag_.mode == SeqDrag::Mode::Box) {
-        const Rect box{std::min(seqDrag_.start.x, seqDrag_.now.x), std::min(seqDrag_.start.y, seqDrag_.now.y),
-                       std::abs(seqDrag_.now.x - seqDrag_.start.x), std::abs(seqDrag_.now.y - seqDrag_.start.y)};
+        const Point from = seqBoxStart(), to = seqDrag_.now;
+        const Rect box{std::min(from.x, to.x), std::min(from.y, to.y), std::abs(to.x - from.x), std::abs(to.y - from.y)};
         c.fillRect(box, kAccent.alpha(0.12f));
         c.strokeRect(box, kAccent.alpha(0.7f), 1.0f);
     }
     c.popClip();
     if (notes.empty())
-        c.text(kSeqGrid, tr(Str::HintSeqEmpty), kTextLabel, kFaint);
+        c.text(roll().grid, tr(Str::HintSeqEmpty), kTextLabel, kFaint);
 
     // The keys: white ones across the strip, the black ones shorter over them; or with the rows folded to the scale,
     // each row's name.
-    c.pushClip(kSeqKeys);
+    c.pushClip(roll().keys);
     if (fold) {
-        c.fillRect(kSeqKeys, kPanel);
+        c.fillRect(roll().keys, kPanel);
         for (size_t i = 0; i < rows.size(); ++i) {
-            const float y = kSeqKeys.y + kSeqKeys.h - (i + 1) * rh;
+            const float y = roll().keys.y + roll().keys.h - (i + 1) * rh;
             const bool outside = scale != 0 && !seqInScale(scale, root, rows[i]); // a row a note off the scale has
             if (outside)
-                c.fillRect({kSeqKeys.x, y, kSeqKeys.w, rh}, kBackground.alpha(0.55f));
-            c.text({kSeqKeys.x, y, kSeqKeys.w - 6.0f, rh}, pitchName(rows[i]), kTextSmall,
+                c.fillRect({roll().keys.x, y, roll().keys.w, rh}, kBackground.alpha(0.55f));
+            c.text({roll().keys.x, y, roll().keys.w - 6.0f, rh}, pitchName(rows[i]), kTextSmall,
                    outside ? kFaint : rows[i] % 12 == root % 12 ? kText : kDim, Align::Right);
         }
     } else {
         const Color white = lightTheme() ? Color::hex(0xFFFFFF) : Color::hex(0xD6D9E4);
         const Color blackKey = Color::hex(0x1B1C25);
         const Color seam = Color::hex(0x8E92A6);
-        c.fillRect(kSeqKeys, white);
-        const float bw = kSeqKeys.w * 0.6f;
+        c.fillRect(roll().keys, white);
+        const float bw = roll().keys.w * 0.6f;
         for (size_t i = 0; i < rows.size(); ++i) {
             const int pitch = rows[i];
-            const float y = kSeqKeys.y + kSeqKeys.h - (i + 1) * rh;
+            const float y = roll().keys.y + roll().keys.h - (i + 1) * rh;
             const int pc = pitch % 12;
             if (pc == 4 || pc == 11) // the seams between two white keys side by side
-                c.line({kSeqKeys.x, y}, {kSeqKeys.x + kSeqKeys.w, y}, seam, 1.0f);
+                c.line({roll().keys.x, y}, {roll().keys.x + roll().keys.w, y}, seam, 1.0f);
             if (isBlackKey(pitch)) {
-                c.line({kSeqKeys.x + bw, y + rh * 0.5f}, {kSeqKeys.x + kSeqKeys.w, y + rh * 0.5f}, seam, 1.0f);
-                c.fillRect({kSeqKeys.x - 3.0f, y + 0.6f, bw + 3.0f, rh - 1.2f}, blackKey, 2.0f);
+                c.line({roll().keys.x + bw, y + rh * 0.5f}, {roll().keys.x + roll().keys.w, y + rh * 0.5f}, seam, 1.0f);
+                c.fillRect({roll().keys.x - 3.0f, y + 0.6f, bw + 3.0f, rh - 1.2f}, blackKey, 2.0f);
             }
             if (pc == 0)
-                c.text({kSeqKeys.x, y, kSeqKeys.w - 4.0f, rh}, pitchName(pitch), kTextSmall, Color::hex(0x5D6075),
+                c.text({roll().keys.x, y, roll().keys.w - 4.0f, rh}, pitchName(pitch), kTextSmall, Color::hex(0x5D6075),
                        Align::Right, true);
         }
     }
@@ -2411,19 +2752,19 @@ void SeqPanel::paintBack(Canvas &c) {
     for (size_t i = 0; i < rows.size(); ++i) {
         const float lit = seqKeyLight_[static_cast<size_t>(std::clamp(rows[i], 0, 127))];
         if (lit > 0.0f)
-            c.fillRect({kSeqKeys.x, kSeqKeys.y + kSeqKeys.h - (i + 1) * rh, kSeqKeys.w, rh},
+            c.fillRect({roll().keys.x, roll().keys.y + roll().keys.h - (i + 1) * rh, roll().keys.w, rh},
                        kAccent.alpha(0.6f * lit));
     }
     c.popClip();
-    c.line({kSeqKeys.x + kSeqKeys.w, kSeqKeys.y}, {kSeqKeys.x + kSeqKeys.w, kSeqKeys.y + kSeqKeys.h}, kBorder, 1.0f);
+    c.line({roll().keys.x + roll().keys.w, roll().keys.y}, {roll().keys.x + roll().keys.w, roll().keys.y + roll().keys.h}, kBorder, 1.0f);
 
     // The lane: a stem for each note at its start, as high as its velocity or chance.
     const bool velocityLane = controller().layout().seqLane == SeqLane::Velocity;
     // A slight line parting it from the roll, a pixel high: the faint text's color stands off the wells in every theme,
     // where the borders' all but melts into them.
-    c.fillRect({kSeqBox.x, kSeqLaneArea.y, kSeqBox.w, 1.0f}, kFaint.alpha(0.55f));
+    c.fillRect({roll().box.x, roll().laneArea.y, roll().box.w, 1.0f}, kFaint.alpha(0.55f));
     const Color stem = velocityLane ? kAccent : look.sources[1];
-    c.pushClip(kSeqLaneArea);
+    c.pushClip(roll().laneArea);
     std::vector<SeqNote> stems = notes; // the picked ones last, over the others
     std::stable_partition(stems.begin(), stems.end(), [&](const SeqNote &n) { return !seqSelected(n.slot); });
     if (seqCurveLane()) {
@@ -2436,18 +2777,18 @@ void SeqPanel::paintBack(Canvas &c) {
                                             : curve == SeqCurve::Bend ? kBendSource
                                                                       : kWheelSource];
         const float rest = seqCurveY(curve, 0.0);
-        const float right = std::min(kSeqGrid.x + kSeqGrid.w, seqStepX(steps));
+        const float right = std::min(roll().grid.x + roll().grid.w, seqStepX(steps));
         // The grid: a line at each quarter of the range (what Ctrl puts points on), as strong as the GRID setting says;
         // across, the roll's lines run on down through the lane.
         for (int k = 0; k <= 4; ++k) {
             const float y = seqCurveY(curve, curve == SeqCurve::Bend ? -1.0 + k * 0.5 : k * 0.25);
-            c.line({kSeqGrid.x, y}, {right, y}, light.alpha(0.05f * gridLines), 1.0f);
+            c.line({roll().grid.x, y}, {right, y}, light.alpha(0.05f * gridLines), 1.0f);
         }
-        c.line({kSeqGrid.x, rest}, {right, rest}, kBorder, 1.0f);
+        c.line({roll().grid.x, rest}, {right, rest}, kBorder, 1.0f);
         const std::vector<SeqCurvePoint> points = seqCurvePoints(curve);
-        if (!points.empty() && right > kSeqGrid.x) {
+        if (!points.empty() && right > roll().grid.x) {
             std::vector<Point> line;
-            for (float x = kSeqGrid.x;; x += 2.0f) {
+            for (float x = roll().grid.x;; x += 2.0f) {
                 const float at = std::min(x, right);
                 const double v = seqCurveAt(static_cast<int>(points.size()),
                                             [&](int i) { return points[static_cast<size_t>(i)]; }, seqStepAt(at), seqSteps());
@@ -2492,7 +2833,7 @@ void SeqPanel::paintBack(Canvas &c) {
     }
     for (const SeqNote &n : stems) {
         const Point dot = seqLaneDot(n);
-        const float bottom = kSeqLaneArea.y + kSeqLaneArea.h - 6.0f;
+        const float bottom = roll().laneArea.y + roll().laneArea.h - 6.0f;
         const bool picked = seqSelected(n.slot);
         c.line({dot.x, bottom}, dot, stem.alpha(picked ? 1.0f : 0.6f), 2.0f);
         c.fillCircle(dot, picked ? 3.5f : 3.0f, stem.alpha(picked ? 1.0f : 0.8f));
@@ -2507,18 +2848,18 @@ void SeqPanel::paintBack(Canvas &c) {
         c.strokeRect(box, stem.alpha(0.7f), 1.0f);
     }
     c.popClip();
-    c.line({kSeqBox.x, kSeqLaneTabs.y}, {kSeqBox.x + kSeqBox.w, kSeqLaneTabs.y}, kBorder, 1.0f);
+    c.line({roll().box.x, roll().laneTabs.y}, {roll().box.x + roll().box.w, roll().laneTabs.y}, kBorder, 1.0f);
     // The zoom's arrows, before their buttons: across, and up and down.
     {
         const Color arrowInk = kFaint;
-        const float y = kSeqLaneTabs.y + kSeqLaneTabs.h * 0.5f;
-        const float ax = seqZoomButton(0).x - 12.0f;
+        const float y = roll().laneTabs.y + roll().laneTabs.h * 0.5f;
+        const float ax = seqZoomButton(roll(), 0).x - 12.0f;
         c.line({ax - 6.0f, y}, {ax + 6.0f, y}, arrowInk, 1.2f);
         const Point l[] = {{ax - 3.0f, y - 3.0f}, {ax - 6.0f, y}, {ax - 3.0f, y + 3.0f}};
         const Point r[] = {{ax + 3.0f, y - 3.0f}, {ax + 6.0f, y}, {ax + 3.0f, y + 3.0f}};
         c.polyline(l, 3, arrowInk, 1.2f);
         c.polyline(r, 3, arrowInk, 1.2f);
-        const float vx = seqZoomButton(2).x - 10.0f;
+        const float vx = seqZoomButton(roll(), 2).x - 10.0f;
         c.line({vx, y - 6.0f}, {vx, y + 6.0f}, arrowInk, 1.2f);
         const Point u[] = {{vx - 3.0f, y - 3.0f}, {vx, y - 6.0f}, {vx + 3.0f, y - 3.0f}};
         const Point d[] = {{vx - 3.0f, y + 3.0f}, {vx, y + 6.0f}, {vx + 3.0f, y + 3.0f}};
@@ -2529,10 +2870,10 @@ void SeqPanel::paintBack(Canvas &c) {
     // Where it plays now, while it plays this pattern.
     const Telemetry &telemetry = host_.telemetry();
     if (telemetry.seqPosition >= 0.0f && telemetry.seqPattern == pattern &&
-        seqStepX(telemetry.seqPosition) >= kSeqGrid.x && seqStepX(telemetry.seqPosition) <= kSeqGrid.x + kSeqGrid.w) {
+        seqStepX(telemetry.seqPosition) >= roll().grid.x && seqStepX(telemetry.seqPosition) <= roll().grid.x + roll().grid.w) {
         const float x = seqStepX(telemetry.seqPosition);
-        c.line({x, kSeqRuler.y}, {x, kSeqLaneArea.y + kSeqLaneArea.h}, kText.alpha(0.8f), 1.2f);
-        const Point head[] = {{x - 5.0f, kSeqRuler.y + 9.0f}, {x + 5.0f, kSeqRuler.y + 9.0f}, {x, kSeqRuler.y + 15.0f}};
+        c.line({x, roll().ruler.y}, {x, roll().laneArea.y + roll().laneArea.h}, kText.alpha(0.8f), 1.2f);
+        const Point head[] = {{x - 5.0f, roll().ruler.y + 9.0f}, {x + 5.0f, roll().ruler.y + 9.0f}, {x, roll().ruler.y + 15.0f}};
         c.fillPolygon(head, 3, kText);
     }
     c.popClip();
@@ -2540,8 +2881,8 @@ void SeqPanel::paintBack(Canvas &c) {
 
 Point SeqPanel::seqLaneDot(const SeqNote &note) const {
     const double v = controller().layout().seqLane == SeqLane::Velocity ? note.velocity : note.chance;
-    const float bottom = kSeqLaneArea.y + kSeqLaneArea.h - 6.0f;
-    return {seqStepX(note.start) + 1.5f, bottom - static_cast<float>(std::clamp(v, 0.0, 1.0)) * (kSeqLaneArea.h - 12.0f)};
+    const float bottom = roll().laneArea.y + roll().laneArea.h - 6.0f;
+    return {seqStepX(note.start) + 1.5f, bottom - static_cast<float>(std::clamp(v, 0.0, 1.0)) * (roll().laneArea.h - 12.0f)};
 }
 
 int SeqPanel::seqLaneNoteAt(Point p) const {
@@ -2549,7 +2890,7 @@ int SeqPanel::seqLaneNoteAt(Point p) const {
     int found = -1;
     for (auto it = notes.rbegin(); it != notes.rend(); ++it) {
         const Point dot = seqLaneDot(*it);
-        if (std::abs(p.x - dot.x) <= 5.0f && p.y >= dot.y - 6.0f && p.y <= kSeqLaneArea.y + kSeqLaneArea.h) {
+        if (std::abs(p.x - dot.x) <= 5.0f && p.y >= dot.y - 6.0f && p.y <= roll().laneArea.y + roll().laneArea.h) {
             if (seqSelected(it->slot))
                 return it->slot;
             if (found < 0)
@@ -2561,7 +2902,7 @@ int SeqPanel::seqLaneNoteAt(Point p) const {
 
 std::vector<SeqPanel::SeqNote> SeqPanel::seqLaneNotesAt(float x) const {
     std::vector<SeqNote> at, picked;
-    const float reach = std::max(3.0f, kSeqGrid.w / seqShownSteps() * 0.5f);
+    const float reach = std::max(3.0f, roll().grid.w / seqShownSteps() * 0.5f);
     for (const SeqNote &n : seqNotes())
         if (std::abs(seqStepX(n.start) - x) <= reach) {
             at.push_back(n);
@@ -2580,7 +2921,11 @@ std::vector<SeqPanel::SeqNote> SeqPanel::seqLaneNotesAt(float x) const {
 }
 
 std::pair<int, int> SeqPanel::seqLoop() const {
-    const int pattern = seqPattern(), steps = seqSteps();
+    return seqLoopOf(seqPattern());
+}
+
+std::pair<int, int> SeqPanel::seqLoopOf(int pattern) const {
+    const int steps = seqStepsOf(pattern);
     const int start = stepped(value(paramIndex(pattern, SeqPatternParam::LoopStart)), 0, steps - 1);
     const int stored = stepped(value(paramIndex(pattern, SeqPatternParam::LoopEnd)), 0, kSeqMaxSteps);
     return {start, stored <= 0 ? steps : std::clamp(stored, start + 1, steps)};
@@ -2597,6 +2942,13 @@ SeqPanel::SeqDrag::Mode SeqPanel::seqRulerMode(float x) const {
 }
 
 std::optional<CursorKind> SeqPanel::cursor(const Widget &w) const {
+    if (w.kind == Kind::SeqTile) { // a hand to pick it up; moving while it is carried, and over what the roll shows
+        if (dragging())
+            return seqDrag_.mode == SeqDrag::Mode::ViewRect || (seqDrag_.mode == SeqDrag::Mode::Tile && seqDrag_.carried)
+                       ? CursorKind::Move
+                       : CursorKind::Hand;
+        return seqViewGrabbed(w.b, host_.mouse()) ? CursorKind::Move : CursorKind::Hand;
+    }
     if (w.kind == Kind::SeqRuler) { // left and right over an end of the loop or a new one, moving over the loop
         const SeqDrag::Mode mode = dragging() ? seqDrag_.mode : seqRulerMode(host_.mouse().x);
         return mode == SeqDrag::Mode::LoopMove ? CursorKind::Move : CursorKind::Horizontal;
@@ -2651,6 +3003,10 @@ bool SeqPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
     if ((w.kind == Kind::Choice || w.kind == Kind::Toggle) && isSeqParam(w.param)) {
         const bool on = w.kind == Kind::Choice ? std::lround(value(w.param)) == w.b : value(w.param) >= 0.5;
         host_.paintButtonFace(c, w, on, hovered, kAccent, 0.22f, kRadiusControl);
+        if (patternButton(w) && !on && seqPatternModulated() == w.b) // where modulation takes the pattern picked
+            c.strokeRect(w.rect.inset(1.5f), kAccent, 1.5f, kRadiusControl - 1.5f);
+        if (patternButton(w) && w.b == kSeqPatterns - 1) // under the row, once: its modulation's reach, as a bar's
+            host_.paintModRange(c, seqPatternReach(), w.param);
         const Color ink = on ? litInk(kAccent) : hovered ? kText : kDim;
         if (w.param == paramIndex(SeqParam::Enabled)) {
             powerIcon(c, w.rect.center(), ink);
@@ -2682,6 +3038,15 @@ bool SeqPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         return true;
     }
     switch (w.kind) {
+    case Kind::SeqTile:
+        paintSeqTile(c, w.b, w.rect, hovered, false);
+        return true;
+    case Kind::SeqSize: // the Curve card's expand and collapse button: out to the full size, in to the half
+        if (const Color ink = paintActionFace(c, w.rect, hovered); full())
+            collapseIcon(c, w.rect.center(), ink);
+        else
+            expandIcon(c, w.rect.center(), ink);
+        return true;
     case Kind::SeqTool: {
         const bool on = layout.seqDraw == (w.b == 1);
         host_.paintButtonFace(c, w, on, hovered, kAccent, 0.22f, kRadiusControl);
@@ -2719,20 +3084,32 @@ bool SeqPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         return true;
     }
     case Kind::SeqMacroTab: {
-        // As the tabs before it, lit only while the lane shows a macro, with a dot in the macro's color (faint while the
-        // macro has no curve in this pattern) and an arrow for its list.
+        // Its label, as the tabs before it: lit only while the lane shows a macro, with a dot in the macro's color
+        // (faint while the macro has no curve in this pattern); under the mouse, faintly lit apart from the arrow.
         const int macro = seqTabMacro();
         auto get = [this](int index) { return value(index); };
         const bool curve = seqCurvePointCount(get, seqPattern(), seqMacroCurve(macro)) > 0;
         const bool shown = layout.seqLane >= SeqLane::Macro1;
-        if (shown)
-            c.fillRect(w.rect, kAccent.alpha(0.2f), kRadiusMark);
-        const Color ink = shown || hovered || seqMacroMenu_ ? kText : kDim;
+        if (shown || hovered)
+            c.fillRect(w.rect, kAccent.alpha(shown ? 0.2f : 0.1f), kRadiusMark);
+        const Color ink = shown || hovered ? kText : kDim;
         const float y = w.rect.center().y;
         c.fillCircle({w.rect.x + 10.0f, y}, 3.5f, look.sources[kMaxSources + macro].alpha(curve ? 1.0f : kSeqBareMacroDot));
-        c.text({w.rect.x + 18.0f, w.rect.y, w.rect.w - 32.0f, w.rect.h}, trf(Str::SeqLaneMacro, {std::to_string(macro + 1)}),
+        c.text({w.rect.x + 18.0f, w.rect.y, w.rect.w - 20.0f, w.rect.h}, trf(Str::SeqLaneMacro, {std::to_string(macro + 1)}),
                kTextSmall, ink, Align::Left, true);
-        paintChevron(c, {w.rect.right() - 10.0f, y}, ink, ChevronWay::Down, true);
+        return true;
+    }
+    case Kind::SeqMacroArrow: {
+        // The arrow that opens the list: lit apart from the label, while the list is open and under the mouse, a thin line
+        // parting the two while either is lit.
+        const bool labelLit = layout.seqLane >= SeqLane::Macro1 ||
+                              (host_.hovered() && host_.hovered()->kind == Kind::SeqMacroTab);
+        if (seqMacroMenu_ || hovered)
+            c.fillRect(w.rect, kAccent.alpha(seqMacroMenu_ ? 0.2f : 0.1f), kRadiusMark);
+        if (seqMacroMenu_ || hovered || labelLit)
+            c.line({w.rect.x + 0.5f, w.rect.y + 3.0f}, {w.rect.x + 0.5f, w.rect.bottom() - 3.0f}, kFaint, 1.0f);
+        paintChevron(c, w.rect.center(), seqMacroMenu_ || hovered ? kText : kDim,
+                     seqMacroMenu_ ? ChevronWay::Up : ChevronWay::Down, true); // up while the list is open
         return true;
     }
     case Kind::SeqMacroMenu:
@@ -2805,14 +3182,6 @@ bool SeqPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         binIcon(c, w.rect.center(), paintActionFace(c, w.rect, hovered, !seqPatternEmpty(seqPattern())));
         return true;
     }
-    case Kind::SeqCopy: { // two sheets, one over the other
-        const Color ink = paintActionFace(c, w.rect, hovered);
-        const Point m = w.rect.center();
-        c.strokeRect({m.x - 5.0f, m.y - 5.0f, 8.0f, 9.0f}, ink, 1.2f, 1.5f);
-        c.fillRect({m.x - 2.0f, m.y - 2.0f, 8.0f, 9.0f}, hovered ? kTrack : kRaised, 1.5f);
-        c.strokeRect({m.x - 2.0f, m.y - 2.0f, 8.0f, 9.0f}, ink, 1.2f, 1.5f);
-        return true;
-    }
     case Kind::SeqRoot: {
         const bool lit = hovered || host_.isActive(w);
         c.fillRect(w.rect, lit ? wellHover() : wellColor(), kRadiusControl);
@@ -2853,7 +3222,7 @@ bool SeqPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
     case Kind::SeqScroll:
     case Kind::SeqScrollY: {
         const bool across = w.kind == Kind::SeqScroll;
-        const Rect track = across ? seqScrollTrack() : kSeqScrollYTrack;
+        const Rect track = across ? seqScrollTrack() : roll().scrollY;
         const Rect thumb = across ? seqScrollThumb() : seqScrollYThumb();
         const bool lit = hovered || (dragging() &&
                                      seqDrag_.mode == (across ? SeqDrag::Mode::Scroll : SeqDrag::Mode::ScrollY));

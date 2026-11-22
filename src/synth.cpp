@@ -895,6 +895,7 @@ void Synth::render(float *left, float *right, uint32_t frames, const ParamValues
             applySeqEvents(seq_.stopAll(seqEvents_));
         if (keysTakenCount_ > 0 && !seq_.takesKeys()) // switched off: the keys it took are over
             releaseKeys({-1, -1, -1, -1});
+        feedSeqFeel(params); // for the editor, which shows where modulation takes them
         followSeqCurves();
         renderSpan(left, right, frames, params, sameParams);
         return;
@@ -905,6 +906,7 @@ void Synth::render(float *left, float *right, uint32_t frames, const ParamValues
         uint32_t covered = 0;
         // Where the transport stands as the stretch starts: renderSpan() moves it on through the frames it renders.
         const double beats = playing_ ? songBeats_ + (done - rendered) / sampleRate_ * tempo_ / 60.0 : songBeats_;
+        feedSeqFeel(params);
         const int count =
             seq_.plan(std::min(frames - done, kSeqStretch), tempo_, playing_, beats, seqEvents_, covered);
         if (seqCurvesMoved()) { // the voices hear the curves where they stood up to here
@@ -1207,6 +1209,28 @@ void Synth::shareChanged(const ParamValues &params) {
     }
 }
 
+void Synth::feedSeqFeel(const ParamValues &params) {
+    // What is set, with the host's and the macros' modulation, and the slots of the newest voice, or with none, the
+    // last one's as the effects ring out (see fxTailBlock()), as the effects take theirs: the sequencer is shared too.
+    std::array<double, kSeqFeelCount> feel{};
+    for (int k = 0; k < kSeqFeelCount; ++k) {
+        const int i = seqFeelIndex(k);
+        feel[k] = params[i] + globalMod_[i] + macroMod_[i];
+    }
+    const Voice *newest = newestVoice();
+    const SlotMod *mods = newest ? newest->slotMods.data() : fxTail_.on ? fxTailMods_.data() : nullptr;
+    const int count = newest ? newest->slotModCount : fxTail_.on ? fxTailModCount_ : 0;
+    for (int m = 0; m < count; ++m)
+        if (const int k = seqFeelOf(mods[m].index); k >= 0)
+            feel[k] += mods[m].offset;
+    for (int k = 0; k < kSeqFeelCount; ++k) {
+        const int i = seqFeelIndex(k);
+        feel[k] = std::isfinite(feel[k]) ? std::clamp(feel[k], table_[i].min, table_[i].max) : table_[i].def;
+        seqFeel_[k] = feel[k] - std::clamp(params[i], table_[i].min, table_[i].max);
+    }
+    seq_.setFeel(feel);
+}
+
 void Synth::startFxTail(const Voice &v, const ParamValues &params) {
     fxTail_.on = true;
     fxTail_.silent = 0.0;
@@ -1219,7 +1243,7 @@ void Synth::startFxTail(const Voice &v, const ParamValues &params) {
     const int volume = paramIndex(GlobalParam::Volume);
     for (int m = 0; m < v.slotModCount; ++m) {
         const SlotMod &mod = v.slotMods[m];
-        if ((mod.index < kFxBase || mod.index >= kShapeBase) && mod.index != volume)
+        if ((mod.index < kFxBase || mod.index >= kShapeBase) && mod.index != volume && !isSeqFeel(mod.index))
             continue;
         const int source = mod.slot / kSlots;
         if (source < kMaxSources && runsLfo(sourceType(params[paramIndex(source, SourceParam::Type)])))
@@ -1255,7 +1279,7 @@ int Synth::fxTailBlock(const ParamValues &params, uint32_t frames) {
         const double swing = bipolar ? 0.5 * value : 0.5 * (value + 1.0);
         for (int k = 0; k < sharedSlotCount_[s]; ++k) {
             const SharedSlot &slot = sharedSlots_[s][k];
-            if ((slot.target < kFxBase || slot.target >= kShapeBase) && slot.target != volume)
+            if ((slot.target < kFxBase || slot.target >= kShapeBase) && slot.target != volume && !isSeqFeel(slot.target))
                 continue;
             const double amount = hostValue(params, slotAmountIndex(s, slot.slot));
             if (amount == 0.0)
@@ -1546,6 +1570,8 @@ void Synth::telemetry(Telemetry &out) const {
     out.seqWheel = static_cast<float>(seqWheel_);
     for (int m = 0; m < kMacros; ++m)
         out.seqMacro[m] = static_cast<float>(seqMacroAdded_[m]);
+    for (int k = 0; k < kSeqFeelCount; ++k)
+        out.seqFeel[k] = static_cast<float>(seqFeel_[k]);
     if (scope_.op >= 0 && scope_.live) {
         // A slow span (or the first one, before it is whole) shows as it fills; a quicker one a whole span at a time,
         // blending into the next (see kScopeBlendSpan).
@@ -1644,7 +1670,8 @@ void Synth::telemetry(Telemetry &out) const {
                 static_cast<float>(mod.offset / (table_[mod.index].max - table_[mod.index].min));
     }
     for (int i = 0; i < macroTargetCount_; ++i) // what the macros add, once for each target they share
-        if (std::find(macroTargets_.begin(), macroTargets_.begin() + i, macroTargets_[i]) == macroTargets_.begin() + i)
+        if (macroTargets_[i] < kModulatedCount && // the sequencer's have seqFeel
+            std::find(macroTargets_.begin(), macroTargets_.begin() + i, macroTargets_[i]) == macroTargets_.begin() + i)
             out.modOffset[macroTargets_[i]] += static_cast<float>(macroMod_[macroTargets_[i]]);
     for (int s = 0; s < kMaxSources; ++s) {
         out.sources[s] = static_cast<float>(newest->sourceValues[s]);

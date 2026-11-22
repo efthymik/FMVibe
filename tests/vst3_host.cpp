@@ -988,14 +988,14 @@ int main(int argc, char **argv) {
         }
         check(plugin.normalized(volume) == volumeAfter, "a value from the host just after the plugin told it one is not taken");
 
-        // A state whose modulation panel is collapsed makes the editor shorter: the host is asked to resize it.
+        // A state whose keyboard strip is collapsed makes the editor shorter: the host is asked to resize it.
         {
             plugin.processor->setProcessing(false);
             ParamValues values;
             for (int i = 0; i < kParamCount; ++i)
                 values[i] = paramTable()[i].def;
             gui::UiLayout layout;
-            layout.sourcesCollapsed = true;
+            layout.keysCollapsed = true;
             MemoryStream collapsed;
             const clap_ostream_t out{&collapsed, [](const clap_ostream_t *s, const void *buffer, uint64_t n) -> int64_t {
                                          auto *stream = static_cast<MemoryStream *>(s->ctx);
