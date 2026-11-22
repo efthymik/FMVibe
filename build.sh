@@ -3,10 +3,11 @@
 # audio quality test and the UI snapshots, for cloud sessions and anyone on Linux. The plugins themselves need
 # Windows: build.ps1 builds them.
 #
-#   ./build.sh                  # build into build/linux and run the tests (quality, ui)
+#   ./build.sh                  # build into build/linux and run the tests
 #   ./build.sh --skip-tests     # build only
 #   ./build.sh --debug          # a debug build, into build/linux-debug
 #   ./build.sh --shots [scale]  # build, then render the editor's snapshots into build/linux/ui-shots (at 2 for 2x)
+#   ./build.sh --install        # and install FMVibe.clap into ~/.clap, FMVibe.vst3 into ~/.vst3
 #
 # The snapshots are PNGs: open them to look at the editor. The text is drawn in Inter (FMVIBE_FONT picks another),
 # not Windows' Segoe UI, so it comes out a little wider than in the plugin.
@@ -17,10 +18,12 @@ config=Release
 dir=build/linux
 tests=1
 shots=0
+install=0
 scale=1
 while [ $# -gt 0 ]; do
     case "$1" in
         --skip-tests) tests=0 ;;
+        --install) install=1 ;;
         --debug) config=Debug; dir=build/linux-debug ;;
         --shots) shots=1; tests=0
                  if [ $# -gt 1 ] && [[ "$2" =~ ^[0-9.]+$ ]]; then scale=$2; shift; fi ;;
@@ -33,7 +36,7 @@ done
 for tool in cmake ninja c++ pkg-config git; do
     command -v "$tool" >/dev/null || { echo "$tool is missing" >&2; exit 1; }
 done
-if ! pkg-config --exists cairo; then
+if ! pkg-config --exists cairo cairo-xlib; then
     echo "Cairo's headers are missing: sudo apt-get install -y libcairo2-dev" >&2
     exit 1
 fi
@@ -49,11 +52,38 @@ if [ ! -f "$clap/include/clap/clap.h" ]; then
     git clone --quiet --depth 1 --branch "$tag" -c advice.detachedHead=false https://github.com/free-audio/clap "$clap"
 fi
 
+# The VST3 SDK's parts, at the tag CMakeLists.txt pins, as CMakeLists.txt fetches them for Windows: the interfaces the
+# plugin is written against, and base and public.sdk for the validator's sources.
+vst3=build/deps/vst3sdk
+if [ ! -f "$vst3/pluginterfaces/base/funknown.h" ]; then
+    echo "== fetch VST3 interfaces"
+    rm -rf "$vst3/pluginterfaces"
+    git clone --quiet --depth 1 --branch v3.8.1_build_84 -c advice.detachedHead=false \
+        https://github.com/steinbergmedia/vst3_pluginterfaces "$vst3/pluginterfaces"
+fi
+for entry in "base:vst3_base" "public.sdk:vst3_public_sdk"; do
+    part=${entry%%:*}
+    repo=${entry#*:}
+    if [ ! -d "$vst3/$part" ]; then
+        echo "== fetch VST3 $part"
+        rm -rf "$vst3/$part"
+        git clone --quiet --depth 1 --branch v3.8.1_build_84 -c advice.detachedHead=false \
+            "https://github.com/steinbergmedia/$repo" "$vst3/$part"
+    fi
+done
+
 echo "== configure ($config)"
 cmake -S . -B "$dir" -G Ninja -DCMAKE_BUILD_TYPE="$config" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-    -DFETCHCONTENT_SOURCE_DIR_CLAP="$PWD/$clap" >/dev/null
+    -DFETCHCONTENT_SOURCE_DIR_CLAP="$PWD/$clap" -DVST3_PLUGINTERFACES_DIR="$PWD/$vst3/pluginterfaces" >/dev/null
 echo "== build"
-cmake --build "$dir"
+cmake --build "$dir" -j$(nproc)
+
+if [ "$install" = 1 ]; then
+    echo "== install (~/.clap, ~/.vst3)"
+    cmake --install "$dir" --prefix "$HOME" >/dev/null
+    echo "   $HOME/.clap/FMVibe.clap"
+    echo "   $HOME/.vst3/FMVibe.vst3"
+fi
 
 if [ "$tests" = 1 ]; then
     echo "== test"

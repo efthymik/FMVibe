@@ -196,7 +196,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   knob dragged past the voices allocated asks for none while the mouse holds it and one once let go and settled; that on the SEQ tab a wheel message with Ctrl in its keys zooms
   the roll, though the thread's own idea of Ctrl is up (as while the host has the keyboard); that with nothing
   sounding processing sleeps, but not while the
-  editor shows a free LFO running (the plugin asking the host to process again as one comes on); and that an editor
+  editor shows a free LFO running (the plugin asking the host to process again as one comes on); that a new editor,
+  and one at a saved zoom 3, opens within the screen's work area, and folding the keyboard asks for sizes within it;
+  and that an editor
   sized at the system's DPI and given a window
   at another (one not DPI aware) asks the host for the size at the window's, its zoom kept (at the same DPI, for
   nothing). It saves/loads state
@@ -1044,30 +1046,52 @@ More checks:
 
 ## Linux development build
 
-Cloud sessions run on Linux, where the plugins can't be built (Win32, Direct2D, the plugin hosts). What can be
-built there, `./build.sh` builds: the engine and the editor (`fmvibe-core`, drawing through Cairo in
-`src/gui/canvas_cairo.cpp`), the audio quality test, the UI snapshots and the preset tool (`cmake/linux.cmake`, which
-`CMakeLists.txt` takes in on any system but Windows). It needs CMake, Ninja, a C++20 compiler (GCC 13 or Clang 18),
-pkg-config, git and Cairo's headers (`libcairo2-dev`), and fetches the CLAP SDK with a git clone of the tag
-`CMakeLists.txt` pins, since the cloud sessions' proxy refuses GitHub's archive downloads. The manual's check takes
-Python 3 too, where there is one.
+Linux builds both plugins: `./build.sh` makes `FMVibe.clap` and the `FMVibe.vst3` bundle (the object in
+`Contents/x86_64-linux`, with `Contents/Resources/moduleinfo.json`), the engine and the editor (`fmvibe-core`, drawing
+through Cairo in `src/gui/canvas_cairo.cpp`), the audio quality test, the UI snapshots, the preset tool and a small
+test host (`cmake/linux.cmake`, which `CMakeLists.txt` takes in on any system but Windows). The editor is an X11 child
+window of the host's (`src/gui/editor_x11.cpp`), on XWayland too: no Wayland and no GTK is linked. The file and
+warning dialogs are the desktop's (`zenity`, else `kdialog`), run as separate programs beside the host's UI thread, so
+only X11, Cairo and fontconfig are loaded into the DAW; without either program the editor says so for a moment and
+nothing opens. It needs CMake, Ninja, a C++20 compiler (GCC 13 or Clang 18), pkg-config, git, Cairo (`libcairo2-dev`)
+and X11 (`libx11-dev`), and fetches the CLAP SDK and the VST3 interfaces with git clones of the tags `CMakeLists.txt`
+pins, since the cloud sessions' proxy refuses GitHub's archive downloads. The manual's check takes Python 3 too, where
+there is one.
 
 ```bash
-./build.sh                  # build/linux: build, then ctest (quality, ui, manual); about a minute from scratch
+./build.sh                  # build/linux: build, then ctest (quality, ui, manual, linux-host, vst3-validator)
 ./build.sh --skip-tests     # build only
 ./build.sh --debug          # build/linux-debug
 ./build.sh --shots 2        # render the snapshots only, at 2x, into build/linux/ui-shots
+./build.sh --install        # and put FMVibe.clap in ~/.clap, FMVibe.vst3 in ~/.vst3
 ```
+
+- **What leaves a module**: only the entry points (`clap_entry`; for the VST3 bundle `GetPluginFactory`, which the SDK's
+  module loader also reaches through `ModuleEntry`/`ModuleExit`), through the version scripts in
+  `cmake/symbols-clap.map` and `cmake/symbols-vst3.map`; the engine's own symbols stay local, so a CLAP and a VST3
+  loaded in one host process can't bind each other's.
+- **The validator**: Steinberg's VST3 validator is built from the SDK's MIT-licensed `vst3_base` and `vst3_public_sdk`
+  sources (`cmake/vst3-validator.cmake`) and runs on the bundle as the `vst3-validator` test, and with `--target
+  validate`; it is what showed that a Linux VST3 module must export `ModuleEntry`/`ModuleExit` as well as
+  `GetPluginFactory`. `-DFMVIBE_LINUX_VST3_VALIDATOR=OFF` leaves it out.
+- **The editor's window**: an X11 child of the host's window, painted into a Cairo image buffer and copied in whole or
+  by what changed, so a frame is never shown half drawn; the host's timer (CLAP's timer-support, VST3's run loop)
+  pumps its events, poll and paint. `tests/linux_host.cpp` opens it in a window of its own, checks that it paints, and
+  with `FMVIBE_SHOT=file.ppm` writes what it shows.
 
 - **Looking at the editor**: the snapshots are PNGs in `build/linux/ui-shots`, one or more for each step that
   `tools/uishot.cpp` replays; an agent can open them as images. To see a change, render the snapshots and open the
   ones its replay saves, or add a replay that saves one.
 - **What differs from Windows**: the text is drawn in Inter (`FMVIBE_FONT` picks another family), not Segoe UI, so it
   comes out a little wider, and Cairo's antialiasing isn't Direct2D's. A UI check that reads a pixel should read it
-  clear of text and of edges whose place follows a text's width, so it passes with either font.
-- **Not covered**: the CLAP and VST3 smoke tests, the validators, the editor's window, `fmvibe-uihost` and
-  `fmvibe-bench` (with `tools\bench.ps1`) need Windows. A change to `src/plugin.cpp`, `src/vst3plugin.cpp`, `src/plugincore.cpp`, `src/gui/editor.cpp` or
-  `src/gui/canvas.cpp` compiles only there; `build.ps1` on Windows (or the release workflow) is the full check.
+  clear of text and of edges whose place follows a text's width. The checks that read where a text's ink falls use
+  `checkFont()`, which only checks on Windows: a Linux machine has a zoo of fonts, whose metrics move the ink by a
+  pixel. A lit ring's feathering is the backend's too: past the ring the Cairo halo is the background.
+- **Not covered**: the Windows smoke tests, the CLAP validator (clap-validator comes as a Windows binary), `fmvibe-uihost`
+  and `fmvibe-bench` (with `tools\bench.ps1`) need Windows, as does `src/gui/editor.cpp` (the Win32 window) and
+  `src/gui/canvas.cpp` (Direct2D).
+  `build.ps1` on Windows (or the release workflow) is the full check there; the Linux build compiles the shared files
+  and its own window.
 
 ## Factory presets
 
@@ -1276,6 +1300,7 @@ breakpoints in `src/` then hit.
 | `src/gui/canvas_web.cpp` | The same drawing layer over the browser's 2D context, for the demo |
 | `src/gui/canvas_cairo.cpp` | The same drawing layer over Cairo, for the Linux development build |
 | `src/gui/editor.cpp` | Win32 child window that hosts the view in the plugin window |
+| `src/gui/editor_x11.cpp` | The same on Linux: an X11 child window over Cairo, the zenity/kdialog dialogs, the popup menus, the clipboard |
 | `src/gui/controller.h` | What the editor needs from the plugin: the `Controller` (values, edits, telemetry, layout, settings), the `PresetStore` it reaches the preset library through (`NoPresetFiles` for a host without files), the user's `EditorSettings` and the `UndoHistory` each `Controller` keeps |
 | `src/gui/controller.cpp` | The undo history, which each `Controller` keeps for the editor |
 | `src/factory.cpp` | The factory presets' loading; the presets themselves are `presets/Factory/*.fmv`, built in by `cmake/embed_presets.cmake` (see [Factory presets](#factory-presets)) |
@@ -1285,6 +1310,7 @@ breakpoints in `src/` then hit.
 | `tests/smoke_host.cpp` | Headless CLAP test host |
 | `tests/vst3_host.cpp` | Headless VST3 test host |
 | `tools/uishot.cpp` | Offscreen editor renderer and interaction checks |
+| `tests/linux_host.cpp` | Headless host for the Linux CLAP and VST3 plugins (loads them, plays, checks the editor paints) |
 | `tools/uihost.cpp` | `fmvibe-uihost`: a small CLAP host with a window and audio, for trying the editor by hand |
 | `tools/bench.cpp` | `fmvibe-bench`: what a build of the CLAP plugin costs (`time`) and what it plays (`render`), to compare builds by |
 | `tools/manual.py`, `cmake/manual.cmake` | The user manual (`docs/manual.md`) as one self-contained HTML file, for the zips and GitHub Pages, and the `manual` test that checks it |

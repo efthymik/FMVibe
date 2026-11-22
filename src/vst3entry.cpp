@@ -8,8 +8,6 @@
 #include <pluginterfaces/vst/ivstaudioprocessor.h>
 #include <pluginterfaces/vst/ivstcomponent.h>
 
-#include <windows.h>
-
 #include <cstring>
 #include <new>
 
@@ -25,7 +23,12 @@ void copyWide(char16 *to, size_t capacity, const char *ascii) {
 }
 
 void copyNarrow(char8 *to, size_t capacity, const char *text) {
-    strncpy_s(to, capacity, text, _TRUNCATE);
+    if (capacity == 0)
+        return;
+    size_t i = 0;
+    for (; text[i] && i + 1 < capacity; ++i)
+        to[i] = static_cast<char8>(text[i]);
+    to[i] = 0;
 }
 
 // One class: FMVibe, an instrument whose component is its own controller.
@@ -121,6 +124,8 @@ SMTG_EXPORT_SYMBOL IPluginFactory *PLUGIN_API GetPluginFactory() {
     return &factory;
 }
 
+#ifdef _WIN32
+// Windows hosts call these after loading the module and before unloading it.
 SMTG_EXPORT_SYMBOL bool InitDll() {
     return true;
 }
@@ -128,5 +133,16 @@ SMTG_EXPORT_SYMBOL bool InitDll() {
 SMTG_EXPORT_SYMBOL bool ExitDll() {
     return true;
 }
+#else
+// Linux hosts (the VST3 SDK's module loader, and REAPER) require these: ModuleEntry is called right after the module is
+// loaded and ModuleExit right before it is unloaded. Nothing of ours starts here, but the loader asks for both.
+SMTG_EXPORT_SYMBOL bool ModuleEntry(void *) {
+    return true;
+}
+
+SMTG_EXPORT_SYMBOL bool ModuleExit() {
+    return true;
+}
+#endif
 
 } // extern "C"

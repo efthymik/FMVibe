@@ -17,7 +17,8 @@ struct Analyzed {
     std::vector<float> samples;
     int write = 0;
     int since = 0;
-    int start = 0; // where `since` starts (see Analyzer::prepare())
+    int start = 0;    // where `since` starts (see Analyzer::prepare())
+    int zeros = 0;    // samples pushed zero since one wasn't, up to a window's length (see Analyzer::measure())
     Spectrum bands{};
 
     void clear();
@@ -40,6 +41,14 @@ public:
     void push(Analyzed &signal, float x) {
         signal.samples[signal.write] = x;
         signal.write = (signal.write + 1) % kSize;
+        // Up to a window's worth of zeros in a row: while the whole window is zero, no transform is needed (see
+        // measure()).
+        if (x == 0.0f) {
+            if (signal.zeros < kSize)
+                ++signal.zeros;
+        } else {
+            signal.zeros = 0;
+        }
         if (++signal.since >= kSize / 2) {
             signal.since = 0;
             measure(signal);

@@ -10,24 +10,36 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <new>
 #include <random>
 
+#ifdef _WIN32
 #include <windows.h>
 #include <shellapi.h>
+#endif
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
 #include <xmmintrin.h>
+#define FMVIBE_SSE 1
+#endif
 
 namespace fmvibe {
 
 namespace {
 
-// How long after the plugin tells the host a param's value it takes none for that param from the host.
+// How long after the plugin tells a host a param's value it takes none for that param from the host.
 constexpr int64_t kHostEchoMs = 500;
 // How soon after the deactivate the activate of a restart the plugin asked for comes, for the notes to play on
 // through it. A host that leaves the plugin inactive longer (switched off for a while, with a restart asked for still
 // to come) finds the notes ended, as after any other activate: a key let go of meanwhile reached no voice.
 constexpr int64_t kKeepVoicesMs = 1000;
+
+#ifdef _WIN32
+constexpr wchar_t kSep = L'\\';
+#else
+constexpr wchar_t kSep = L'/';
+#endif
 
 } // namespace
 
@@ -47,8 +59,9 @@ PluginCore::PluginCore() {
         layout_.zoom = static_cast<float>(saved.zoom);
     layout_.keysCollapsed = saved.keysCollapsed;
     // Randomness of its own, so that instances layered don't play the same noise. The tests and fmvibe-bench, which
-    // compare what plays sample for sample, ask for the same every time.
-    if (GetEnvironmentVariableW(L"FMVIBE_FIXED_SEED", nullptr, 0) == 0)
+    // compare what plays sample for sample, ask for the same every time. An empty variable counts as none.
+    const char *fixedSeed = std::getenv("FMVIBE_FIXED_SEED");
+    if (fixedSeed == nullptr || *fixedSeed == '\0')
         synth_.seedNotes(std::random_device{}());
 }
 
@@ -100,6 +113,26 @@ void PluginCore::performSetValue(int index, double value) {
 
 // Voices are allocated here, on the main thread, for the current voice limit: unless a restart the plugin asked for
 // finds them fit to play on (see activate() in plugincore.h).
+void PluginCore::beginDenormals() {
+#ifdef FMVIBE_SSE
+    csr_ = _mm_getcsr();
+    _mm_setcsr(csr_ | 0x8040); // flush-to-zero and denormals-are-zero
+#elif defined(__aarch64__)
+    __asm__ __volatile__("mrs %0, fpcr" : "=r"(csr_));
+    __asm__ __volatile__("msr fpcr, %0" : : "r"(csr_ | (1u << 24) | (1u << 19))); // FZ, FZ16
+#else
+    csr_ = 0;
+#endif
+}
+
+void PluginCore::endDenormals() {
+#ifdef FMVIBE_SSE
+    _mm_setcsr(csr_);
+#elif defined(__aarch64__)
+    __asm__ __volatile__("msr fpcr, %0" : : "r"(csr_));
+#endif
+}
+
 bool PluginCore::activate(double sampleRate) {
     const bool keep = restartPending() && !outOfMemory() && !keysHeld_.load() && deactivatedAt_ >= 0 &&
                       steadyMs() - deactivatedAt_ < kKeepVoicesMs &&
@@ -282,15 +315,12 @@ void PluginCore::startAtHostTempo() {
 }
 
 void PluginCore::openManual() {
-    const std::string_view url = gui::kManualUrl; // plain ASCII
-    const std::wstring wide(url.begin(), url.end());
-    ShellExecuteW(nullptr, L"open", wide.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    openExternal(widePath(gui::kManualUrl)); // plain ASCII
 }
 
 void PluginCore::beginBlock() {
     // Filter and delay tails decay into denormals, which are slow; flush them to zero.
-    csr_ = _mm_getcsr();
-    _mm_setcsr(csr_ | 0x8040); // flush-to-zero and denormals-are-zero
+    beginDenormals();
 
     playKeys();
     synth_.setAnalyzing(editorOpen_.load(std::memory_order_relaxed));
@@ -344,7 +374,7 @@ void PluginCore::endBlock() {
         latencyDue_.store(true);
         hostRequestCallback();
     }
-    _mm_setcsr(csr_);
+    endDenormals();
 }
 
 // Main thread: the virtual keyboard. The host may be asleep, so ask it to run us.
@@ -449,13 +479,8 @@ void PluginCore::sectionsChanged() {
 }
 
 void PluginCore::editorFitChanged() {
-    if (!editor_)
-        return;
-    uint32_t width = 0, height = 0, fitted = 0;
-    editor_->size(width, height);
-    editor_->fit(width, fitted);
-    if (fitted != height)
-        hostResizeEditor(width, fitted); // a host that won't resize leaves the editor drawn smaller, centered
+    if (editor_)
+        editor_->fitLayout(); // a host that won't resize leaves the editor drawn smaller, centered
 }
 
 bool PluginCore::openEditor() {
@@ -491,7 +516,7 @@ bool PluginCore::saveState(const clap_ostream_t *stream, bool settings) const {
                        {oversampling_.load(), mpe_.load(), mpeBendRange_.load(), tempoSync_.load(), ownTempo_.load()}))
         return false;
     // The preset the patch came from: whether it changed since, then its file's path in UTF-8.
-    return writePresetChunk(stream, patchEdited(), utf8(std::filesystem::path(presetFile())));
+    return writePresetChunk(stream, patchEdited(), utf8(pathOf(presetFile())));
 }
 
 bool PluginCore::loadState(const clap_istream_t *stream, bool settings) {
@@ -541,7 +566,7 @@ bool PluginCore::loadState(const clap_istream_t *stream, bool settings) {
             // of a factory preset the plugin once wrote into the preset folder is that factory preset.
             std::wstring file = PresetLibrary::resolve(widePath(preset));
             const bool factory = PresetLibrary::factoryPreset(file) != nullptr;
-            std::wstring extension = factory ? L".fmv" : std::filesystem::path(file).extension().wstring();
+            std::wstring extension = factory ? L".fmv" : wideOf(pathOf(file).extension());
             for (wchar_t &c : extension)
                 c = c >= L'A' && c <= L'Z' ? static_cast<wchar_t>(c - L'A' + L'a') : c;
             if (!file.empty() && extension != L".fmv") {
@@ -583,17 +608,19 @@ void PluginCore::notifyParams(const ParamValues &before) {
 // The files in the folder `from` are in `to` now, or gone for an empty `to`: the preset the patch is, and the favorite
 // and recent presets, follow them. A patch whose file went stays as it sounds, an edited patch with no preset.
 void PluginCore::presetFolderMoved(const std::wstring &from, const std::wstring &to) {
-    const std::wstring prefix = from + L"\\";
+    const std::wstring prefix = from + kSep;
     const std::wstring &file = presetFile();
-    if (file.size() > prefix.size() && _wcsnicmp(file.c_str(), prefix.c_str(), prefix.size()) == 0) {
+    if (file.size() > prefix.size() && samePath(file.substr(0, prefix.size()), prefix)) {
         if (to.empty())
             setPreset(L"", true);
         else
             setPreset(to + file.substr(from.size()), patchEdited());
     }
-    const std::string from8 = utf8(std::filesystem::path(from)) + "\\", to8 = utf8(std::filesystem::path(to)) + "\\";
+    const std::string from8 = utf8(pathOf(from)) + static_cast<char>(kSep),
+                      to8 = utf8(pathOf(to)) + static_cast<char>(kSep);
     auto inFolder = [&](const std::string &kept) {
-        return kept.size() > from8.size() && _strnicmp(kept.c_str(), from8.c_str(), from8.size()) == 0;
+        return kept.size() > from8.size() &&
+               (samePath(widePath(kept.substr(0, from8.size())), widePath(from8)));
     };
     readUserSettings(); // those another instance marked in it follow too
     bool moved = false;
@@ -660,8 +687,8 @@ bool PluginCore::loadPreset(const std::wstring &chosen) {
     }
     if (path.starts_with(PresetLibrary::kFactoryPrefix))
         return false; // a factory preset no longer built in
-    FILE *file = nullptr;
-    if (_wfopen_s(&file, path.c_str(), L"rb") != 0 || !file)
+    FILE *file = openPath(path, "rb");
+    if (!file)
         return false;
     const clap_istream_t stream = fileIn(file);
     const bool loaded = loadPresetFrom(&stream, path);
@@ -695,9 +722,9 @@ bool PluginCore::savePreset(const std::wstring &path) {
     // be listed, and would load as the built-in one (see PresetLibrary::resolve()).
     if (path.starts_with(PresetLibrary::kFactoryPrefix) || PresetLibrary::factoryPreset(PresetLibrary::resolve(path)))
         return false;
-    const fs::path target(path), part(path + L".part");
-    FILE *file = nullptr;
-    if (_wfopen_s(&file, part.c_str(), L"wb") != 0 || !file)
+    const fs::path target(pathOf(path)), part(pathOf(path + L".part"));
+    FILE *file = openPath(wideOf(part), "wb");
+    if (!file)
         return false;
     // The tempo it plays at goes with it: its own while it doesn't follow the host, else the host's, as the last
     // block played it. The patch keeps it only once the file is written.
@@ -714,7 +741,7 @@ bool PluginCore::savePreset(const std::wstring &path) {
         layout_.savedTempo = tempoBefore;
         return false;
     }
-    if (!replaceFile(part.wstring(), target.wstring())) {
+    if (!replaceFile(wideOf(part), wideOf(target))) {
         layout_.savedTempo = tempoBefore;
         return false;
     }
@@ -742,7 +769,7 @@ std::string PluginCore::presetName() const {
         return tr(Str::PresetInit);
     if (const FactoryPreset *preset = PresetLibrary::factoryPreset(presetFile()))
         return preset->name;
-    return utf8(std::filesystem::path(presetFile()).stem());
+    return utf8(pathOf(presetFile()).stem());
 }
 
 bool PluginCore::loadPresetAt(int index) {
@@ -754,7 +781,7 @@ bool PluginCore::savePresetIn(const std::string &folder, const std::string &name
     if (path.empty())
         return false;
     std::error_code ignored;
-    std::filesystem::create_directories(std::filesystem::path(path).parent_path(), ignored);
+    std::filesystem::create_directories(pathOf(path).parent_path(), ignored);
     const gui::PresetInfo before = layout_.presetInfo;
     layout_.presetInfo = info;
     if (savePreset(path)) {
@@ -768,7 +795,7 @@ bool PluginCore::savePresetIn(const std::string &folder, const std::string &name
 bool PluginCore::presetExists(const std::string &folder, const std::string &name) const {
     const std::wstring path = PresetLibrary::presetFile(folder, name);
     std::error_code ignored;
-    return !path.empty() && std::filesystem::exists(path, ignored);
+    return !path.empty() && std::filesystem::exists(pathOf(path), ignored);
 }
 
 // The file read whole (its params and its layout), its info replaced, and written back as a preset saved is: beside
@@ -781,8 +808,8 @@ bool PluginCore::setPresetInfo(int index, const gui::PresetInfo &info) {
     const auto values = std::make_unique<ParamValues>();
     gui::UiLayout layout;
     {
-        FILE *file = nullptr;
-        if (_wfopen_s(&file, path.c_str(), L"rb") != 0 || !file)
+        FILE *file = openPath(path, "rb");
+        if (!file)
             return false;
         const clap_istream_t stream = fileIn(file);
         const bool read = readParams(&stream, *values);
@@ -793,9 +820,9 @@ bool PluginCore::setPresetInfo(int index, const gui::PresetInfo &info) {
             return false;
     }
     layout.presetInfo = info;
-    const fs::path part(path + L".part");
-    FILE *file = nullptr;
-    if (_wfopen_s(&file, part.c_str(), L"wb") != 0 || !file)
+    const fs::path part(pathOf(path + L".part"));
+    FILE *file = openPath(wideOf(part), "wb");
+    if (!file)
         return false;
     const clap_ostream_t stream = fileOut(file);
     const bool written = writePatch(&stream, *values, layout);
@@ -805,7 +832,7 @@ bool PluginCore::setPresetInfo(int index, const gui::PresetInfo &info) {
         fs::remove(part, ignored);
         return false;
     }
-    if (!replaceFile(part.wstring(), path))
+    if (!replaceFile(wideOf(part), path))
         return false;
     if (presets_.indexOf(presetFile()) == index) { // the patch is that preset: its info is the file's now
         layout_.presetInfo = info;
@@ -825,15 +852,21 @@ bool PluginCore::movePreset(int index, const std::string &folder) {
     const std::wstring to = PresetLibrary::presetFile(folder, presets_.entries()[index].name);
     if (to.empty())
         return false;
-    if (_wcsicmp(from.c_str(), to.c_str()) == 0)
+    if (samePath(from, to))
         return true;
     std::error_code ignored;
-    fs::create_directories(fs::path(to).parent_path(), ignored);
+    fs::create_directories(pathOf(to).parent_path(), ignored);
+#ifdef _WIN32
     if (!MoveFileExW(from.c_str(), to.c_str(), MOVEFILE_REPLACE_EXISTING))
         return false;
-    if (_wcsicmp(presetFile().c_str(), from.c_str()) == 0)
+#else
+    fs::rename(pathOf(from), pathOf(to), ignored);
+    if (ignored)
+        return false;
+#endif
+    if (samePath(presetFile(), from))
         setPreset(to, patchEdited());
-    const std::string from8 = utf8(fs::path(from)), to8 = utf8(fs::path(to));
+    const std::string from8 = utf8(pathOf(from)), to8 = utf8(pathOf(to));
     readUserSettings();
     bool moved = false;
     for (std::vector<std::string> *list : {&userSettings.favorites, &userSettings.recent}) {
@@ -852,14 +885,14 @@ bool PluginCore::movePreset(int index, const std::string &folder) {
 bool PluginCore::presetFavorite(int index) const {
     if (index < 0 || index >= static_cast<int>(presets_.files().size()))
         return false;
-    const std::string file = utf8(std::filesystem::path(presets_.files()[index]));
+    const std::string file = utf8(pathOf(presets_.files()[index]));
     return std::find(userSettings.favorites.begin(), userSettings.favorites.end(), file) != userSettings.favorites.end();
 }
 
 void PluginCore::setPresetFavorite(int index, bool on) {
     if (index < 0 || index >= static_cast<int>(presets_.files().size()) || presetFavorite(index) == on)
         return;
-    const std::string file = utf8(std::filesystem::path(presets_.files()[index]));
+    const std::string file = utf8(pathOf(presets_.files()[index]));
     auto &favorites = userSettings.favorites;
     if (on)
         favorites.push_back(file);
@@ -880,7 +913,7 @@ std::vector<int> PluginCore::recentPresets() const {
 
 // A preset loaded goes first among the recent ones.
 void PluginCore::rememberRecent(const std::wstring &path) {
-    const std::string file = utf8(std::filesystem::path(path));
+    const std::string file = utf8(pathOf(path));
     if (file.empty())
         return;
     auto &recent = userSettings.recent;

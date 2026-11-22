@@ -1,0 +1,9 @@
+/* What a CLAP module exports, and nothing else: the host looks up `clap_entry` and reaches everything else through
+   the entry's factory. A version script keeps the engine's own symbols local, so two plugins loaded in one host
+   process (a CLAP and a VST3, say) can't bind each other's. */
+{
+    global:
+        clap_entry;
+    local:
+        *;
+};

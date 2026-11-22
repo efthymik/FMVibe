@@ -307,6 +307,9 @@ protected:
 
 private:
     void applyPlayMode();
+    // Flush the audio thread's denormals to zero while a block is processed, and put its floating point back.
+    void beginDenormals();
+    void endDenormals();
     void playKeys();
     // The voice limit changed. More voices than are allocated ask for a restart once the limit has settled (see
     // kVoicesSettleMs), or at once when it is `settled` already (a state or a preset loaded). Thread-safe.

@@ -13,6 +13,7 @@ void Analyzed::clear() {
     std::fill(samples.begin(), samples.end(), 0.0f);
     write = 0;
     since = start;
+    zeros = static_cast<int>(samples.size());
     bands = {};
 }
 
@@ -46,6 +47,13 @@ void Analyzer::prepare(Analyzed &signal, int stagger, int of) {
 }
 
 void Analyzer::measure(Analyzed &signal) {
+    // A window of silence: its transform would read 0 in every bin, so every band just falls by its share, as it
+    // does where the sound got quieter, without the transform.
+    if (signal.zeros >= kSize) {
+        for (float &band : signal.bands)
+            band = std::max(0.0f, band * fall_);
+        return;
+    }
     // Windowed, oldest sample first, in bit-reversed order for the radix-2 transform.
     for (int i = 0; i < kSize; ++i)
         fft_[reversed_[i]] = signal.samples[(signal.write + i) & (kSize - 1)] * window_[i];

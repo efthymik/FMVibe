@@ -102,7 +102,7 @@ if (EMSCRIPTEN)
     return()
 endif()
 
-# Elsewhere (Linux): the engine, the editor over Cairo, the quality test and the UI snapshots, without the plugins.
+# Elsewhere (Linux): the CLAP and VST3 plugins too, the engine, the editor over Cairo, the tests and the tools.
 if (NOT WIN32)
     include(cmake/linux.cmake)
     return()

@@ -12,8 +12,11 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <atomic>
+#include <chrono>
 #include <memory>
 #include <new>
+#include <thread>
 #include <vector>
 
 namespace fmvibe {
@@ -26,6 +29,14 @@ const char *const kFeatures[] = {
     CLAP_PLUGIN_FEATURE_STEREO,
     nullptr,
 };
+
+#ifdef _WIN32
+constexpr const char *kWindowApi = CLAP_WINDOW_API_WIN32;
+inline HWND windowOf(const clap_window_t *window) { return static_cast<HWND>(window->win32); }
+#else
+constexpr const char *kWindowApi = CLAP_WINDOW_API_X11;
+inline gui::Editor::WindowId windowOf(const clap_window_t *window) { return static_cast<gui::Editor::WindowId>(window->x11); }
+#endif
 
 // Note, param-mod and note-expression events all address voices the same way.
 template <class Event>
@@ -131,6 +142,9 @@ private:
     void mainThread();
     void sendEdits(const clap_output_events_t *out);
     void reportEndedNotes(const clap_output_events_t *out, uint32_t frames);
+    // The editor's clock, while it is shown: the host's timer, or the thread (see tickThread_).
+    void startTicking();
+    void stopTicking();
     void rebuildRemotePages() { // main thread; the values (about 150 KB) on the heap rather than its stack
         auto values = std::make_unique<ParamValues>();
         valuesInto(*values);
@@ -155,9 +169,14 @@ private:
     const clap_host_voice_info_t *hostVoiceInfo_ = nullptr;
     const clap_host_remote_controls_t *hostRemoteControls_ = nullptr;
     const clap_host_gui_t *hostGui_ = nullptr;
-    const HostTempo *hostTempo_ = nullptr;
     const clap_host_timer_support_t *hostTimerSupport_ = nullptr;
+    const HostTempo *hostTempo_ = nullptr;
     clap_id timerId_ = CLAP_INVALID_ID; // main thread: the timer hostTimer() registered
+    // The editor's clock: the host's timer where it offers one, else a thread asking for its callback, as a host
+    // without timer support would leave the editor's animations standing.
+    clap_id editorTimerId_ = CLAP_INVALID_ID;
+    std::thread tickThread_;
+    std::atomic<bool> tickRunning_{false};
     // Main thread: the remote pages, as the sections were when the host was last told (see sectionsChanged()).
     std::vector<clap_remote_controls_page_t> remotePages_;
     // Presets set every param at once, about three events each.
@@ -184,6 +203,7 @@ Plugin::Plugin(const clap_host_t *host) : host_(host) {
         [](const clap_plugin_t *p) { return self(p).init(); },
         [](const clap_plugin_t *p) {
             // The editor goes first, while this is still a Plugin: closing it may end a gesture (hostEndEdit()).
+            self(p).stopTicking();
             self(p).closeEditor();
             self(p).hostTimer(false);
             delete &self(p);
@@ -426,6 +446,10 @@ void Plugin::queueEdit(int index, const EditEvent &ev) {
 }
 
 void Plugin::mainThread() {
+#ifndef _WIN32
+    if (gui::Editor *window = editor())
+        window->pump(); // the display's events, the poll, a dialog's answer, painted
+#endif
     if (rescanValues_) {
         rescanValues_ = false;
         if (hostParams_)
@@ -614,24 +638,41 @@ const clap_plugin_timer_support_t Plugin::kTimerSupport = {
     [](const clap_plugin_t *p, clap_id id) {
         if (id == self(p).timerId_)
             self(p).onTimer();
+#ifndef _WIN32
+        else if (id == self(p).editorTimerId_) {
+            if (gui::Editor *editor = self(p).editor())
+                editor->pump();
+        }
+#endif
     },
 };
 
-// Embedded Win32 editor only; no floating windows.
+// The editor embedded in the host's window (Win32 on Windows, X11 on Linux); no floating windows.
 const clap_plugin_gui_t Plugin::kGui = {
     [](const clap_plugin_t *, const char *api, bool isFloating) {
-        return !isFloating && std::strcmp(api, CLAP_WINDOW_API_WIN32) == 0;
+        return !isFloating && std::strcmp(api, kWindowApi) == 0;
     },
     [](const clap_plugin_t *, const char **api, bool *isFloating) {
-        *api = CLAP_WINDOW_API_WIN32;
+        *api = kWindowApi;
         *isFloating = false;
         return true;
     },
     [](const clap_plugin_t *p, const char *api, bool isFloating) {
-        return !isFloating && std::strcmp(api, CLAP_WINDOW_API_WIN32) == 0 && self(p).openEditor();
+        return !isFloating && std::strcmp(api, kWindowApi) == 0 && self(p).openEditor();
     },
-    [](const clap_plugin_t *p) { self(p).closeEditor(); },
-    [](const clap_plugin_t *, double) { return false; }, // set_scale: the editor asks Windows for the DPI
+    [](const clap_plugin_t *p) {
+        self(p).stopTicking();
+        self(p).closeEditor();
+    },
+    [](const clap_plugin_t *p, double scale) {
+#ifndef _WIN32
+        if (gui::Editor *editor = self(p).editor())
+            editor->setScale(scale);
+        return true;
+#else
+        return false; // the editor asks Windows for the DPI
+#endif
+    },
     [](const clap_plugin_t *p, uint32_t *width, uint32_t *height) {
         if (!self(p).editor())
             return false;
@@ -658,14 +699,54 @@ const clap_plugin_gui_t Plugin::kGui = {
         return self(p).editor() && self(p).editor()->setSize(width, height);
     },
     [](const clap_plugin_t *p, const clap_window_t *window) {
-        return self(p).editor() && std::strcmp(window->api, CLAP_WINDOW_API_WIN32) == 0 &&
-               self(p).editor()->attach(static_cast<HWND>(window->win32));
+        if (!self(p).editor() || std::strcmp(window->api, kWindowApi) != 0 ||
+            !self(p).editor()->attach(windowOf(window)))
+            return false;
+        self(p).startTicking(); // the host's timer, while the editor shows
+#ifndef _WIN32
+        if (gui::Editor *editor = self(p).editor())
+            editor->pump(); // the first frame now, not a frame later
+#endif
+        return true;
     },
     [](const clap_plugin_t *, const clap_window_t *) { return false; }, // set_transient: not floating
     [](const clap_plugin_t *, const char *) {},                         // suggest_title
     [](const clap_plugin_t *p) { return self(p).editor() && self(p).editor()->show(true); },
     [](const clap_plugin_t *p) { return self(p).editor() && self(p).editor()->show(false); },
 };
+
+void Plugin::startTicking() {
+#ifndef _WIN32
+    if (editorTimerId_ != CLAP_INVALID_ID || tickThread_.joinable())
+        return;
+    if (hostTimerSupport_) {
+        if (hostTimerSupport_->register_timer(host_, 16, &editorTimerId_))
+            return;
+        editorTimerId_ = CLAP_INVALID_ID;
+    }
+    // No timer from the host: a thread asks for the main thread's callback, where the editor is pumped.
+    tickRunning_.store(true);
+    tickThread_ = std::thread([this] {
+        while (tickRunning_.load(std::memory_order_relaxed)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(16));
+            if (tickRunning_.load(std::memory_order_relaxed))
+                host_->request_callback(host_);
+        }
+    });
+#endif
+}
+
+void Plugin::stopTicking() {
+#ifndef _WIN32
+    if (hostTimerSupport_ && editorTimerId_ != CLAP_INVALID_ID) {
+        hostTimerSupport_->unregister_timer(host_, editorTimerId_);
+        editorTimerId_ = CLAP_INVALID_ID;
+    }
+    tickRunning_.store(false);
+    if (tickThread_.joinable())
+        tickThread_.join();
+#endif
+}
 
 const clap_plugin_t *createPlugin(const clap_host_t *host) {
     return (new Plugin(host))->clapPlugin();

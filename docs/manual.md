@@ -66,6 +66,11 @@ The CLAP and VST3 versions share the same engine, plugin window, parameters and 
 either. Your DAW treats them as two different plugins, however, so a project made with the CLAP version won't open the
 VST3 version in its place, or the other way round.
 
+On Linux, both plugins build from source as well (`./build.sh`; see the README). Copy `FMVibe.clap` into `~/.clap` and
+the whole `FMVibe.vst3` folder into `~/.vst3` (`./build.sh --install` does both). The editor is an X11 window
+(XWayland included) drawn through Cairo, and file dialogs come from the desktop (`zenity` or `kdialog`). Presets live
+in `~/.local/share/FMVibe/presets` and settings in `~/.config/FMVibe`, or the XDG equivalents where set.
+
 ## 3. How FMVibe makes sound
 
 ### Signal flow
@@ -123,8 +128,10 @@ From top to bottom, the plugin window has:
 - The **modulation panel**: the source cards.
 - The **keyboard strip**: macros, the note and velocity sources, the pitch and mod wheels and a six-octave keyboard.
 
-The plugin window can be resized and keeps its aspect ratio. The keyboard strip can be collapsed to its title row,
-which makes the plugin window shorter.
+The plugin window can be resized and keeps its aspect ratio. It opens and unfolds within the screen's work area: a
+saved or last-used size that no longer fits, or the taller layout when the keyboard strip unfolds, is scaled down
+rather than run past the screen. The keyboard strip can be collapsed to its title row, which makes the plugin window
+shorter.
 
 Tabs use two small marks in their top-right corner, with the same meaning everywhere:
 
@@ -1500,8 +1507,9 @@ your web browser.
 - **Grid**: how strongly the sequencer's grid lines are drawn (50 % by default).
 - **Handles**: the size of the depth handles: Small (default), Medium or Large.
 
-Double-click a slider to reset it. The plugin window's size is also remembered: new instances open at the size you last
-resized a plugin window to, and with the keyboard strip collapsed or open as you last left it. Enter or Escape closes the dialog.
+Double-click a slider to reset it. The plugin window's size is also remembered, shrunk to fit the screen if it is
+larger, and so is whether the keyboard strip is collapsed: new instances open at the size you last resized a plugin
+window to, and with the strip as you last left it. Enter or Escape closes the dialog.
 
 ## 16. Working with the plugin
 
@@ -1555,6 +1563,11 @@ click outside).
 
 An open list or menu, such as a filter's type list, the list of effects or the list of sources, closes when you press
 **Escape**, without picking anything.
+
+On Linux, the file dialogs (Load, Save to File…) and the warning dialogs are the desktop's own — `zenity`, else
+`kdialog` — opened as separate windows. While one is open the plugin window dims and says "A dialog is open":
+**Alt+Tab** shows the dialog, **Escape** closes it. With neither program installed, the window says so for a moment
+and no dialog opens; the preset browser's own Save dialog still works.
 
 ## 17. FMVibe in your DAW
 
@@ -1611,6 +1624,10 @@ changing the oversampling stops them.
 | Presets and projects | The whole patch: parameters, routing and its layout, modulation, effects, sequencer patterns, macro names, preset info. |
 | Projects only | Oversampling, MPE settings, the preset the patch came from and whether it changed. |
 | Personal settings file | Theme, hue, glow, lines, grid, handle size, window size, whether the keyboard strip is collapsed, favorites, recent presets, your categories, where the browser opens. |
+
+On Windows the preset folder is `Documents\FMVibe\presets` and the settings file `%APPDATA%\FMVibe\settings.txt`. On
+Linux they are `~/.local/share/FMVibe/presets` and `~/.config/FMVibe/settings.txt` (or `$XDG_DATA_HOME` /
+`$XDG_CONFIG_HOME` where set).
 
 ### CPU
 
