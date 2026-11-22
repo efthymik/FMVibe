@@ -7289,7 +7289,9 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         check(wheelShot && level && count(SeqCurve::Bend) == 1.0 && model.ui.seqLane == SeqLane::ModWheel,
               "the MOD WHEEL lane's Shift+drag with Draw draws its curve a point a step");
         // The MACRO tab: as the tabs beside it, nothing behind it but the panel until it is picked, then the same highlight
-        // as a tab picked, out to its edge, no border of another color (read off the rendered pixels). A click shows the macro last shown and opens the list of macros over it; row 3 picks Macro 3's
+        // as a tab picked, out to its edge, no border of another color (read off the rendered pixels). Its label and its
+        // arrow light apart under the mouse (read off the rendered pixels); a click on the label shows the macro it names,
+        // the list left shut, and one on the arrow opens the list of macros over it; row 3 picks Macro 3's
         // curve, and with Draw a click puts a point down on it alone, an undo step. Open again, a macro with a curve shows it
         // small in its row, unlike one without, and its dot is full where one without a curve has it faint, on the tab and
         // in its row (read off the rendered pixels); a click around the list and Escape close it; the wheel steps the tab along
@@ -7310,7 +7312,18 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
             const uint32_t restInk = renderer.pixel(tabCorner), noListInk = renderer.pixel(listInside);
             const bool plainAtRest = restInk == panelInk && renderer.pixel(tabEdge) == panelInk && litTabInk != panelInk;
 
-            click(view, rectCenter(tab));
+            const Rect labelPart = detail::seqMacroLabel(tab), arrowPart = detail::seqMacroArrow(tab);
+            const Point arrowCorner{arrowPart.right() - 3.0f, arrowPart.y + 3.0f};
+            view.mouseMove(rectCenter(labelPart), {});
+            renderer.save(view, dir / "36h-seq-macro-label-hot.png");
+            const bool labelHot = renderer.pixel(tabCorner) != panelInk && renderer.pixel(arrowCorner) == panelInk;
+            view.mouseMove(rectCenter(arrowPart), {});
+            renderer.save(view, dir / "36h-seq-macro-arrow-hot.png");
+            const bool arrowHot = renderer.pixel(arrowCorner) != panelInk && renderer.pixel(tabCorner) == panelInk;
+            click(view, rectCenter(labelPart));
+            const bool labelShows = model.ui.seqLane == laneOf(0) &&
+                                    shotInk("36h-seq-macro-label.png", listInside) == noListInk;
+            click(view, rectCenter(arrowPart));
             const bool opened = model.ui.seqLane == laneOf(0) &&
                                 shotInk("36h-seq-macro-list.png", listInside) != noListInk;
             auto brightness = [](uint32_t c) { return (c >> 16 & 0xFF) + (c >> 8 & 0xFF) + (c & 0xFF); };
@@ -7330,9 +7343,9 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
             const bool tabLit = shotInk("36h-seq-macro.png", tabCorner) == litTabInk && renderer.pixel(tabEdge) == litTabInk;
             const bool tabDotFull = brightness(renderer.pixel(tabDot)) > brightness(tabDotBare) + 60;
 
-            click(view, rectCenter(tab));
+            click(view, rectCenter(arrowPart));
             click(view, rectCenter(detail::seqMacroRow(detail::kSeqMacroList, 4)));
-            click(view, rectCenter(tab));
+            click(view, rectCenter(arrowPart));
             auto sparkAt = [&](int macro) {
                 const Rect row = detail::seqMacroRow(detail::kSeqMacroList, macro);
                 return Point{row.right() - 28.0f, row.center().y};
@@ -7342,7 +7355,7 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
             const bool rowDotFull = brightness(renderer.pixel(rowDot)) > brightness(rowDotBare) + 60;
             click(view, {600.0f, 600.0f});
             const bool closedAround = shotInk("36h-seq-macro-closed.png", listInside) == noListInk && model.ui.seqLane == laneOf(4);
-            click(view, rectCenter(tab));
+            click(view, rectCenter(arrowPart));
             view.dialogKey(Key::Escape);
             const bool closedByKey = shotInk("36h-seq-macro-escaped.png", listInside) == noListInk;
             view.wheel(rectCenter(tab), -1.0f, {});
@@ -7367,6 +7380,8 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
             model.live.seqMacro[2] = 0.0f;
             view.poll();
             check(plainAtRest && tabLit, "the MACRO tab looks as the lane's other tabs do, lit only while picked, with no border");
+            check(labelHot && arrowHot && labelShows && opened,
+                  "the MACRO tab's label and arrow light apart; the label shows its macro and only the arrow opens the list");
             check(opened && picked && drawn && undoneMacro,
                   "the MACRO tab's list picks a macro, whose curve the lane shows, drawn alone and undoably");
             check(tabDotFull && rowDotFull, "a macro's dot is faint without a curve, on the MACRO tab and in its list");

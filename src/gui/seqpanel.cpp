@@ -518,7 +518,8 @@ void SeqPanel::widgets(std::vector<Widget> &list) const {
     add(Kind::SeqLane, roll().laneArea);
     for (int lane = 0; lane < static_cast<int>(SeqLane::Macro1); ++lane)
         add(Kind::SeqLaneTab, seqLaneTab(roll(), lane), -1, -1, lane);
-    add(Kind::SeqMacroTab, roll().macroTab);
+    add(Kind::SeqMacroTab, seqMacroLabel(roll().macroTab));
+    add(Kind::SeqMacroArrow, seqMacroArrow(roll().macroTab));
     for (int b = 0; b < 4; ++b)
         add(Kind::SeqZoom, seqZoomButton(roll(), b), -1, -1, b);
     if (seqShownSteps() < static_cast<float>(seqSteps()))
@@ -1574,8 +1575,11 @@ bool SeqPanel::pressAs(const Widget &w, Point p, Modifiers mods, const Widget &h
         seqLastMacro_ = seqTabMacro();
         layout.seqLane = static_cast<SeqLane>(w.b);
         return true;
-    case Kind::SeqMacroTab:
+    case Kind::SeqMacroTab: // the macro its label names, the list left shut
         showSeqMacro(seqTabMacro());
+        seqMacroMenu_ = false;
+        return true;
+    case Kind::SeqMacroArrow:
         seqMacroMenu_ = true;
         return true;
     case Kind::SeqMacroMenu:
@@ -2222,6 +2226,7 @@ bool SeqPanel::doubleClick(const Widget &w, Point p, Modifiers mods) {
     case Kind::SeqTool:
     case Kind::SeqSnap:
     case Kind::SeqMacroTab:
+    case Kind::SeqMacroArrow:
     case Kind::SeqStretch:
     case Kind::SeqFlag:
         return true; // a double-click is two clicks of theirs, which the first press took
@@ -2234,7 +2239,8 @@ bool SeqPanel::wheelOn(const Widget &w, Point p, float steps, Modifiers mods) {
     UiLayout &layout = controller().layout();
     const bool onRoll = w.kind == Kind::SeqGrid || w.kind == Kind::SeqKeys || w.kind == Kind::SeqRuler ||
                       w.kind == Kind::SeqLane || w.kind == Kind::SeqScroll || w.kind == Kind::SeqScrollY ||
-                      w.kind == Kind::SeqZoom || w.kind == Kind::SeqLaneTab || w.kind == Kind::SeqMacroTab;
+                      w.kind == Kind::SeqZoom || w.kind == Kind::SeqLaneTab || w.kind == Kind::SeqMacroTab ||
+                      w.kind == Kind::SeqMacroArrow;
     // Over the roll, Ctrl zooms across and Alt up and down, at the mouse; Shift scrolls across, as the wheel turned
     // sideways does.
     if (onRoll && mods.ctrl) {
@@ -2273,6 +2279,7 @@ bool SeqPanel::wheelOn(const Widget &w, Point p, float steps, Modifiers mods) {
         layout.seqSnap = std::clamp(layout.seqSnap + (steps > 0.0f ? -1 : 1), 0, kSeqSnapCount - 1);
         return true;
     case Kind::SeqMacroTab: // along the list, as the snap's button does
+    case Kind::SeqMacroArrow:
         showSeqMacro(seqTabMacro() + (steps > 0.0f ? -1 : 1));
         return true;
     case Kind::SeqZoom: // its axis, in or out a notch
@@ -2367,6 +2374,8 @@ std::string SeqPanel::tooltip(const Widget &w) const {
         return tr(Str::TipSeqScrollY);
     case Kind::SeqMacroTab:
         return seqMacroMenu_ ? std::string() : std::string(tr(Str::TipSeqLaneMacro));
+    case Kind::SeqMacroArrow:
+        return seqMacroMenu_ ? std::string() : std::string(tr(Str::TipSeqLaneMacroPick));
     case Kind::SeqLaneTab:
         return w.b == static_cast<int>(SeqLane::Bend)       ? std::string(tr(Str::TipSeqLaneBend))
                : w.b == static_cast<int>(SeqLane::ModWheel) ? std::string(tr(Str::TipSeqLaneWheel))
@@ -3075,20 +3084,31 @@ bool SeqPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         return true;
     }
     case Kind::SeqMacroTab: {
-        // As the tabs before it, lit only while the lane shows a macro, with a dot in the macro's color (faint while the
-        // macro has no curve in this pattern) and an arrow for its list.
+        // Its label, as the tabs before it: lit only while the lane shows a macro, with a dot in the macro's color
+        // (faint while the macro has no curve in this pattern); under the mouse, faintly lit apart from the arrow.
         const int macro = seqTabMacro();
         auto get = [this](int index) { return value(index); };
         const bool curve = seqCurvePointCount(get, seqPattern(), seqMacroCurve(macro)) > 0;
         const bool shown = layout.seqLane >= SeqLane::Macro1;
-        if (shown)
-            c.fillRect(w.rect, kAccent.alpha(0.2f), kRadiusMark);
-        const Color ink = shown || hovered || seqMacroMenu_ ? kText : kDim;
+        if (shown || hovered)
+            c.fillRect(w.rect, kAccent.alpha(shown ? 0.2f : 0.1f), kRadiusMark);
+        const Color ink = shown || hovered ? kText : kDim;
         const float y = w.rect.center().y;
         c.fillCircle({w.rect.x + 10.0f, y}, 3.5f, look.sources[kMaxSources + macro].alpha(curve ? 1.0f : kSeqBareMacroDot));
-        c.text({w.rect.x + 18.0f, w.rect.y, w.rect.w - 32.0f, w.rect.h}, trf(Str::SeqLaneMacro, {std::to_string(macro + 1)}),
+        c.text({w.rect.x + 18.0f, w.rect.y, w.rect.w - 20.0f, w.rect.h}, trf(Str::SeqLaneMacro, {std::to_string(macro + 1)}),
                kTextSmall, ink, Align::Left, true);
-        paintChevron(c, {w.rect.right() - 10.0f, y}, ink, ChevronWay::Down, true);
+        return true;
+    }
+    case Kind::SeqMacroArrow: {
+        // The arrow that opens the list: lit apart from the label, while the list is open and under the mouse, a thin line
+        // parting the two while either is lit.
+        const bool labelLit = layout.seqLane >= SeqLane::Macro1 ||
+                              (host_.hovered() && host_.hovered()->kind == Kind::SeqMacroTab);
+        if (seqMacroMenu_ || hovered)
+            c.fillRect(w.rect, kAccent.alpha(seqMacroMenu_ ? 0.2f : 0.1f), kRadiusMark);
+        if (seqMacroMenu_ || hovered || labelLit)
+            c.line({w.rect.x + 0.5f, w.rect.y + 3.0f}, {w.rect.x + 0.5f, w.rect.bottom() - 3.0f}, kFaint, 1.0f);
+        paintChevron(c, w.rect.center(), seqMacroMenu_ || hovered ? kText : kDim, ChevronWay::Down, true);
         return true;
     }
     case Kind::SeqMacroMenu:

@@ -389,6 +389,10 @@ constexpr Rect kSeqLaneArea = kSeqFullRoll.laneArea;
 constexpr Rect kSeqLaneTabs = kSeqFullRoll.laneTabs;
 constexpr Rect kSeqMacroTab = kSeqFullRoll.macroTab;
 constexpr Rect kSeqMacroList = kSeqFullRoll.macroList;
+// The macros' tab in two parts: its label, the macro it shows, and at its right end the arrow that opens their list.
+constexpr float kSeqMacroArrowW = 20.0f;
+constexpr Rect seqMacroLabel(Rect tab) { return {tab.x, tab.y, tab.w - kSeqMacroArrowW, tab.h}; }
+constexpr Rect seqMacroArrow(Rect tab) { return {tab.x + tab.w - kSeqMacroArrowW, tab.y, kSeqMacroArrowW, tab.h}; }
 constexpr Rect seqMacroRow(Rect list, int macro) {
     return {list.x + 4.0f, list.y + 4.0f + static_cast<float>(macro) * kSeqMacroRowH, list.w - 8.0f, kSeqMacroRowH};
 }

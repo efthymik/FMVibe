@@ -1250,8 +1250,9 @@ Under the roll, the **lane** shows a stem for each note. Its tabs select what it
 - **BEND**, **MOD WHEEL** and **MACRO**: automation **curves** for the pattern, up to 64 points each.
   - The **bend** curve adds to the pitch bend (as a share of the Bend range).
   - The **mod wheel** curve adds to the Mod Wheel.
-  - A **macro** curve replaces its macro's knob position while it plays. The MACRO tab opens a list of the eight
-    macros; a macro with a curve in this pattern shows it in the list.
+  - A **macro** curve replaces its macro's knob position while it plays. Click the MACRO tab's label to show the
+    macro it names; click its arrow to choose another from the list of the eight. A macro with a curve in this pattern
+    shows it in the list.
 
 On a curve:
 

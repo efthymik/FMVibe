@@ -1044,8 +1044,9 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   - **The lane** under the roll, a slight line parting the two: a stem for each note at its start, as high as its velocity or its chance, as the
     **VELOCITY | CHANCE | BEND | MOD WHEEL** tabs under it pick, a note picked ringed there too. After the tabs,
     a **MACRO** tab, with a dot in its macro's color (faint while the macro has no curve in this pattern, here and in the
-    list) and that macro's number, shows the macro last shown and opens
-    the list of the eight over it: each with its color, its name and its curve in this pattern drawn small (a faint line
+    list) and that macro's number, in two parts lit apart under the mouse: its label, a click on which shows the macro
+    it names (the macro last shown), and at its right end its arrow, a thin line parting the two while either is lit,
+    a click on which opens the list of the eight over it ("Choose macro" its tooltip): each with its color, its name and its curve in this pattern drawn small (a faint line
     without one). A row picked shows that macro's curve in the lane, the tab lit as a tab picked is; a click around the list or Escape closes it, and the wheel over the tab steps along the macros. With **Draw**, dragged
     across, the notes there take the height of the mouse (the cursor a pen, and up and down over a dot and while one is
     dragged); with more than one note picked, a drag from one of their dots moves them all up or down together, each
