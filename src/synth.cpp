@@ -3859,8 +3859,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             op.out = mono * monoGain[i] * envLevel;
             if (tapped >> i & 1u) {
                 if (i == scopeOp) {
-                    const double moved = op.syncOn ? scopePhase : scopePhase + level.phase[i]; // where its wave stands
-                    scopeTake(moved - std::floor(moved), op.out);
+                    const double wavePhase = op.syncOn ? scopePhase : scopePhase + level.phase[i]; // where its wave stands
+                    scopeTake(wavePhase - std::floor(wavePhase), op.out);
                 }
                 v.opSum[i] += op.out;
                 if (fxOps >> i & 1u)

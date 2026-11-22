@@ -7375,7 +7375,7 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
             click(view, rectCenter(detail::seqMacroRow(detail::kSeqMacroList, 2)));
             const bool picked = model.ui.seqLane == laneOf(2);
             click(view, {at(4.0, 48).x, middleY});
-            const bool drawn = count(macroCurve) == 1.0 && curveField(macroCurve, 0, PointField::X) == 4.0 &&
+            const bool macroDrawn = count(macroCurve) == 1.0 && curveField(macroCurve, 0, PointField::X) == 4.0 &&
                                std::abs(curveField(macroCurve, 0, PointField::Y) - 0.5) < 0.03 &&
                                count(SeqCurve::ModWheel) == 5.0 && count(SeqCurve::Bend) == 1.0;
             view.undo();
@@ -7425,8 +7425,8 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
             check(labelHot && arrowHot && labelShows && opened,
                   "the MACRO tab's label and arrow light apart; the label shows its macro and only the arrow opens the list");
             check(downShut && upOpen, "the MACRO tab's arrow points down while its list is shut and up while it is open");
-            check(opened && picked && drawn && undoneMacro,
-                  "the MACRO tab's list picks a macro, whose curve the lane shows, drawn alone and undoably");
+            check(opened && picked && macroDrawn && undoneMacro,
+                  "the MACRO tab's list picks a macro, whose curve the lane shows, macroDrawn alone and undoably");
             check(tabDotFull && rowDotFull, "a macro's dot is faint without a curve, on the MACRO tab and in its list");
             check(sparks && closedAround && closedByKey && stepped,
                   "the list of macros shows which have a curve, closes at a click around it or Escape, and the wheel steps the tab");
@@ -7663,12 +7663,12 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
                     count += renderer.pixel({r.x + x, r.y + y}) != renderer.pixel({other.x + x, other.y + y});
             return count;
         };
-        const int drawn = differing(b, cNotes);
+        const int tileDrawn = differing(b, cNotes);
 
         // What the roll shows is a rectangle in the shown pattern's tile: zoomed in across, it narrows in A's tile
         // (read off the rendered pixels), and B's, not shown, stays as it was.
         {
-            auto grab = [&](Rect r) {
+            auto grabPixels = [&](Rect r) {
                 std::vector<uint32_t> pixels;
                 for (float y = 0.5f; y < r.h; y += 1.0f)
                     for (float x = 0.5f; x < r.w; x += 1.0f)
@@ -7682,14 +7682,14 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
                 return count;
             };
             const Rect aNotes = seqTileNotes(seqTile(0));
-            const std::vector<uint32_t> wholeA = grab(aNotes), wholeB = grab(b);
+            const std::vector<uint32_t> wholeA = grabPixels(aNotes), wholeB = grabPixels(b);
             const Rect zoomIn{detail::kSeqBox.x + detail::kSeqBox.w - 6.0f - 60.0f - 22.0f,
                               detail::kSeqLaneTabs.y + 2.0f, 18.0f, detail::kSeqLaneTabs.h - 4.0f};
             click(view, rectCenter(zoomIn));
             click(view, rectCenter(zoomIn));
             view.mouseMove({600.0f, 300.0f}, {});
             const bool viewShot = renderer.save(view, dir / "36q-seq-overview-view.png");
-            const int movedA = changed(wholeA, grab(aNotes)), movedB = changed(wholeB, grab(b));
+            const int movedA = changed(wholeA, grabPixels(aNotes)), movedB = changed(wholeB, grabPixels(b));
             for (int i = 0; i < 4; ++i) // back to the whole pattern across
                 click(view, rectCenter({zoomIn.x - 20.0f, zoomIn.y, zoomIn.w, zoomIn.h}));
             view.mouseMove({600.0f, 300.0f}, {});
@@ -7711,7 +7711,7 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         view.mouseMove({seqTile(0).center().x, seqTile(1).center().y}, {});
         view.mouseMove(seqTile(2).center(), {});
         const bool dragShot = renderer.save(view, dir / "36q-seq-overview-drag.png");
-        const bool ringed = renderer.pixel(cEdge) != edgeBefore;
+        const bool tileRinged = renderer.pixel(cEdge) != edgeBefore;
         view.mouseUp(seqTile(2).center(), {});
         bool same = true;
         for (int slot = 0; slot < kSeqNotes; ++slot)
@@ -7743,10 +7743,10 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         model.live.seqPosition = -1.0f;
         model.live.seqPattern = 0;
         view.poll();
-        std::printf("      overview: B's notes %d pixels off C's\n", drawn);
-        check(shot && drawn > 20, "the patterns' overview draws each pattern's notes in its tile");
+        std::printf("      overview: B's notes %d pixels off C's\n", tileDrawn);
+        check(shot && tileDrawn > 20, "the patterns' overview draws each pattern's notes in its tile");
         check(picked && undone, "a click on a pattern's tile shows that pattern, undoably");
-        check(dragShot && ringed && copiedC && emptyC,
+        check(dragShot && tileRinged && copiedC && emptyC,
               "a pattern's tile carried onto another rings it, and let go of there copies the pattern, undoably");
         check(nothing, "a tile let go of on its own place copies nothing");
         check(playhead, "the pattern that plays shows the playhead in its tile");
@@ -7799,8 +7799,8 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
             view.menuCommand(entry(view.contextMenu(seqTile(1).center()), Str::MenuSeqPastePattern));
             const bool overwritten = view.dialogKey(View::Key::Enter) && !view.dialogOpen() && sameAs(1, 0);
             view.undo();
-            const bool undone = model.value(seqNoteIndex(1, 100, SeqNoteParam::Length)) == 1.0;
-            check(asked && askShot && kept && overwritten && undone,
+            const bool noteUndone = model.value(seqNoteIndex(1, 100, SeqNoteParam::Length)) == 1.0;
+            check(asked && askShot && kept && overwritten && noteUndone,
                   "pasting over a pattern holding notes asks first; Escape keeps it, Enter overwrites it, undoably");
 
             // A tile dragged onto it asks the same.
@@ -7854,21 +7854,21 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
                 view.undo();
                 return from;
             };
-            const double before = shownFrom();
+            const double shownBefore = shownFrom();
             const Rect notes = seqTileNotes(seqTile(0));
             const float stepW = notes.w / static_cast<float>(16.0 * longest);
-            const Point grab{notes.x + static_cast<float>(before + 1.0) * stepW, notes.center().y};
-            view.mouseDown(grab, {});
-            view.mouseMove({grab.x + stepW, grab.y}, {});
-            view.mouseMove({grab.x + 2.0f * stepW, grab.y}, {});
+            const Point noteGrab{notes.x + static_cast<float>(shownBefore + 1.0) * stepW, notes.center().y};
+            view.mouseDown(noteGrab, {});
+            view.mouseMove({noteGrab.x + stepW, noteGrab.y}, {});
+            view.mouseMove({noteGrab.x + 2.0f * stepW, noteGrab.y}, {});
             const bool rectShot = renderer.save(view, dir / "36q-seq-overview-view-drag.png");
-            view.mouseUp({grab.x + 2.0f * stepW, grab.y}, {});
+            view.mouseUp({noteGrab.x + 2.0f * stepW, noteGrab.y}, {});
             const double after = shownFrom();
             for (int i = 0; i < 4; ++i) // back to the whole pattern across
                 click(view, rectCenter({zoomIn.x - 20.0f, zoomIn.y, zoomIn.w, zoomIn.h}));
-            std::printf("      the overview's rectangle dragged two steps on: the roll from step %.0f to %.0f\n", before,
+            std::printf("      the overview's rectangle dragged two steps on: the roll from step %.0f to %.0f\n", shownBefore,
                         after);
-            check(rectShot && before >= 0.0 && after == before + 2.0 && model.value(paramIndex(SeqParam::Pattern)) == 0.0,
+            check(rectShot && shownBefore >= 0.0 && after == shownBefore + 2.0 && model.value(paramIndex(SeqParam::Pattern)) == 0.0,
                   "the rectangle of what the roll shows, dragged in its tile, scrolls the roll");
         }
     }
@@ -11421,14 +11421,14 @@ void testPresetLibrary(const std::filesystem::path &dir, Renderer &renderer) {
         const bool locked = savingView.saveFolderListShown();
         savingView.wheel(sheet.listRow(3), -10.0f, {}); // to its end: F9's row last of the eight shown
         click(savingView, sheet.listRow(7));
-        const bool picked = !savingView.saveFolderListShown() && savingView.saveShown();
+        const bool folderPicked = !savingView.saveFolderListShown() && savingView.saveShown();
         type(savingView, "Sketch 2"); // over the name, still all selected
         savingView.typeKey(View::Key::Enter);
         const bool savedThere = saving.savedIn == "F9" && !savingView.saveShown();
         click(savingView, detail::toolbarButton(3).center());
         click(savingView, sheet.folder().center());
         savingView.typeKey(View::Key::Escape);
-        const bool escaped = !savingView.saveFolderListShown() && savingView.saveShown();
+        const bool folderEscaped = !savingView.saveFolderListShown() && savingView.saveShown();
         click(savingView, sheet.folder().center());
         click(savingView, {sheet.x + 100.0f, sheet.y + 25.0f}); // the sheet's title, around the list
         const bool around = !savingView.saveFolderListShown() && savingView.saveShown();
@@ -11439,11 +11439,11 @@ void testPresetLibrary(const std::filesystem::path &dir, Renderer &renderer) {
         savingView.typeKey(View::Key::Enter);
         type(savingView, "Sketch 3");
         savingView.typeKey(View::Key::Enter);
-        check(wasLeft && listShot && opened && locked && picked && savedThere && escaped && around && asked &&
+        check(wasLeft && listShot && opened && locked && folderPicked && savedThere && folderEscaped && around && asked &&
                   saving.savedIn == "F9/Ideas",
               "the Save sheet starts a factory preset's copy where the browser was left, and its folder's list scrolls, "
               "picks a folder (Factory's locked), closes at Escape and a click around it, and makes a new folder in the "
-              "one picked");
+              "one folderPicked");
     }
 
     // The sidebar: All, Favorites and Recent, the tree's folders opening and closing, and the categories filtering

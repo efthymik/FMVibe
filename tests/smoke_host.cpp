@@ -1421,14 +1421,14 @@ int main(int argc, char **argv) {
     {
         const std::vector<float> three = play({.warp = OpWarp::Sync, .warpAmount = 2.0 / 15.0});
         const std::vector<float> cut = play({.warp = OpWarp::Sync, .warpAmount = 2.5 / 15.0});
-        const std::vector<float> full = play({.warp = OpWarp::Sync, .warpAmount = 1.0});
+        const std::vector<float> sixteen = play({.warp = OpWarp::Sync, .warpAmount = 1.0});
         const double threeOff = magnitude(three, 440.0) / std::max(magnitude(three, 1320.0), 1e-9);
         const double cutOff = magnitude(cut, 1540.0) / std::max(magnitude(cut, 1320.0), 1e-9);
-        const double fullOff = magnitude(full, 3520.0) / std::max(magnitude(full, 7040.0), 1e-9);
+        const double fullOff = magnitude(sixteen, 3520.0) / std::max(magnitude(sixteen, 7040.0), 1e-9);
         std::printf("      Sync warp on a sine: 440/1320 Hz %.4f at x3; 1540/1320 Hz %.4f at x3.5; 3520/7040 Hz %.4f "
                     "at x16\n",
                     threeOff, cutOff, fullOff);
-        check(!three.empty() && !cut.empty() && !full.empty() && threeOff < 0.01 && cutOff < 0.01 && fullOff < 0.01,
+        check(!three.empty() && !cut.empty() && !sixteen.empty() && threeOff < 0.01 && cutOff < 0.01 && fullOff < 0.01,
               "the Sync warp plays the wave several times through each cycle, on the note's harmonics");
     }
     // Squeeze on a square is its pulse width: at 0 a square has no 2nd harmonic; at +50 % (a pulse 72 % wide) and
