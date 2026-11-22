@@ -74,6 +74,18 @@ void Sequencer::configure(const ParamValues &params, bool changed) {
         readPattern(pattern_);
 }
 
+void Sequencer::setFeel(const std::array<double, kSeqFeelCount> &feel) {
+    swing_ = feel[0];
+    gate_ = feel[1];
+    velocityAmount_ = feel[2];
+    humanize_ = feel[3];
+    patternWanted_ = std::clamp(static_cast<int>(std::lround(feel[4])), 0, kSeqPatterns - 1);
+    if (enabled_ && !running_ && pattern_ != patternWanted_) {
+        pattern_ = patternWanted_;
+        readPattern(pattern_);
+    }
+}
+
 void Sequencer::readPattern(int pattern) {
     noteCount_ = 0;
     read_ = params_ ? pattern : -1;

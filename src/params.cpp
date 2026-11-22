@@ -1066,7 +1066,7 @@ void buildTable(ParamTable &t) {
         setting(SeqParam::Velocity, Str::ParamSeqVelocity, ParamKind::Percent, 0.0, 1.0, 1.0);
         setting(SeqParam::Humanize, Str::ParamSeqHumanize, ParamKind::Percent, 0.0, 1.0, 0.0);
         for (int k = 0; k < kSeqFeelCount; ++k) // a host's modulation too, shared by every note (see isSeqFeel())
-            t[paramIndex(SeqParam::Swing) + k].flags |= CLAP_PARAM_IS_MODULATABLE;
+            t[seqFeelIndex(k)].flags |= CLAP_PARAM_IS_MODULATABLE;
         setting(SeqParam::Octave, Str::ParamSeqOctave, ParamKind::Count, -3.0, 3.0, 0.0);
         setting(SeqParam::Transpose, Str::ParamSeqTranspose, ParamKind::Semitones, -24.0, 24.0, 0.0);
         setting(SeqParam::Order, Str::ParamSeqOrder, ParamKind::SeqOrder, 0.0,

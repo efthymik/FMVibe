@@ -4935,6 +4935,34 @@ void sequencerChecks() {
                   isModTarget(paramIndex(SeqParam::Humanize)) && !isModTarget(paramIndex(SeqParam::Octave)),
               "a macro, the host and an LFO modulate the sequencer's Gate, Swing and Velocity");
     }
+    // The pattern picked takes modulation in whole steps: a macro's slot on it, a third of its range at the macro's full
+    // knob, plays B from a key where A is set; at the knob's middle (half a step) it still plays A; and the telemetry
+    // says how far it takes the pattern.
+    {
+        auto t = std::make_unique<Telemetry>();
+        auto playing = [&](double knob) {
+            Engine e(1);
+            e.p[paramIndex(SeqParam::Enabled)] = 1.0;
+            e.p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Key);
+            note(e.p, 0, 0.0, 4.0, 60, 0);
+            note(e.p, 0, 0.0, 4.0, 72, 1);
+            e.p[paramIndex(0, MacroParam::Value)] = knob;
+            e.p[slotTargetIndex(kMaxSources, 0)] = slotTargetValue(paramIndex(SeqParam::Pattern));
+            e.p[slotAmountIndex(kMaxSources, 0)] = 1.0 / 3.0;
+            e.synth().setTempo(120.0);
+            e.render(256);
+            e.synth().noteOn({1, 0, 0, 60}, 1.0);
+            e.render(2400);
+            e.synth().telemetry(*t);
+            return std::pair{t->seqPattern, t->seqFeel[4]};
+        };
+        const auto [full, fullOffset] = playing(1.0);
+        const auto [half, halfOffset] = playing(0.4);
+        std::printf("      a macro on the pattern: pattern %d at its full knob (%+.3f), %d at 0.4 (%+.3f)\n", full,
+                    fullOffset, half, halfOffset);
+        check(full == 1 && std::abs(fullOffset - 1.0f) < 1e-4f && half == 0 && isModTarget(paramIndex(SeqParam::Pattern)),
+              "modulation picks the sequencer's pattern in whole steps");
+    }
     // Reversed, the step a bar plays first is its last: a note on step 0 plays at step 15. Its loop from step 4 to 8
     // leaves out a note on step 0, and plays one on step 5 every four steps.
     {

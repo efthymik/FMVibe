@@ -417,7 +417,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     once (not one its chance leaves out), a note put down under the playhead playing at once, and neither a key nor
     another pattern taking over chasing a note from before it, Swing at 75 % delaying the step after the beat by half a step and Gate at 50 % halving a note
     (and a Gate of 50 % handed it as modulation halving one set at 100 %; through the synth, a macro's slot on Gate,
-    the host's modulation of Swing and an LFO's slot on Velocity taking them where the telemetry says it plays them),
+    the host's modulation of Swing and an LFO's slot on Velocity taking them where the telemetry says it plays them,
+    and a macro's slot on the pattern picking B at its full knob and still A at 0.4, in whole steps),
     Reverse playing a note on the first step on the last (the playhead moving steadily backward, as on Ping-Pong's way
     back, and forward otherwise), a loop playing only the notes in it, a muted note and one at
     no chance silent and one at half playing about half the passes (alike each time), another pattern taking over where
@@ -899,7 +900,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     the modulation panel back under it (read off the rendered pixels) and the overview gone, and back, kept in the user's
     settings with no param edited and nothing to undo, and a double-click whose first click shows the view leaving it;
     and a macro's handle dropped on the card's Gate knob modulating it, its ring drawn (read off the rendered pixels),
-    undoably, and on Octave's nothing;
+    undoably, and on Octave's nothing, and on PATTERN's buttons modulating the pattern picked, undoably, the button it
+    picks ringed as the telemetry tells (read off the rendered pixels);
   - the SEQ view's PATTERNS: a pattern's notes drawn in its tile where an empty one's has none (read off the rendered
     pixels), what the roll shows a rectangle in the shown pattern's tile, narrowing as the roll zooms in, and no other
     tile changing (read off the rendered pixels), a click on a tile picking its pattern, undoably, a tile carried onto another ringing it (read off the
@@ -1367,7 +1369,8 @@ itself.
   `getParameterCount()`/`getParameterInfo()` index that list; a value sent for any known id is still taken. The
   state, presets, undo and the editor's modulation cover every param. The core tells hosts of edits to listed ones
   only, and marks the project dirty for the others.
-- The sequencer's Swing, Gate, Velocity and Humanize (`isSeqFeel()` in `src/params.h`) are modulation targets past
+- The sequencer's Swing, Gate, Velocity and Humanize, and its pattern picked (in whole steps, `modulatedInSteps()`),
+  (`isSeqFeel()` in `src/params.h`) are modulation targets past
   `kModulatedCount`, the params the voices and the effects read: the synth hands them to the sequencer before each
   stretch it plans (`Synth::feedSeqFeel()`) as set with the host's and the macros' modulation and the newest voice's
   slots, or the last one's as the effects ring out, and the telemetry's `seqFeel` says how far it took them. A host

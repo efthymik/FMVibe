@@ -496,7 +496,7 @@ ModsPanel::MenuNode ModsPanel::cascadeCategories() const {
     // And the sequencer's Swing, Gate, Velocity and Humanize (see isSeqFeel()).
     MenuNode sequencer = category(tr(Str::CascadeSequencer));
     for (int k = 0; k < kSeqFeelCount; ++k)
-        add(sequencer, paramIndex(SeqParam::Swing) + k, std::string(tr(Str::CascadeSequencer)));
+        add(sequencer, seqFeelIndex(k), std::string(tr(Str::CascadeSequencer)));
     keep(std::move(sequencer));
     markHolds(root);
     return root;

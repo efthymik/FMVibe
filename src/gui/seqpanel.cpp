@@ -2381,6 +2381,45 @@ bool SeqPanel::tipAtMouse(const Widget &w) const {
     return w.kind == Kind::SeqKeys || w.kind == Kind::SeqRuler;
 }
 
+// --- PATTERN as a modulation target.
+
+namespace {
+bool patternButton(const Widget &w) {
+    return w.kind == WidgetKind::Choice && w.param == paramIndex(SeqParam::Pattern);
+}
+Rect patternButtons() { // the four, merged into one row
+    return {kSeqCardControls, kSeqPatternY, (kSeqPatterns - 1) * 30.0f + 28.0f, 22.0f};
+}
+} // namespace
+
+bool SeqPanel::takesSource(const Widget &w, int source) const {
+    return wide() && patternButton(w) && host_.modulationModel().canModulate(source, w.param);
+}
+
+void SeqPanel::paintSourceRing(Canvas &c, const Widget &w, bool over, Color color) {
+    if (w.b != 0) // the row's ring, once
+        return;
+    const bool on = over || patternButtons().contains(host_.mouse());
+    c.strokeRect(patternButtons().inset(-2.0f), color.alpha(on ? 1.0f : 0.35f), on ? 2.0f : 1.0f, kRadiusControl + 2.0f);
+}
+
+bool SeqPanel::dropSource(const Widget &w, int source) {
+    if (!takesSource(w, source))
+        return false;
+    host_.modulationModel().assign(source, w.param);
+    return true;
+}
+
+// The pattern modulation picks, as the sequencer plays it (or -1 while nothing tells where): ringed among the buttons
+// while it isn't the one set.
+int SeqPanel::seqPatternModulated() const {
+    const Telemetry &t = host_.telemetry();
+    if (t.voices == 0 && !t.fxTail && t.seqPosition < 0.0f)
+        return -1;
+    return std::clamp(static_cast<int>(std::lround(value(paramIndex(SeqParam::Pattern)) + t.seqFeel[4])), 0,
+                      kSeqPatterns - 1);
+}
+
 // --- The patterns' overview.
 
 int SeqPanel::seqTileAt(Point p) const {
@@ -2959,6 +2998,8 @@ bool SeqPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
     if ((w.kind == Kind::Choice || w.kind == Kind::Toggle) && isSeqParam(w.param)) {
         const bool on = w.kind == Kind::Choice ? std::lround(value(w.param)) == w.b : value(w.param) >= 0.5;
         host_.paintButtonFace(c, w, on, hovered, kAccent, 0.22f, kRadiusControl);
+        if (patternButton(w) && !on && seqPatternModulated() == w.b) // where modulation takes the pattern picked
+            c.strokeRect(w.rect.inset(1.5f), kAccent, 1.5f, kRadiusControl - 1.5f);
         const Color ink = on ? litInk(kAccent) : hovered ? kText : kDim;
         if (w.param == paramIndex(SeqParam::Enabled)) {
             powerIcon(c, w.rect.center(), ink);

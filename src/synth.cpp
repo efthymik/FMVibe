@@ -1214,7 +1214,7 @@ void Synth::feedSeqFeel(const ParamValues &params) {
     // last one's as the effects ring out (see fxTailBlock()), as the effects take theirs: the sequencer is shared too.
     std::array<double, kSeqFeelCount> feel{};
     for (int k = 0; k < kSeqFeelCount; ++k) {
-        const int i = paramIndex(SeqParam::Swing) + k;
+        const int i = seqFeelIndex(k);
         feel[k] = params[i] + globalMod_[i] + macroMod_[i];
     }
     const Voice *newest = newestVoice();
@@ -1224,7 +1224,7 @@ void Synth::feedSeqFeel(const ParamValues &params) {
         if (const int k = seqFeelOf(mods[m].index); k >= 0)
             feel[k] += mods[m].offset;
     for (int k = 0; k < kSeqFeelCount; ++k) {
-        const int i = paramIndex(SeqParam::Swing) + k;
+        const int i = seqFeelIndex(k);
         feel[k] = std::isfinite(feel[k]) ? std::clamp(feel[k], table_[i].min, table_[i].max) : table_[i].def;
         seqFeel_[k] = feel[k] - std::clamp(params[i], table_[i].min, table_[i].max);
     }

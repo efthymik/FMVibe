@@ -1120,7 +1120,7 @@ bool View::poll() {
                 inTarget(i);
         for (int k = 0; k < kSeqFeelCount && !everywhere; ++k)
             if (t.seqFeel[k] != telemetry_.seqFeel[k])
-                inTarget(paramIndex(SeqParam::Swing) + k);
+                inTarget(seqFeelIndex(k));
         for (int m = 0; m < kMacros && !everywhere; ++m)
             if (t.macroOffset[m] != telemetry_.macroOffset[m])
                 inTarget(paramIndex(m, MacroParam::Value));

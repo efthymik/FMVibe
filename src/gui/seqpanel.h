@@ -51,6 +51,10 @@ public:
     void paintDrag(Canvas &c) override; // a pattern's tile carried onto another
     bool paintWidget(Canvas &c, const Widget &w, bool hovered) override;
     bool doublePress(const Widget &w) const override { return w.kind == Kind::SeqSize; } // a quick second click too
+    // A source's handle over PATTERN: its buttons take it, as one, ringed together, modulating the pattern picked.
+    bool takesSource(const Widget &w, int source) const override;
+    void paintSourceRing(Canvas &c, const Widget &w, bool over, Color color) override;
+    bool dropSource(const Widget &w, int source) override;
     std::string tooltip(const Widget &w) const override;
     bool tipAtMouse(const Widget &w) const override;
     // The cursor over the roll (a pen while drawing, moving and stretching over a note), none elsewhere.
@@ -228,6 +232,7 @@ private:
     int seqClearing_ = 0;                 // the pattern kConfirmClear asks about
     void copySeqPattern(int from, int to); // every note, curve, length and loop, one undo step
     // The overview's tile under `p`, -1 for none; and one tile painted, `carried` as a drag carries it.
+    int seqPatternModulated() const;
     int seqTileAt(Point p) const;
     void paintSeqTile(Canvas &c, int pattern, Rect tile, bool hovered, bool carried);
     struct TileScale {

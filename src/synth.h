@@ -156,8 +156,8 @@ struct Telemetry {
     // How far the sequencer's macro curves, which take the place of the knobs as they play, move each macro's knob from
     // where it is set, either way; 0 while they don't. `macroOffset` goes on from there.
     std::array<float, kMacros> seqMacro{};
-    // Where modulation takes the sequencer's Swing, Gate, Velocity and Humanize (see isSeqFeel()) from where they are
-    // set, in plain units: what the sequencer plays them at.
+    // Where modulation takes the sequencer's Swing, Gate, Velocity and Humanize and the pattern picked (see
+    // isSeqFeel()) from where they are set, in plain units: what the sequencer plays them at.
     std::array<float, kSeqFeelCount> seqFeel{};
 
     bool keyDown(int key) const { return key >= 0 && key < 128 && (keys[key / 32] >> (key % 32) & 1u) != 0; }

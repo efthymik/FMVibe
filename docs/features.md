@@ -965,7 +965,11 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   with the patterns' overview under the card; at its half size, down to the panels' row's bottom, without it.
   - **The card**: the sequencer's power switch, and left of it the size button (the Curve card's expand button at
     the half size, its collapse button at the full one, its tooltip saying which); **PATTERN** A to D (the one picked plays and shows in the roll; the
-    overview's tiles copy and paste them); **PLAY** Host | Key | Latch; the
+    overview's tiles copy and paste them), a modulation target too, in whole steps: a source's handle dropped on its
+    buttons (ringed together as one while carried) modulates it, the MODS view's target menu lists it under Sequencer,
+    a host may modulate it, and the button modulation picks, while the sequencer or a voice plays and it isn't the one
+    set, is ringed; the sequencer takes a pattern modulation picks as it takes one clicked, at once while nothing plays
+    and else where the loop comes round; **PLAY** Host | Key | Latch; the
     big knobs in two rows of four, Rate and Length (the pattern's, in bars) over Octave and Transpose at the left,
     Swing and Gate over Humanize and Velocity at the right (those four modulation targets, as an effect's knobs
     are: the sources' handles drop on them, the MODS view's target menu lists them under Sequencer, and the host may

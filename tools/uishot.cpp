@@ -6308,6 +6308,31 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
                     onGate ? "Gate" : "not Gate", changed);
         check(onGate && ringShot && ringed && undone && refused,
               "a macro's handle dropped on the SEQ card's Gate knob modulates it, undoably, and on Octave's nothing");
+
+        // Dropped on PATTERN's buttons, it modulates the pattern picked, undoably; and the button modulation picks, as
+        // the telemetry tells while the sequencer plays, is ringed (read off the rendered pixels).
+        const Point patternB{detail::kSeqCardControls + 30.0f + 14.0f, detail::kSeqPatternY + 11.0f};
+        const Point ringB{detail::kSeqCardControls + 30.0f + 2.0f, detail::kSeqPatternY + 11.0f}; // on its ring
+        drag(view, macroHandle, patternB);
+        const bool onPattern =
+            slotTarget(model.value(slotTargetIndex(kMaxSources, 0))) == paramIndex(SeqParam::Pattern);
+        view.mouseMove({600.0f, 300.0f}, {});
+        renderer.save(view, dir / "36t-seq-pattern-modulated.png");
+        const uint32_t unringed = renderer.pixel(ringB);
+        model.live.seqPosition = 2.0f;
+        model.live.seqFeel[4] = 1.0f;
+        view.poll();
+        view.mouseMove({600.0f, 300.0f}, {});
+        const bool pickShot = renderer.save(view, dir / "36t-seq-pattern-picked.png");
+        const bool pickRinged = renderer.pixel(ringB) != unringed;
+        model.live.seqPosition = -1.0f;
+        model.live.seqFeel[4] = 0.0f;
+        view.poll();
+        view.undo();
+        const bool patternUndone = slotTarget(model.value(slotTargetIndex(kMaxSources, 0))) < 0;
+        std::printf("      PATTERN: modulated %d, ringed %d, undone %d\n", onPattern, pickRinged, patternUndone);
+        check(onPattern && pickShot && pickRinged && patternUndone,
+              "a macro's handle dropped on PATTERN modulates the pattern picked, undoably, the button it picks ringed");
     }
     // A bar of 16 steps across the grid, rows from C3 (48) up, as many as fit kSeqRowH high.
     const float rh = kSeqGrid.h / std::floor(kSeqGrid.h / detail::kSeqRowH);

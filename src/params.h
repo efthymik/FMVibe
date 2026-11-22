@@ -1006,14 +1006,18 @@ constexpr int kVoiceParamCount = kFxBase;
 
 constexpr int paramIndex(GlobalParam p) { return static_cast<int>(p); }
 constexpr int paramIndex(SeqParam p) { return kSeqBase + static_cast<int>(p); }
-// Swing, Gate, Velocity and Humanize: the sequencer's settings that modulation moves, as it moves the effects. Past
-// kModulatedCount, which the voices and the effects read, they take the host's and the macros' modulation and the
-// newest voice's slots (or the last one's as the effects ring out) a stretch at a time (see Synth::feedSeqFeel()).
-constexpr int kSeqFeelCount = 4;
-static_assert(static_cast<int>(SeqParam::Humanize) - static_cast<int>(SeqParam::Swing) == kSeqFeelCount - 1);
+// Swing, Gate, Velocity and Humanize, then the pattern picked: the sequencer's settings that modulation moves, as it
+// moves the effects (the pattern in whole steps). Past kModulatedCount, which the voices and the effects read, they
+// take the host's and the macros' modulation and the newest voice's slots (or the last one's as the effects ring out)
+// a stretch at a time (see Synth::feedSeqFeel()), each by its place in this list.
+constexpr int kSeqFeelCount = 5;
+static_assert(static_cast<int>(SeqParam::Humanize) - static_cast<int>(SeqParam::Swing) == 3);
+constexpr int seqFeelIndex(int k) { return k < 4 ? paramIndex(SeqParam::Swing) + k : paramIndex(SeqParam::Pattern); }
 constexpr int seqFeelOf(int index) {
+    if (index == paramIndex(SeqParam::Pattern))
+        return 4;
     const int k = index - paramIndex(SeqParam::Swing);
-    return k >= 0 && k < kSeqFeelCount ? k : -1;
+    return k >= 0 && k < 4 ? k : -1;
 }
 constexpr bool isSeqFeel(int index) { return seqFeelOf(index) >= 0; }
 constexpr int paramIndex(int pattern, SeqPatternParam p) {
@@ -2738,7 +2742,9 @@ inline bool snapsToSteps(ParamKind kind) {
 // Displayed and modulated around the middle of the range rather than from the minimum.
 bool isBipolar(ParamKind kind);
 // A stepped param that modulation still drives, a step at a time (its value rounded): an LFO's synced rate.
-constexpr bool modulatedInSteps(int index) { return sourceFieldOf(index) == SourceParam::Division; }
+constexpr bool modulatedInSteps(int index) {
+    return sourceFieldOf(index) == SourceParam::Division || index == paramIndex(SeqParam::Pattern);
+}
 // Continuous params are the ones LFOs, envelopes and host modulators can drive, and those modulatedInSteps(); not the
 // retired ones (see isRetired()), which do nothing. And the macros' knobs (see isMacroKnob()).
 bool isRetired(int index);
