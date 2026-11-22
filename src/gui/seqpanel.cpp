@@ -982,8 +982,7 @@ Panel::ConfirmWords SeqPanel::confirmWords(int kind) const {
     if (kind == kConfirmOverwrite)
         return {trf(Str::ConfirmSeqOverwriteTitle, {seqPatternName(seqOverwrite_.to)}), tr(Str::ConfirmSeqOverwrite),
                 tr(Str::ButtonOverwrite), false};
-    return {trf(Str::ConfirmSeqClearTitle, {seqPatternName(seqClearing_)}), tr(Str::ConfirmSeqClear),
-            tr(Str::ButtonClearSeq), false};
+    return {trf(Str::ConfirmSeqClearTitle, {seqPatternName(seqClearing_)}), {}, tr(Str::ButtonClearSeq), false};
 }
 
 void SeqPanel::confirmed(int kind, int button) {

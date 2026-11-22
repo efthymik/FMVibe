@@ -7678,12 +7678,11 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         }
     }
 
-    // The bin asks, then clears the pattern; undo brings it back.
+    // The bin asks (its title alone, a line shorter), then clears the pattern; undo brings it back.
     const Point bin{detail::kSeqTools.x + detail::kSeqTools.w - 13.0f, detail::kSeqTools.y + 12.0f};
-    const Rect confirm{420.0f, std::round((view.height() - 150.0f) * 0.5f), 360.0f, 150.0f};
     click(view, bin);
-    const bool asked = renderer.save(view, dir / "36f-seq-clear.png");
-    click(view, {confirm.right() - 64.0f, confirm.bottom() - 38.0f});
+    const bool asked = view.confirmShown() && renderer.save(view, dir / "36f-seq-clear.png");
+    click(view, rectCenter(detail::confirmButton(detail::confirmPanel(view.height(), true), 1)));
     bool empty = true;
     for (int slot = 0; slot < kSeqNotes; ++slot)
         empty = empty && field(slot, SeqNoteParam::Length) == 0.0;
