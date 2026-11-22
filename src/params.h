@@ -1006,6 +1006,16 @@ constexpr int kVoiceParamCount = kFxBase;
 
 constexpr int paramIndex(GlobalParam p) { return static_cast<int>(p); }
 constexpr int paramIndex(SeqParam p) { return kSeqBase + static_cast<int>(p); }
+// Swing, Gate, Velocity and Humanize: the sequencer's settings that modulation moves, as it moves the effects. Past
+// kModulatedCount, which the voices and the effects read, they take the host's and the macros' modulation and the
+// newest voice's slots (or the last one's as the effects ring out) a stretch at a time (see Synth::feedSeqFeel()).
+constexpr int kSeqFeelCount = 4;
+static_assert(static_cast<int>(SeqParam::Humanize) - static_cast<int>(SeqParam::Swing) == kSeqFeelCount - 1);
+constexpr int seqFeelOf(int index) {
+    const int k = index - paramIndex(SeqParam::Swing);
+    return k >= 0 && k < kSeqFeelCount ? k : -1;
+}
+constexpr bool isSeqFeel(int index) { return seqFeelOf(index) >= 0; }
 constexpr int paramIndex(int pattern, SeqPatternParam p) {
     return kSeqPatternBase + pattern * kSeqPatternParamCount + static_cast<int>(p);
 }
@@ -2748,7 +2758,7 @@ constexpr bool isMacroKnob(int index) {
     return macro >= 0 && index == paramIndex(macro, MacroParam::Value);
 }
 inline bool isModTarget(int index) {
-    return isMacroKnob(index) ||
+    return isMacroKnob(index) || isSeqFeel(index) ||
            (index >= 0 && index < kMacroBase && !isRetired(index) && !isNeverModulated(index) &&
             (!isStepped(paramTable()[index].kind) || modulatedInSteps(index)) &&
             paramTable()[index].kind != ParamKind::ShapePoint);
@@ -2921,7 +2931,8 @@ void forEachMacroMod(const Get &get, const MacroKnobs &knobs, const Add &add) {
         for (int slot = 0; slot < kSlots; ++slot) {
             const int target = slotTarget(get(slotTargetIndex(source, slot)));
             const double amount = get(slotAmountIndex(source, slot));
-            if (target < 0 || target >= kModulatedCount || amount == 0.0 || get(slotBypassIndex(source, slot)) >= 0.5)
+            if (target < 0 || (target >= kModulatedCount && !isSeqFeel(target)) || amount == 0.0 ||
+                get(slotBypassIndex(source, slot)) >= 0.5)
                 continue;
             const int aux = slotAux(get, source, slot);
             if (aux >= 0 && runsPerVoice(aux))

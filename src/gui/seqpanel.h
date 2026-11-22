@@ -21,6 +21,10 @@
 
 namespace fmvibe::gui {
 
+namespace detail {
+struct SeqRoll; // see layout.h
+}
+
 class SeqPanel : public Panel {
 public:
     explicit SeqPanel(PanelHost &host);
@@ -35,12 +39,18 @@ public:
 
     // The SEQ view shows, with no shape editor over it.
     bool wide() const;
+    // At its full size (the user's setting, EditorSettings::seqFull): as tall as the panels' row and the modulation
+    // panel, the patterns' overview under the card; else the panels' row alone. The roll's places at its size.
+    bool full() const;
+    const detail::SeqRoll &roll() const;
+    void toggleSize(); // the full size or the half, kept in the user's settings
 
     void widgets(std::vector<Widget> &list) const override;
     void popups(std::vector<Widget> &list) const override; // the scale's and the snap's lists, over everything
     void paintBack(Canvas &c) override;
     void paintDrag(Canvas &c) override; // a pattern's tile carried onto another
     bool paintWidget(Canvas &c, const Widget &w, bool hovered) override;
+    bool doublePress(const Widget &w) const override { return w.kind == Kind::SeqSize; } // a quick second click too
     std::string tooltip(const Widget &w) const override;
     bool tipAtMouse(const Widget &w) const override;
     // The cursor over the roll (a pen while drawing, moving and stretching over a note), none elsewhere.

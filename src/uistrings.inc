@@ -1087,6 +1087,8 @@ STR(TipSeqLaneWheel, "Pattern mod wheel")
 STR(TipSeqLaneMacro, "Pattern macro curves")
 STR(TipSeqRoot, "Root for Key and Latch")
 STR(TipSeqPower, "Sequencer on/off")
+STR(TipSeqFull, "Full size") // the SEQ view's size button, at its half size: over the modulation panel too
+STR(TipSeqHalf, "Half size") // and at its full size: back over the panels' row alone
 STR(TipSeqZoomOutX, "Zoom out horizontally (Ctrl+wheel)")
 STR(TipSeqZoomInX, "Zoom in horizontally (Ctrl+wheel)")
 STR(TipSeqZoomOutY, "Zoom out vertically (Alt+wheel)")
@@ -1381,6 +1383,7 @@ STR(CascadeMatrix, "Matrix")
 STR(CascadeFilters, "Filters")
 STR(CascadeShapers, "Shapers")
 STR(CascadeEffects, "Effects")
+STR(CascadeSequencer, "Sequencer") // the target menu's group of the sequencer's Swing, Gate, Velocity and Humanize
 STR(CascadeModulation, "Modulation")
 STR(CascadePitch, "PITCH")
 STR(CascadeLevel, "LEVEL")

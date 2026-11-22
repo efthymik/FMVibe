@@ -118,8 +118,8 @@ From top to bottom, the plugin window has:
 - The **view tabs**: **ROUTING**, **MATRIX**, **FX**, **SEQ** and **MODS**, which choose what the main panel shows.
   While ROUTING or MATRIX is shown, an **ALGORITHM** button sits at the right end of the row.
 - The **main panel**. In ROUTING and MATRIX it shows the routing graph or matrix, with the **inspector** floating
-  over its left end. FX, SEQ and MODS use the whole panel. SEQ also covers the modulation panel, for a taller piano
-  roll.
+  over its left end. FX, SEQ and MODS use the whole panel. At full size, SEQ also covers the modulation panel, for a
+  taller piano roll.
 - The **modulation panel**: the source cards.
 - The **keyboard strip**: macros, the note and velocity sources, the pitch and mod wheels and a six-octave keyboard.
 
@@ -1130,8 +1130,10 @@ The display shows the stereo field over frequency, with handles for each control
 
 ## 12. Sequencer
 
-FMVibe has a built-in sequencer that plays the synth's own notes. Edit it in the **SEQ** view, which takes the space
-of the modulation panel too, for a taller piano roll; switch it on with the power switch on its settings card.
+FMVibe has a built-in sequencer that plays the synth's own notes. Edit it in the **SEQ** view; switch it on with the
+power switch on its settings card. At full size the view also takes the space of the modulation panel, for a taller
+piano roll and the patterns overview. The button next to the power switch, or a double-click on the **SEQ** tab,
+switches it to half size, with the modulation panel in view, and back. The size is your setting, not the preset's.
 
 ![Sequencer](seq.png)
 
@@ -1165,7 +1167,8 @@ Each pattern has a **loop** (the whole pattern by default), which is what plays.
 - **Length**: the pattern's length in bars.
 - **Octave** (±3) and **Transpose** (±24 semitones).
 - **Swing** (50–75 %), **Gate** (5–200 % of each note's length), **Humanize** (repeatable timing and velocity
-  variation) and **Velocity** (scales the notes' velocities; at 0 % every note plays at 100).
+  variation) and **Velocity** (scales the notes' velocities; at 0 % every note plays at 100). You can modulate these
+  four: drag a source's handle onto the knob, as with any other control.
 - **ORDER**: forward, backward, ping-pong or random.
 - **SCALE**: the **Root** (drag or scroll; double-click for C4), the scale (Chromatic, Major, Minor, Dorian,
   Phrygian, Lydian, Mixolydian, Harmonic Minor, Melodic Minor, Pentatonic Major and Minor, Blues) and **FOLD**,

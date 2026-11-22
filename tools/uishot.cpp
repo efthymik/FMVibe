@@ -243,9 +243,10 @@ public:
     void setMpeBendRange(int semitones) override { mpeRange = semitones; }
     EditorSettings editorSettings() const override {
         return {.theme = themeName, .accentHue = hue, .glow = glowLevel, .handleSize = handles, .linkIntensity = links,
-                .gridIntensity = grid};
+                .gridIntensity = grid, .seqFull = seqFull};
     }
     double grid = EditorSettings::kDefaultGridIntensity;
+    bool seqFull = true;
     bool hasTempo() const override { return offersTempo; }
     double tempo() const override { return bpm; }
     void setTempo(double v) override {
@@ -279,6 +280,7 @@ protected:
         handles = settings.handleSize;
         links = settings.linkIntensity;
         grid = settings.gridIntensity;
+        seqFull = settings.seqFull;
     }
 
 public:
@@ -6235,6 +6237,78 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         check(on != off, "the SEQ tab shows a dot while the sequencer is on");
     }
     check(model.ui.view == RoutingView::Seq && emptyShot, "the SEQ tab shows the sequencer's card and an empty roll");
+    // The card's size button, left of its power switch: at the half size the view covers the panels' row alone, the
+    // modulation panel back under it (its title's place no longer the roll's, read off the rendered pixels), the
+    // patterns' overview gone and the roll ending over the panel; the size is the user's setting, no param edited and
+    // nothing to undo; a click on the button again, and a double-click on the SEQ tab while the view shows, change it
+    // back and forth, and a double-click whose first click shows the view leaves it.
+    {
+        const Point sizeButton = rectCenter(detail::kSeqSizeButton);
+        const Point modTitle{detail::modTitle().x + 30.0f, detail::modTitle().center().y};
+        const Point seqTab = detail::kViewTabs[static_cast<int>(RoutingView::Seq)].center();
+        view.mouseMove({600.0f, 300.0f}, {});
+        renderer.save(view, dir / "36-seq-full.png");
+        const uint32_t fullTitle = renderer.pixel(modTitle);
+        const auto valuesBefore = model.values;
+        click(view, sizeButton);
+        const bool half = !model.seqFull;
+        view.mouseMove({600.0f, 300.0f}, {});
+        const bool halfShot = renderer.save(view, dir / "36s-seq-half.png");
+        const bool panelBack = renderer.pixel(modTitle) != fullTitle;
+        const std::vector<MenuItem> onTile = view.contextMenu(detail::seqTile(1).center());
+        const bool noOverview = onTile.empty() || std::none_of(onTile.begin(), onTile.end(), [](const MenuItem &item) {
+                                    return item.label == tr(Str::MenuSeqCopyPattern);
+                                });
+        view.undo(); // nothing of it to undo
+        const bool untouched = model.values == valuesBefore && !model.seqFull;
+        click(view, sizeButton);
+        const bool fullAgain = model.seqFull;
+        doubleClick(view, seqTab);
+        const bool tabHalf = !model.seqFull && model.ui.view == RoutingView::Seq;
+        doubleClick(view, seqTab);
+        const bool tabFull = model.seqFull;
+        click(view, kRoutingTab);
+        doubleClick(view, seqTab); // its first click shows the view: the size stays
+        const bool opened = model.seqFull && model.ui.view == RoutingView::Seq;
+        check(half && halfShot && panelBack && noOverview && untouched && fullAgain && tabHalf && tabFull && opened,
+              "the SEQ card's size button and a double-click on its tab switch the view between its full and half "
+              "size, kept in the user's settings");
+    }
+    // Swing, Gate, Humanize and Velocity are modulation targets: Macro 1's handle dropped on Gate's knob modulates it
+    // (its ring drawn, read off the rendered pixels), undoably, and dropped on Octave's, which isn't one, nothing.
+    {
+        const float y = view.height() - 179.0f;
+        const Point macroHandle{188.0f - 32.0f, y};
+        auto knobAt = [](int i) { return Point{detail::seqKnobCenterRect(i).x, detail::seqKnobCenterRect(i).y}; };
+        const Point gateKnob = knobAt(3), octaveKnob = knobAt(4);
+        view.mouseMove({600.0f, 300.0f}, {});
+        renderer.save(view, dir / "36t-seq-gate.png");
+        auto knobPixels = [&] {
+            std::vector<uint32_t> pixels;
+            for (float dy = -26.0f; dy <= 26.0f; dy += 1.0f)
+                for (float dx = -28.0f; dx <= 28.0f; dx += 1.0f)
+                    pixels.push_back(renderer.pixel({gateKnob.x + dx, gateKnob.y + dy}));
+            return pixels;
+        };
+        const std::vector<uint32_t> before = knobPixels();
+        drag(view, macroHandle, gateKnob);
+        const bool onGate = slotTarget(model.value(slotTargetIndex(kMaxSources, 0))) == paramIndex(SeqParam::Gate);
+        view.mouseMove({600.0f, 300.0f}, {});
+        const bool ringShot = renderer.save(view, dir / "36t-seq-gate-modulated.png");
+        const std::vector<uint32_t> after = knobPixels();
+        int changed = 0;
+        for (size_t i = 0; i < before.size(); ++i)
+            changed += before[i] != after[i];
+        const bool ringed = changed > 20;
+        view.undo();
+        const bool undone = slotTarget(model.value(slotTargetIndex(kMaxSources, 0))) < 0;
+        drag(view, macroHandle, octaveKnob);
+        const bool refused = slotTarget(model.value(slotTargetIndex(kMaxSources, 0))) < 0;
+        std::printf("      Macro 1 on Gate's knob: slot target %s, %d pixels changed round the knob\n",
+                    onGate ? "Gate" : "not Gate", changed);
+        check(onGate && ringShot && ringed && undone && refused,
+              "a macro's handle dropped on the SEQ card's Gate knob modulates it, undoably, and on Octave's nothing");
+    }
     // A bar of 16 steps across the grid, rows from C3 (48) up, as many as fit kSeqRowH high.
     const float rh = kSeqGrid.h / std::floor(kSeqGrid.h / detail::kSeqRowH);
     auto at = [&](double step, int pitch) {
@@ -7182,9 +7256,9 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
                                 shotInk("36h-seq-macro-list.png", listInside) != noListInk;
             auto brightness = [](uint32_t c) { return (c >> 16 & 0xFF) + (c >> 8 & 0xFF) + (c & 0xFF); };
             const Point tabDot{tab.x + 10.0f, tab.center().y};
-            const Point rowDot{detail::seqMacroRow(2).x + 11.0f, detail::seqMacroRow(2).center().y};
+            const Point rowDot{detail::seqMacroRow(detail::kSeqMacroList, 2).x + 11.0f, detail::seqMacroRow(detail::kSeqMacroList, 2).center().y};
             const uint32_t rowDotBare = renderer.pixel(rowDot);
-            click(view, rectCenter(detail::seqMacroRow(2)));
+            click(view, rectCenter(detail::seqMacroRow(detail::kSeqMacroList, 2)));
             const bool picked = model.ui.seqLane == laneOf(2);
             click(view, {at(4.0, 48).x, middleY});
             const bool drawn = count(macroCurve) == 1.0 && curveField(macroCurve, 0, PointField::X) == 4.0 &&
@@ -7198,10 +7272,10 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
             const bool tabDotFull = brightness(renderer.pixel(tabDot)) > brightness(tabDotBare) + 60;
 
             click(view, rectCenter(tab));
-            click(view, rectCenter(detail::seqMacroRow(4)));
+            click(view, rectCenter(detail::seqMacroRow(detail::kSeqMacroList, 4)));
             click(view, rectCenter(tab));
             auto sparkAt = [&](int macro) {
-                const Rect row = detail::seqMacroRow(macro);
+                const Rect row = detail::seqMacroRow(detail::kSeqMacroList, macro);
                 return Point{row.right() - 28.0f, row.center().y};
             };
             const uint32_t withCurve = shotInk("36h-seq-macro-list-curve.png", sparkAt(2)), without = renderer.pixel(sparkAt(3));

@@ -148,6 +148,7 @@ public:
         settings.handleSize = userSettings.handleSize;
         settings.linkIntensity = userSettings.links;
         settings.gridIntensity = userSettings.grid;
+        settings.seqFull = userSettings.seqFull;
         return settings;
     }
     // In the user's web browser.
@@ -246,6 +247,7 @@ protected:
         userSettings.handleSize = settings.handleSize;
         userSettings.links = settings.linkIntensity;
         userSettings.grid = settings.gridIntensity;
+        userSettings.seqFull = settings.seqFull;
         writeUserSettings();
     }
     void requestEditorSize(uint32_t width, uint32_t height) override { hostResizeEditor(width, height); }

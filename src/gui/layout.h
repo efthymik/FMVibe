@@ -340,10 +340,11 @@ constexpr float kFxGap = 22.0f; // room for the plus that adds an effect between
 constexpr float kFxRowLeft = 8.0f + kFxGap;
 constexpr float kFxCardW = (kFxPanel.w - kFxRowLeft - 16.0f - (kVisibleFx - 1) * kFxGap) / kVisibleFx;
 constexpr float kFxTop = kRouting.y + 48.0f;
-// The SEQ view covers them too, and the modulation panel under them (kModPanel, whose bottom it shares), so it is
-// as tall as both and the gap between: the sequencer's settings on a card where the inspector floats, and the roll of
-// the pattern picked in the rest, under a row of tools: the piano keys at its left, the bars over it, a lane of one
-// value a note under it and the lane's tabs under that. Its rows are kSeqRowH high, as many as fit.
+// The SEQ view covers them too, at its full size the modulation panel under them as well (kModPanel, whose bottom it
+// shares), so it is as tall as both and the gap between; at its half size (EditorSettings::seqFull off) only them, as
+// the FX view does: the sequencer's settings on a card where the inspector floats, and the roll of the pattern picked
+// in the rest, under a row of tools: the piano keys at its left, the bars over it, a lane of one value a note under it
+// and the lane's tabs under that. Its rows are kSeqRowH high, as many as fit.
 constexpr Rect kSeqPanel{kFxPanel.x, kPanelsTop, kFxPanel.w, kRouting.h + 16.0f + 258.0f};
 // The editor's band the SEQ view keeps to, as kPanelsBand is the panels' row's (see View::panelsBand()).
 constexpr Rect kSeqBand{0.0f, kHeaderH, View::kWidth, kSeqPanel.y + kSeqPanel.h - kHeaderH};
@@ -351,28 +352,45 @@ constexpr Rect kSeqCard = kInspector;
 constexpr float kSeqCardX = kSeqCard.x + 12.0f;       // the card's labels
 constexpr float kSeqCardControls = kSeqCard.x + 76.0f; // and the controls after them
 constexpr Rect kSeqTools{kRouting.x + 4.0f, kPanelsTop + 10.0f, 1172.0f - kRouting.x - 4.0f, 24.0f};
-constexpr Rect kSeqBox{kSeqTools.x, kSeqTools.y + kSeqTools.h + 8.0f, kSeqTools.w,
-                       kSeqPanel.y + kSeqPanel.h - 10.0f - (kSeqTools.y + kSeqTools.h + 8.0f)};
 constexpr float kSeqKeysW = 44.0f, kSeqRulerH = 20.0f, kSeqLaneH = 52.0f, kSeqLaneTabsH = 22.0f, kSeqRowH = 10.0f;
-constexpr float kSeqScrollW = 12.0f; // the rows' scroll bar, at the grid's right
-constexpr Rect kSeqKeys{kSeqBox.x, kSeqBox.y + kSeqRulerH, kSeqKeysW,
-                        kSeqBox.h - kSeqRulerH - kSeqLaneH - kSeqLaneTabsH};
-constexpr Rect kSeqGrid{kSeqKeys.x + kSeqKeys.w, kSeqKeys.y, kSeqBox.x + kSeqBox.w - kSeqKeys.x - kSeqKeys.w - kSeqScrollW,
-                        kSeqKeys.h};
-constexpr Rect kSeqScrollYTrack{kSeqGrid.x + kSeqGrid.w + 3.0f, kSeqGrid.y + 2.0f, 6.0f, kSeqGrid.h - 4.0f};
-constexpr Rect kSeqRuler{kSeqGrid.x, kSeqBox.y, kSeqGrid.w, kSeqRulerH};
-constexpr Rect kSeqLaneArea{kSeqGrid.x, kSeqGrid.y + kSeqGrid.h, kSeqGrid.w, kSeqLaneH};
-constexpr Rect kSeqLaneTabs{kSeqBox.x, kSeqLaneArea.y + kSeqLaneArea.h, kSeqBox.w, kSeqLaneTabsH};
-// After the lane's tabs, the macros' curves: one more tab, wider for its macro's number and its arrow, and over it the
-// list of macros it opens.
-constexpr float kSeqLaneTabStep = 76.0f; // a tab and the gap after it
-constexpr Rect kSeqMacroTab{kSeqGrid.x + 4.0f * kSeqLaneTabStep, kSeqLaneTabs.y + 3.0f, 92.0f, kSeqLaneTabs.h - 6.0f};
+constexpr float kSeqScrollW = 12.0f;     // the rows' scroll bar, at the grid's right
+constexpr float kSeqLaneTabStep = 76.0f; // a lane's tab and the gap after it
 constexpr float kSeqMacroRowH = 22.0f;
-constexpr Rect kSeqMacroList{kSeqMacroTab.x, kSeqMacroTab.y - 4.0f - (8.0f + 8.0f * kSeqMacroRowH), 180.0f,
-                             8.0f + 8.0f * kSeqMacroRowH};
-constexpr Rect seqMacroRow(int macro) {
-    return {kSeqMacroList.x + 4.0f, kSeqMacroList.y + 4.0f + static_cast<float>(macro) * kSeqMacroRowH,
-            kSeqMacroList.w - 8.0f, kSeqMacroRowH};
+// The roll's places, down to the panel's bottom less 10 px (`bottom`): its box, the keys, the grid and the rows' scroll
+// bar, the ruler over them, the lane and its tabs under them, and after the lane's tabs the macros' curves: one more
+// tab, wider for its macro's number and its arrow, and over it the list of macros it opens.
+struct SeqRoll {
+    Rect box, keys, grid, scrollY, ruler, laneArea, laneTabs, macroTab, macroList;
+};
+constexpr SeqRoll seqRollTo(float bottom) {
+    SeqRoll r{};
+    const float top = kSeqTools.y + kSeqTools.h + 8.0f;
+    r.box = {kSeqTools.x, top, kSeqTools.w, bottom - 10.0f - top};
+    r.keys = {r.box.x, r.box.y + kSeqRulerH, kSeqKeysW, r.box.h - kSeqRulerH - kSeqLaneH - kSeqLaneTabsH};
+    r.grid = {r.keys.x + r.keys.w, r.keys.y, r.box.x + r.box.w - r.keys.x - r.keys.w - kSeqScrollW, r.keys.h};
+    r.scrollY = {r.grid.x + r.grid.w + 3.0f, r.grid.y + 2.0f, 6.0f, r.grid.h - 4.0f};
+    r.ruler = {r.grid.x, r.box.y, r.grid.w, kSeqRulerH};
+    r.laneArea = {r.grid.x, r.grid.y + r.grid.h, r.grid.w, kSeqLaneH};
+    r.laneTabs = {r.box.x, r.laneArea.y + r.laneArea.h, r.box.w, kSeqLaneTabsH};
+    r.macroTab = {r.grid.x + 4.0f * kSeqLaneTabStep, r.laneTabs.y + 3.0f, 92.0f, r.laneTabs.h - 6.0f};
+    r.macroList = {r.macroTab.x, r.macroTab.y - 4.0f - (8.0f + 8.0f * kSeqMacroRowH), 180.0f, 8.0f + 8.0f * kSeqMacroRowH};
+    return r;
+}
+constexpr SeqRoll kSeqFullRoll = seqRollTo(kSeqPanel.y + kSeqPanel.h);
+constexpr SeqRoll kSeqHalfRoll = seqRollTo(kFxPanel.y + kFxPanel.h);
+constexpr const SeqRoll &seqRoll(bool full) { return full ? kSeqFullRoll : kSeqHalfRoll; }
+// The full size's, by name.
+constexpr Rect kSeqBox = kSeqFullRoll.box;
+constexpr Rect kSeqKeys = kSeqFullRoll.keys;
+constexpr Rect kSeqGrid = kSeqFullRoll.grid;
+constexpr Rect kSeqScrollYTrack = kSeqFullRoll.scrollY;
+constexpr Rect kSeqRuler = kSeqFullRoll.ruler;
+constexpr Rect kSeqLaneArea = kSeqFullRoll.laneArea;
+constexpr Rect kSeqLaneTabs = kSeqFullRoll.laneTabs;
+constexpr Rect kSeqMacroTab = kSeqFullRoll.macroTab;
+constexpr Rect kSeqMacroList = kSeqFullRoll.macroList;
+constexpr Rect seqMacroRow(Rect list, int macro) {
+    return {list.x + 4.0f, list.y + 4.0f + static_cast<float>(macro) * kSeqMacroRowH, list.w - 8.0f, kSeqMacroRowH};
 }
 // The card's rows, from its top: its title, PATTERN, PLAY, two rows of knobs, ORDER and ROOT, SCALE and FOLD.
 constexpr float kSeqTitleY = kSeqCard.y + 12.0f;
@@ -383,11 +401,14 @@ constexpr float kSeqKnobsY = kSeqCard.y + 142.0f; // the first row's knobs' cent
 constexpr float kSeqKnobStep = 78.0f;              // to the second row's
 constexpr float kSeqOrderY = kSeqCard.y + 290.0f;
 constexpr float kSeqScaleY = kSeqCard.y + 322.0f;
+// The card's switch between the view's full and half size, left of its power switch: the Curve card's expand and
+// collapse button.
+constexpr Rect kSeqSizeButton{kSeqCard.x + kSeqCard.w - 12.0f - 26.0f - 4.0f - 26.0f, kSeqTitleY, 26.0f, 22.0f};
 inline Rect seqKnobCenterRect(int i) { // the place of knob `i` of the eight, as knobRect() takes it
     return {kSeqCard.x + 16.0f + 268.0f / 4.0f * (static_cast<float>(i % 4) + 0.5f), kSeqKnobsY + (i / 4) * kSeqKnobStep,
             0.0f, 0.0f};
 }
-// Under the card, down to the panel's bottom (as far in as the card from its top), the patterns' overview: a card
+// At the full size, under the card, down to the panel's bottom (as far in as the card from its top), the patterns' overview: a card
 // like it, its title, then a tile a pattern, A to D, one under another: its letter at its left and its notes drawn
 // small after it, across the longest pattern's length (see SeqPanel::paintSeqTile()). A click on a tile shows its
 // pattern; a tile dragged onto another copies its pattern there.

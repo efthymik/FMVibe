@@ -948,8 +948,11 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
 
 - **ROUTING / MATRIX / FX / SEQ / MODS** tabs, under the header, pick what the panel below them shows: the routing
   graph or the matrix (two views of the same connections) with the inspector floating over the panel's left end, or
-  across the whole panel the effects chain, the sequencer or every modulation. The sequencer's view reaches down
-  over the modulation panel too, as tall as the two together; the source cards come back with another view. The
+  across the whole panel the effects chain, the sequencer or every modulation. The sequencer's view, at its full size,
+  reaches down over the modulation panel too, as tall as the two together, the source cards coming back with another
+  view; at its half size it covers the panel alone, as the FX view does. Its card's size button and a double-click on
+  its tab while it shows switch between them (a double-click whose first click shows it leaves it); the size is the
+  user's setting, kept in their settings file (full to begin with), not the patch's, and nothing to undo. The
   choice is saved with the project, but loading a preset or Init leaves the tab shown (and the FX view's row or graph)
   as it is. They are folder tabs: the one shown is part of the panel under it, its outline
   curving into the panel's edge (ROUTING, in line with the panel's left edge, runs straight on down it), with the
@@ -958,13 +961,18 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   and SEQ while the sequencer is on. While the full-size shape, shaper curve or partial editor has the panels, no tab
   is shown, and clicking one closes the editor (a widened LFO card's shape stays in its card).
 - **SEQ** (the sequencer, see [Sound engine](#sound-engine)): its settings on a card where the inspector floats, and
-  the roll of the pattern picked in the rest, down to the modulation panel's bottom, which it covers; under the card
-  the patterns' overview.
-  - **The card**: the sequencer's power switch; **PATTERN** A to D (the one picked plays and shows in the roll) and a
+  the roll of the pattern picked in the rest, at its full size down to the modulation panel's bottom, which it covers,
+  with the patterns' overview under the card; at its half size, down to the panels' row's bottom, without it.
+  - **The card**: the sequencer's power switch, and left of it the size button (the Curve card's expand button at
+    the half size, its collapse button at the full one, its tooltip saying which); **PATTERN** A to D (the one picked plays and shows in the roll) and a
     button that copies it, its length, loop, notes and curves, into the next empty pattern (no notes, and no points
     on its curves); **PLAY** Host | Key | Latch; the
     big knobs in two rows of four, Rate and Length (the pattern's, in bars) over Octave and Transpose at the left,
-    Swing and Gate over Humanize and Velocity at the right; **ORDER** as
+    Swing and Gate over Humanize and Velocity at the right (those four modulation targets, as an effect's knobs
+    are: the sources' handles drop on them, the MODS view's target menu lists them under Sequencer, and the host may
+    modulate them, for every note at once; the sequencer plays them, before each stretch it plans, as set with the
+    host's and the macros' modulation and the newest voice's slots, or the last one's as the effects ring out, and
+    the knobs' dots show where it plays them); **ORDER** as
     arrows (forward, back, to and fro, a die for random); **SCALE**: the root (dragged up and down or scrolled, a
     semitone a step; a double-click puts it back on C4), the scale's list (Chromatic, Major, Minor, Dorian, Phrygian,
     Lydian, Mixolydian, Harmonic Minor, Melodic Minor, Pentatonic Major and Minor, Blues; wider than its button, and

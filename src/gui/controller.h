@@ -416,6 +416,9 @@ struct EditorSettings {
     // How strongly the SEQ view's roll draws its grid lines, 0 (none) to 1; kDefaultGridIntensity to begin with, the
     // lines as they were before it could be set.
     double gridIntensity = kDefaultGridIntensity;
+    // Whether the SEQ view shows at its full size, over the modulation panel too, or at its half size, over the panels'
+    // row alone (see SeqPanel::full()); full to begin with.
+    bool seqFull = true;
 
     // Each held to its range, as Controller::setEditorSettings() stores them. A hue below 0 stays as it is: any such
     // is the theme's own (the settings dialog sets -1), and one the user's settings file holds is written back as read.

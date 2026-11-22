@@ -156,6 +156,9 @@ struct Telemetry {
     // How far the sequencer's macro curves, which take the place of the knobs as they play, move each macro's knob from
     // where it is set, either way; 0 while they don't. `macroOffset` goes on from there.
     std::array<float, kMacros> seqMacro{};
+    // Where modulation takes the sequencer's Swing, Gate, Velocity and Humanize (see isSeqFeel()) from where they are
+    // set, in plain units: what the sequencer plays them at.
+    std::array<float, kSeqFeelCount> seqFeel{};
 
     bool keyDown(int key) const { return key >= 0 && key < 128 && (keys[key / 32] >> (key % 32) & 1u) != 0; }
 };
@@ -274,7 +277,7 @@ public:
     // Param `index` changed since the last render(), which is told sameParams: what render() works out from the
     // params is worked out again for that param alone, where that is all it touches (see changesShared()).
     void paramChanged(int index) {
-        if (isSeqParam(index))
+        if (isSeqParam(index) && !isSeqFeel(index)) // those feedSeqFeel() reads every stretch
             seqStale_ = true;
         if (sharedStale_ || index < 0 || index >= kParamCount)
             return;
@@ -321,6 +324,10 @@ private:
     bool releaseKeys(const NoteRef &match);
     void stopLatch();
     Sequencer seq_;
+    // Hands the sequencer Swing, Gate, Velocity and Humanize as modulation takes them now, keeping how far it took
+    // them for the editor (seqFeel_).
+    void feedSeqFeel(const ParamValues &params);
+    std::array<double, kSeqFeelCount> seqFeel_{};
     // Whether a sequencer param changed since the last render() (see paramChanged()), so it reads its pattern again.
     bool seqStale_ = true;
     std::array<SeqEvent, Sequencer::kMaxEvents> seqEvents_{};
@@ -640,7 +647,8 @@ private:
     ParamValues globalMod_{};
     // What the macros and the mod wheel add to their targets, for every voice and the effects alike, worked out at
     // the start of each render; the targets touched last time, so they can be cleared again.
-    std::vector<double> macroMod_ = std::vector<double>(kModulatedCount, 0.0); // on the heap: the synth is big enough
+    // On the heap: the synth is big enough. Every param's, for the sequencer's past kModulatedCount (see isSeqFeel()).
+    std::vector<double> macroMod_ = std::vector<double>(kParamCount, 0.0);
     std::array<int, (kMacros + 1) * kSlots> macroTargets_{}; // the macros' and the mod wheel's
     int macroTargetCount_ = 0;
     // The macros' and the mod wheel's slots that an aux running per voice scales, which the voices add (source, slot).

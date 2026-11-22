@@ -528,7 +528,7 @@ bool View::inspectorCovered() const {
 }
 
 bool View::sourcesHidden() const {
-    return seq_.wide();
+    return seq_.wide() && seq_.full();
 }
 
 Rect View::panelsBand() const {
@@ -1118,6 +1118,9 @@ bool View::poll() {
         for (int i = 0; i < kModulatedCount && !everywhere; ++i)
             if (t.modOffset[i] != telemetry_.modOffset[i])
                 inTarget(i);
+        for (int k = 0; k < kSeqFeelCount && !everywhere; ++k)
+            if (t.seqFeel[k] != telemetry_.seqFeel[k])
+                inTarget(paramIndex(SeqParam::Swing) + k);
         for (int m = 0; m < kMacros && !everywhere; ++m)
             if (t.macroOffset[m] != telemetry_.macroOffset[m])
                 inTarget(paramIndex(m, MacroParam::Value));
@@ -6611,6 +6614,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         controller_.layoutChanged(); // asks the host for the new window size
         break;
     case Kind::ViewTab:
+        seqTabPressedShown_ = seq_.wide(); // a double-click on its tab, while it shows, changes its size
         showView(static_cast<RoutingView>(w.a));
         break;
     case Kind::SourceGrip:
@@ -7340,6 +7344,12 @@ void View::doubleClick(Point p, Modifiers mods) {
     if (hit && std::any_of(panels_.begin(), panels_.end(),
                            [&](Panel *panel) { return panel->doubleClick(*hit, p, mods); }))
         return; // the panels' own (the presets', the SEQ view's, the routing graph's)
+    // The SEQ tab double-clicked while the SEQ view shows (already as its first click came): its full size or its half.
+    if (hit && hit->kind == Kind::ViewTab && hit->a == static_cast<int>(RoutingView::Seq) && seqTabPressedShown_ &&
+        seq_.wide()) {
+        seq_.toggleSize();
+        return;
+    }
     if (hit && (hit->kind == Kind::Key || hit->kind == Kind::Octave || hit->kind == Kind::UndoButton ||
                 hit->kind == Kind::PresetStep ||
                 hit->kind == Kind::SlotBypass || hit->kind == Kind::ListStep || stepperButton(*hit, p) != 0 ||
