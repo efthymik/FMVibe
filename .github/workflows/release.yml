@@ -62,14 +62,14 @@ jobs:
           Copy-Item build\release\_deps\vst3sdk\pluginterfaces\LICENSE.txt dist\vst3\LICENSE-VST3
           Compress-Archive dist\vst3\* "FMVibe-$tag-windows-x64-vst3.zip"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: plugin-windows
           path: FMVibe-*.zip
           if-no-files-found: error
 
       # The editor's snapshots, to see what a failing UI check rendered.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: ui-shots
@@ -133,13 +133,13 @@ jobs:
           tar -tzvf "$clapdir.tar.gz"
           tar -tzvf "$vst3dir.tar.gz"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: plugin-linux
           path: FMVibe-*.tar.gz
           if-no-files-found: error
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: ui-shots-linux
@@ -205,7 +205,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: plugin-*
           merge-multiple: true

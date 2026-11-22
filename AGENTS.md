@@ -1004,7 +1004,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the editor in a hidden host window: one at a time, resized keeping its aspect ratio, a preset loaded by the
     preset bar's arrow with no edits (kParamValuesChanged and the project marked changed instead), the Volume knob dragged
     (beginEdit, performEdit, endEdit, and an older value the host hands back right after not taken), a state with
-    the keyboard strip collapsed asking the host for a shorter window, its window gone once it is removed, and
+    the keyboard strip collapsed asking the host for a shorter window (as wide, or held within a small screen's work area), its window gone once it is removed, and
     opening again after.
 - **User manual** (`tools/manual.py`, `cmake/manual.cmake`): turns `docs/manual.md` into the one self-contained
   HTML file the release ships, `FMVibe-Manual.html` in the build folder (its styles inline, the screenshots as data

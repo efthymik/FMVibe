@@ -1134,9 +1134,28 @@ int main(int argc, char **argv) {
                                      }};
             writePatch(&out, values, layout);
             frame.resizes.clear();
-            check(plugin.component->setState(&collapsed) == kResultOk && frame.resizes.size() == 1 &&
-                      frame.resizes[0].first == 900 && frame.resizes[0].second < 752,
-                  "a shorter editor asks the host for a smaller window");
+            const bool loaded = plugin.component->setState(&collapsed) == kResultOk;
+            // The editor keeps its width, unless the shorter window still doesn't fit the screen's work area (less
+            // 16 px around it for the host's frame): then it is held down to fit, as a small screen (a CI runner's)
+            // has it.
+            ViewRect fitted(0, 0, 900, 100);
+            view->checkSizeConstraint(&fitted);
+            MONITORINFO monitor{};
+            monitor.cbSize = sizeof(monitor);
+            GetMonitorInfoW(MonitorFromWindow(parent, MONITOR_DEFAULTTONEAREST), &monitor);
+            const int workWidth = static_cast<int>(monitor.rcWork.right - monitor.rcWork.left) - 32;
+            const int workHeight = static_cast<int>(monitor.rcWork.bottom - monitor.rcWork.top) - 32;
+            const bool fits = fitted.getWidth() <= workWidth && fitted.getHeight() <= workHeight;
+            for (const auto &[w, h] : frame.resizes)
+                std::printf("      collapsed: asked for %d x %d (%d x %d at 900 wide), %d x %d to fit in\n", w, h,
+                            fitted.getWidth(), fitted.getHeight(), workWidth, workHeight);
+            const bool asked =
+                frame.resizes.size() == 1 && frame.resizes[0].second < 752 &&
+                (fits ? frame.resizes[0].first == 900 && frame.resizes[0].second == fitted.getHeight()
+                      : frame.resizes[0].first < 900 && frame.resizes[0].first <= workWidth &&
+                            frame.resizes[0].second <= workHeight &&
+                            (frame.resizes[0].first >= workWidth - 1 || frame.resizes[0].second >= workHeight - 1));
+            check(loaded && asked, "a shorter editor asks the host for a smaller window");
             plugin.processor->setProcessing(true);
         }
 
