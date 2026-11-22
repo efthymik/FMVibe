@@ -176,9 +176,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
     a note played over a held one joins that one's envelopes (at its sustain, or swelling along with it); glide
     slides between
     overlapping notes and skips detached ones unless Always is on (checked by tracking the pitch);
-  - a lower voice limit applies immediately, while a higher one requests a restart (again once lowered and raised
-    before the host restarts) and is reported through voice-info after reactivation, and a state with a higher one,
-    loaded while active, requests one too;
+  - a lower voice limit applies immediately, while a higher one, stepped up a block at a time, requests one
+    restart once it has settled (the host's timer-support ticking; again once lowered and raised before the host
+    restarts, none if lowered again before it settles, and from the main-thread callback for a host without timers)
+    and is reported through voice-info after reactivation, and a state with a higher one, loaded while active,
+    requests one at once;
   - the latency extension reporting the voices' decimator's couple of samples, and about 5 more with a shaper effect
     in the line, a state that moves it, loaded while active, asking for a restart, and the reactivation telling the
     host's latency extension.
@@ -187,7 +189,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   events, the host asked to rescan the values and marking the project changed, and drags the Volume knob with mouse
   messages. It checks that the param changes and that the host receives gesture-begin, value and gesture-end events, and that an older
   value the host hands back right after isn't taken; that a shaper effect dragged along the line, and that undone, ask
-  the host for no restart while one taken out of the line asks for one, from the main-thread callback; that on the SEQ tab a wheel message with Ctrl in its keys zooms
+  the host for no restart while one taken out of the line asks for one, from the main-thread callback; that the Voices
+  knob dragged past the voices allocated asks for none while the mouse holds it and one once let go and settled; that on the SEQ tab a wheel message with Ctrl in its keys zooms
   the roll, though the thread's own idea of Ctrl is up (as while the host has the keyboard); that with nothing
   sounding processing sleeps, but not while the
   editor shows a free LFO running (the plugin asking the host to process again as one comes on); and that an editor
@@ -970,7 +973,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     silent, an anchored LFO standing where the process context's position puts it, more changes than a block sorts
     (a note's end past them still ending it, a param's last point winning), a flush without audio taken, the
     controller's copy of a value from the host left alone while processing, and a voice limit past the voices
-    allocated asking the host for a restart, the latency the CLAP plugin reports (the voices' decimator's), asked for
+    allocated, stepped up a block at a time, asking the host for one restart once it has settled (the plugin's
+    window's timer), the latency the CLAP plugin reports (the voices' decimator's), asked for
     while inactive what the next activation makes it, and
     `setActive()` out of memory answering `kOutOfMemory` and going through once there is room;
   - the state: the CLAP plugin's bytes, through a stream that moves 5 bytes at a time, the controller's own state
@@ -1010,7 +1014,7 @@ More checks:
   editor's title bar shows the tempo, to change as it plays (the plugin playing its own, with no H). With
   `--silent`, or without a device, it still runs the plugin in real time into silence, so the meters, the scope and
   the analyzers move; `--no-midi` leaves the MIDI inputs alone and `--tempo <bpm>` sets another tempo. It restarts
-  the plugin when a higher voice limit asks for it, and runs its main-thread callbacks. It isn't a test, and like a
+  the plugin when a higher voice limit asks for it, and runs its main-thread callbacks and timers. It isn't a test, and like a
   DAW it is for a person to start: it waits for its window to be closed. `.\build.ps1 -Run` builds it and starts it
   after the other steps.
 - **What a change costs**: `.\tools\bench.ps1 -Commits HEAD~1,HEAD` (or `HEAD,Working` for the working tree's

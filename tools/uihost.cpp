@@ -377,6 +377,19 @@ struct App {
 
 App app;
 
+// The plugin's timers (timer-support), as the window's timers, numbered from kFirstTimer.
+constexpr UINT_PTR kFirstTimer = 100;
+const clap_host_timer_support_t kHostTimers = {
+    [](const clap_host_t *, uint32_t periodMs, clap_id *id) {
+        static clap_id next = 0;
+        if (!app.window || !SetTimer(app.window, kFirstTimer + next, periodMs, nullptr))
+            return false;
+        *id = next++;
+        return true;
+    },
+    [](const clap_host_t *, clap_id id) { return app.window && KillTimer(app.window, kFirstTimer + id) != 0; },
+};
+
 const clap_host_gui_t kHostGui = {
     [](const clap_host_t *) {}, // resize_hints_changed: asked for again at each resize
     [](const clap_host_t *, uint32_t width, uint32_t height) {
@@ -406,6 +419,8 @@ const clap_host_t kHost = {
     [](const clap_host_t *, const char *id) -> const void * {
         if (std::strcmp(id, CLAP_EXT_GUI) == 0)
             return &kHostGui;
+        if (std::strcmp(id, CLAP_EXT_TIMER_SUPPORT) == 0)
+            return &kHostTimers;
         return std::strcmp(id, fmvibe::kExtHostTempo) == 0 ? &kHostTempo : nullptr;
     },
     [](const clap_host_t *) { // request_restart
@@ -575,6 +590,14 @@ LRESULT CALLBACK windowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
     case kMsgRestart:
         restartPlugin();
         return 0;
+    case WM_TIMER:
+        if (wParam >= kFirstTimer) {
+            if (const auto *timers = static_cast<const clap_plugin_timer_support_t *>(
+                    app.plugin->get_extension(app.plugin, CLAP_EXT_TIMER_SUPPORT)))
+                timers->on_timer(app.plugin, static_cast<clap_id>(wParam - kFirstTimer));
+            return 0;
+        }
+        break;
     case kMsgResize:
         if (app.editorOpen)
             resizeClient(static_cast<uint32_t>(wParam), static_cast<uint32_t>(lParam));

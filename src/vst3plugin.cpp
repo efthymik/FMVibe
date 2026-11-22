@@ -210,6 +210,7 @@ bool clapExpression(NoteExpressionTypeID type, double normalized, int32_t &id, d
 // done there (see Plugin::wake()).
 constexpr wchar_t kWakeClass[] = L"FMVibeVst3Wake";
 constexpr UINT kWakeMessage = WM_APP + 1;
+constexpr UINT_PTR kWakeTimer = 1; // see hostTimer()
 int liveWakeWindows = 0;
 
 HINSTANCE moduleHandle() {
@@ -386,6 +387,15 @@ protected:
         callbackPending_.store(true);
         wake();
     }
+    // A timer on the wake window.
+    bool hostTimer(bool on) override {
+        if (!wakeWindow_)
+            return false;
+        if (on)
+            return SetTimer(wakeWindow_, kWakeTimer, kTimerMs, nullptr) != 0;
+        KillTimer(wakeWindow_, kWakeTimer);
+        return true;
+    }
 
 private:
     friend class View;
@@ -412,6 +422,7 @@ private:
     }
     // Main thread.
     void woken();
+    void timerTicked();
     static LRESULT CALLBACK wakeProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
 
     // Hands each of the block's param changes and events to `take`, in the host's order (see Change::order).
@@ -594,9 +605,12 @@ tresult PLUGIN_API Plugin::terminate() {
 }
 
 LRESULT CALLBACK Plugin::wakeProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
-    if (message == kWakeMessage)
+    if (message == kWakeMessage || (message == WM_TIMER && wParam == kWakeTimer))
         if (auto *plugin = reinterpret_cast<Plugin *>(GetWindowLongPtrW(hwnd, GWLP_USERDATA))) {
-            plugin->woken();
+            if (message == kWakeMessage)
+                plugin->woken();
+            else
+                plugin->timerTicked();
             return 0;
         }
     return DefWindowProcW(hwnd, message, wParam, lParam);
@@ -606,6 +620,12 @@ void Plugin::woken() {
     wakePosted_.store(false);
     if (callbackPending_.exchange(false))
         onMainThread(); // may ask for a restart: that comes next
+    if (const int32 flags = restartFlags_.exchange(0); flags && handler_)
+        handler_->restartComponent(flags);
+}
+
+void Plugin::timerTicked() {
+    onTimer(); // may ask for a restart: that comes next
     if (const int32 flags = restartFlags_.exchange(0); flags && handler_)
         handler_->restartComponent(flags);
 }

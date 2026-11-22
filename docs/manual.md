@@ -1325,7 +1325,8 @@ host; patterns, notes and curves are edited in the plugin only.
 
 **Voices** sets the polyphony limit. When voices run out, the quietest or oldest voice is stolen, fading out quickly
 so it doesn't click. Lowering the limit takes effect at once; raising it restarts the plugin briefly (see
-[Latency and restarts](#latency-and-restarts)). Voices can't be automated.
+[Latency and restarts](#latency-and-restarts)), once you let go of the knob and leave it for half a second, so
+dragging or stepping it restarts only once. Voices can't be automated.
 
 ### Sustain pedal and MIDI panic
 

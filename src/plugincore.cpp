@@ -56,6 +56,23 @@ void PluginCore::layoutChanged() {
     hostMarkDirty();
 }
 
+// A gesture on Voices holds a restart for more voices off until it ends (see onTimer()).
+void PluginCore::performBeginEdit(int index) {
+    if (index == paramIndex(GlobalParam::Voices))
+        ++voicesGestures_;
+    if (hostListed(index))
+        hostBeginEdit(index);
+}
+
+void PluginCore::performEndEdit(int index) {
+    if (hostListed(index))
+        hostEndEdit(index);
+    // The wait starts again as the gesture ends, so that steps clicked or scrolled one after another ask once.
+    if (index == paramIndex(GlobalParam::Voices) && voicesGestures_ > 0 && --voicesGestures_ == 0)
+        if (int64_t at = voicesSettleAt_.load(); at != 0)
+            voicesSettleAt_.compare_exchange_strong(at, steadyMs() + kVoicesSettleMs);
+}
+
 void PluginCore::performSetValue(int index, double value) {
     storeValue(index, value);
     if (hostListed(index))
@@ -96,10 +113,35 @@ bool PluginCore::activate(double sampleRate) {
 
 void PluginCore::onMainThread() {
     sectionsChanged();
+    // A voice limit settling (see voiceLimitChanged()): the timer asks for the restart once it has.
+    if (voicesSettleAt_.load() != 0 && !timerOn_) {
+        timerOn_ = hostTimer(true);
+        if (!timerOn_) { // a host without timers: asked for now
+            voicesSettleAt_.store(0);
+            askRestart();
+        }
+    }
     if (latencyEdited_) {
         latencyEdited_ = false;
         askRestart();
     }
+}
+
+// Asks for the restart a voice limit raised past the voices allocated takes, once it has stayed where it is for
+// kVoicesSettleMs and no gesture on it is open, and then stops.
+void PluginCore::onTimer() {
+    int64_t at = voicesSettleAt_.load();
+    if (at == 0) {
+        if (timerOn_) {
+            timerOn_ = false;
+            hostTimer(false);
+        }
+        return;
+    }
+    if (voicesGestures_ > 0 || steadyMs() < at)
+        return;
+    if (voicesSettleAt_.compare_exchange_strong(at, 0)) // else it moved again meanwhile, and waits again
+        askRestart();
 }
 
 int PluginCore::latencyAt(double sampleRate) const {
@@ -140,7 +182,10 @@ void PluginCore::performStepEnd() {
 
 // Thread-safe: each format's hostRequestRestart() may be called from any thread.
 void PluginCore::askRestart() {
-    const int capacity = synth_.capacity(), voices = voiceLimit(), factor = oversampling_.load();
+    const int capacity = synth_.capacity(), factor = oversampling_.load();
+    int voices = voiceLimit();
+    if (voicesSettleAt_.load() != 0)
+        voices = std::min(voices, capacity); // asked for once the limit has settled (see onTimer())
     const int latency = capacity > 0 ? latencyNow() : 0;
     if (capacity <= 0 || (voices <= capacity && factor == synth_.oversampling() && latency == latency_.load())) {
         restartAskedFor_.store(0); // so the same need, should it come back, asks again
@@ -151,7 +196,14 @@ void PluginCore::askRestart() {
         hostRequestRestart();
 }
 
-void PluginCore::voiceLimitChanged() {
+void PluginCore::voiceLimitChanged(bool settled) {
+    const int capacity = synth_.capacity();
+    if (!settled && capacity > 0 && voiceLimit() > capacity) {
+        voicesSettleAt_.store(steadyMs() + kVoicesSettleMs);
+        hostRequestCallback(); // this may be the audio thread: onMainThread() starts the timer
+        return;
+    }
+    voicesSettleAt_.store(0); // lowered within the voices allocated, which takes effect at once, or settled
     askRestart();
 }
 
@@ -426,7 +478,7 @@ bool PluginCore::loadState(const clap_istream_t *stream, bool settings) {
         hostValuesChanged();
     // The state's voice limit: more voices than are allocated take a restart (a lower limit the audio thread takes
     // at its next block), and hosts read the voice info again.
-    voiceLimitChanged();
+    voiceLimitChanged(true);
     hostVoicesChanged();
 
     // The editor layout is optional; whatever is missing keeps its default.
@@ -493,7 +545,7 @@ void PluginCore::notifyParams(const ParamValues &before) {
             told(i, now);
     hostValuesChanged();
     sectionsChanged();
-    voiceLimitChanged();
+    voiceLimitChanged(true);
     hostVoicesChanged();
     hostMarkDirty();
 }

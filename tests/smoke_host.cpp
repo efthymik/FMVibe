@@ -68,6 +68,26 @@ const clap_host_state_t kHostState = {
     [](const clap_host_t *) { ++dirtyMarks; },
 };
 
+// Timers (timer-support), for the instances made while offerTimers is on: the timer the plugin has registered, which
+// the tests tick by hand (on_timer), and how many it has on.
+bool offerTimers = true;
+clap_id registeredTimer = CLAP_INVALID_ID;
+int timersOn = 0;
+const clap_host_timer_support_t kHostTimers = {
+    [](const clap_host_t *, uint32_t, clap_id *id) {
+        static clap_id next = 1;
+        *id = registeredTimer = next++;
+        ++timersOn;
+        return true;
+    },
+    [](const clap_host_t *, clap_id id) {
+        if (id == registeredTimer)
+            registeredTimer = CLAP_INVALID_ID;
+        --timersOn;
+        return true;
+    },
+};
+
 // How often an activate told the host its latency changed.
 int latencyChanges = 0;
 const clap_host_latency_t kHostLatency = {[](const clap_host_t *) { ++latencyChanges; }};
@@ -86,6 +106,8 @@ const clap_host_t kHost = {
             return &kHostState;
         if (std::strcmp(id, CLAP_EXT_LATENCY) == 0)
             return &kHostLatency;
+        if (std::strcmp(id, CLAP_EXT_TIMER_SUPPORT) == 0)
+            return offerTimers ? &kHostTimers : nullptr;
         return std::strcmp(id, CLAP_EXT_GUI) == 0 ? &kHostGui : nullptr;
     },
     [](const clap_host_t *) { ++restartRequests; },
@@ -4487,18 +4509,80 @@ int main(int argc, char **argv) {
         runBlock({&chokeAll.header});
     }
 
-    // Raising it past the allocated voices asks the host for a restart; after
+    // What a host does while a voice limit settles: the main-thread callback the plugin asks for, and its timer's
+    // ticks; and those until the timer is off again, after the restart asked for (about half a second).
+    const auto *timers =
+        static_cast<const clap_plugin_timer_support_t *>(plugin->get_extension(plugin, CLAP_EXT_TIMER_SUPPORT));
+    auto tick = [&] {
+        plugin->on_main_thread(plugin);
+        if (timers && registeredTimer != CLAP_INVALID_ID)
+            timers->on_timer(plugin, registeredTimer);
+    };
+    auto settle = [&] {
+        tick();
+        for (int i = 0; i < 40 && registeredTimer != CLAP_INVALID_ID; ++i) {
+            Sleep(100); // the plugin's timer's period
+            tick();
+        }
+    };
+
+    // Raising it past the allocated voices asks the host for a restart, once it has settled; after
     // reactivating, the voices are there.
     {
         restartRequests = 0;
-        const clap_event_param_value_t forty = paramEvent(paramIndex(GlobalParam::Voices), 40.0);
-        runBlock({&forty.header});
-        check(restartRequests == 1, "raising the voice limit requests a restart");
-        // Lowered within the voices allocated and raised again before the host restarts, it asks again.
-        const clap_event_param_value_t four = paramEvent(paramIndex(GlobalParam::Voices), 4.0);
+        // Stepped up past them a block at a time, as a host's automation or a knob dragged steps it: nothing yet.
+        const auto voicesTo = [](double voices) { return paramEvent(paramIndex(GlobalParam::Voices), voices); };
+        for (double voices : {18.0, 20.0, 24.0, 32.0, 40.0}) {
+            const clap_event_param_value_t step = voicesTo(voices);
+            runBlock({&step.header});
+            tick();
+        }
+        const int whileStepping = restartRequests;
+        const bool timing = timersOn == 1;
+        settle();
+        std::printf("      restarts asked for: stepping the voices up %d, once they settled %d\n", whileStepping,
+                    restartRequests);
+        check(timers && whileStepping == 0 && timing && restartRequests == 1 && timersOn == 0,
+              "a voice limit stepped up past the voices allocated asks for one restart once it settles");
+        // Lowered within the voices allocated and raised again before the host restarts, it asks again; raised and
+        // lowered again before it settles, it asks for nothing.
+        const clap_event_param_value_t four = voicesTo(4.0), forty = voicesTo(40.0);
         runBlock({&four.header});
         runBlock({&forty.header});
+        settle();
         check(restartRequests == 2, "a voice limit lowered and raised again requests a restart again");
+        runBlock({&four.header});
+        runBlock({&forty.header});
+        tick();
+        runBlock({&four.header});
+        settle();
+        check(restartRequests == 2 && timersOn == 0, "a voice limit lowered again before it settles asks for nothing");
+        runBlock({&forty.header});
+        settle();
+        check(restartRequests == 3, "and raised again it asks again");
+        // A host without timers is asked at its next main-thread callback.
+        {
+            offerTimers = false;
+            const clap_plugin_t *bare = factory->create_plugin(factory, &kHost, desc->id);
+            const bool started = bare && bare->init(bare) && bare->activate(bare, kSampleRate, 1, kBlock) &&
+                                 bare->start_processing(bare);
+            offerTimers = true; // init() has looked for them
+            const int before = restartRequests;
+            in.events = {&forty.header};
+            if (started)
+                bare->process(bare, &proc);
+            const int inBlock = restartRequests - before;
+            if (started)
+                bare->on_main_thread(bare);
+            check(started && inBlock == 0 && restartRequests - before == 1 && timersOn == 0,
+                  "a host without timers is asked for the restart at its next main-thread callback");
+            if (bare) {
+                bare->stop_processing(bare);
+                bare->deactivate(bare);
+                bare->destroy(bare);
+            }
+            restartRequests = before; // the bare one's left out
+        }
         plugin->stop_processing(plugin);
         plugin->deactivate(plugin);
         plugin->activate(plugin, kSampleRate, 1, kBlock);
@@ -4855,6 +4939,36 @@ int main(int argc, char **argv) {
             plugin->activate(plugin, kSampleRate, 1, kBlock);
             plugin->start_processing(plugin);
             Sleep(600); // the edits' values, told to the host, are taken from it again
+
+            // The Voices knob (at (1058, 64) in view units) dragged up past the voices allocated: no restart while the
+            // mouse holds it, however long; let go, one, once it has settled.
+            const int voicesIndex = paramIndex(GlobalParam::Voices);
+            double voicesBefore = 0.0, voicesAfter = 0.0;
+            params->get_value(plugin, idOfIndex(voicesIndex), &voicesBefore);
+            restartRequests = 0;
+            SendMessageW(editor, WM_MOUSEMOVE, 0, at(1058.0f, 64.0f));
+            SendMessageW(editor, WM_LBUTTONDOWN, MK_LBUTTON, at(1058.0f, 64.0f));
+            for (float y = 54.0f; y >= 14.0f; y -= 10.0f) {
+                SendMessageW(editor, WM_MOUSEMOVE, MK_LBUTTON, at(1058.0f, y));
+                tick();
+            }
+            for (int i = 0; i < 8; ++i) { // held there
+                Sleep(100);
+                tick();
+            }
+            const int whileHeld = restartRequests;
+            SendMessageW(editor, WM_LBUTTONUP, 0, at(1058.0f, 14.0f));
+            tick();
+            const int atLetGo = restartRequests;
+            settle();
+            params->get_value(plugin, idOfIndex(voicesIndex), &voicesAfter);
+            std::printf("      voices dragged from %.0f to %.0f: restarts asked for held %d, let go %d, settled %d\n",
+                        voicesBefore, voicesAfter, whileHeld, atLetGo, restartRequests);
+            check(voicesAfter > voicesBefore && whileHeld == 0 && atLetGo == 0 && restartRequests == 1,
+                  "the Voices knob dragged past the voices allocated asks for one restart, once let go and settled");
+            const clap_event_param_value_t voicesBack = paramEvent(voicesIndex, voicesBefore);
+            runBlock({&voicesBack.header}); // within the voices allocated again: no restart needed
+            restartRequests = 0;
         }
 
         // With nothing sounding, processing sleeps; but not while the editor shows a free LFO running on its own,

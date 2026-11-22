@@ -137,6 +137,7 @@ struct Handler final : IComponentHandler, IComponentHandler2 {
     };
     std::vector<Edit> edits;
     int32 restarts = 0; // every flag asked for
+    int latencyRestarts = 0; // how many times kLatencyChanged was
     bool dirty = false;
 
     tresult PLUGIN_API beginEdit(ParamID id) override {
@@ -153,6 +154,8 @@ struct Handler final : IComponentHandler, IComponentHandler2 {
     }
     tresult PLUGIN_API restartComponent(int32 flags) override {
         restarts |= flags;
+        if (flags & kLatencyChanged)
+            ++latencyRestarts;
         return kResultOk;
     }
     tresult PLUGIN_API setDirty(TBool state) override {
@@ -846,17 +849,24 @@ int main(int argc, char **argv) {
     plugin.controller->setParamNormalized(volumeId, 0.9);
     check(plugin.normalized(volume) == volumeNow, "while processing, values come through process()");
 
-    // More voices than are allocated: the host is asked to deactivate and activate the plugin.
+    // More voices than are allocated: the host is asked to deactivate and activate the plugin, once, as the voice
+    // limit stepped up block after block has settled (about half a second on, from the wake window's timer).
     handler.restarts = 0;
-    {
+    handler.latencyRestarts = 0;
+    for (double voices : {24.0, 32.0, 48.0, 64.0}) {
         Events events;
         Changes changes;
-        const int voices = paramIndex(GlobalParam::Voices);
-        changes.add(idOfIndex(voices), 0, plugin.controller->plainParamToNormalized(idOfIndex(voices), 64.0));
+        const int index = paramIndex(GlobalParam::Voices);
+        changes.add(idOfIndex(index), 0, plugin.controller->plainParamToNormalized(idOfIndex(index), voices));
         plugin.process(events, changes);
+        pumpMessages(50);
     }
-    pumpMessages(50);
-    check((handler.restarts & kLatencyChanged) != 0, "raising the voice limit asks the host for a restart");
+    const int whileStepping = handler.latencyRestarts;
+    pumpMessages(900);
+    std::printf("      restarts asked for: stepping the voices up %d, once they settled %d\n", whileStepping,
+                handler.latencyRestarts);
+    check(whileStepping == 0 && handler.latencyRestarts == 1 && (handler.restarts & kLatencyChanged) != 0,
+          "raising the voice limit step by step asks the host for one restart, once it settles");
     plugin.processor->setProcessing(false);
     plugin.component->setActive(false);
     plugin.component->setActive(true);

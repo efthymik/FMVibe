@@ -94,6 +94,18 @@ protected:
     }
     void hostRequestRestart() override { host_->request_restart(host_); } // thread-safe
     void hostRequestCallback() override { host_->request_callback(host_); }
+    // The host's timer-support, where it has one.
+    bool hostTimer(bool on) override {
+        if (!hostTimerSupport_)
+            return false;
+        if (on && timerId_ == CLAP_INVALID_ID && !hostTimerSupport_->register_timer(host_, kTimerMs, &timerId_))
+            timerId_ = CLAP_INVALID_ID;
+        else if (!on && timerId_ != CLAP_INVALID_ID) {
+            hostTimerSupport_->unregister_timer(host_, timerId_);
+            timerId_ = CLAP_INVALID_ID;
+        }
+        return !on || timerId_ != CLAP_INVALID_ID;
+    }
     void hostRequestProcess() override { host_->request_process(host_); }
 
 public:
@@ -133,6 +145,7 @@ private:
     static const clap_plugin_voice_info_t kVoiceInfo;
     static const clap_plugin_latency_t kLatency;
     static const clap_plugin_gui_t kGui;
+    static const clap_plugin_timer_support_t kTimerSupport;
 
     clap_plugin_t plugin_;
     const clap_host_t *host_;
@@ -143,6 +156,8 @@ private:
     const clap_host_remote_controls_t *hostRemoteControls_ = nullptr;
     const clap_host_gui_t *hostGui_ = nullptr;
     const HostTempo *hostTempo_ = nullptr;
+    const clap_host_timer_support_t *hostTimerSupport_ = nullptr;
+    clap_id timerId_ = CLAP_INVALID_ID; // main thread: the timer hostTimer() registered
     // Main thread: the remote pages, as the sections were when the host was last told (see sectionsChanged()).
     std::vector<clap_remote_controls_page_t> remotePages_;
     // Presets set every param at once, about three events each.
@@ -170,6 +185,7 @@ Plugin::Plugin(const clap_host_t *host) : host_(host) {
         [](const clap_plugin_t *p) {
             // The editor goes first, while this is still a Plugin: closing it may end a gesture (hostEndEdit()).
             self(p).closeEditor();
+            self(p).hostTimer(false);
             delete &self(p);
         },
         [](const clap_plugin_t *p, double sampleRate, uint32_t, uint32_t) {
@@ -204,6 +220,10 @@ bool Plugin::init() {
     if (hostTempo_ && (!hostTempo_->get || !hostTempo_->set))
         hostTempo_ = nullptr;
     startAtHostTempo();
+    hostTimerSupport_ =
+        static_cast<const clap_host_timer_support_t *>(host_->get_extension(host_, CLAP_EXT_TIMER_SUPPORT));
+    if (hostTimerSupport_ && (!hostTimerSupport_->register_timer || !hostTimerSupport_->unregister_timer))
+        hostTimerSupport_ = nullptr;
     hostRemoteControls_ =
         static_cast<const clap_host_remote_controls_t *>(host_->get_extension(host_, CLAP_EXT_REMOTE_CONTROLS));
     if (!hostRemoteControls_)
@@ -229,6 +249,8 @@ const void *Plugin::extension(const char *id) {
         return &kLatency;
     if (std::strcmp(id, CLAP_EXT_GUI) == 0)
         return &kGui;
+    if (std::strcmp(id, CLAP_EXT_TIMER_SUPPORT) == 0)
+        return &kTimerSupport;
     return nullptr;
 }
 
@@ -586,6 +608,13 @@ const clap_plugin_voice_info_t Plugin::kVoiceInfo = {
 // when an edit moves it.
 const clap_plugin_latency_t Plugin::kLatency = {
     [](const clap_plugin_t *p) { return static_cast<uint32_t>(self(p).latency()); },
+};
+
+const clap_plugin_timer_support_t Plugin::kTimerSupport = {
+    [](const clap_plugin_t *p, clap_id id) {
+        if (id == self(p).timerId_)
+            self(p).onTimer();
+    },
 };
 
 // Embedded Win32 editor only; no floating windows.

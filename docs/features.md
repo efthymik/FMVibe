@@ -910,7 +910,10 @@ What the plugin does and how its editor works, in full. Building and installing 
   into full voices takes the oldest rather than its own notes), and note expressions (tuning, volume, pan, and pressure and brightness for MIDI sources; see
   [CLAP and VST3](#clap-and-vst3) for the VST3 ones).
   Lowering the voice limit while more voices sound fades
-  out the ones past it at once, as stealing does. Voices are stereo all the way through the filters.
+  out the ones past it at once, as stealing does. Raising it past the voices allocated takes a restart (see
+  Restarting, under CLAP and VST3), which waits until the limit has settled: while the Voices knob is held, and then
+  until it (or a host stepping the param) has left it alone for half a second, so a drag or a run of steps asks once,
+  for where it stops. A project or a preset loaded asks at once. Voices are stereo all the way through the filters.
   Voices without any unison spread run their filters once, so they cost no more than mono voices.
 - **Oversampling**: the voices (operators, shapers, filters and their drive) run at 1, 2, 4 or 8 times the host rate, 2 by
   default, and come back down through a polyphase IIR half-band decimator: flat to 20 kHz, about 2 samples late at
@@ -2448,6 +2451,8 @@ What the VST3 plugin does its own way:
 - **Parameters** are grouped in units, as their modules are (Operators, Op A, Filters, ...).
 - **Restarting**: raising the voice limit past the voices allocated (a project loaded may too), changing the
   oversampling or a change to the effects that moves the latency asks the host to deactivate and reactivate the plugin
-  (through a latency change, which has hosts do that).
+  (through a latency change, which has hosts do that). A voice limit raised by hand or by the host asks once it has
+  settled (see Notes), from a timer on the main thread: CLAP's timer-support, where the host has it (a host without
+  it is asked at its next main-thread callback), and in VST3 the plugin's own window's.
 - **Not in VST3**: CLAP's per-voice and global host modulation, Bitwig's remote-control pages, and the note-end
   reports that per-voice modulation needs.

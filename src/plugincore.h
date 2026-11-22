@@ -215,6 +215,12 @@ public:
 
     // Main thread: what hostRequestCallback() asks for.
     void onMainThread();
+    // Main thread: what hostTimer() starts, every kTimerMs.
+    void onTimer();
+    static constexpr uint32_t kTimerMs = 100;
+    // How long a voice limit raised past the voices allocated is left to settle before the host is asked for a
+    // restart: a knob dragged or stepped, or a host stepping the param, asks once, for where it stops.
+    static constexpr int64_t kVoicesSettleMs = 500;
 
     // The editor window, while the host shows it. Main thread.
     gui::Editor *editor() const { return editor_.get(); }
@@ -228,15 +234,9 @@ public:
     }
 
 protected:
-    void performBeginEdit(int index) override {
-        if (hostListed(index))
-            hostBeginEdit(index);
-    }
+    void performBeginEdit(int index) override;
     void performSetValue(int index, double value) override;
-    void performEndEdit(int index) override {
-        if (hostListed(index))
-            hostEndEdit(index);
-    }
+    void performEndEdit(int index) override;
     void performStepBegin() override;
     void performStepEnd() override;
     // Each setting written into the file as it is set, as the settings dialog's buttons and sliders set it.
@@ -277,6 +277,8 @@ protected:
     virtual void hostRequestRestart() = 0;
     // Any thread: onMainThread(), soon.
     virtual void hostRequestCallback() = 0;
+    // Main thread: onTimer() every kTimerMs from now on (`on`), or no more. False when the format can't start one.
+    virtual bool hostTimer(bool on) = 0;
     // The virtual keyboard played a note, while the host may have stopped processing.
     virtual void hostRequestProcess() {}
 
@@ -293,11 +295,13 @@ protected:
 private:
     void applyPlayMode();
     void playKeys();
-    void voiceLimitChanged();
+    // The voice limit changed. More voices than are allocated ask for a restart once the limit has settled (see
+    // kVoicesSettleMs), or at once when it is `settled` already (a state or a preset loaded). Thread-safe.
+    void voiceLimitChanged(bool settled = false);
     // A new oversampling factor takes a deactivate/activate, like more voices.
     void restartIfNeeded();
     // Asks the host for a restart when the voices, the oversampling or the latency need one, unless it was asked for
-    // this already. Thread-safe.
+    // this already; voices still settling (see voiceLimitChanged()) need none yet. Thread-safe.
     void askRestart();
     // The latency the params make now, at the rate and oversampling activate() took (see latency()).
     int latencyNow() const;
@@ -329,6 +333,13 @@ private:
     // deactivate/activate: what the restart was last asked for (the voices times 16 plus the factor, times 4096, plus
     // the latency), or 0. A host that doesn't restart is asked again once something else needs one.
     std::atomic<int> restartAskedFor_{0};
+    // When a voice limit raised past the voices allocated will have settled, in steadyMs(), or 0: until then
+    // askRestart() leaves the voices out, and onTimer() asks once it is past. Written by either thread.
+    std::atomic<int64_t> voicesSettleAt_{0};
+    // Main thread: how many of the editor's gestures on Voices are open (they hold the restart off), and whether
+    // hostTimer() is on.
+    int voicesGestures_ = 0;
+    bool timerOn_ = false;
     // The latency the host was told at activate() (see latency()), and how late each part of it is at that rate: one
     // path up and down at 2, 4 and 8 times it, and the voices' decimator. Set on the main thread while inactive.
     std::atomic<int> latency_{0};
