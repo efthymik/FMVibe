@@ -3321,7 +3321,10 @@ void renderExample(const std::filesystem::path &dir, Renderer &renderer, const s
     if (seq) { // its SEQ view (the README's)
         click(view, {308.0f, 116.0f});
         view.mouseMove({600.0f, 600.0f}, {});
-        shots = shots && renderer.save(view, dir / (prefix + "-seq.png"), &panel); // the panel alone, as the FX one
+        // The view alone, as the FX one: at its full size as tall as the panels' row and the modulation panel.
+        const Rect seqPanel{detail::kSeqPanel.x - 8.0f, detail::kSeqPanel.y - 1.0f, detail::kSeqPanel.w + 16.0f,
+                            (model.editorSettings().seqFull ? detail::kSeqPanel.h : detail::kFxPanel.h) + 9.0f};
+        shots = shots && renderer.save(view, dir / (prefix + "-seq.png"), &seqPanel);
     }
     if (!theme.empty()) { // in a theme other than the checks' Midnight, its effects as a row and its MODS view too
         click(view, detail::fxModeButton(0).center());
