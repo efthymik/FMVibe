@@ -1155,7 +1155,8 @@ Each pattern has a **loop** (the whole pattern by default), which is what plays.
 - **Power** switch.
 - **PATTERN A–D**: the pattern you edit and play. To copy one, use the patterns overview below the card. You can
   modulate it too: drag a source's handle onto the buttons. Modulation moves it in whole patterns, and the pattern it
-  picks gets a ring while it plays. A pattern picked this way takes over at the end of the loop, as a click does.
+  picks gets a ring while it plays. Under the buttons, a line shows how far each modulation reaches, with depth handles
+  you can drag, as under a knob. A pattern picked this way takes over at the end of the loop, as a click does.
 - **PLAY**:
   - **Host**: plays with the host's transport, locked to its bars. You can still play the synth from the keyboard
     on top. The browser demo's transport always runs, so there a preset set to Host starts playing as soon as you

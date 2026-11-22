@@ -6313,11 +6313,28 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         // the telemetry tells while the sequencer plays, is ringed (read off the rendered pixels).
         const Point patternB{detail::kSeqCardControls + 30.0f + 14.0f, detail::kSeqPatternY + 11.0f};
         const Point ringB{detail::kSeqCardControls + 30.0f + 2.0f, detail::kSeqPatternY + 11.0f}; // on its ring
+        // Under the row, between it and PLAY (moved down for them), its modulation's reach and depth handle show.
+        const Rect row = detail::seqPatternRow();
+        auto underRow = [&] {
+            std::vector<uint32_t> pixels;
+            for (float y = row.bottom() + 1.5f; y < detail::kSeqPlayY - 0.5f; y += 1.0f)
+                for (float x = row.x + 0.5f; x < row.right(); x += 1.0f)
+                    pixels.push_back(renderer.pixel({x, y}));
+            return pixels;
+        };
+        view.mouseMove({600.0f, 300.0f}, {});
+        renderer.save(view, dir / "36t-seq-pattern-plain.png");
+        const std::vector<uint32_t> plainUnder = underRow();
         drag(view, macroHandle, patternB);
         const bool onPattern =
             slotTarget(model.value(slotTargetIndex(kMaxSources, 0))) == paramIndex(SeqParam::Pattern);
         view.mouseMove({600.0f, 300.0f}, {});
         renderer.save(view, dir / "36t-seq-pattern-modulated.png");
+        const std::vector<uint32_t> modulatedUnder = underRow();
+        int indicated = 0;
+        for (size_t i = 0; i < plainUnder.size(); ++i)
+            indicated += plainUnder[i] != modulatedUnder[i];
+        std::printf("      PATTERN modulated: %d pixels under its row changed\n", indicated);
         const uint32_t unringed = renderer.pixel(ringB);
         model.live.seqPosition = 2.0f;
         model.live.seqFeel[4] = 1.0f;
@@ -6331,8 +6348,9 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         view.undo();
         const bool patternUndone = slotTarget(model.value(slotTargetIndex(kMaxSources, 0))) < 0;
         std::printf("      PATTERN: modulated %d, ringed %d, undone %d\n", onPattern, pickRinged, patternUndone);
-        check(onPattern && pickShot && pickRinged && patternUndone,
-              "a macro's handle dropped on PATTERN modulates the pattern picked, undoably, the button it picks ringed");
+        check(onPattern && indicated > 30 && pickShot && pickRinged && patternUndone,
+              "a macro's handle dropped on PATTERN modulates the pattern picked, undoably, its reach and depth handle "
+              "under the row and the button it picks ringed");
     }
     // A bar of 16 steps across the grid, rows from C3 (48) up, as many as fit kSeqRowH high.
     const float rh = kSeqGrid.h / std::floor(kSeqGrid.h / detail::kSeqRowH);

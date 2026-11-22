@@ -2387,9 +2387,7 @@ namespace {
 bool patternButton(const Widget &w) {
     return w.kind == WidgetKind::Choice && w.param == paramIndex(SeqParam::Pattern);
 }
-Rect patternButtons() { // the four, merged into one row
-    return {kSeqCardControls, kSeqPatternY, (kSeqPatterns - 1) * 30.0f + 28.0f, 22.0f};
-}
+Rect patternButtons() { return seqPatternRow(); } // the four, merged into one row
 } // namespace
 
 bool SeqPanel::takesSource(const Widget &w, int source) const {
@@ -3000,6 +2998,8 @@ bool SeqPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         host_.paintButtonFace(c, w, on, hovered, kAccent, 0.22f, kRadiusControl);
         if (patternButton(w) && !on && seqPatternModulated() == w.b) // where modulation takes the pattern picked
             c.strokeRect(w.rect.inset(1.5f), kAccent, 1.5f, kRadiusControl - 1.5f);
+        if (patternButton(w) && w.b == kSeqPatterns - 1) // under the row, once: its modulation's reach, as a bar's
+            host_.paintModRange(c, seqPatternReach(), w.param);
         const Color ink = on ? litInk(kAccent) : hovered ? kText : kDim;
         if (w.param == paramIndex(SeqParam::Enabled)) {
             powerIcon(c, w.rect.center(), ink);

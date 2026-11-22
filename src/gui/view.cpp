@@ -1708,8 +1708,11 @@ std::vector<View::Widget> View::widgets() const {
     std::vector<Assignment> here;
     for (size_t i = 0; i < count; ++i) {
         const Kind kind = list[i].kind;
+        // PATTERN's row of buttons takes them once, under its first (see seqPatternRow()), as a knob does.
+        const bool patternRow =
+            kind == Kind::Choice && list[i].param == paramIndex(SeqParam::Pattern) && list[i].b == 0;
         if (kind != Kind::Knob && kind != Kind::WireLabel && kind != Kind::OutLabel && kind != Kind::GridCell &&
-            kind != Kind::SlotBar)
+            kind != Kind::SlotBar && !patternRow)
             continue;
         here.clear();
         forEachMod(list[i].param, [&](const Assignment &m) { here.push_back(m); });
@@ -1723,7 +1726,7 @@ std::vector<View::Widget> View::widgets() const {
             list.back().clip = list[i].clip;
             list.back().disabled = list[i].disabled;
         };
-        if (kind != Kind::Knob) {
+        if (kind != Kind::Knob && !patternRow) {
             // Leftwards from the corner, 8 px apart on a label and 7 on a cell or depth bar, no further out than
             // stays inside it at the user's size; past what fits, as many as leave room for the pill. A wire's or
             // OUT label, in the graph and on the operator page's INPUTS tab, has them centered just under it and its
@@ -1771,13 +1774,15 @@ std::vector<View::Widget> View::widgets() const {
         // A stepper's go under its field, across it.
         const bool stepper = isStepper(list[i]);
         const Rect well = list[i].well;
-        const Point base = isRatioDisplay(list[i])         ? Point{r.center().x, kRatioBox.bottom() - 1.0f}
+        const Point base = patternRow                       ? Point{seqPatternRow().center().x, kSeqPatternHandlesY}
+                           : isRatioDisplay(list[i])         ? Point{r.center().x, kRatioBox.bottom() - 1.0f}
                            : stepper && list[i].compact ? Point{well.center().x, well.bottom() + 4.5f}
                            : list[i].compact            ? Point{r.x + 18.0f, r.y + 37.0f}
                                                         : Point{r.center().x, r.y + r.w - 1.0f};
         // The Ratio readout keeps its handles clear of its box's rounded corners.
         constexpr float kStep = 10.0f;
-        const float width = isRatioDisplay(list[i]) ? r.w - 9.0f
+        const float width = patternRow                ? seqPatternRow().w
+                            : isRatioDisplay(list[i]) ? r.w - 9.0f
                             : stepper               ? well.w - 6.0f
                             : list[i].compact       ? 34.0f
                                                     : r.w;

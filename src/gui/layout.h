@@ -395,12 +395,20 @@ constexpr Rect seqMacroRow(Rect list, int macro) {
 // The card's rows, from its top: its title, PATTERN, PLAY, two rows of knobs, ORDER and ROOT, SCALE and FOLD.
 constexpr float kSeqTitleY = kSeqCard.y + 12.0f;
 constexpr float kSeqPatternY = kSeqCard.y + 46.0f;
-constexpr float kSeqPlayY = kSeqCard.y + 76.0f;
+constexpr float kSeqPlayY = kSeqCard.y + 88.0f; // clear of PATTERN's modulation under it
 constexpr float kSeqKnobD = 42.0f;                 // the knobs' size
 constexpr float kSeqKnobsY = kSeqCard.y + 142.0f; // the first row's knobs' centers
 constexpr float kSeqKnobStep = 78.0f;              // to the second row's
 constexpr float kSeqOrderY = kSeqCard.y + 290.0f;
 constexpr float kSeqScaleY = kSeqCard.y + 322.0f;
+// PATTERN's four buttons as one row, and under it, while it is modulated, its modulation's reach from A's middle to
+// D's (seqPatternReach()) and its depth handles under that, centered on the row, as a knob's are under it.
+inline Rect seqPatternRow() { return {kSeqCardControls, kSeqPatternY, 3.0f * 30.0f + 28.0f, 22.0f}; }
+inline Rect seqPatternReach() {
+    const Rect row = seqPatternRow();
+    return {row.x + 14.0f, row.bottom() + 3.0f, 90.0f, 1.5f};
+}
+constexpr float kSeqPatternHandlesY = kSeqPatternY + 22.0f + 11.0f; // the depth handles' centers
 // The card's switch between the view's full and half size, left of its power switch: the Curve card's expand and
 // collapse button.
 constexpr Rect kSeqSizeButton{kSeqCard.x + kSeqCard.w - 12.0f - 26.0f - 4.0f - 26.0f, kSeqTitleY, 26.0f, 22.0f};

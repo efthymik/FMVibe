@@ -900,8 +900,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     the modulation panel back under it (read off the rendered pixels) and the overview gone, and back, kept in the user's
     settings with no param edited and nothing to undo, and a double-click whose first click shows the view leaving it;
     and a macro's handle dropped on the card's Gate knob modulating it, its ring drawn (read off the rendered pixels),
-    undoably, and on Octave's nothing, and on PATTERN's buttons modulating the pattern picked, undoably, the button it
-    picks ringed as the telemetry tells (read off the rendered pixels);
+    undoably, and on Octave's nothing, and on PATTERN's buttons modulating the pattern picked, undoably, its reach and
+    depth handle showing under the row, above PLAY (read off the rendered pixels), and the button it picks ringed as the
+    telemetry tells (read off the rendered pixels);
   - the SEQ view's PATTERNS: a pattern's notes drawn in its tile where an empty one's has none (read off the rendered
     pixels), what the roll shows a rectangle in the shown pattern's tile, narrowing as the roll zooms in, and no other
     tile changing (read off the rendered pixels), a click on a tile picking its pattern, undoably, a tile carried onto another ringing it (read off the
