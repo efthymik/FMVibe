@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
 Prepares a release: bumps the version, rebuilds and tests, refreshes the README's screenshots (docs\editor.png,
-docs\fx-chain.png and docs\fx-graph.png), then lists the commit, tag and push and asks whether to do them (only "yes"
+docs\fx-chain.png, docs\fx-graph.png and docs\seq.png), then lists the commit, tag and push and asks whether to do them (only "yes"
 does).
 
 .EXAMPLE
@@ -12,8 +12,8 @@ does).
 Steps: check we are on main, with a clean tree, level with origin and the tag free; set the version in
 CMakeLists.txt; build, run every test and both validators (build.ps1 -Validate, which also renders the editor's snapshots offscreen); copy the
 snapshots the tests render over the README's, in the Spectrum theme: the Screamer preset's editor over docs\editor.png, the
-Crystal Motion preset's effects' panel as a chain over docs\fx-chain.png, and the Neon Pluck preset's effects' panel, a graph, over
-docs\fx-graph.png; ask; on "yes", commit them all, tag vX.Y, and
+Crystal Motion preset's effects' panel as a chain over docs\fx-chain.png, the Neon Pluck preset's effects' panel, a graph, over
+docs\fx-graph.png, and the Future Plucks preset's SEQ view, at its full height, over docs\seq.png; ask; on "yes", commit them all, tag vX.Y, and
 push main and the tag. The tag makes GitHub Actions build the release and the browser demo (see AGENTS.md,
 "Releasing").
 
@@ -21,7 +21,7 @@ On anything but "yes", CMakeLists.txt and the screenshots go back as they were a
 again); the new screenshots stay in build\release\ui-shots to look at.
 
 -Screenshots does only the screenshots: it builds and runs fmvibe-uishot (the UI snapshots, with their checks) in the
-release build and copies its renders over docs\editor.png, docs\fx-chain.png and docs\fx-graph.png, leaving the
+release build and copies its renders over docs\editor.png, docs\fx-chain.png, docs\fx-graph.png and docs\seq.png, leaving the
 version, the other tests and git alone.
 #>
 param(
@@ -75,7 +75,7 @@ try {
         & "$PSScriptRoot\build\release\fmvibe-uishot.exe" "$PSScriptRoot\build\release\ui-shots"
         if ($LASTEXITCODE) { throw "fmvibe-uishot failed (exit code $LASTEXITCODE)" }
         Copy-Screenshots
-        Write-Host '== rendered docs\editor.png, docs\fx-chain.png and docs\fx-graph.png (not committed)' -ForegroundColor Green
+        Write-Host '== rendered docs\editor.png, docs\fx-chain.png, docs\fx-graph.png and docs\seq.png (not committed)' -ForegroundColor Green
         return
     }
 
@@ -107,7 +107,7 @@ try {
 
         Copy-Screenshots
 
-        Write-Host "== next (the new screenshots: docs\editor.png, docs\fx-chain.png, docs\fx-graph.png):" -ForegroundColor Yellow
+        Write-Host "== next (the new screenshots: docs\editor.png, docs\fx-chain.png, docs\fx-graph.png, docs\seq.png):" -ForegroundColor Yellow
         Write-Host "   git add CMakeLists.txt docs/editor.png docs/fx-chain.png docs/fx-graph.png docs/seq.png"
         Write-Host "   git commit -m `"Version $Version`""
         Write-Host "   git tag $tag"
