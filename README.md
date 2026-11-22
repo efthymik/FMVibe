@@ -10,17 +10,30 @@ User manual: [https://pcdlin.github.io/FMVibe/manual.html](https://pcdlin.github
 
 Implemented using Claude Code.
 
-#### Main UI
-![FMVibe UI](docs/editor.png)
+<table>
+  <tr>
+    <td align="center" valign="top" width="50%">
+      <a href="docs/editor.png"><img src="docs/editor.png" alt="FMVibe's main UI" width="420"></a><br>
+      Main UI
+    </td>
+    <td align="center" valign="top" width="50%">
+      <a href="docs/seq.png"><img src="docs/seq.png" alt="FMVibe's sequencer" width="420"></a><br>
+      Sequencer
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%">
+      <a href="docs/fx-chain.png"><img src="docs/fx-chain.png" alt="FMVibe's effects as a chain" width="420"></a><br>
+      FX chain
+    </td>
+    <td align="center" valign="top" width="50%">
+      <a href="docs/fx-graph.png"><img src="docs/fx-graph.png" alt="FMVibe's effects as a graph" width="420"></a><br>
+      FX graph
+    </td>
+  </tr>
+</table>
 
-#### FX panel
-![FMVibe UI](docs/fx-chain.png)
-
-#### FX graph
-![FMVibe UI](docs/fx-graph.png)
-
-#### Sequencer panel
-![FMVibe UI](docs/seq.png)
+Click a screenshot to see it full size.
 
 ## Download
 
