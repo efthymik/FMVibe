@@ -574,7 +574,11 @@ private:
 };
 
 // The editor, in the host's window. The plugin has one view at a time, which owns the editor.
-class View final : public IPlugView, public IPlugViewContentScaleSupport {
+class View final : public IPlugView
+#ifndef _WIN32
+    , public IPlugViewContentScaleSupport
+#endif
+{
 public:
     explicit View(Plugin &plugin) : plugin_(plugin) { plugin_.addRef(); }
     ~View() {
@@ -588,7 +592,9 @@ public:
     tresult PLUGIN_API queryInterface(const TUID queried, void **obj) override {
         QUERY_INTERFACE(queried, obj, FUnknown::iid, IPlugView)
         QUERY_INTERFACE(queried, obj, IPlugView::iid, IPlugView)
+#ifndef _WIN32
         QUERY_INTERFACE(queried, obj, IPlugViewContentScaleSupport::iid, IPlugViewContentScaleSupport)
+#endif
         *obj = nullptr;
         return kNoInterface;
     }
@@ -654,11 +660,13 @@ public:
     }
     tresult PLUGIN_API onFocus(TBool) override { return kResultOk; }
     // The host's content scale: the editor keeps its zoom, the host is asked for the size that has it at the scale.
+#ifndef _WIN32
     tresult PLUGIN_API setContentScaleFactor(float factor) override {
         if (gui::Editor *editor = owns() ? plugin_.editor() : nullptr)
             editor->setScale(factor);
         return kResultOk;
     }
+#endif
     tresult PLUGIN_API setFrame(IPlugFrame *frame) override {
         frame_ = frame; // the host's, alive while it is set
         plugin_.frameChanged(frame);

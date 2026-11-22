@@ -459,13 +459,8 @@ void PluginCore::sectionsChanged() {
 }
 
 void PluginCore::editorFitChanged() {
-    if (!editor_)
-        return;
-    uint32_t width = 0, height = 0, fitted = 0;
-    editor_->size(width, height);
-    editor_->fit(width, fitted);
-    if (fitted != height)
-        hostResizeEditor(width, fitted); // a host that won't resize leaves the editor drawn smaller, centered
+    if (editor_)
+        editor_->fitLayout(); // a host that won't resize leaves the editor drawn smaller, centered
 }
 
 bool PluginCore::openEditor() {

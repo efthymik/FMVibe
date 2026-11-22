@@ -128,8 +128,10 @@ From top to bottom, the plugin window has:
 - The **modulation panel**: the source cards.
 - The **keyboard strip**: macros, the note and velocity sources, the pitch and mod wheels and a six-octave keyboard.
 
-The plugin window can be resized and keeps its aspect ratio. The keyboard strip can be collapsed to its title row,
-which makes the plugin window shorter.
+The plugin window can be resized and keeps its aspect ratio. It opens and unfolds within the screen's work area: a
+saved or last-used size that no longer fits, or the taller layout when the keyboard strip unfolds, is scaled down
+rather than run past the screen. The keyboard strip can be collapsed to its title row, which makes the plugin window
+shorter.
 
 Tabs use two small marks in their top-right corner, with the same meaning everywhere:
 
@@ -1505,8 +1507,9 @@ your web browser.
 - **Grid**: how strongly the sequencer's grid lines are drawn (50 % by default).
 - **Handles**: the size of the depth handles: Small (default), Medium or Large.
 
-Double-click a slider to reset it. The plugin window's size is also remembered: new instances open at the size you last
-resized a plugin window to, and with the keyboard strip collapsed or open as you last left it. Enter or Escape closes the dialog.
+Double-click a slider to reset it. The plugin window's size is also remembered, shrunk to fit the screen if it is
+larger, and so is whether the keyboard strip is collapsed: new instances open at the size you last resized a plugin
+window to, and with the strip as you last left it. Enter or Escape closes the dialog.
 
 ## 16. Working with the plugin
 

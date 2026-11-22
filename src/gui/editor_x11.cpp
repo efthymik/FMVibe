@@ -73,6 +73,41 @@ bool onPath(const char *tool) {
     return false;
 }
 
+constexpr int kScreenMargin = 16; // room around the editor for the window frame
+
+struct ScreenSize {
+    uint32_t width = 0, height = 0;
+};
+
+// The screen's size, or nothing when there is no display to ask.
+ScreenSize screenSize() {
+    static const ScreenSize size = [] {
+        ScreenSize found;
+        if (Display *display = XOpenDisplay(nullptr)) {
+            found.width = static_cast<uint32_t>(DisplayWidth(display, DefaultScreen(display)));
+            found.height = static_cast<uint32_t>(DisplayHeight(display, DefaultScreen(display)));
+            XCloseDisplay(display);
+        }
+        return found;
+    }();
+    return size;
+}
+
+// A size scaled down, as far as it takes, to sit within the screen, its proportions kept.
+void keepOnScreen(uint32_t &width, uint32_t &height) {
+    const ScreenSize screen = screenSize();
+    const int availableWidth = static_cast<int>(screen.width) - 2 * kScreenMargin;
+    const int availableHeight = static_cast<int>(screen.height) - 2 * kScreenMargin;
+    if (width == 0 || height == 0 || availableWidth <= 0 || availableHeight <= 0)
+        return;
+    const float scale = std::min({1.0f, static_cast<float>(availableWidth) / static_cast<float>(width),
+                                  static_cast<float>(availableHeight) / static_cast<float>(height)});
+    if (scale >= 1.0f)
+        return;
+    width = static_cast<uint32_t>(std::max(1.0f, std::floor(static_cast<float>(width) * scale)));
+    height = static_cast<uint32_t>(std::max(1.0f, std::floor(static_cast<float>(height) * scale)));
+}
+
 // A program started with its output on a pipe: the dialogs, whose answer is read as they end. It runs beside the
 // host's UI thread: nothing waits on it, a poll of the editor's timer asks whether it is done.
 class Child {
@@ -702,6 +737,8 @@ Editor::Editor(Controller &controller) : controller_(controller), view_(controll
     width_ = static_cast<uint32_t>(std::lround(View::kWidth * controller_.layout().zoom * dpiScale_));
     height_ = 0;
     fit(width_, height_);
+    keepOnScreen(width_, height_); // a saved size that no longer fits opens within the screen
+    askedWidth_ = width_;
 }
 
 Editor::~Editor() {
@@ -755,17 +792,28 @@ void Editor::fit(uint32_t &width, uint32_t &height) const {
     constrain(width, height, view_.height());
 }
 
+void Editor::fitLayout() {
+    uint32_t width = width_;
+    uint32_t height = 0;
+    fit(width, height);
+    keepOnScreen(width, height);
+    askedWidth_ = width; // a size the screen held down is no new zoom when the host sets it
+    if (width != width_ || height != height_)
+        controller_.requestEditorSize(width, height);
+}
+
 bool Editor::setSize(uint32_t width, uint32_t height) {
     fit(width, height);
     width_ = width;
     height_ = height;
-    // The size asked for to follow the scale keeps the zoom, even where the size is held to its limits.
-    if (width != dpiWidth_) {
+    // A size the editor asked for, held down to the screen or changed with the DPI, keeps the zoom as it was; a size
+    // the host chose, as a window dragged, is the zoom now.
+    if (width != askedWidth_) {
         const float zoom = static_cast<float>(width) / (View::kWidth * dpiScale_);
         resized_ = resized_ || std::fabs(zoom - controller_.layout().zoom) > 1e-4f;
         controller_.layout().zoom = zoom;
+        askedWidth_ = width;
     }
-    dpiWidth_ = 0;
     if (display_ && window_) {
         // A host that sets the size again and again (as some do each block) leaves the frame and its buffer as they are.
         if (!back_ || width != static_cast<uint32_t>(cairo_image_surface_get_width(back_)) ||
@@ -827,14 +875,15 @@ void Editor::setScale(double scale) {
 void Editor::followScale(float scale, bool) {
     if (scale <= 0.05f || std::fabs(scale - dpiScale_) < 1e-3f)
         return;
+    const float previous = dpiScale_;
     dpiScale_ = scale;
-    uint32_t width = static_cast<uint32_t>(std::lround(View::kWidth * controller_.layout().zoom * dpiScale_));
+    uint32_t width = static_cast<uint32_t>(std::lround(width_ * dpiScale_ / previous));
     uint32_t height = 0;
     fit(width, height);
-    if (width != width_ || height != height_) {
-        dpiWidth_ = width;
-        controller_.requestEditorSize(width, height); // the host then sets it (setSize()), at the same zoom
-    }
+    keepOnScreen(width, height);
+    askedWidth_ = width; // the host then sets it (setSize()), the zoom kept
+    if (width != width_ || height != height_)
+        controller_.requestEditorSize(width, height);
 }
 
 bool Editor::show(bool visible) {

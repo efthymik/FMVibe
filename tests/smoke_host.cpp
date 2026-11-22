@@ -4818,6 +4818,13 @@ int main(int argc, char **argv) {
         window.win32 = parent;
         opened = opened && gui->set_parent(plugin, &window) && gui->show(plugin);
         check(opened, "editor opens inside a host window");
+        RECT workArea{};
+        const bool haveWorkArea = SystemParametersInfoW(SPI_GETWORKAREA, 0, &workArea, 0) != FALSE;
+        const uint32_t workWidth = static_cast<uint32_t>(workArea.right - workArea.left);
+        const uint32_t workHeight = static_cast<uint32_t>(workArea.bottom - workArea.top);
+        std::printf("      editor opens %u x %u in a %u x %u work area\n", width, height, workWidth, workHeight);
+        check(haveWorkArea && width <= workWidth && height <= workHeight,
+              "a new editor opens within the screen's work area");
 
         uint32_t adjustedWidth = 900, adjustedHeight = 100;
         gui->adjust_size(plugin, &adjustedWidth, &adjustedHeight);
@@ -5080,10 +5087,73 @@ int main(int argc, char **argv) {
                   "lets it sleep");
         }
 
+        // The keyboard strip's toggle asks for a shorter or taller window. The host here applies what it asks for,
+        // so the fold can be clicked again, and neither size may run past the screen's work area.
+        if (editor) {
+            RECT work{};
+            const bool haveWork = SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0) != FALSE;
+            const uint32_t workWidth = static_cast<uint32_t>(work.right - work.left);
+            const uint32_t workHeight = static_cast<uint32_t>(work.bottom - work.top);
+            auto toggleKeys = [&] {
+                uint32_t width = 0, height = 0;
+                gui->get_size(plugin, &width, &height);
+                const float scale = static_cast<float>(width) / 1200.0f;
+                const LPARAM at = MAKELPARAM(std::lround(74.0f * scale), std::lround(815.0f * scale));
+                SendMessageW(editor, WM_MOUSEMOVE, 0, at);
+                SendMessageW(editor, WM_LBUTTONDOWN, MK_LBUTTON, at);
+                SendMessageW(editor, WM_LBUTTONUP, 0, at);
+            };
+            resizeRequests.clear();
+            toggleKeys();
+            if (!resizeRequests.empty())
+                gui->set_size(plugin, resizeRequests.back().first, resizeRequests.back().second);
+            toggleKeys();
+            if (!resizeRequests.empty())
+                gui->set_size(plugin, resizeRequests.back().first, resizeRequests.back().second);
+            const bool within = std::all_of(resizeRequests.begin(), resizeRequests.end(), [&](const auto &size) {
+                return size.first <= workWidth && size.second <= workHeight;
+            });
+            for (const auto &[w, h] : resizeRequests)
+                std::printf("      keyboard fold resize: %u x %u\n", w, h);
+            check(haveWork && resizeRequests.size() == 2 && within,
+                  "folding the keyboard asks for sizes within the screen's work area");
+        }
+
         gui->hide(plugin);
         gui->destroy(plugin);
         DestroyWindow(parent);
         check(!IsWindow(editor), "closing the editor destroys its window");
+
+        // A size chosen with the panels folded can be much larger than the full editor: a new plugin must open it
+        // within the screen's work area, not ask the host for a window taller than the screen.
+        {
+            const double zoomWas = userSettings.zoom;
+            userSettings.zoom = 3.0;
+            writeUserSettings();
+            const clap_plugin_t *zoomed = factory->create_plugin(factory, &kHost, desc->id);
+            uint32_t width = 0, height = 0;
+            bool got = false;
+            if (zoomed) {
+                zoomed->init(zoomed);
+                const auto *zoomGui =
+                    static_cast<const clap_plugin_gui_t *>(zoomed->get_extension(zoomed, CLAP_EXT_GUI));
+                const bool created = zoomGui && zoomGui->create(zoomed, CLAP_WINDOW_API_WIN32, false);
+                got = created && zoomGui->get_size(zoomed, &width, &height);
+                if (created)
+                    zoomGui->destroy(zoomed);
+                zoomed->destroy(zoomed);
+            }
+            RECT work{};
+            const bool haveWork = SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0) != FALSE;
+            const uint32_t workWidth = static_cast<uint32_t>(work.right - work.left);
+            const uint32_t workHeight = static_cast<uint32_t>(work.bottom - work.top);
+            std::printf("      a new plugin saved at zoom 3 opens %u x %u in a %u x %u work area\n", width, height,
+                        workWidth, workHeight);
+            check(got && haveWork && width <= workWidth && height <= workHeight,
+                  "a new plugin's saved size opens within the screen's work area");
+            userSettings.zoom = zoomWas;
+            writeUserSettings();
+        }
 
         // An editor sized at the system's DPI, then given a window at another (here one that isn't DPI aware, at
         // 96, as a window on a monitor scaled otherwise is at its own), asks the host for the size at the window's,

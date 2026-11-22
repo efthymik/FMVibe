@@ -36,9 +36,12 @@ public:
 
     // Sizes are in physical pixels, as CLAP specifies them.
     void size(uint32_t &width, uint32_t &height) const;
-    // The height for `width` at the view's current proportions (the modulation panel may be collapsed).
+    // The height for `width` at the view's current proportions (the keyboard strip may be collapsed).
     void fit(uint32_t &width, uint32_t &height) const;
     static void constrain(uint32_t &width, uint32_t &height, float viewHeight);
+    // Asks the host for the size the view's proportions want, held within the monitor's work area: a state, a fold or
+    // a DPI change may make the window another size.
+    void fitLayout();
     bool setSize(uint32_t width, uint32_t height);
     bool show(bool visible);
     // Opens the preset file dialog, after the current mouse gesture is over.
@@ -83,7 +86,7 @@ private:
     float scale() const;
     Point toView(int x, int y) const;
     // The window's DPI, once it has one: where it differs from the one its size was worked out for (the system's,
-    // before the host gave it a parent), the host is asked for the size that keeps the editor's zoom at it.
+    // before the host gave it a parent), the host is asked for the size at it, held within the screen.
     void followDpi();
     void updateCursor();
     void contextMenu(int x, int y);
@@ -103,7 +106,7 @@ private:
     HWND hwnd_ = nullptr;
     bool resized_ = false; // the user changed the size, which new instances then open at
     float dpiScale_ = 1.0f; // the DPI the size is worked out for, over 96: the system's, then the window's
-    uint32_t dpiWidth_ = 0; // the width followDpi() asked the host for, until it sets it: the zoom stays as it was
+    uint32_t askedWidth_ = 0; // the width the editor last asked for: a size the host sets at it is no new zoom
     uint32_t width_ = 0;
     uint32_t height_ = 0;
     bool trackingLeave_ = false;
@@ -160,7 +163,7 @@ private:
     std::unique_ptr<Menu> menu_;
     bool resized_ = false;
     float dpiScale_ = 1.0f;
-    uint32_t dpiWidth_ = 0;
+    uint32_t askedWidth_ = 0; // the width the editor last asked for: a size the host sets at it is no new zoom
     uint32_t width_ = 0;
     uint32_t height_ = 0;
     bool whole_ = true;             // the next paint draws every of it

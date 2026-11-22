@@ -932,7 +932,10 @@ switching one on and wiring it in is the whole job.
 The editor is drawn with Direct2D and scales freely: hosts can resize it, and it keeps its aspect ratio. Collapsing
 the keyboard strip makes it shorter (the plugin asks the host to resize the window). It keeps
 its size as it is scaled on the monitor its window is on: in a host aware of each monitor's scaling, opened on (or
-moved to) one scaled otherwise than the main one, it asks the host for the size at that scaling. While
+moved to) one scaled otherwise than the main one, it asks the host for the size at that scaling. A size the plugin opens
+at or asks for is held within the monitor's work area: a project's or the last editor's size that no longer fits, and
+the taller view a fold unfolds to, are scaled down to fit, the zoom kept, so opening the same project on a larger
+monitor shows it at that size again. While
 only what keeps to its place moves (the output meter and scope and the playing count in the header, the keys, an
 operator's scope in the inspector), it repaints that place alone. So it does as notes play: a source moving repaints
 its card, and what its modulation moves the part of the editor that shows it (the header for its knobs, the panels'
@@ -2399,7 +2402,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   license. A book before its x (its tooltip "Open the user manual") opens the user manual online, at the address the
   README links, in the web browser (in the browser demo, a new tab), leaving the dialog open. The editor's size is kept there too (`zoom`), written when an editor you resized closes: a new instance
   opens at it, while a project that saved a size keeps its own. So is whether the keyboard strip is collapsed
-  (`keysCollapsed`, see the keyboard strip).
+  (`keysCollapsed`, see the keyboard strip). A size that doesn't fit the monitor's work area is scaled down to fit,
+  its zoom kept.
 
 ### Remote-control pages (Bitwig, CLAP)
 

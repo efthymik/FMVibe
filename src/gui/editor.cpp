@@ -27,9 +27,36 @@ constexpr UINT_PTR kPollTimer = 1;
 constexpr UINT kPollMs = 15; // about 60 frames a second: Windows timers tick every 15.6 ms
 constexpr uint32_t kMinWidth = 600;
 constexpr uint32_t kMaxWidth = 3600;
+constexpr int kScreenMargin = 16; // room around the editor for the host's window frame
 constexpr UINT kPresetMessage = WM_APP + 1; // posted, so the dialog opens after the mouse gesture ends
 
 int liveEditors = 0;
+
+// The monitor's work area, less room for the host's window frame. Without a window, the main monitor's.
+RECT workArea(HWND window) {
+    MONITORINFO info{};
+    info.cbSize = sizeof(info);
+    const HMONITOR monitor = window ? MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST)
+                                    : MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
+    if (GetMonitorInfoW(monitor, &info))
+        return info.rcWork;
+    return RECT{0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN)};
+}
+
+// A size scaled down, as far as it takes, to sit within the monitor's work area, its proportions kept.
+void keepOnScreen(uint32_t &width, uint32_t &height, HWND window) {
+    const RECT area = workArea(window);
+    const int availableWidth = static_cast<int>(area.right - area.left) - 2 * kScreenMargin;
+    const int availableHeight = static_cast<int>(area.bottom - area.top) - 2 * kScreenMargin;
+    if (width == 0 || height == 0 || availableWidth <= 0 || availableHeight <= 0)
+        return;
+    const float scale = std::min({1.0f, static_cast<float>(availableWidth) / static_cast<float>(width),
+                                  static_cast<float>(availableHeight) / static_cast<float>(height)});
+    if (scale >= 1.0f)
+        return;
+    width = static_cast<uint32_t>(std::max(1.0f, std::floor(static_cast<float>(width) * scale)));
+    height = static_cast<uint32_t>(std::max(1.0f, std::floor(static_cast<float>(height) * scale)));
+}
 
 // Hosts keep the keyboard, so a hook on the editors' thread watches the keys it takes in, and hands
 // the undo and redo shortcuts to an editor under the mouse; see Editor::shortcut().
@@ -216,6 +243,8 @@ Editor::Editor(Controller &controller) : controller_(controller), view_(controll
     width_ = static_cast<uint32_t>(std::lround(View::kWidth * controller_.layout().zoom * dpiScale_));
     height_ = 0;
     fit(width_, height_);
+    keepOnScreen(width_, height_, nullptr); // a saved size that no longer fits opens within the screen
+    askedWidth_ = width_;
 }
 
 Editor::~Editor() {
@@ -256,14 +285,15 @@ void Editor::setScale(double scale) {
     const float dpiScale = static_cast<float>(scale);
     if (std::fabs(dpiScale - dpiScale_) < 1e-3f)
         return;
+    const float previous = dpiScale_;
     dpiScale_ = dpiScale;
-    uint32_t width = static_cast<uint32_t>(std::lround(View::kWidth * controller_.layout().zoom * dpiScale_));
+    uint32_t width = static_cast<uint32_t>(std::lround(width_ * dpiScale_ / previous));
     uint32_t height = 0;
     fit(width, height);
-    if (width != width_ || height != height_) {
-        dpiWidth_ = width;
-        controller_.requestEditorSize(width, height); // the host then sets it (setSize()), at the same zoom
-    }
+    keepOnScreen(width, height, hwnd_);
+    askedWidth_ = width; // the host then sets it (setSize()), the zoom kept
+    if (width != width_ || height != height_)
+        controller_.requestEditorSize(width, height);
 }
 
 void Editor::constrain(uint32_t &width, uint32_t &height, float viewHeight) {
@@ -275,18 +305,28 @@ void Editor::fit(uint32_t &width, uint32_t &height) const {
     constrain(width, height, view_.height());
 }
 
+void Editor::fitLayout() {
+    uint32_t width = width_;
+    uint32_t height = 0;
+    fit(width, height);
+    keepOnScreen(width, height, hwnd_);
+    askedWidth_ = width; // a size the screen held down is no new zoom when the host sets it
+    if (width != width_ || height != height_)
+        controller_.requestEditorSize(width, height);
+}
+
 bool Editor::setSize(uint32_t width, uint32_t height) {
     fit(width, height);
     width_ = width;
     height_ = height;
-    // The size asked for to follow the DPI keeps the zoom, even where the size is held to its limits: moved back to
-    // the monitor it came from, the editor then comes back at the size it had.
-    if (width != dpiWidth_) {
+    // A size the editor asked for, held down to the screen or changed with the DPI, keeps the zoom as it was; a size
+    // the host chose, as a window dragged, is the zoom now.
+    if (width != askedWidth_) {
         const float zoom = width / (View::kWidth * dpiScale_);
         resized_ = resized_ || std::fabs(zoom - controller_.layout().zoom) > 1e-4f;
         controller_.layout().zoom = zoom;
+        askedWidth_ = width;
     }
-    dpiWidth_ = 0;
     if (hwnd_)
         SetWindowPos(hwnd_, nullptr, 0, 0, static_cast<int>(width), static_cast<int>(height),
                      SWP_NOZORDER | SWP_NOMOVE | SWP_NOACTIVATE);
@@ -321,14 +361,15 @@ void Editor::followDpi() {
     const float dpiScale = dpi / 96.0f;
     if (std::fabs(dpiScale - dpiScale_) < 1e-3f)
         return;
+    const float previous = dpiScale_;
     dpiScale_ = dpiScale;
-    uint32_t width = static_cast<uint32_t>(std::lround(View::kWidth * controller_.layout().zoom * dpiScale_));
+    uint32_t width = static_cast<uint32_t>(std::lround(width_ * dpiScale_ / previous));
     uint32_t height = 0;
     fit(width, height);
-    if (width != width_ || height != height_) {
-        dpiWidth_ = width;
-        controller_.requestEditorSize(width, height); // the host then sets it (setSize()), at the same zoom
-    }
+    keepOnScreen(width, height, hwnd_);
+    askedWidth_ = width; // the host then sets it (setSize()), the zoom kept
+    if (width != width_ || height != height_)
+        controller_.requestEditorSize(width, height);
 }
 
 bool Editor::show(bool visible) {

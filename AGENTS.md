@@ -195,7 +195,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   knob dragged past the voices allocated asks for none while the mouse holds it and one once let go and settled; that on the SEQ tab a wheel message with Ctrl in its keys zooms
   the roll, though the thread's own idea of Ctrl is up (as while the host has the keyboard); that with nothing
   sounding processing sleeps, but not while the
-  editor shows a free LFO running (the plugin asking the host to process again as one comes on); and that an editor
+  editor shows a free LFO running (the plugin asking the host to process again as one comes on); that a new editor,
+  and one at a saved zoom 3, opens within the screen's work area, and folding the keyboard asks for sizes within it;
+  and that an editor
   sized at the system's DPI and given a window
   at another (one not DPI aware) asks the host for the size at the window's, its zoom kept (at the same DPI, for
   nothing). It saves/loads state
