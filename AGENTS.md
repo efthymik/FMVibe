@@ -183,7 +183,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     requests one at once;
   - the latency extension reporting the voices' decimator's couple of samples, and about 5 more with a shaper effect
     in the line, a state that moves it, loaded while active, asking for a restart, and the reactivation telling the
-    host's latency extension.
+    host's latency extension; a note held through that restart playing on at its sustain level, with no new attack,
+    and its `NOTE_END` coming once after its release, where an activate the plugin didn't ask for ends the notes,
+    reporting each one's end.
 
   It opens the editor inside a hidden host window, where the preset bar's next arrow loads a preset with no param
   events, the host asked to rescan the values and marking the project changed, and drags the Volume knob with mouse
@@ -975,7 +977,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     controller's copy of a value from the host left alone while processing, and a voice limit past the voices
     allocated, stepped up a block at a time, asking the host for one restart once it has settled (the plugin's
     window's timer), the latency the CLAP plugin reports (the voices' decimator's), asked for
-    while inactive what the next activation makes it, and
+    while inactive what the next activation makes it, a note held as a state with a shaper effect loads playing on
+    through the restart it asks for (setProcessing(false), setActive(false) and back) at its sustain level with no new
+    attack, processing stopped and started again with that restart asked for and none made ending the note, and
     `setActive()` out of memory answering `kOutOfMemory` and going through once there is room;
   - the state: the CLAP plugin's bytes, through a stream that moves 5 bytes at a time, the controller's own state
     empty, a value from the host taken while not processing, loading bringing the saved value back and having the

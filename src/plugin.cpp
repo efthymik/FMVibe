@@ -200,7 +200,7 @@ Plugin::Plugin(const clap_host_t *host) : host_(host) {
         },
         [](const clap_plugin_t *p) { self(p).deactivate(); },
         [](const clap_plugin_t *) { return true; },              // start_processing
-        [](const clap_plugin_t *p) { self(p).deactivate(); },    // stop_processing: the editor's telemetry stops
+        [](const clap_plugin_t *p) { self(p).stopProcessing(); }, // stop_processing: the editor's telemetry stops
         [](const clap_plugin_t *p) { self(p).resetVoices(); },
         [](const clap_plugin_t *p, const clap_process_t *process) { return self(p).process(process); },
         [](const clap_plugin_t *, const char *id) { return extension(id); },

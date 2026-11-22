@@ -174,8 +174,20 @@ public:
     Synth();
 
     // Allocates `capacity` voices that run at `oversampling` (1, 2, 4 or 8)
-    // times the host rate. Main thread, while the plugin is inactive.
+    // times the host rate, the notes playing ending (reported in the next block, as reset() reports them). Main
+    // thread, while the plugin is inactive.
     void prepare(double sampleRate, int capacity, int oversampling = 1);
+    // The oversampling factor the voices run at for `oversampling`: 1, 2, 4 or 8.
+    static int voiceFactor(int oversampling) {
+        return oversampling >= 8 ? 8 : oversampling >= 4 ? 4 : oversampling >= 2 ? 2 : 1;
+    }
+    // Whether the voices allocated are fit to play on as they are after prepare() with these: at the same rate and
+    // oversampling, and as many of them or more. A restart that finds them so (one for a new latency, say) leaves
+    // them, the notes, the sequencer and the effects as they are, rather than prepare() again.
+    bool fits(double sampleRate, int capacity, int oversampling) const {
+        return !voices_.empty() && sampleRate == sampleRate_ && voiceFactor(oversampling) == oversampling_ &&
+               std::clamp(capacity, 1, kMaxVoices) <= capacity_;
+    }
     // The number the notes count on from, which each note draws its randomness from (its noise, its random phases,
     // Random LFOs and unison): synths given different ones don't play the same noise. Before the first note.
     void seedNotes(uint32_t seed) { noteCounter_ = seed; }

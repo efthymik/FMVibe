@@ -4660,6 +4660,63 @@ int main(int argc, char **argv) {
                   withShaper >= plain + 4 && withShaper <= plain + 6 && asked == 1 && latencyChanges == 1,
               "the latency is the voices' and an oversampled effect's, and a state that moves it restarts the plugin, "
               "telling the host");
+
+        // A note held as a shaper effect goes into the line (a state holding one loaded, which asks for the restart its
+        // latency takes) plays on through the restart: at its sustain level, with no new attack (a slow one, which
+        // would start it from silence again), and its NOTE_END once after its release. An activate the plugin didn't
+        // ask for ends the notes, reporting each one's end.
+        {
+            setParams(none);
+            setParams({{paramIndex(0, OpParam::Attack), normFromEnvTime(0.3)}, {paramIndex(0, OpParam::Sustain), 0.5}});
+            reactivate(); // at the latency without a shaper
+            const uint32_t unshaped = latency ? latency->get(plugin) : 0;
+            setParams({{paramIndex(0, FxParam::Type), static_cast<double>(FxType::Shaper)}});
+            MemoryStream shaperState;
+            const bool shaperSaved = state->save(plugin, &shaperState.out);
+            setParams(none);
+            out.noteEnds.clear();
+            const clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 900, 57);
+            const clap_event_note_t off = noteEvent(CLAP_EVENT_NOTE_OFF, 900, 57);
+            const float attackStart = runBlock({&on.header});
+            runBlocks(blocksPerSecond * 3 / 2); // past the attack and the decay, at the sustain
+            restartRequests = 0;
+            const bool shaperLoaded = state->load(plugin, &shaperState.in);
+            const int restartsAsked = restartRequests;
+            runBlocks(blocksPerSecond / 4); // the shaper fades in
+            const float sustained = runBlocks(blocksPerSecond / 10);
+            reactivate(); // as the host restarts it
+            const float firstAfter = runBlock();
+            const float after = runBlocks(blocksPerSecond / 10);
+            const uint32_t shapedLatency = latency ? latency->get(plugin) : 0;
+            const bool heldOn = out.noteEnds.empty();
+            runBlock({&off.header});
+            for (uint32_t b = 0; b < 2 * blocksPerSecond && out.noteEnds.empty(); ++b)
+                runBlock();
+            runBlocks(blocksPerSecond); // the shaper's DC blocker settling (see Effects)
+            const float released = runBlock();
+            const bool endedOnce = out.noteEnds.size() == 1 && out.noteEnds[0].note_id == 900;
+            std::printf("      a note held through the restart a shaper effect asks for: %.4f before it, %.4f in its "
+                        "first block after and %.4f on (the attack's first block %.4f); latency %u, then %u\n",
+                        sustained, firstAfter, after, attackStart, unshaped, shapedLatency);
+            check(shaperSaved && shaperLoaded && restartsAsked == 1 && shapedLatency > unshaped && heldOn &&
+                      sustained > 0.01f && attackStart < 0.2f * sustained &&
+                      std::fabs(firstAfter / sustained - 1.0f) < 0.1f && std::fabs(after / sustained - 1.0f) < 0.1f &&
+                      endedOnce && released < 1e-4f,
+                  "a note held through the restart a shaper effect asks for plays on at its sustain, with no new "
+                  "attack, and ends once after its release");
+
+            out.noteEnds.clear();
+            const clap_event_note_t again = noteEvent(CLAP_EVENT_NOTE_ON, 901, 57);
+            runBlock({&again.header});
+            runBlocks(blocksPerSecond / 2);
+            reactivate(); // which the plugin didn't ask for
+            const float cut = runBlock();
+            const bool reported = out.noteEnds.size() == 1 && out.noteEnds[0].note_id == 901;
+            runBlocks(blocksPerSecond / 4);
+            check(cut == 0.0f && reported && out.noteEnds.size() == 1,
+                  "an activate the plugin didn't ask for ends the notes, reporting each one's end once");
+        }
+
         state->load(plugin, &kept.in); // as the tests before left it
         fxTypes = typesKept;
         reactivate();

@@ -446,6 +446,9 @@ private:
     double sampleRate_ = 48000.0;
     bool active_ = false; // main thread: since a setActive(true) that went through
     std::atomic<bool> processing_{false};
+    // Processing stopped with a restart the plugin asked for still to come, the voices kept for it: a setActive(true)
+    // takes them up (see PluginCore::activate()), and processing started again without one ends their notes.
+    std::atomic<bool> stoppedForRestart_{false};
     UnitID selectedUnit_ = kRootUnitId; // the host's, for its own use
     std::vector<Change> changes_; // reserved up front: the audio thread never allocates
 };
@@ -658,6 +661,7 @@ tresult PLUGIN_API Plugin::getBusInfo(MediaType type, BusDirection dir, int32 in
 
 tresult PLUGIN_API Plugin::setActive(TBool state) {
     if (state) {
+        stoppedForRestart_.store(false);
         active_ = activate(sampleRate_); // voices are allocated here, on the main thread
         if (!active_)
             return kOutOfMemory;
@@ -717,8 +721,15 @@ tresult PLUGIN_API Plugin::setupProcessing(ProcessSetup &setup) {
 tresult PLUGIN_API Plugin::setProcessing(TBool state) {
     processing_.store(state != 0);
     if (!state) {
-        deactivate(); // the editor's telemetry stops
-        resetVoices();
+        stopProcessing(); // the editor's telemetry stops
+        // The notes end here, unless this stops processing for the restart the plugin asked for (a host does so before
+        // setActive(false)), which they play on through.
+        if (restartPending())
+            stoppedForRestart_.store(true);
+        else
+            resetVoices();
+    } else if (stoppedForRestart_.exchange(false)) {
+        resetVoices(); // no restart came
     }
     return kResultOk;
 }

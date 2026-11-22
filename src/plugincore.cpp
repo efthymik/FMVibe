@@ -24,6 +24,10 @@ namespace {
 
 // How long after the plugin tells the host a param's value it takes none for that param from the host.
 constexpr int64_t kHostEchoMs = 500;
+// How soon after the deactivate the activate of a restart the plugin asked for comes, for the notes to play on
+// through it. A host that leaves the plugin inactive longer (switched off for a while, with a restart asked for still
+// to come) finds the notes ended, as after any other activate: a key let go of meanwhile reached no voice.
+constexpr int64_t kKeepVoicesMs = 1000;
 
 } // namespace
 
@@ -94,14 +98,20 @@ void PluginCore::performSetValue(int index, double value) {
     }
 }
 
-// Voices are allocated here, on the main thread, for the current voice limit.
+// Voices are allocated here, on the main thread, for the current voice limit: unless a restart the plugin asked for
+// finds them fit to play on (see activate() in plugincore.h).
 bool PluginCore::activate(double sampleRate) {
+    const bool keep = restartPending() && !outOfMemory() && deactivatedAt_ >= 0 &&
+                      steadyMs() - deactivatedAt_ < kKeepVoicesMs &&
+                      synth_.fits(sampleRate, voiceLimit(), oversampling_.load());
     sampleRate_ = sampleRate;
-    try {
-        synth_.prepare(sampleRate, voiceLimit(), oversampling_.load());
-    } catch (const std::bad_alloc &) { // an exception must not reach the host, which would end with it
-        outOfMemory_.store(true);
-        return false;
+    if (!keep) {
+        try {
+            synth_.prepare(sampleRate, voiceLimit(), oversampling_.load());
+        } catch (const std::bad_alloc &) { // an exception must not reach the host, which would end with it
+            outOfMemory_.store(true);
+            return false;
+        }
     }
     outOfMemory_.store(false);
     pathDelays_ = fxLagDelays(sampleRate);

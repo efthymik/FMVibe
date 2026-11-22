@@ -305,8 +305,16 @@ float *Synth::combLine(const Voice &v, int filter, int channel) {
 }
 
 void Synth::prepare(double sampleRate, int capacity, int oversampling) {
+    // The notes still playing end here, as in reset(): the host waits for each one's end, which the next block
+    // reports. (Gathered first: what holds them goes with the voices. The keys the sequencer took, reset() ends.)
+    std::vector<NoteRef> ending(ended_.begin(), ended_.end());
+    for (const Voice *v : active_)
+        if (live(*v))
+            ending.push_back(v->note);
+    for (const HeldNote &held : held_) // a mono note a later one took over
+        ending.push_back(held.note);
     sampleRate_ = sampleRate;
-    oversampling_ = oversampling >= 8 ? 8 : oversampling >= 4 ? 4 : oversampling >= 2 ? 2 : 1;
+    oversampling_ = voiceFactor(oversampling);
     rate_ = sampleRate * oversampling_;
     bend_ = 0.0;
     globalMod_.fill(0.0);
@@ -341,7 +349,9 @@ void Synth::prepare(double sampleRate, int capacity, int oversampling) {
     }
     ended_.clear();
     // Every note that ends in one block is reported at its end: room for a burst of them far past the voices.
-    ended_.reserve(std::max<size_t>(voices_.size() * 2 + 16, kMaxEndedNotes));
+    ended_.reserve(std::max<size_t>({voices_.size() * 2 + 16, kMaxEndedNotes, ending.size()}));
+    for (const NoteRef &note : ending)
+        reportEnded(note);
     held_.clear();
     held_.reserve(256);
     limit_ = capacity_;

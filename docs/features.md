@@ -2427,6 +2427,15 @@ activation will make it). An edit, once it is whole, or a state that moves it as
 reports the new one (a CLAP host is told through its latency extension's `changed()`); an edit that leaves it as it was,
 an effect moved along the line say, asks for none.
 
+The notes play on through a restart the plugin asked for (the one a new latency asks for, say), when its activate comes
+within a second of the deactivate, at the same sample rate and oversampling, with as many voices allocated as the limit
+needs or more: the voices, their envelopes, the sequencer and the effects carry on where they were, and only the latency
+is new. A note's end is reported once, after its release, as the host's key comes up (a CLAP host keeps its note ids).
+Any other activate (for more voices or another oversampling, at another rate, or one the plugin didn't ask for, a device
+switched off and on again, say) allocates the voices again and ends the notes playing, each one's end reported in the
+next block. A VST3 host stopping processing ends them too, unless a restart was asked for: then they end only if
+processing starts again without it.
+
 Hosts are given 1,515 of FMVibe's 32,712 parameters: the globals, the operators, the matrix and the routes' modes,
 the filters, the shapers, the macros' knobs, the note source's, the mod wheel's, velocity's, the pitch bend's and the
 operators' own as sources, and every modulation's depth and Amount (16 slots for each of the 34 sources, used or not). The rest are set in the editor only:
@@ -2453,6 +2462,7 @@ What the VST3 plugin does its own way:
   oversampling or a change to the effects that moves the latency asks the host to deactivate and reactivate the plugin
   (through a latency change, which has hosts do that). A voice limit raised by hand or by the host asks once it has
   settled (see Notes), from a timer on the main thread: CLAP's timer-support, where the host has it (a host without
-  it is asked at its next main-thread callback), and in VST3 the plugin's own window's.
+  it is asked at its next main-thread callback), and in VST3 the plugin's own window's. Stopping processing ends the
+  notes, but not on the way to the restart asked for, which they play on through as in the CLAP plugin.
 - **Not in VST3**: CLAP's per-voice and global host modulation, Bitwig's remote-control pages, and the note-end
   reports that per-voice modulation needs.

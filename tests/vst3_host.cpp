@@ -904,6 +904,102 @@ int main(int argc, char **argv) {
               "the latency asked for while inactive is what the next activation makes it");
     }
 
+    // A note held as a state with a shaper effect in the line loads plays on through the restart that asks for, as a
+    // host makes it (setProcessing(false), setActive(false), setActive(true), setProcessing(true)): at its sustain
+    // level, with no new attack (a slow one, which would start it from silence again). Processing stopped and started
+    // again with a restart asked for and none made ends the note, as stopping processing does with none asked for.
+    {
+        const int attack = paramIndex(0, OpParam::Attack), sustain = paramIndex(0, OpParam::Sustain);
+        const int wires[] = {paramIndex(0, FxParam::Type), fxInputIndex(0, 0, FxInputField::From),
+                             fxInputIndex(kFxOutNode, 0, FxInputField::From)};
+        const double shaper[] = {static_cast<double>(FxType::Shaper), fxPortValue(kFxPortIn),
+                                 fxPortValue(fxSlotPort(0))};
+        auto setPlain = [&](int index, double value) {
+            plugin.controller->setParamNormalized(idOfIndex(index),
+                                                  plugin.controller->plainParamToNormalized(idOfIndex(index), value));
+        };
+        auto restart = [&] {
+            plugin.processor->setProcessing(false);
+            plugin.component->setActive(false);
+            plugin.component->setActive(true);
+            plugin.processor->setProcessing(true);
+        };
+        plugin.processor->setProcessing(false);
+        MemoryStream before;
+        const bool beforeSaved = plugin.component->getState(&before) == kResultOk;
+        setPlain(attack, normFromEnvTime(0.3));
+        setPlain(sustain, 0.5);
+        double kept[3];
+        for (int i = 0; i < 3; ++i) {
+            kept[i] = plugin.normalized(wires[i]);
+            setPlain(wires[i], shaper[i]);
+        }
+        MemoryStream withShaper;
+        const bool shaperSaved = plugin.component->getState(&withShaper) == kResultOk;
+        for (int i = 0; i < 3; ++i)
+            plugin.controller->setParamNormalized(idOfIndex(wires[i]), kept[i]);
+        restart(); // at the latency without a shaper
+        const uint32 unshaped = plugin.processor->getLatencySamples();
+        {
+            Events events;
+            Changes changes;
+            events.events = {noteOn(0, 69, 30)};
+            plugin.process(events, changes);
+        }
+        const double attackStart = peak(plugin.left);
+        plugin.render(1.5); // past the attack and the decay, at the sustain
+        handler.restarts = 0;
+        withShaper.pos = 0;
+        const bool shaperLoaded = plugin.component->setState(&withShaper) == kResultOk;
+        pumpMessages(50);
+        const bool asked = (handler.restarts & kLatencyChanged) != 0;
+        plugin.render(0.25); // the shaper fades in
+        const double sustained = peak(plugin.render(0.1));
+        restart();
+        const std::vector<float> after = plugin.render(0.1);
+        const double firstAfter = peak(after, 0, kBlock), on = peak(after);
+        const uint32 shaped = plugin.processor->getLatencySamples();
+        {
+            Events events;
+            Changes changes;
+            events.events = {noteOff(0, 69, 30)};
+            plugin.process(events, changes);
+        }
+        plugin.render(1.5);
+        const double releasedPeak = peak(plugin.render(0.1));
+        std::printf("      a note held through the restart a shaper effect asks for: %.4f before it, %.4f in its first "
+                    "block after and %.4f on (the attack's first block %.4f); latency %u, then %u\n",
+                    sustained, firstAfter, on, attackStart, static_cast<unsigned>(unshaped),
+                    static_cast<unsigned>(shaped));
+        check(beforeSaved && shaperSaved && shaperLoaded && asked && shaped > unshaped && sustained > 1e-4 &&
+                  attackStart < 0.2 * sustained && std::abs(firstAfter / sustained - 1.0) < 0.1 &&
+                  std::abs(on / sustained - 1.0) < 0.1 && releasedPeak == 0.0,
+              "a note held through the restart a shaper effect asks for plays on at its sustain, with no new attack");
+
+        // The state before, whose latency asks for a restart again, but none comes: processing stopped and started
+        // again ends the note.
+        {
+            Events events;
+            Changes changes;
+            events.events = {noteOn(0, 69, 31)};
+            plugin.process(events, changes);
+        }
+        plugin.render(0.5);
+        handler.restarts = 0;
+        before.pos = 0;
+        const bool restored = plugin.component->setState(&before) == kResultOk;
+        pumpMessages(50);
+        const bool askedAgain = (handler.restarts & kLatencyChanged) != 0;
+        const double playing = peak(plugin.render(0.1));
+        plugin.processor->setProcessing(false);
+        plugin.processor->setProcessing(true);
+        const double stopped = peak(plugin.render(0.1));
+        check(restored && askedAgain && playing > 1e-4 && stopped == 0.0,
+              "processing stopped and started again with no restart made ends the notes");
+        restart(); // the restart asked for, at the latency the tests before had
+        check(plugin.processor->getLatencySamples() == unshaped, "and the restart then takes the latency back");
+    }
+
     // --- State: the same bytes the CLAP plugin saves, through a stream that moves 5 bytes at a time.
     plugin.processor->setProcessing(false);
     MemoryStream saved;

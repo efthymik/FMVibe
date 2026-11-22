@@ -165,7 +165,10 @@ public:
 
     // Main thread, while inactive: allocates the voices, for the current voice limit and oversampling, and takes the
     // latency the host is told. False where there isn't the memory for them: the host is told so, and the plugin plays
-    // silence (see outOfMemory()) until an activate goes through.
+    // silence (see outOfMemory()) until an activate goes through. The activate of a restart the plugin asked for
+    // (restartPending()), coming soon after the deactivate and finding the voices fit to run as they are
+    // (Synth::fits()), keeps them: the notes play on through it, their envelopes, the sequencer and the effects where
+    // they were, and only the latency is new. Any other ends the notes, which the next block reports.
     bool activate(double sampleRate);
     // Whether the last activate() found no memory, which leaves the voices unfit to run. Any thread.
     bool outOfMemory() const { return outOfMemory_.load(std::memory_order_relaxed); }
@@ -176,7 +179,16 @@ public:
     // How late the output would be from an activate() at `sampleRate` with the params as they are now, for a host that
     // asks while the plugin is inactive. Main thread.
     int latencyAt(double sampleRate) const;
-    void deactivate() { telemetry_.store(*noTelemetry_); } // from one made ahead, not a 45 KB one on the stack
+    // Main thread, as the host deactivates the plugin: the editor's telemetry stops, and the next activate() knows
+    // how long it has been inactive.
+    void deactivate() {
+        stopProcessing();
+        deactivatedAt_ = steadyMs();
+    }
+    // The host stops processing: the editor's telemetry stops. Audio thread, or main thread while not processing.
+    void stopProcessing() { telemetry_.store(*noTelemetry_); } // from one made ahead, not a 45 KB one on the stack
+    // Whether a restart the plugin asked for (see hostRequestRestart()) has yet to come. Any thread.
+    bool restartPending() const { return restartAskedFor_.load() != 0; }
     // Main thread, while not processing (or the audio thread, between blocks).
     void resetVoices() {
         if (!outOfMemory())
@@ -340,6 +352,8 @@ private:
     // hostTimer() is on.
     int voicesGestures_ = 0;
     bool timerOn_ = false;
+    // Main thread: when the host last deactivated the plugin (steadyMs()), -1 before it first did.
+    int64_t deactivatedAt_ = -1;
     // The latency the host was told at activate() (see latency()), and how late each part of it is at that rate: one
     // path up and down at 2, 4 and 8 times it, and the voices' decimator. Set on the main thread while inactive.
     std::atomic<int> latency_{0};
