@@ -964,9 +964,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   the roll of the pattern picked in the rest, at its full size down to the modulation panel's bottom, which it covers,
   with the patterns' overview under the card; at its half size, down to the panels' row's bottom, without it.
   - **The card**: the sequencer's power switch, and left of it the size button (the Curve card's expand button at
-    the half size, its collapse button at the full one, its tooltip saying which); **PATTERN** A to D (the one picked plays and shows in the roll) and a
-    button that copies it, its length, loop, notes and curves, into the next empty pattern (no notes, and no points
-    on its curves); **PLAY** Host | Key | Latch; the
+    the half size, its collapse button at the full one, its tooltip saying which); **PATTERN** A to D (the one picked plays and shows in the roll; the
+    overview's tiles copy and paste them); **PLAY** Host | Key | Latch; the
     big knobs in two rows of four, Rate and Length (the pattern's, in bars) over Octave and Transpose at the left,
     Swing and Gate over Humanize and Velocity at the right (those four modulation targets, as an effect's knobs
     are: the sources' handles drop on them, the MODS view's target menu lists them under Sequencer, and the host may

@@ -268,7 +268,6 @@ enum class WidgetKind {
     SeqField,     // b = 0 pitch, 1 velocity, 2 chance, 3 length, 4 offset: a value of the notes picked, dragged
     SeqFlag,      // b = 0 Slide, 1 Mute: switches it for the notes picked
     SeqClear,     // removes every note of the pattern, asking first
-    SeqCopy,      // copies the pattern into the next empty one
     SeqSize,      // the SEQ view at its full size, over the modulation panel too, or at its half (EditorSettings::seqFull)
     SeqTile,      // b = a pattern, in the overview: a click shows it, a drag onto another tile copies it there
     SeqRoot,      // param = Root: dragged up and down, or scrolled, a semitone a step

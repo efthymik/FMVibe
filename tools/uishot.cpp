@@ -6214,7 +6214,7 @@ void testFxGraphScroll(const std::filesystem::path &dir, Renderer &renderer) {
 // The SEQ tab: the sequencer's card and the roll of its pattern. A double-click puts a note down, and on a note takes it
 // away; a note is picked and moved by a drag, stretched by its end, notes picked by a box, and the field changes the
 // notes picked. The draw tool paints notes, the lane sets their chance, the ruler the loop; the rows fold to a scale,
-// the snap list picks the grid, the bin clears the pattern (asking first) and copying fills the next empty pattern.
+// the snap list picks the grid, the bin clears the pattern (asking first) and a tile dragged onto an empty pattern's fills it.
 void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -7517,12 +7517,16 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         check(at32 != at16 && none32 == none16, "the roll's lines fall at the snap's length, as strong as GRID says");
     }
 
-    // Copied, the pattern fills B; picked, B shows in the roll.
-    click(view, {detail::kSeqCard.x + detail::kSeqCard.w - 12.0f - 13.0f, detail::kSeqPatternY + 11.0f});
-    const bool copied = model.value(seqNoteIndex(1, 2, SeqNoteParam::Length)) == 2.0 &&
+    // The card has no copy button by PATTERN any more (the overview's tiles copy): A's tile dragged onto B's, empty,
+    // fills B without asking; picked, B shows in the roll.
+    click(view, {detail::kSeqCard.x + detail::kSeqCard.w - 12.0f - 13.0f, detail::kSeqPatternY + 11.0f}); // where it was
+    const bool noCopyButton = model.value(seqNoteIndex(1, 2, SeqNoteParam::Length)) == 0.0;
+    drag(view, detail::seqTile(0).center(), detail::seqTile(1).center());
+    const bool copied = !view.dialogOpen() && model.value(seqNoteIndex(1, 2, SeqNoteParam::Length)) == 2.0 &&
                         model.value(seqNoteIndex(1, 2, SeqNoteParam::Pitch)) == 51.0;
     click(view, {detail::kSeqCardControls + 30.0f + 14.0f, detail::kSeqPatternY + 11.0f});
-    check(copied && model.value(paramIndex(SeqParam::Pattern)) == 1.0, "a pattern copies into the next empty one");
+    check(noCopyButton && copied && model.value(paramIndex(SeqParam::Pattern)) == 1.0,
+          "the card has no copy button, and A's tile dragged onto B's, empty, copies A there");
     click(view, {detail::kSeqCardControls + 14.0f, detail::kSeqPatternY + 11.0f});
 
     // The patterns' overview under the card, a tile a pattern: B's, holding A's notes now, drawn with them where C's,

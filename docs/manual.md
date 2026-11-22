@@ -1153,7 +1153,7 @@ Each pattern has a **loop** (the whole pattern by default), which is what plays.
 ### The settings card
 
 - **Power** switch.
-- **PATTERN A–D**, and a button that copies the current pattern into the next empty one.
+- **PATTERN A–D**: the pattern you edit and play. To copy one, use the patterns overview below the card.
 - **PLAY**:
   - **Host**: plays with the host's transport, locked to its bars. You can still play the synth from the keyboard
     on top. The browser demo's transport always runs, so there a preset set to Host starts playing as soon as you

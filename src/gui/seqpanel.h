@@ -226,7 +226,6 @@ private:
     void clearSeqPattern(int pattern);    // its notes and its curves' points, one undo step
     void askClearSeqPattern(int pattern); // asking first (kConfirmClear), unless it is empty
     int seqClearing_ = 0;                 // the pattern kConfirmClear asks about
-    void copySeqPattern();             // into the next empty one
     void copySeqPattern(int from, int to); // every note, curve, length and loop, one undo step
     // The overview's tile under `p`, -1 for none; and one tile painted, `carried` as a drag carries it.
     int seqTileAt(Point p) const;

@@ -60,7 +60,6 @@ Rect seqFieldRect(int field) { // left of Slide, the note first
         x -= kFieldWidths[f];
     return {x, kSeqTools.y, kFieldWidths[field], kSeqTools.h};
 }
-Rect seqCopyButton() { return {kSeqCard.x + kSeqCard.w - 12.0f - 26.0f, kSeqPatternY, 26.0f, 22.0f}; }
 // The scale's row: its root, the scale, then FOLD at the card's right.
 Rect seqRootBox() { return {kSeqCardControls, kSeqScaleY, 48.0f, 22.0f}; }
 Rect seqScaleButton() { return {kSeqCardControls + 52.0f, kSeqScaleY, 102.0f, 22.0f}; }
@@ -470,7 +469,6 @@ void SeqPanel::widgets(std::vector<Widget> &list) const {
     for (int p = 0; p < kSeqPatterns; ++p)
         add(Kind::Choice, {kSeqCardControls + p * 30.0f, kSeqPatternY, 28.0f, 22.0f}, paramIndex(SeqParam::Pattern), -1, p);
     mergeButtons(list, from);
-    add(Kind::SeqCopy, seqCopyButton());
     add(Kind::SeqSize, kSeqSizeButton);
     for (int p = 0; p < kSeqPatterns && full(); ++p) // the overview under the card, at the full size
         add(Kind::SeqTile, seqTile(p), -1, -1, p);
@@ -1029,21 +1027,6 @@ bool SeqPanel::seqPatternEmpty(int pattern) const {
     return true;
 }
 
-void SeqPanel::copySeqPattern() {
-    const int from = seqPattern();
-    int to = -1;
-    for (int i = 1; i < kSeqPatterns && to < 0; ++i) {
-        const int p = (from + i) % kSeqPatterns;
-        if (seqPatternEmpty(p))
-            to = p;
-    }
-    if (to < 0) {
-        host_.flash(tr(Str::MsgSeqNoEmpty));
-        return;
-    }
-    copySeqPattern(from, to);
-}
-
 void SeqPanel::copySeqPattern(int from, int to) {
     offerSeqPattern(seqPatternValues(from), to, trf(Str::MsgSeqCopied, {seqPatternName(from), seqPatternName(to)}));
 }
@@ -1563,9 +1546,6 @@ bool SeqPanel::pressAs(const Widget &w, Point p, Modifiers mods, const Widget &h
         return true;
     case Kind::SeqClear:
         askClearSeqPattern(seqPattern());
-        return true;
-    case Kind::SeqCopy:
-        copySeqPattern();
         return true;
     case Kind::SeqSize:
         toggleSize();
@@ -2303,7 +2283,6 @@ bool SeqPanel::wheelOn(const Widget &w, Point p, float steps, Modifiers mods) {
     case Kind::SeqStretch:
     case Kind::SeqFlag:
     case Kind::SeqClear:
-    case Kind::SeqCopy:
     case Kind::SeqFold:
     case Kind::SeqLaneTab:
         return true;
@@ -2370,8 +2349,6 @@ std::string SeqPanel::tooltip(const Widget &w) const {
         return tr(w.b == 0 ? Str::TipSeqSlide : Str::TipSeqMute);
     case Kind::SeqClear:
         return tr(Str::TipSeqClear);
-    case Kind::SeqCopy:
-        return tr(Str::TipSeqCopy);
     case Kind::SeqRoot:
         return tr(Str::TipSeqRoot);
     case Kind::SeqFold:
@@ -3143,14 +3120,6 @@ bool SeqPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
     }
     case Kind::SeqClear: {
         binIcon(c, w.rect.center(), paintActionFace(c, w.rect, hovered, !seqPatternEmpty(seqPattern())));
-        return true;
-    }
-    case Kind::SeqCopy: { // two sheets, one over the other
-        const Color ink = paintActionFace(c, w.rect, hovered);
-        const Point m = w.rect.center();
-        c.strokeRect({m.x - 5.0f, m.y - 5.0f, 8.0f, 9.0f}, ink, 1.2f, 1.5f);
-        c.fillRect({m.x - 2.0f, m.y - 2.0f, 8.0f, 9.0f}, hovered ? kTrack : kRaised, 1.5f);
-        c.strokeRect({m.x - 2.0f, m.y - 2.0f, 8.0f, 9.0f}, ink, 1.2f, 1.5f);
         return true;
     }
     case Kind::SeqRoot: {
