@@ -899,7 +899,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the SEQ card's size button and a double-click on its tab (while the view shows) switching the view to its half size,
     the modulation panel back under it (read off the rendered pixels) and the overview gone, and back, kept in the user's
     settings with no param edited and nothing to undo, and a double-click whose first click shows the view leaving it;
-    and a macro's handle dropped on the card's Gate knob modulating it, its ring drawn (read off the rendered pixels),
+    Speed, Length, Octave and Transpose as steppers, Length's + and - stepping it, and Transpose's track filled to its
+    value with no line across it (read off the rendered pixels); and a macro's handle dropped on the card's Gate knob modulating it, its ring drawn (read off the rendered pixels),
     undoably, and on Octave's nothing, and on PATTERN's buttons modulating the pattern picked, undoably, its reach and
     depth handle showing under the row, above PLAY (read off the rendered pixels), and the button it picks ringed, with
     nothing playing where the macro takes it and as the telemetry tells while it plays (read off the rendered pixels);

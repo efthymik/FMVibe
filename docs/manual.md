@@ -1169,6 +1169,7 @@ Each pattern has a **loop** (the whole pattern by default), which is what plays.
   triplets. ×1/4 plays quarter notes.
 - **Length**: the pattern's length in bars.
 - **Octave** (±3) and **Transpose** (±24 semitones).
+- Speed, Length, Octave and Transpose are steppers: click **−** or **+** to step, or drag the number up and down.
 - **Swing** (50–75 %), **Gate** (5–200 % of each note's length), **Humanize** (repeatable timing and velocity
   variation) and **Velocity** (scales the notes' velocities; at 0 % every note plays at 100). You can modulate these
   four: drag a source's handle onto the knob, as with any other control.

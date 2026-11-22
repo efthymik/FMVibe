@@ -1289,13 +1289,19 @@ bool View::isRatioTarget(int param) {
 }
 
 bool View::isStepperParam(int param) {
-    // The voice limit, an operator's unison count and fixed Mult, a shaper's Stack (a voice's and an effect's) and a
-    // MIDI source's controller number; every other stepped value stays a knob.
+    // The voice limit, an operator's unison count and fixed Mult, a shaper's Stack (a voice's and an effect's), a
+    // MIDI source's controller number, and the sequencer's Speed, patterns' Length, Octave and Transpose; every other
+    // stepped value stays a knob.
     if (param < 0)
         return false;
     if (param == paramIndex(GlobalParam::Voices) || opOfField(param, OpParam::Unison) >= 0 ||
-        opOfField(param, OpParam::FixedMult) >= 0 || fxFieldOf(param) == FxParam::ShaperStack)
+        opOfField(param, OpParam::FixedMult) >= 0 || fxFieldOf(param) == FxParam::ShaperStack ||
+        param == paramIndex(SeqParam::Rate) || param == paramIndex(SeqParam::Octave) ||
+        param == paramIndex(SeqParam::Transpose))
         return true;
+    for (int p = 0; p < kSeqPatterns; ++p)
+        if (param == paramIndex(p, SeqPatternParam::Length))
+            return true;
     for (int s = 0; s < kShapers; ++s)
         if (param == paramIndex(s, ShaperParam::Stack))
             return true;
@@ -5340,8 +5346,8 @@ void View::paintRatio(Canvas &c, const Widget &w) {
 
 // A stepper: its number in a field, a unit after it smaller and dimmer, and - and + at the field's ends, faint at rest
 // where the number leaves them room and lit under the mouse (the unit making way where they need its room). Along the
-// field's foot its steps: a tick each where they fit, else a track, with each modulation's reach in its source's color
-// over them, as the Ratio readout's track has it, and the value's place.
+// field's foot its steps: a tick each where they fit, else a track filled to the value, with each modulation's reach in
+// its source's color over them, as the Ratio readout's track has it.
 void View::paintStepper(Canvas &c, const Widget &w) {
     const ParamDef &def = table_[w.param];
     const bool dragged = drag_.kind == DragKind::Value && drag_.widget.same(w);
@@ -5461,7 +5467,6 @@ void View::paintStepper(Canvas &c, const Widget &w) {
             const float a = along(span.first), b = along(span.second);
             c.fillRect({a, track.y, std::max(b - a, 1.0f), track.h}, reach, kRadiusMark);
         }
-        c.fillRect({along(n) - 1.0f, track.y - 1.5f, 2.0f, track.h + 3.0f}, kText, kRadiusMark);
     }
     // Where modulation currently takes the newest voice, or with no note playing where the macros take it; one modulated
     // in steps on the step it plays.

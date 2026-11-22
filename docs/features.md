@@ -971,8 +971,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     reach shows it (with nothing playing, where the macros and the mod wheel take it); under the row, as under a knob, its modulations' reach (a line from A's middle to D's, with the set
     pattern's tick and the live dot) and their depth handles, centered, PLAY sitting lower to leave them room; the sequencer takes a pattern modulation picks as it takes one clicked, at once while nothing plays
     and else where the loop comes round; **PLAY** Host | Key | Latch; the
-    big knobs in two rows of four, Rate and Length (the pattern's, in bars) over Octave and Transpose at the left,
-    Swing and Gate over Humanize and Velocity at the right (those four modulation targets, as an effect's knobs
+    controls in two rows of four, Speed and Length (the pattern's, in bars) over Octave and Transpose at the left, as
+    steppers, and the knobs Swing and Gate over Humanize and Velocity at the right (those four modulation targets, as an effect's knobs
     are: the sources' handles drop on them, the MODS view's target menu lists them under Sequencer, and the host may
     modulate them, for every note at once; the sequencer plays them, before each stretch it plans, as set with the
     host's and the macros' modulation and the newest voice's slots, or the last one's as the effects ring out, and
@@ -2005,9 +2005,10 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     modulation's range, a tick where the amount is set and a white dot where it is now, and its label each
     modulation's range just above it, clear of its solid fill.
 - **Steppers**: the header's Voices, an operator's Unison and Mult (fixed), a shaper's Stack (a voice's and an
-  effect's, without a label) and a MIDI source's CC show as steppers
+  effect's, without a label), a MIDI source's CC and the SEQ card's Speed, Length, Octave and Transpose show as steppers
   rather than knobs: the number in a field, − and + at the field's ends and its steps along the field's foot, a tick
-  each where they fit 2.5 px apart or more (the one set lit), else a track with the value's place marked. Every other
+  each where they fit 2.5 px apart or more (the one set lit), else a track filled to the value (from its middle where
+  the range has 0 there), with no line across it. Every other
   stepped value stays a knob. A stepper takes what a knob takes: a drag up and down a step every 10 px (Voices
   doubling every 40), the wheel a step a notch, a double-click to reset, Ctrl+Click or a double-click on its label to
   type, a source's handle dropped on it where its value takes modulation, its depth handles under it; − and + step it

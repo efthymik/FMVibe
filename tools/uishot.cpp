@@ -6274,6 +6274,33 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
               "the SEQ card's size button and a double-click on its tab switch the view between its full and half "
               "size, kept in the user's settings");
     }
+    // Speed, Length, Octave and Transpose are steppers: Length's + steps the pattern a bar longer and its - back, each an
+    // undo step; and Transpose's field, a track at 49 steps, fills to +12 without a line across the track at the value
+    // (read off the rendered pixels).
+    {
+        auto centerOf = [](int i) { return Point{detail::seqKnobCenterRect(i).x, detail::seqKnobCenterRect(i).y}; };
+        const Point length = centerOf(1), transpose = centerOf(5);
+        const int lengthIndex = paramIndex(0, SeqPatternParam::Length);
+        const double barsBefore = model.value(lengthIndex);
+        click(view, {length.x + 21.0f, length.y + 2.0f});
+        const bool longer = model.value(lengthIndex) == barsBefore + 1.0;
+        click(view, {length.x - 21.0f, length.y + 2.0f});
+        const bool back = model.value(lengthIndex) == barsBefore;
+        const int transposeIndex = paramIndex(SeqParam::Transpose);
+        const double transposeBefore = model.value(transposeIndex);
+        model.set(transposeIndex, 12.0);
+        view.poll();
+        view.mouseMove({600.0f, 300.0f}, {});
+        const bool stepShot = renderer.save(view, dir / "36u-seq-steppers.png");
+        const bool noLine = renderer.pixel({transpose.x + 11.0f, transpose.y + 10.0f}) ==
+                            renderer.pixel({transpose.x - 11.0f, transpose.y + 10.0f});
+        model.set(transposeIndex, transposeBefore);
+        view.poll();
+        std::printf("      Length stepped %.0f -> %s, back %s; Transpose's track %s\n", barsBefore, longer ? "+1" : "?",
+                    back ? "yes" : "no", noLine ? "without a line" : "with a line");
+        check(longer && back && stepShot && noLine,
+              "the SEQ card's Speed, Length, Octave and Transpose are steppers, a track filled to its value with no line");
+    }
     // Swing, Gate, Humanize and Velocity are modulation targets: Macro 1's handle dropped on Gate's knob modulates it
     // (its ring drawn, read off the rendered pixels), undoably, and dropped on Octave's, which isn't one, nothing.
     {
