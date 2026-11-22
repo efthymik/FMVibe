@@ -163,6 +163,7 @@ private:
     std::unique_ptr<Menu> menu_;
     bool resized_ = false;
     float dpiScale_ = 1.0f;
+    bool hostScaled_ = false; // the host gave a scale (setScale()), which the desktop's no longer overrides
     uint32_t askedWidth_ = 0; // the width the editor last asked for: a size the host sets at it is no new zoom
     uint32_t width_ = 0;
     uint32_t height_ = 0;

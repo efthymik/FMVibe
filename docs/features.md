@@ -2500,4 +2500,6 @@ of the host's drawn through Cairo (XWayland included; no Wayland and no GTK is l
 - **The editor's clock** is the host's: CLAP's timer-support, VST3's `Linux::IRunLoop` (a 16 ms timer), with a fallback
   where the host offers neither. Only the entry points are exported (`clap_entry`; `GetPluginFactory`, `ModuleEntry`,
   `ModuleExit`), so a CLAP and a VST3 loaded in one process can't bind each other's symbols.
+- **The editor's scale** is the host's where it gives one (CLAP's `set_scale`, VST3's content scale factor), else the
+  desktop's `Xft.dpi` over 96: the editor opens at that scale, its zoom kept.
 - Text is drawn in Inter (`FMVIBE_FONT` picks another family), and typing takes Latin-1 — no compose or IME.

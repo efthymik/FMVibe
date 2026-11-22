@@ -77,15 +77,19 @@ constexpr int kScreenMargin = 16; // room around the editor for the window frame
 
 struct ScreenSize {
     uint32_t width = 0, height = 0;
+    float scale = 1.0f; // the desktop's (see desktopScale())
 };
 
-// The screen's size, or nothing when there is no display to ask.
+float desktopScale(Display *display);
+
+// The screen's size and the desktop's scale, or nothing and 1 when there is no display to ask.
 ScreenSize screenSize() {
     static const ScreenSize size = [] {
         ScreenSize found;
         if (Display *display = XOpenDisplay(nullptr)) {
             found.width = static_cast<uint32_t>(DisplayWidth(display, DefaultScreen(display)));
             found.height = static_cast<uint32_t>(DisplayHeight(display, DefaultScreen(display)));
+            found.scale = desktopScale(display);
             XCloseDisplay(display);
         }
         return found;
@@ -728,7 +732,8 @@ private:
 
 // --- the editor ----------------------------------------------------------------------------------------------------
 
-float Editor::systemScale() { return 1.0f; }
+// The desktop's scale, as the editor opens at it: the size a host asks for before the window comes is at it already.
+float Editor::systemScale() { return screenSize().scale; }
 
 Editor::Editor(Controller &controller) : controller_(controller), view_(controller) {
     dialogs_ = std::make_unique<Dialogs>();
@@ -765,6 +770,9 @@ Editor::~Editor() {
         for (unsigned long cursor : cursors_)
             if (cursor)
                 XFreeCursor(display_, cursor);
+        // The errors still on their way come back now, while the display is ours and they are ignored: a window the
+        // host destroyed first answers BadWindow, which the host's handler (Xlib's ends the process) mustn't see.
+        XSync(display_, False);
         std::erase(ourDisplays_, display_);
         XCloseDisplay(display_);
         display_ = nullptr;
@@ -838,7 +846,6 @@ bool Editor::attach(WindowId parent) {
     ourDisplays_.push_back(display_);
     if (int (*previous)(Display *, XErrorEvent *) = XSetErrorHandler(ourXError); previous != ourXError)
         hostXErrorHandler_ = previous; // the host's, kept for errors that aren't ours
-    dpiScale_ = desktopScale(display_);
     // The host's window may be of another visual and depth than the screen's default (a 32-bit one, say): the child
     // takes its parent's, and the surface is made for that same visual, or the drawing would not match the window.
     XWindowAttributes parentAttributes{};
@@ -854,6 +861,7 @@ bool Editor::attach(WindowId parent) {
     window_ = XCreateWindow(display_, parent, 0, 0, width_, height_, 0, depth, InputOutput, visual,
                             CWEventMask | CWBackPixmap, &attributes);
     if (!window_) {
+        XSync(display_, False); // its errors, as in ~Editor(), while they are still ignored
         std::erase(ourDisplays_, display_);
         XCloseDisplay(display_);
         display_ = nullptr;
@@ -863,7 +871,10 @@ bool Editor::attach(WindowId parent) {
     XMapWindow(display_, window_);
     XFlush(display_);
     invalidate();
-    followScale(desktopScale(display_), false); // a screen scaled unlike 96 DPI: the host is asked for the size
+    // The editor opened at the desktop's scale (systemScale()), unless the host gave one (CLAP's set_scale, VST3's
+    // content scale): only a desktop scaled otherwise by now has the host asked for another size.
+    if (!hostScaled_)
+        followScale(desktopScale(display_), false);
     return true;
 }
 
@@ -872,7 +883,10 @@ void Editor::setScale(double scale) {
         followScale(static_cast<float>(scale), true);
 }
 
-void Editor::followScale(float scale, bool) {
+// The editor at another scale, its zoom kept. Before its window is made, the size is just its own: the host asks for
+// it (get_size, getSize()) and makes the window at it. After, the host is asked for it.
+void Editor::followScale(float scale, bool fromHost) {
+    hostScaled_ = hostScaled_ || fromHost;
     if (scale <= 0.05f || std::fabs(scale - dpiScale_) < 1e-3f)
         return;
     const float previous = dpiScale_;
@@ -882,6 +896,11 @@ void Editor::followScale(float scale, bool) {
     fit(width, height);
     keepOnScreen(width, height);
     askedWidth_ = width; // the host then sets it (setSize()), the zoom kept
+    if (!window_) {
+        width_ = width;
+        height_ = height;
+        return;
+    }
     if (width != width_ || height != height_)
         controller_.requestEditorSize(width, height);
 }

@@ -21,6 +21,7 @@
 #include <cstdio>
 #include <cstring>
 #include <dlfcn.h>
+#include <functional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -33,6 +34,58 @@ void check(bool ok, const char *what) {
     std::printf("%s  %s\n", ok ? "ok  " : "FAIL", what);
     if (!ok)
         ++failures;
+}
+
+int ignoreXError(Display *, XErrorEvent *) { return 0; }
+
+// What a window shows, up to `width` × `height` from its top left, once it shows. Under a window manager (a desktop's,
+// WSLg's) the host's window is shown a moment after it is mapped, and may sit partly off the screen: XGetImage on a
+// window not yet viewable, or past the screen's edge, answers BadMatch, which Xlib's own handler ends the process on.
+// So this waits for it to be viewable (up to 2 s, `pump` running the editor meanwhile, and a few frames more for it to
+// paint what it was exposed for), reads only what is on the screen, and lets an error there pass. Null if it never
+// shows; the image may be smaller than asked.
+XImage *grabShown(Display *display, Window window, int width, int height, const std::function<void()> &pump) {
+    XWindowAttributes attributes{};
+    for (int wait = 0; wait < 200; ++wait) {
+        if (XGetWindowAttributes(display, window, &attributes) && attributes.map_state == IsViewable)
+            break;
+        pump();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    if (attributes.map_state != IsViewable)
+        return nullptr;
+    for (int frame = 0; frame < 8; ++frame) {
+        pump();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    XGetWindowAttributes(display, window, &attributes);
+    int x = 0, y = 0;
+    Window ignored = None;
+    XTranslateCoordinates(display, window, DefaultRootWindow(display), 0, 0, &x, &y, &ignored);
+    const int screenWidth = DisplayWidth(display, DefaultScreen(display));
+    const int screenHeight = DisplayHeight(display, DefaultScreen(display));
+    const int left = std::max(0, -x), top = std::max(0, -y);
+    const int right = std::min({width, attributes.width, screenWidth - x});
+    const int bottom = std::min({height, attributes.height, screenHeight - y});
+    if (right - left < 8 || bottom - top < 8)
+        return nullptr;
+    XSync(display, False);
+    int (*previous)(Display *, XErrorEvent *) = XSetErrorHandler(ignoreXError);
+    XImage *image = XGetImage(display, window, left, top, static_cast<unsigned>(right - left),
+                              static_cast<unsigned>(bottom - top), AllPlanes, ZPixmap);
+    XSync(display, False);
+    XSetErrorHandler(previous);
+    return image;
+}
+
+// Whether an image holds more than one color: the editor's own drawing shows.
+bool notFlat(XImage *image) {
+    const unsigned long first = XGetPixel(image, 0, 0);
+    for (int y = 0; y < image->height; y += 4)
+        for (int x = 0; x < image->width; x += 4)
+            if (XGetPixel(image, x, y) != first)
+                return true;
+    return false;
 }
 
 // --- CLAP ----------------------------------------------------------------------------------------------------------
@@ -240,21 +293,20 @@ void testClap(const char *path) {
         }
         bool painted = false;
         if (child) {
-            XWindowAttributes attributes{};
-            XGetWindowAttributes(display, child, &attributes);
-            XSync(display, False);
-            if (XImage *image = XGetImage(display, child, 0, 0, 200, 200, AllPlanes, ZPixmap)) {
-                const unsigned long first = XGetPixel(image, 0, 0);
-                for (int y = 0; y < 200 && !painted; y += 4)
-                    for (int x = 0; x < 200 && !painted; x += 4)
-                        painted = XGetPixel(image, x, y) != first;
+            const auto pumpClap = [&] {
+                if (host.pluginTimer)
+                    host.pluginTimer->on_timer(plugin, 1);
+                if (host.callback.exchange(false))
+                    plugin->on_main_thread(plugin);
+            };
+            if (XImage *image = grabShown(display, child, 200, 200, pumpClap)) {
+                painted = notFlat(image);
                 XDestroyImage(image);
             }
             // FMVIBE_SHOT=file.ppm saves the whole editor: a look at what the host's window shows.
             if (const char *shot = std::getenv("FMVIBE_SHOT")) {
-                const int shotWidth = std::min(attributes.width, 900), shotHeight = std::min(attributes.height, 700);
-                if (XImage *image = XGetImage(display, child, 0, 0, static_cast<unsigned>(shotWidth),
-                                              static_cast<unsigned>(shotHeight), AllPlanes, ZPixmap)) {
+                if (XImage *image = grabShown(display, child, 900, 700, pumpClap)) {
+                    const int shotWidth = image->width, shotHeight = image->height;
                     if (FILE *file = std::fopen(shot, "wb")) {
                         std::fprintf(file, "P6\n%d %d\n255\n", shotWidth, shotHeight);
                         for (int y = 0; y < shotHeight; ++y)
@@ -275,6 +327,43 @@ void testClap(const char *path) {
         gui->hide(plugin);
         gui->destroy(plugin);
         XDestroyWindow(display, parent);
+        XSync(display, False);
+
+        // Again, as a host may: a scale given before the window (CLAP's order, set_scale then get_size), and the
+        // host's window destroyed before the editor. Xlib's own error handler, which ends the process, is the host's:
+        // the editor's errors on its window gone (BadWindow) must not reach it.
+        XSetErrorHandler(nullptr);
+        check(gui->create(plugin, CLAP_WINDOW_API_X11, false), "its editor is made again");
+        uint32_t scaledWidth = 0, scaledHeight = 0;
+        check(gui->set_scale(plugin, 0.5) && gui->get_size(plugin, &scaledWidth, &scaledHeight) &&
+                  scaledWidth < width && scaledHeight < height,
+              "a scale given before its window sizes the editor");
+        const Window doomed = XCreateSimpleWindow(display, DefaultRootWindow(display), 0, 0, 1300, 1080, 0, 0, 0);
+        XMapWindow(display, doomed);
+        XSync(display, False);
+        window.x11 = doomed;
+        check(gui->set_parent(plugin, &window) && gui->show(plugin), "it goes into a host's window again");
+        for (int frame = 0; frame < 3; ++frame) {
+            if (host.pluginTimer)
+                host.pluginTimer->on_timer(plugin, 1);
+            std::this_thread::sleep_for(std::chrono::milliseconds(16));
+        }
+        Window scaledChild = None;
+        if (XQueryTree(display, doomed, &root, &above, &children, &count) && children) {
+            if (count > 0)
+                scaledChild = children[count - 1];
+            XFree(children);
+        }
+        XWindowAttributes scaled{};
+        check(scaledChild && XGetWindowAttributes(display, scaledChild, &scaled) &&
+                  static_cast<uint32_t>(scaled.width) == scaledWidth,
+              "its window opens at the size the scale gave, not the desktop's");
+        XDestroyWindow(display, doomed); // the host's window goes first, the editor's child with it
+        XSync(display, False);
+        if (host.pluginTimer)
+            host.pluginTimer->on_timer(plugin, 1); // the editor's events, on a window that is gone
+        gui->destroy(plugin);
+        check(true, "an editor whose host window went first closes, the host still running");
         XCloseDisplay(display);
     }
 
@@ -468,12 +557,8 @@ void testVst3(const char *path) {
             }
             bool painted = false;
             if (child) {
-                XSync(display, False);
-                if (XImage *image = XGetImage(display, child, 0, 0, 200, 200, AllPlanes, ZPixmap)) {
-                    const unsigned long first = XGetPixel(image, 0, 0);
-                    for (int y = 0; y < 200 && !painted; y += 4)
-                        for (int x = 0; x < 200 && !painted; x += 4)
-                            painted = XGetPixel(image, x, y) != first;
+                if (XImage *image = grabShown(display, child, 200, 200, [&] { frame.runLoop.tick(); })) {
+                    painted = notFlat(image);
                     XDestroyImage(image);
                 }
             }

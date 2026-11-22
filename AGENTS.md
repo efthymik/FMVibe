@@ -1087,7 +1087,10 @@ there is one.
 - **The editor's window**: an X11 child of the host's window, painted into a Cairo image buffer and copied in whole or
   by what changed, so a frame is never shown half drawn; the host's timer (CLAP's timer-support, VST3's run loop)
   pumps its events, poll and paint. `tests/linux_host.cpp` opens it in a window of its own, checks that it paints, and
-  with `FMVIBE_SHOT=file.ppm` writes what it shows.
+  with `FMVIBE_SHOT=file.ppm` writes what it shows; then opens it again under Xlib's own error handler (which ends the
+  process), at a scale given before its window (opening at that size), and destroys the host's window before the
+  editor, the host still running after. It reads a window's pixels only once the window shows and only what of it is
+  on the screen (`grabShown()`), as a window manager (a desktop's, WSLg's) shows the host's window a moment late.
 
 - **Looking at the editor**: the snapshots are PNGs in `build/linux/ui-shots`, one or more for each step that
   `tools/uishot.cpp` replays; an agent can open them as images. To see a change, render the snapshots and open the
