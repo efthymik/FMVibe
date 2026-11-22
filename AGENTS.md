@@ -183,9 +183,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     requests one at once;
   - the latency extension reporting the voices' decimator's couple of samples, and about 5 more with a shaper effect
     in the line, a state that moves it, loaded while active, asking for a restart, and the reactivation telling the
-    host's latency extension; a note held through that restart playing on at its sustain level, with no new attack,
-    and its `NOTE_END` coming once after its release, where an activate the plugin didn't ask for ends the notes,
-    reporting each one's end.
+    host's latency extension; a note held as the state loads holding that restart off until its key is let go
+    (asked for then, from the main-thread callback) and playing on through it in its release, with no new attack,
+    its `NOTE_END` coming once, where a key struck after the restart was asked for and still down as it comes ends
+    its note, as does an activate the plugin didn't ask for, reporting each one's end.
 
   It opens the editor inside a hidden host window, where the preset bar's next arrow loads a preset with no param
   events, the host asked to rescan the values and marking the project changed, and drags the Volume knob with mouse
@@ -983,9 +984,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     controller's copy of a value from the host left alone while processing, and a voice limit past the voices
     allocated, stepped up a block at a time, asking the host for one restart once it has settled (the plugin's
     window's timer), the latency the CLAP plugin reports (the voices' decimator's), asked for
-    while inactive what the next activation makes it, a note held as a state with a shaper effect loads playing on
-    through the restart it asks for (setProcessing(false), setActive(false) and back) at its sustain level with no new
-    attack, processing stopped and started again with that restart asked for and none made ending the note, and
+    while inactive what the next activation makes it, a note held as a state with a shaper effect loads holding the
+    restart it asks for off until its key is let go, then playing on through it (setProcessing(false),
+    setActive(false) and back) in its release with no new attack, processing stopped and started again with that
+    restart asked for and none made ending the note, and
     `setActive()` out of memory answering `kOutOfMemory` and going through once there is room;
   - the state: the CLAP plugin's bytes, through a stream that moves 5 bytes at a time, the controller's own state
     empty, a value from the host taken while not processing, loading bringing the saved value back and having the
@@ -1139,8 +1141,10 @@ version pinned at its top. After that it loads Visual Studio's environment for C
 - On a touchscreen, `main.js` hands the editor one finger (`View::touchDown()` and on: it drags what drags, pans
   what scrolls, and taps), with its own slop and double tap, preventing its moves so the page doesn't scroll. Two
   fingers are the page's: the canvas's `touch-action: manipulation` lets the browser scroll and pinch-zoom the page
-  with them, so a phone can always scroll past the editor. A second finger landing (on the canvas or off it) ends
-  the first's gesture with `View::touchCancel()`, and the editor takes nothing more until every finger is lifted.
+  with them, so a phone can always scroll past the editor. A second finger landing (on the canvas or off it), or a
+  move the browser won't let be cancelled once the finger is past the slop (the page scrolling already), ends the
+  first's gesture with `View::touchCancel()`, and the editor takes nothing more until every finger is lifted; a
+  finger left over from two, while the page isn't scrolling, is cancelled too.
   `View::touchPanBegin()` and on, the plugin window's two-finger pan, go unused there (uishot still tests them).
 - The page's Full screen button puts the whole page (so the editor's menu and messages show) in full screen through
   the Fullscreen API, with the `webkit` calls as a fallback, and hides where neither is (an iPhone's Safari). In full
@@ -1502,8 +1506,11 @@ itself.
   oversampling factor need one). So does an edit or a state that moves the latency (`PluginCore::latency()`: the
   voices' decimator's delay and the effects' latest path's, see `src/fxlag.h`), which the plugin reports to hosts as
   of its last activate (CLAP's latency extension, telling the host's `changed()` from activate, and VST3's
-  `getLatencySamples()`). What VST3 only allows on the main thread, and the audio thread may ask for,
-  goes through a message-only window there. Each voice takes about
+  `getLatencySamples()`), but not while a key or a sustain pedal holds a note (`Synth::holdsKeys()`, which
+  `endBlock()` keeps in `keysHeld_`): a key let go while the plugin is inactive would reach no voice, so the audio
+  thread has the main-thread callback ask once they are all up, and an activate keeps the voices only while none is
+  held. A voice limit still settling holds every restart off, so they come as one. What VST3 only allows on the main
+  thread, and the audio thread may ask for, goes through a message-only window there. Each voice takes about
   86 KB at 48 kHz, mostly the two comb filters' delay lines, which grow with the oversampling: at the default
   2x, about 125 KB, so 512 voices reserve about 64 MB. Voices isn't automatable for the same reason. The comb lines,
   and the effects' delay lines (every slot has every type's, a few MB a slot), are `ZeroBuffer`s

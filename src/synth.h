@@ -307,6 +307,10 @@ public:
     bool sequencerAwake() const { return seq_.wantsProcessing() || seq_.sounding(); }
     // Whether the sequencer's curves take the pitch bend, the mod wheel or a macro's knob anywhere now.
     bool seqCurvesApplied() const { return seqBend_ != 0.0 || seqWheel_ != 0.0 || seqMacroHeld_ != 0; }
+    // Whether a key or a sustain pedal holds a note whose end only a later event can bring: a key down (the sequencer's
+    // taken keys too) or a note the pedal holds. Not the sequencer's own notes, nor those the editor plays to be heard,
+    // nor notes in their release. Audio thread.
+    bool holdsKeys() const;
     // Effects still sounding after the voices ended (delay echoes).
     bool effectsRinging() const { return effects_->ringing(); }
     // Whether the voice filters, parametric EQs and filter effects measure their output for the editor, as do the effects

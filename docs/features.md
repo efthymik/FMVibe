@@ -913,7 +913,8 @@ What the plugin does and how its editor works, in full. Building and installing 
   out the ones past it at once, as stealing does. Raising it past the voices allocated takes a restart (see
   Restarting, under CLAP and VST3), which waits until the limit has settled: while the Voices knob is held, and then
   until it (or a host stepping the param) has left it alone for half a second, so a drag or a run of steps asks once,
-  for where it stops. A project or a preset loaded asks at once. Voices are stereo all the way through the filters.
+  for where it stops; any other restart needed meanwhile (a new latency, another oversampling) waits with it, so
+  they come as one. A project or a preset loaded asks at once. Voices are stereo all the way through the filters.
   Voices without any unison spread run their filters once, so they cost no more than mono voices.
 - **Oversampling**: the voices (operators, shapers, filters and their drive) run at 1, 2, 4 or 8 times the host rate, 2 by
   default, and come back down through a polyphase IIR half-band decimator: flat to 20 kHz, about 2 samples late at
@@ -2433,13 +2434,16 @@ at the oversampling (about 2 samples at 2x, none at 1x) and the effects' latest 
 rounded to whole samples, as the plugin was last activated (a VST3 host asking while it is inactive hears what the next
 activation will make it). An edit, once it is whole, or a state that moves it asks the host for a restart, whose activate
 reports the new one (a CLAP host is told through its latency extension's `changed()`); an edit that leaves it as it was,
-an effect moved along the line say, asks for none.
+an effect moved along the line say, asks for none. While a key, or a sustain pedal, holds a note, the restart a new
+latency takes waits until they are all up (a key let go while the plugin is inactive would reach no voice, and its
+note would sound on), and is asked for then.
 
 The notes play on through a restart the plugin asked for (the one a new latency asks for, say), when its activate comes
-within a second of the deactivate, at the same sample rate and oversampling, with as many voices allocated as the limit
-needs or more: the voices, their envelopes, the sequencer and the effects carry on where they were, and only the latency
-is new. A note's end is reported once, after its release, as the host's key comes up (a CLAP host keeps its note ids).
-Any other activate (for more voices or another oversampling, at another rate, or one the plugin didn't ask for, a device
+within a second of the deactivate, with no key or pedal holding a note, at the same sample rate and oversampling, with
+as many voices allocated as the limit needs or more: the voices (the notes in their release, and the sequencer's), their
+envelopes, the sequencer and the effects carry on where they were, and only the latency is new, each note's end
+reported once (a CLAP host keeps its note ids). Any other activate (with a key struck since the restart was asked for
+still down, for more voices or another oversampling, at another rate, or one the plugin didn't ask for, a device
 switched off and on again, say) allocates the voices again and ends the notes playing, each one's end reported in the
 next block. A VST3 host stopping processing ends them too, unless a restart was asked for: then they end only if
 processing starts again without it.
@@ -2471,6 +2475,7 @@ What the VST3 plugin does its own way:
   (through a latency change, which has hosts do that). A voice limit raised by hand or by the host asks once it has
   settled (see Notes), from a timer on the main thread: CLAP's timer-support, where the host has it (a host without
   it is asked at its next main-thread callback), and in VST3 the plugin's own window's. Stopping processing ends the
-  notes, but not on the way to the restart asked for, which they play on through as in the CLAP plugin.
+  notes, but not on the way to the restart asked for, which the notes in their release play on through as in the CLAP
+  plugin.
 - **Not in VST3**: CLAP's per-voice and global host modulation, Bitwig's remote-control pages, and the note-end
   reports that per-voice modulation needs.

@@ -1224,6 +1224,19 @@ void Synth::shareChanged(const ParamValues &params) {
     }
 }
 
+bool Synth::holdsKeys() const {
+    auto byKey = [](const NoteRef &note) { return note.port != kSeqPort && note.port != kAuditionPort; };
+    if (keysTakenCount_ > 0)
+        return true;
+    for (const HeldNote &held : held_)
+        if (byKey(held.note))
+            return true;
+    for (const Voice *v : active_)
+        if (live(*v) && !v->released && byKey(v->note)) // a pedal's note too (sustained, not released)
+            return true;
+    return false;
+}
+
 void Synth::feedSeqFeel(const ParamValues &params) {
     // What is set, with the host's and the macros' modulation, and the slots of the newest voice, or with none, the
     // last one's as the effects ring out (see fxTailBlock()), as the effects take theirs: the sequencer is shared too.

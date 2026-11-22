@@ -433,7 +433,8 @@ canvas.addEventListener('wheel', (e) => {
 // click, two quick ones a double-click (see View::touchDown()). A long press opens the menu a right-click would.
 // Two fingers are the page's: they scroll and zoom it as the browser does (the canvas's touch-action lets it), so a
 // phone can always scroll past the editor. A second finger landing ends what the first was doing, dropping nothing,
-// and the editor hears no more of either until every finger is lifted.
+// and the editor hears no more of either until every finger is lifted; a finger left over once the other lifts scrolls
+// nothing more, unless the page is scrolling already.
 const TOUCH_SLOP = 10;         // CSS pixels a finger may jitter and still tap
 const DOUBLE_TAP_MS = 400;
 let touchMode = null;          // 'one'; 'page' while two fingers are the browser's; 'done' until the fingers left over are lifted
@@ -479,9 +480,10 @@ canvas.addEventListener('touchstart', (e) => {
   // Never prevented: the browser decides at a touch's start whether it may scroll, and two fingers' must.
 }, {passive: true});
 
-// The second finger may land off the canvas, where the canvas hears no touchstart of its own.
+// The second finger may land off the canvas, where the canvas hears no touchstart of its own. Two fingers are the
+// page's whatever one finger was left doing (after a long press's menu, or left over from two before).
 document.addEventListener('touchstart', (e) => {
-  if (e.touches.length > 1 && touchMode !== 'done')
+  if (e.touches.length > 1)
     touchToPage();
 }, {passive: true});
 // And the last finger may be lifted off it.
@@ -493,8 +495,17 @@ for (const kind of ['touchend', 'touchcancel']) {
 }
 
 canvas.addEventListener('touchmove', (e) => {
-  if (touchMode === 'one' && e.touches.length > 1)
-    touchToPage();
+  // A second finger, or the browser scrolling already (a move it won't let be cancelled, past where a browser starts
+  // a scroll; one in its slop may come so without one): the page's, never the page scrolling while a knob turns.
+  if (touchMode === 'one') {
+    const t = touchOf(e.touches);
+    const far = t !== null && Math.hypot(t.clientX - touchStart[0], t.clientY - touchStart[1]) > 2 * TOUCH_SLOP;
+    if (e.touches.length > 1 || (!e.cancelable && far))
+      touchToPage();
+  }
+  // A finger left over from two while the page isn't scrolling: neither the page's nor the editor's until it is lifted.
+  if (touchMode === 'page' && e.touches.length < 2 && e.cancelable)
+    touchMode = 'done';
   if (touchMode === 'page' || touchMode === null)
     return; // the browser's: it scrolls or zooms the page
   if (e.cancelable)

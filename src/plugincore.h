@@ -166,9 +166,10 @@ public:
     // Main thread, while inactive: allocates the voices, for the current voice limit and oversampling, and takes the
     // latency the host is told. False where there isn't the memory for them: the host is told so, and the plugin plays
     // silence (see outOfMemory()) until an activate goes through. The activate of a restart the plugin asked for
-    // (restartPending()), coming soon after the deactivate and finding the voices fit to run as they are
-    // (Synth::fits()), keeps them: the notes play on through it, their envelopes, the sequencer and the effects where
-    // they were, and only the latency is new. Any other ends the notes, which the next block reports.
+    // (restartPending()), coming soon after the deactivate, with no key or pedal holding a note (a key let go meanwhile
+    // would reach no voice) and finding the voices fit to run as they are (Synth::fits()), keeps them: the notes in
+    // their release and the sequencer's play on through it, their envelopes, the sequencer and the effects where they
+    // were, and only the latency is new. Any other ends the notes, which the next block reports.
     bool activate(double sampleRate);
     // Whether the last activate() found no memory, which leaves the voices unfit to run. Any thread.
     bool outOfMemory() const { return outOfMemory_.load(std::memory_order_relaxed); }
@@ -313,7 +314,8 @@ private:
     // A new oversampling factor takes a deactivate/activate, like more voices.
     void restartIfNeeded();
     // Asks the host for a restart when the voices, the oversampling or the latency need one, unless it was asked for
-    // this already; voices still settling (see voiceLimitChanged()) need none yet. Thread-safe.
+    // this already; nothing while a voice limit is still settling (see voiceLimitChanged()), and the latency alone
+    // nothing while keys are held (see keysHeld_). Thread-safe.
     void askRestart();
     // The latency the params make now, at the rate and oversampling activate() took (see latency()).
     int latencyNow() const;
@@ -345,8 +347,15 @@ private:
     // deactivate/activate: what the restart was last asked for (the voices times 16 plus the factor, times 4096, plus
     // the latency), or 0. A host that doesn't restart is asked again once something else needs one.
     std::atomic<int> restartAskedFor_{0};
+    // Audio thread, each block: whether a key or a sustain pedal holds a note (see Synth::holdsKeys()). A restart for
+    // the latency alone waits while one does (latencyWaiting_), since a key let go while the plugin is inactive would
+    // reach no voice, and the activate keeps the voices only while none does; once they are all up, the audio thread
+    // has the main-thread callback ask for it (latencyDue_).
+    std::atomic<bool> keysHeld_{false};
+    std::atomic<bool> latencyWaiting_{false};
+    std::atomic<bool> latencyDue_{false};
     // When a voice limit raised past the voices allocated will have settled, in steadyMs(), or 0: until then
-    // askRestart() leaves the voices out, and onTimer() asks once it is past. Written by either thread.
+    // askRestart() asks for nothing, and onTimer() asks once it is past. Written by either thread.
     std::atomic<int64_t> voicesSettleAt_{0};
     // Main thread: how many of the editor's gestures on Voices are open (they hold the restart off), and whether
     // hostTimer() is on.

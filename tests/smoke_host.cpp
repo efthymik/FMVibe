@@ -4664,15 +4664,19 @@ int main(int argc, char **argv) {
               "the latency is the voices' and an oversampled effect's, and a state that moves it restarts the plugin, "
               "telling the host");
 
-        // A note held as a shaper effect goes into the line (a state holding one loaded, which asks for the restart its
-        // latency takes) plays on through the restart: at its sustain level, with no new attack (a slow one, which
-        // would start it from silence again), and its NOTE_END once after its release. An activate the plugin didn't
-        // ask for ends the notes, reporting each one's end.
+        // A note held as a shaper effect goes into the line (a state holding one loaded) holds the restart its latency
+        // takes off until its key is let go: a key let go while the plugin is inactive would reach no voice. Asked for
+        // then, from the main-thread callback, the restart keeps the voices: the note plays on through it in its
+        // release, with no new attack (a slow one, which would start it from silence again), and its NOTE_END comes
+        // once. A key held as the restart comes ends its note, reported; as does an activate the plugin didn't ask for.
         {
             setParams(none);
-            setParams({{paramIndex(0, OpParam::Attack), normFromEnvTime(0.3)}, {paramIndex(0, OpParam::Sustain), 0.5}});
+            setParams({{paramIndex(0, OpParam::Attack), normFromEnvTime(0.3)}, {paramIndex(0, OpParam::Sustain), 0.5},
+                       {paramIndex(0, OpParam::Release), normFromEnvTime(1.0)}});
             reactivate(); // at the latency without a shaper
             const uint32_t unshaped = latency ? latency->get(plugin) : 0;
+            MemoryStream unshapedState;
+            const bool unshapedSaved = state->save(plugin, &unshapedState.out);
             setParams({{paramIndex(0, FxParam::Type), static_cast<double>(FxType::Shaper)}});
             MemoryStream shaperState;
             const bool shaperSaved = state->save(plugin, &shaperState.out);
@@ -4684,29 +4688,50 @@ int main(int argc, char **argv) {
             runBlocks(blocksPerSecond * 3 / 2); // past the attack and the decay, at the sustain
             restartRequests = 0;
             const bool shaperLoaded = state->load(plugin, &shaperState.in);
-            const int restartsAsked = restartRequests;
             runBlocks(blocksPerSecond / 4); // the shaper fades in
+            plugin->on_main_thread(plugin);
+            const int whileHeld = restartRequests;
             const float sustained = runBlocks(blocksPerSecond / 10);
+            runBlock({&off.header});
+            plugin->on_main_thread(plugin); // the callback the audio thread asked for as the key came up
+            const int letGo = restartRequests;
+            runBlocks(blocksPerSecond / 10);
+            const float before = runBlock();
             reactivate(); // as the host restarts it
             const float firstAfter = runBlock();
-            const float after = runBlocks(blocksPerSecond / 10);
             const uint32_t shapedLatency = latency ? latency->get(plugin) : 0;
-            const bool heldOn = out.noteEnds.empty();
-            runBlock({&off.header});
-            for (uint32_t b = 0; b < 2 * blocksPerSecond && out.noteEnds.empty(); ++b)
+            const bool playedOn = out.noteEnds.empty();
+            for (uint32_t b = 0; b < 3 * blocksPerSecond && out.noteEnds.empty(); ++b)
                 runBlock();
             runBlocks(blocksPerSecond); // the shaper's DC blocker settling (see Effects)
             const float released = runBlock();
             const bool endedOnce = out.noteEnds.size() == 1 && out.noteEnds[0].note_id == 900;
-            std::printf("      a note held through the restart a shaper effect asks for: %.4f before it, %.4f in its "
-                        "first block after and %.4f on (the attack's first block %.4f); latency %u, then %u\n",
-                        sustained, firstAfter, after, attackStart, unshaped, shapedLatency);
-            check(shaperSaved && shaperLoaded && restartsAsked == 1 && shapedLatency > unshaped && heldOn &&
-                      sustained > 0.01f && attackStart < 0.2f * sustained &&
-                      std::fabs(firstAfter / sustained - 1.0f) < 0.1f && std::fabs(after / sustained - 1.0f) < 0.1f &&
-                      endedOnce && released < 1e-4f,
-                  "a note held through the restart a shaper effect asks for plays on at its sustain, with no new "
-                  "attack, and ends once after its release");
+            std::printf("      a note let go of before the restart a shaper effect asks for: restarts asked for while "
+                        "held %d, let go %d; %.4f at its sustain, %.4f before the restart, %.4f in its first block "
+                        "after (the attack's first block %.4f); latency %u, then %u\n",
+                        whileHeld, letGo, sustained, before, firstAfter, attackStart, unshaped, shapedLatency);
+            check(shaperSaved && shaperLoaded && whileHeld == 0 && letGo == 1 && shapedLatency > unshaped && playedOn &&
+                      sustained > 0.01f && attackStart < 0.2f * sustained && before > 0.01f &&
+                      firstAfter > 0.8f * before && firstAfter < 1.1f * before && endedOnce && released < 1e-4f,
+                  "a restart for the latency waits for the keys held to come up, and the note then plays on through "
+                  "it in its release, with no new attack, and ends once");
+
+            // The latency back without the shaper, asked for with no key down; a key struck before the host restarts
+            // ends its note at the restart, reported.
+            out.noteEnds.clear();
+            restartRequests = 0;
+            const bool unshapedLoaded = state->load(plugin, &unshapedState.in);
+            const int askedUp = restartRequests;
+            const clap_event_note_t struck = noteEvent(CLAP_EVENT_NOTE_ON, 902, 57);
+            runBlock({&struck.header});
+            runBlocks(blocksPerSecond / 2);
+            reactivate();
+            const float cutStruck = runBlock();
+            const bool struckReported = out.noteEnds.size() == 1 && out.noteEnds[0].note_id == 902;
+            runBlocks(blocksPerSecond / 4);
+            check(unshapedSaved && unshapedLoaded && askedUp == 1 && cutStruck == 0.0f && struckReported &&
+                      out.noteEnds.size() == 1 && latency && latency->get(plugin) == unshaped,
+                  "a key held as the restart asked for comes ends its note, reporting its end once");
 
             out.noteEnds.clear();
             const clap_event_note_t again = noteEvent(CLAP_EVENT_NOTE_ON, 901, 57);

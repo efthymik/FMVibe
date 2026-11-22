@@ -1600,8 +1600,9 @@ In hosts that show CLAP remote control pages (such as Bitwig Studio), FMVibe off
 FMVibe reports its latency to the host. Raising the voice limit, changing the oversampling, or editing the effects
 in a way that changes the latency has the host restart the plugin briefly. Most hosts do this automatically.
 
-Notes you hold play on through a restart for the effects' latency. Raising the voice limit or changing the
-oversampling stops them.
+When an edit changes the effects' latency while you hold notes, the restart waits until you let go of every key
+(and the sustain pedal), so held notes aren't cut off. The notes then ring out through it. Raising the voice limit or
+changing the oversampling stops them.
 
 ### What is saved where
 
