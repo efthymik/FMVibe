@@ -3108,7 +3108,8 @@ bool SeqPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
             c.fillRect(w.rect, kAccent.alpha(seqMacroMenu_ ? 0.2f : 0.1f), kRadiusMark);
         if (seqMacroMenu_ || hovered || labelLit)
             c.line({w.rect.x + 0.5f, w.rect.y + 3.0f}, {w.rect.x + 0.5f, w.rect.bottom() - 3.0f}, kFaint, 1.0f);
-        paintChevron(c, w.rect.center(), seqMacroMenu_ || hovered ? kText : kDim, ChevronWay::Down, true);
+        paintChevron(c, w.rect.center(), seqMacroMenu_ || hovered ? kText : kDim,
+                     seqMacroMenu_ ? ChevronWay::Up : ChevronWay::Down, true); // up while the list is open
         return true;
     }
     case Kind::SeqMacroMenu:

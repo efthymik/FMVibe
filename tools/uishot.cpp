@@ -7323,10 +7323,22 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
             click(view, rectCenter(labelPart));
             const bool labelShows = model.ui.seqLane == laneOf(0) &&
                                     shotInk("36h-seq-macro-label.png", listInside) == noListInk;
+            // Its arrow points down while the list is shut and up while it is open: ink at its tip, none between its arms.
+            auto brightness = [](uint32_t c) { return (c >> 16 & 0xFF) + (c >> 8 & 0xFF) + (c & 0xFF); };
+            const Point arrowMid = rectCenter(arrowPart);
+            auto pointsDown = [&] {
+                return brightness(renderer.pixel({arrowMid.x, arrowMid.y + 1.5f})) >
+                       brightness(renderer.pixel({arrowMid.x, arrowMid.y - 1.5f})) + 40;
+            };
+            auto pointsUp = [&] {
+                return brightness(renderer.pixel({arrowMid.x, arrowMid.y - 1.5f})) >
+                       brightness(renderer.pixel({arrowMid.x, arrowMid.y + 1.5f})) + 40;
+            };
+            const bool downShut = pointsDown();
             click(view, rectCenter(arrowPart));
             const bool opened = model.ui.seqLane == laneOf(0) &&
                                 shotInk("36h-seq-macro-list.png", listInside) != noListInk;
-            auto brightness = [](uint32_t c) { return (c >> 16 & 0xFF) + (c >> 8 & 0xFF) + (c & 0xFF); };
+            const bool upOpen = pointsUp();
             const Point tabDot{tab.x + 10.0f, tab.center().y};
             const Point rowDot{detail::seqMacroRow(detail::kSeqMacroList, 2).x + 11.0f, detail::seqMacroRow(detail::kSeqMacroList, 2).center().y};
             const uint32_t rowDotBare = renderer.pixel(rowDot);
@@ -7382,6 +7394,7 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
             check(plainAtRest && tabLit, "the MACRO tab looks as the lane's other tabs do, lit only while picked, with no border");
             check(labelHot && arrowHot && labelShows && opened,
                   "the MACRO tab's label and arrow light apart; the label shows its macro and only the arrow opens the list");
+            check(downShut && upOpen, "the MACRO tab's arrow points down while its list is shut and up while it is open");
             check(opened && picked && drawn && undoneMacro,
                   "the MACRO tab's list picks a macro, whose curve the lane shows, drawn alone and undoably");
             check(tabDotFull && rowDotFull, "a macro's dot is faint without a curve, on the MACRO tab and in its list");
