@@ -289,6 +289,10 @@ private:
         std::vector<SeqNote> origin;     // the notes moved, as they were
         bool free = false;               // Shift or Alt held: off the snap's grid
         bool extend = false;             // Velocity: a note put down by a double-click, which across also sets the length
+        // extend: whether the mouse went across (else up and down) on its last move of a few pixels, which the cursor
+        // shows, and where that move ended.
+        bool across = false;
+        Point turnedAt;
         bool unpick = false;             // Shift-pressed on a note picked: let go unmoved, it is no longer picked
         std::vector<int> painted;        // the notes painted so far (Paint)
         std::vector<int> boxBase;        // the notes picked before the box, which Shift adds to

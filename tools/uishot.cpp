@@ -6870,7 +6870,16 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         const Point empty = at(14.3, 62);
         click(view, empty);
         view.doubleClick(empty, {});
+        const bool heldLeftRight = view.cursor() == CursorKind::Horizontal; // before it moves
         view.mouseMove(at(16.3, 62), {});
+        const bool leftRight = view.cursor() == CursorKind::Horizontal;
+        // Then up and down: the cursor turns with it, a pixel or two across leaving it as it was.
+        const Point across = at(16.3, 62);
+        view.mouseMove({across.x + 2.0f, across.y}, {});
+        const bool tremble = view.cursor() == CursorKind::Horizontal;
+        view.mouseMove({across.x + 2.0f, across.y - 12.0f}, {});
+        const bool turned = view.cursor() == CursorKind::Vertical;
+        view.mouseMove(across, {});
         view.mouseUp(at(16.3, 62), {});
         const int rightNote = noteAt(14.0, 62);
         const double rightLength = rightNote >= 0 ? field(rightNote, SeqNoteParam::Length) : -1.0;
@@ -6878,6 +6887,7 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         click(view, empty);
         view.doubleClick(empty, {});
         view.mouseMove(at(12.3, 62), {});
+        const bool leftwards = view.cursor() == CursorKind::Horizontal;
         view.mouseUp(at(12.3, 62), {});
         const int left = noteAt(12.0, 62);
         const double leftLength = left >= 0 ? field(left, SeqNoteParam::Length) : -1.0;
@@ -6886,6 +6896,9 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
                     rightLength, leftLength);
         check(std::abs(rightLength - 3.0) < 1e-6 && std::abs(leftLength - 3.0) < 1e-6 && noteAt(14.0, 62) < 0,
               "a double-click held and dragged across sets the new note's length, to the right its end and to the left its start");
+        check(heldLeftRight && leftRight && tremble && turned && leftwards,
+              "a double-click held shows the cursor left and right until the mouse moves and while it goes across, and "
+              "up and down while it goes up and down");
     }
     // Ctrl+C keeps the notes picked, and Ctrl+V puts them down as they were but for where: at the step under the mouse
     // on the roll, picked, and with the mouse off it after what was copied or pasted last; Ctrl+X takes them away too,

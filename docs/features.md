@@ -1047,7 +1047,9 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     held, off it, following the mouse) (the cursor left-right over
     either end, a handle at each end of a note picked), a drag from an empty place picks the notes the box reaches (Shift adding to
     them), and a double-click puts a note down a grid step long (on a note, deletes it), and held, the mouse up or down
-    sets its velocity, as Draw's click does, and to the right or left lengthens it that way (its end or its start). **Draw**: a click puts a note
+    sets its velocity, as Draw's click does, and to the right or left lengthens it that way (its end or its start), the
+    cursor left-right to begin with, then up-down or left-right as the mouse last went (a move of 4 px or more
+    turning it). **Draw**: a click puts a note
     down (the cursor a pen), and held, the mouse up or down sets its velocity, a step a pixel from 100; with Shift, a
     drag paints a note in each grid step it crosses that has none; a note clicked is moved or stretched as in Select
     (the cursor saying which over it). Each edit is one undo step.

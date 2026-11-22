@@ -935,7 +935,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     pattern without asking, over one holding notes asking first (Escape keeping it, Enter overwriting it, undoably), a
     tile dragged onto one holding notes asking too, Clear Pattern asking and clearing, undoably, Ctrl+C and Ctrl+V over
     tiles copying and pasting, and the rectangle dragged in its tile scrolling the roll two steps;
-  - the SEQ tab, between FX and MODS (a note put down by a double-click and held dragged across lengthening it, to the right its end, to the left its start): its card and an empty roll, and a dot on the tab while the sequencer is on (read
+  - the SEQ tab, between FX and MODS (a note put down by a double-click and held dragged across lengthening it, to the right its end, to the left its start, the cursor left-right until the mouse moves and while it goes across, and up-down while it goes up and down): its card and an empty roll, and a dot on the tab while the sequencer is on (read
     off the rendered pixels), as on FX's while an effect in the line is switched on; a slight line parting the roll from the lane in every theme (read off the rendered pixels); a double-click putting a note down on its step (a
     step long at 1/16) and on the note deleting it; the notes and the playhead where the telemetry puts it (read off
     the rendered pixels); a note the playhead reaches glowing, and not with the glow setting off (read off the rendered

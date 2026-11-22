@@ -1227,8 +1227,8 @@ hook marks Slide. While the sequencer plays, the playhead moves and notes glow a
   to drag copies.
 - Drag a note's right or left end to change the length or start of the selected notes.
 - Drag from empty space to select notes with a box.
-- Double-click to add a note one grid step long (hold and drag up or down for velocity, sideways to lengthen);
-  double-click a note to delete it.
+- Double-click to add a note one grid step long (hold and drag up or down for velocity, sideways to lengthen; the
+  cursor shows which way you are dragging); double-click a note to delete it.
 
 **Editing with Draw**:
 

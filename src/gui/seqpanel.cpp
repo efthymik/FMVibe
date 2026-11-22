@@ -1823,6 +1823,15 @@ void SeqPanel::drag(const DragState &d) {
     // A point of the lane's curve, or a stroke drawing it, on the grid while Ctrl is held.
     if (seqDrag_.mode == SeqDrag::Mode::CurvePoint || seqDrag_.mode == SeqDrag::Mode::CurvePaint)
         seqDrag_.free = !mods.ctrl;
+    // A note held after a double-click: the cursor left and right or up and down as the mouse last went, once it has
+    // gone a few pixels, so a hand's tremble doesn't flip it.
+    if (seqDrag_.mode == SeqDrag::Mode::Velocity && seqDrag_.extend) {
+        const float dx = std::abs(p.x - seqDrag_.turnedAt.x), dy = std::abs(p.y - seqDrag_.turnedAt.y);
+        if (std::max(dx, dy) >= 4.0f) {
+            seqDrag_.across = dx > dy;
+            seqDrag_.turnedAt = p;
+        }
+    }
     seqDrag(p);
 }
 
@@ -2143,11 +2152,12 @@ bool SeqPanel::doubleClick(const Widget &w, Point p, Modifiers mods) {
             seqDrag_.mode = SeqDrag::Mode::Velocity;
             seqDrag_.anchor = slot;
             seqDrag_.extend = true;
+            seqDrag_.across = true; // left and right until the mouse goes up or down
             seqDrag_.grabStep = seqStepAt(p.x);
             for (const SeqNote &n : seqNotes())
                 if (n.slot == slot)
                     seqDrag_.origin.push_back(n);
-            seqDrag_.start = seqDrag_.now = p;
+            seqDrag_.start = seqDrag_.now = seqDrag_.turnedAt = p;
             // Its undo step open; and as the press it comes in place of left the drag (see View::doubleClick()), on
             // no widget.
             host_.startDrag(*this, Widget{}, p, true);
@@ -2942,6 +2952,10 @@ SeqPanel::SeqDrag::Mode SeqPanel::seqRulerMode(float x) const {
 }
 
 std::optional<CursorKind> SeqPanel::cursor(const Widget &w) const {
+    // A note held after a double-click, whose drag is on no widget: left and right while the mouse goes across, setting
+    // its length, up and down while it goes up and down, setting its velocity.
+    if (seqDrag_.mode == SeqDrag::Mode::Velocity && seqDrag_.extend)
+        return seqDrag_.across ? CursorKind::Horizontal : CursorKind::Vertical;
     if (w.kind == Kind::SeqTile) { // a hand to pick it up; moving while it is carried, and over what the roll shows
         if (dragging())
             return seqDrag_.mode == SeqDrag::Mode::ViewRect || (seqDrag_.mode == SeqDrag::Mode::Tile && seqDrag_.carried)
