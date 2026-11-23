@@ -3217,7 +3217,8 @@ bool SeqPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
     case Kind::SeqRoot: {
         const bool lit = hovered || host_.isActive(w);
         c.fillRect(w.rect, lit ? wellHover() : wellColor(), kRadiusControl);
-        c.text(w.rect, pitchName(stepped(value(w.param), 0, 127)), kTextBody, lit ? kText : kDim, Align::Center);
+        // The scale's root is a pitch class: its octave does nothing (the keys transpose a pattern from C4).
+        c.text(w.rect, kPitchNames[stepped(value(w.param), 0, 127) % 12], kTextBody, lit ? kText : kDim, Align::Center);
         return true;
     }
     case Kind::SeqFold: { // a well while off, as the root's beside it

@@ -1103,7 +1103,7 @@ STR(TipSeqLaneBend, "Pattern pitch bend")
 STR(TipSeqLaneWheel, "Pattern mod wheel")
 STR(TipSeqLaneMacro, "Pattern macro curves")
 STR(TipSeqLaneMacroPick, "Choose macro") // the arrow at the macros' tab's right end, which opens their list
-STR(TipSeqRoot, "Root for Key and Latch")
+STR(TipSeqRoot, "The scale's root")
 STR(TipSeqPower, "Sequencer on/off")
 STR(TipSeqFull, "Full size") // the SEQ view's size button, at its half size: over the modulation panel too
 STR(TipSeqHalf, "Half size") // and at its full size: back over the panels' row alone

@@ -2402,6 +2402,40 @@ void effectsChainChecks() {
         check(std::equal(now.begin(), now.end(), p.begin()), "a version 15 state loads its warps as saved");
     }
     {
+        // Before version 17, the keys transposed a pattern from Root rather than C4: a version 16 state in Key with
+        // Root on D4 loads 2 semitones down in Transpose, and one on G1 with Transpose at +7 29 semitones up (Transpose at
+        // +24, Octave an octave up), each key playing what it played; one with the host's transport, which Root
+        // never moved, as saved, and a version 17 state as saved.
+        const int play = paramIndex(SeqParam::Play), root = paramIndex(SeqParam::Root);
+        const int octave = paramIndex(SeqParam::Octave), transpose = paramIndex(SeqParam::Transpose);
+        auto load = [](const ParamValues &p, uint32_t version) {
+            std::vector<unsigned char> bytes;
+            const clap_ostream_t out = memoryOut(bytes);
+            writePatch(&out, p, gui::UiLayout{}, true);
+            std::memcpy(bytes.data() + sizeof(uint32_t), &version, sizeof(version)); // after the magic
+            MemoryReader reader{bytes.data(), bytes.size(), 0};
+            const clap_istream_t in = memoryIn(reader);
+            ParamValues loaded;
+            readParams(&in, loaded);
+            return loaded;
+        };
+        ParamValues p = defaults();
+        p[play] = static_cast<double>(SeqPlay::Key);
+        p[root] = 62.0;
+        const ParamValues d = load(p, 16);
+        p[root] = 31.0;
+        p[transpose] = 7.0;
+        const ParamValues g = load(p, 16), now = load(p, 17);
+        p[play] = static_cast<double>(SeqPlay::Host);
+        const ParamValues host = load(p, 16);
+        p[play] = static_cast<double>(SeqPlay::Key);
+        auto shift = [&](const ParamValues &v) { return 12.0 * v[octave] + v[transpose]; };
+        check(d[transpose] == -2.0 && d[octave] == 0.0 && d[root] == 62.0 && g[transpose] == 24.0 &&
+                  g[octave] == 1.0 && shift(g) == 7.0 + 29.0 && host[transpose] == 7.0 && host[octave] == 0.0,
+              "a state before version 17 playing from a key loads the Root it transposed from into Transpose");
+        check(std::equal(now.begin(), now.end(), p.begin()), "a version 17 state loads its sequencer as saved");
+    }
+    {
         // The places past the first 16: a patch with an LFO in the last place on operator A's level, the 17th place's
         // aux Macro 3 and Macro 3's aux the 17th place, its drawn shape and its slot's curve, loads back as saved, the
         // auxes stored by the numbers sources are stored by (the macros' as before the later places came, the later
@@ -5585,12 +5619,15 @@ void sequencerChecks() {
                   near(e[2].frame, 16 * kStep) && seq.pattern() == 1,
               "another pattern takes over where the loop comes round");
     }
-    // In Key, a key starts the pattern from its first step, transposed by the key from Root, and letting it go stops
-    // it: through the synth, the key's end is reported, the sequencer's notes' never.
+    // In Key, a key starts the pattern from its first step, transposed by the key from C4 (the scale's Root, on D here,
+    // moving nothing), and letting it go stops it: through the synth, the key's end is reported, the sequencer's
+    // notes' never.
     {
         Engine e(1);
         e.p[paramIndex(SeqParam::Enabled)] = 1.0;
         e.p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Key);
+        e.p[paramIndex(SeqParam::Root)] = 62.0;
+        e.p[paramIndex(SeqParam::Scale)] = static_cast<double>(SeqScale::Minor);
         note(e.p, 0, 0.0, 1.0, 60);
         note(e.p, 1, 2.0, 1.0, 67);
         e.synth().setTempo(120.0);
@@ -5636,7 +5673,7 @@ void sequencerChecks() {
                     peak(held), peak(after), position);
         check(peak(before) == 0.0f && peak(held) > 0.1f && peak(after) == 0.0f && at(493.9) > 100.0 * at(392.0) &&
                   keyEnded && !seqEnded && std::abs(position - 4.0f) < 0.1f,
-              "in Key, a key plays the pattern transposed by it and stops it when let go");
+              "in Key, a key plays the pattern transposed by it from C4, whatever the scale, and stops it when let go");
         check(programmedLit, "the telemetry gives the keys of the notes playing as written, not as transposed");
     }
     // In Key, two notes on one key (their ids apart, as a host's overlapping notes or MPE have them): the first let go,

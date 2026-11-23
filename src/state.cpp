@@ -82,9 +82,12 @@ constexpr size_t kMaxPresetChunk = 65536;
 // 16: There are 32 source places rather than 16 (kMaxSources). Sources are stored by the numbers they had, the places
 //    added later after the operators (see storedSource()), so an earlier state loads as it was saved; the version
 //    rises so that an earlier build refuses a state whose later places it would leave out.
+// 17: In Key and Latch the keys transpose the sequencer's pattern from C4 (kSeqTransposeFrom), the scale's Root setting
+//    the scale alone; they transposed it from Root. An earlier state playing from a key with Root off C4 loads that
+//    difference into Octave and Transpose, playing as it played (see transposeFromRoot()).
 // One version a release at most: what changes between two tagged releases goes into a single step, so the version
 // rises once from one release to the next (see AGENTS.md, Plugin facts).
-constexpr uint32_t kStateVersion = 16;
+constexpr uint32_t kStateVersion = 17;
 
 bool writeAll(const clap_ostream_t *stream, const void *data, size_t size) {
     auto *bytes = static_cast<const uint8_t *>(data);
@@ -627,6 +630,25 @@ void holdSeqCurveEnds(ParamValues &values) {
     }
 }
 
+// Before version 17, the keys transposed a pattern from Root rather than C4: Transpose takes the difference, and
+// Octave what Transpose can't reach, as far as its range does, a pattern playing from a key sounding as it did. One
+// with the host's transport, which Root never moved, is left as it is.
+void transposeFromRoot(ParamValues &values) {
+    if (std::lround(values[paramIndex(SeqParam::Play)]) == static_cast<long>(SeqPlay::Host))
+        return;
+    const int octaveIndex = paramIndex(SeqParam::Octave), transposeIndex = paramIndex(SeqParam::Transpose);
+    const ParamTable &table = paramTable();
+    const long most = std::lround(table[transposeIndex].max), mostOctaves = std::lround(table[octaveIndex].max);
+    long octave = std::lround(values[octaveIndex]);
+    long transpose = std::lround(values[transposeIndex]) + kSeqTransposeFrom - std::lround(values[paramIndex(SeqParam::Root)]);
+    for (; transpose > most && octave < mostOctaves; transpose -= 12)
+        ++octave;
+    for (; transpose < -most && octave > -mostOctaves; transpose += 12)
+        --octave;
+    values[octaveIndex] = static_cast<double>(octave);
+    values[transposeIndex] = static_cast<double>(std::clamp(transpose, -most, most));
+}
+
 } // namespace
 
 bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
@@ -763,6 +785,8 @@ bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
         loadCurveSources(loaded);
     if (header[1] < 14)
         holdSeqCurveEnds(loaded);
+    if (header[1] < 17)
+        transposeFromRoot(loaded);
     if (header[1] < 9) { // the chain's effects in its order, as the graph's line
         if (!outWired) {
             std::vector<int> chain;

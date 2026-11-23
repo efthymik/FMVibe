@@ -287,7 +287,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     grew two note values slower, a version 13 state's as saved; and a version 13 state's sequencer curves loading with
     points that hold their ends as they played, a version 14 state's as saved, wrapping around; and a version 14
     state's Sync warp's amount and the depth on it loading 7/15 as large, as its reach grew from 8 times a cycle to
-    16, a Squeeze's as saved, a version 15 state's as saved;
+    16, a Squeeze's as saved, a version 15 state's as saved; and a version 16 state in Key with its Root off C4 loading
+    that difference into Transpose (and Octave past its reach), one in Host as saved, a version 17 state's as saved;
   - the phase disperser's Key Track and Stretch against the chain they make, from the same coefficients: an impulse
     through Key Track with a C4, a C5 and (at 50 %) a C6 coming out as through the chain at Freq and an octave up, and
     through Stretch 4, 37 and 4 at 96 kHz (eight samples) as the plain chain's impulse response spread that far apart,
@@ -452,7 +453,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     Reverse playing a note on the first step on the last (the playhead moving steadily backward, as on Ping-Pong's way
     back, and forward otherwise), a loop playing only the notes in it, a muted note and one at
     no chance silent and one at half playing about half the passes (alike each time), another pattern taking over where
-    the loop comes round, in Key a key playing the pattern transposed from Root and stopping it when let go (its end
+    the loop comes round, in Key a key playing the pattern transposed from C4 (the scale's Root moving nothing) and stopping it when let go (its end
     reported, the sequencer's notes' never, the playhead in the telemetry, and the keys its notes are written on, not those they play), the keys the telemetry shows held leaving
     its notes out, and through the synth a note sounding from its sample however the blocks are split; its curves
     standing where the playhead is (back through a step played reversed, a bent segment off the straight line, held
@@ -1516,7 +1517,7 @@ itself.
   differently goes into the step already made since the last tag, if there is one (its comment in `src/state.cpp`
   and the checks that load a state from before it), rather than adding another. States saved by a build between two
   tags are not kept loading as they were: only released versions are.
-- The state blob holds `(id, value)` pairs with a version number (currently 16: version 1's Volume loads 12 dB
+- The state blob holds `(id, value)` pairs with a version number (currently 17: version 1's Volume loads 12 dB
   lower, since Volume now gives back the 12 dB the voices go into the effects with; before version 3, a state in
   poly loads Legato off, since it did nothing there then and acts there now; before version 4, a modulation's depth on an
   envelope's attack, decay or release loads scaled by `kMaxEnvNorm / (kMaxEnvNorm - kMinEnvNorm)`, since their
@@ -1546,7 +1547,10 @@ itself.
   operator's Warp Amount on a Sync warp and the depths on it load scaled by
   `(kRetiredMaxSyncWarp - 1) / (kMaxSyncWarp - 1)`, since it now plays its wave up to 16 times a cycle rather than 8;
   version 16 has 32 source places rather than 16, and loads an earlier state as saved, its sources stored by the numbers
-  they had, the version rising so that an earlier build refuses a state whose later places it would leave out),
+  they had, the version rising so that an earlier build refuses a state whose later places it would leave out; before
+  version 17, a sequencer playing from a key (Key or Latch) with its Root off C4 loads that difference into Transpose,
+  and Octave what Transpose can't hold (`transposeFromRoot()`), since the keys now transpose a pattern from C4
+  (`kSeqTransposeFrom`) and Root sets the scale alone),
   followed by the editor layout:
   node, filter and shaper positions, selected node, zoom, the routing view, a retired field (once whether the modulation panel was collapsed, which it no longer is),
   the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names, which

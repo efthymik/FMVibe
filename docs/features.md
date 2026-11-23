@@ -897,7 +897,9 @@ What the plugin does and how its editor works, in full. Building and installing 
     a thousandth of a step of it (a position rounds, one handed in seconds most of all, as `fmvibe-uihost`'s is), so a
     note starting where a block does starts once, neither missed nor played twice; further off, the transport has
     jumped, and the notes playing end and it starts over there. **Key** plays while a key is held, from the pattern's start, transposed by the newest key
-    from **Root**, and stops when the keys are let go; **Latch** starts with a key and plays on once they are let go, a
+    from C4 (`kSeqTransposeFrom`: C4 plays it as written, whatever the scale's root), and stops when the keys are let
+    go (patches saved before, state version 16 and earlier, transposed it from the root: one playing from a key with
+    its root off C4 loads that difference into Transpose, and Octave what Transpose can't hold, playing as it did); **Latch** starts with a key and plays on once they are let go, a
     new key transposing it, until All Notes Off or All Sound Off (MIDI CC 123 or 120, as a host sends as it stops). In Key and Latch the keys play no notes of their own: the host is told each one has ended
     as it is let go.
   - **Speed** sets a step's length as a multiple of a 1/16 step's speed, at the host's tempo (the roll's snap names
@@ -1024,7 +1026,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     host's and the macros' modulation and the newest voice's slots, or the last one's as the effects ring out, and
     the knobs' dots show where it plays them); **Order** as
     arrows (forward, back, to and fro, a die for random); **Scale**: the root (dragged up and down or scrolled, a
-    semitone a step; a double-click puts it back on C4), the scale's list (Chromatic, Major, Minor, Dorian, Phrygian,
+    semitone a step, shown as its note name without an octave, since only its pitch class counts; a double-click puts
+    it back on C), the scale's list (Chromatic, Major, Minor, Dorian, Phrygian,
     Lydian, Mixolydian, Harmonic Minor, Melodic Minor, Pentatonic Major and Minor, Blues; wider than its button, and
     opening above it where the editor is too short for it below) and **Fold**, which shows only the scale's rows, and
     those of notes off it all the same, their names faint. The rows' ground follows the keys alone, whatever the scale:

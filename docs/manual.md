@@ -1195,7 +1195,8 @@ Each pattern has a **loop** (the whole pattern by default), which is what plays.
   - **Host**: plays with the host's transport, locked to its bars. You can still play the synth from the keyboard
     on top. The browser demo's transport always runs, so there a preset set to Host starts playing as soon as you
     load it. To stop it, switch the sequencer off or pick **Key**.
-  - **Key**: plays while a key is held, from the pattern's start, transposed by the newest key relative to **Root**.
+  - **Key**: plays while a key is held, from the pattern's start, transposed by the newest key relative to C4: C4
+    plays the pattern as written, D4 two semitones higher. The scale's **Root** doesn't move it.
   - **Latch**: starts with a key and keeps playing after release; a new key transposes it. All Notes Off or All
     Sound Off (which hosts send when they stop) ends it.
 - **Speed**: how fast the steps go, against a step of a 1/16 note at the host's tempo: ×1 (the default) plays
@@ -1208,7 +1209,7 @@ Each pattern has a **loop** (the whole pattern by default), which is what plays.
   variation) and **Velocity** (scales the notes' velocities; at 0 % every note plays at 100). You can modulate these
   four: drag a source's handle onto the knob, as with any other control.
 - **Order**: forward, backward, ping-pong or random.
-- **Scale**: the **Root** (drag or scroll; double-click for C4), the scale (Chromatic, Major, Minor, Dorian,
+- **Scale**: the **Root** (drag or scroll; double-click for C), the scale (Chromatic, Major, Minor, Dorian,
   Phrygian, Lydian, Mixolydian, Harmonic Minor, Melodic Minor, Pentatonic Major and Minor, Blues) and **Fold**,
   which shows only the scale's rows. Notes off the scale are hatched.
 

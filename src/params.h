@@ -367,7 +367,8 @@ constexpr int seqCurveMacro(SeqCurve curve) {
 // The last point's segment goes on round the pattern's end to the first point, as a drawn LFO shape's does.
 constexpr int kSeqCurvePoints = 64;
 enum class SeqCurveParam { PointCount, Points, Count = Points + 3 * kSeqCurvePoints };
-// When it plays: with the host's transport, from a key held (transposed by it from Root) or from a key until stopped.
+// When it plays: with the host's transport, from a key held (transposed by it from C4, kSeqTransposeFrom) or from a
+// key until stopped.
 // Stored by number: only append.
 enum class SeqPlay { Host, Key, Latch, Count };
 // How long a step is, slowest first; the editor shows it as a speed, a multiple of a 1/16 step (see
@@ -376,6 +377,8 @@ enum class SeqRate { Quarter, EighthDotted, Eighth, SixteenthDotted, EighthTripl
                      ThirtySecond, Count };
 // Which way the steps run. Stored by number: only append.
 enum class SeqOrder { Forward, Reverse, PingPong, Random, Count };
+// The key that plays a pattern as written in Key and Latch: the keys transpose it from here, whatever the scale's Root.
+constexpr int kSeqTransposeFrom = 60; // C4
 // The scale the roll snaps notes to and shades rows outside of. Stored by number: only append.
 enum class SeqScale { Chromatic, Major, Minor, Dorian, Phrygian, Lydian, Mixolydian, HarmonicMinor, MelodicMinor,
                       PentatonicMajor, PentatonicMinor, Blues, Count };
