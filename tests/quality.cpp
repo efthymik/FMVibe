@@ -2379,11 +2379,13 @@ void effectsChainChecks() {
         // and from a morph.
         float newer = 0.0f;
         for (FilterType t : {FilterType::Diode, FilterType::SallenKeyLow, FilterType::SallenKeyHigh, FilterType::Formant,
-                             FilterType::Morph})
+                             FilterType::Morph, FilterType::LadderHigh, FilterType::LadderBand})
             newer = std::max(newer, stale(t, 1, FilterType::LowPass, 1));
         newer = std::max({newer, stale(FilterType::Diode, 3, FilterType::Ladder, 3),
                           stale(FilterType::Morph, 1, FilterType::SallenKeyLow, 1),
-                          stale(FilterType::Ladder, 3, FilterType::Morph, 1)});
+                          stale(FilterType::Ladder, 3, FilterType::Morph, 1),
+                          stale(FilterType::LadderHigh, 3, FilterType::Ladder, 3),
+                          stale(FilterType::Ladder, 3, FilterType::LadderBand, 3)});
         std::printf("      filter effect back from another type: low-pass %.1g, 24 dB %.1g, comb %.1g, ladder %.1g, the "
                     "newer types %.1g\n",
                     comb, slope, back, ladder, newer);
@@ -3809,6 +3811,119 @@ template <class Span> ScopeMotion lowNoteMotion(Engine &e, Telemetry &t, const S
         largest = std::max(largest, std::abs(peaks[k] - peaks[k - 1]));
     motion.largestStep = drop > 0.0 ? largest / drop : 1.0;
     return motion;
+}
+
+// Drive into the ladder and the diode: held under kAnalogDriveCeiling going in rather than 1, so a loud, driven sound
+// reaches their own saturation, which takes the input less the feedback, and their resonance comes down as it does in a
+// driven transistor ladder. A full-level saw through 85 % resonance: its peak at full Drive some 20 dB further under
+// its fundamental than undriven, in a voice filter and the filter effect (which hears the voices 12 dB down), where
+// held under 1 it came down 9 to 10 dB in a voice filter and 14 in the effect.
+void driveIntoLadderChecks() {
+    std::printf("drive into the ladder and the diode:\n");
+    // A saw at C2 through it, cut off at 1 kHz at 85 % resonance.
+    auto play = [](bool effect, FilterType type, double drive) {
+        return steadyTone(2, 36, [&](ParamValues &p) {
+            p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Saw);
+            if (effect) {
+                p[paramIndex(3, FxParam::Type)] = static_cast<double>(FxType::Filter);
+                p[paramIndex(3, FxParam::FilterType)] = static_cast<double>(type);
+                p[paramIndex(3, FxParam::FilterSlope)] = 3.0;
+                p[paramIndex(3, FxParam::FilterCutoff)] = normFromCutoff(1000.0);
+                p[paramIndex(3, FxParam::FilterResonance)] = 0.85;
+                p[paramIndex(3, FxParam::FilterDrive)] = drive;
+                chain(p, {3});
+                return;
+            }
+            p[paramIndex(0, OpParam::Out)] = 0.0;
+            p[sendIndex(0, 0)] = 1.0;
+            p[paramIndex(0, FilterParam::Enabled)] = 1.0;
+            p[paramIndex(0, FilterParam::Type)] = static_cast<double>(type);
+            p[paramIndex(0, FilterParam::Slope)] = 3.0;
+            p[paramIndex(0, FilterParam::Cutoff)] = normFromCutoff(1000.0);
+            p[paramIndex(0, FilterParam::Resonance)] = 0.85;
+            p[paramIndex(0, FilterParam::Drive)] = drive;
+            p[paramIndex(0, FilterParam::Out)] = 0.25;
+        });
+    };
+    // The resonance's peak (the harmonics from 850 to 1180 Hz) against the fundamental, in dB.
+    auto peak = [](const std::vector<float> &out) {
+        const std::vector<double> power = powerSpectrum(out);
+        const double binHz = kSampleRate / kFftSize;
+        double band = 1e-30, fundamental = 1e-30;
+        for (size_t b = static_cast<size_t>(850.0 / binHz); b < static_cast<size_t>(1180.0 / binHz); ++b)
+            band += power[b];
+        const long center = std::lround(keyHz(36) / binHz);
+        for (long b = center - 3; b <= center + 3; ++b)
+            fundamental += power[static_cast<size_t>(b)];
+        return 10.0 * std::log10(band / fundamental);
+    };
+    bool pulled = true;
+    for (bool effect : {false, true})
+        for (FilterType type : {FilterType::Ladder, FilterType::Diode}) {
+            const double undriven = peak(play(effect, type, 0.0)), driven = peak(play(effect, type, 1.0));
+            std::printf("      %-7s %-15s its resonance %.1f dB over the fundamental undriven, %.1f at full Drive\n",
+                        type == FilterType::Ladder ? "ladder" : "diode", effect ? "(effect)" : "(voice filter)",
+                        undriven, driven);
+            pulled = pulled && driven < undriven - (effect ? 16.0 : 15.0);
+        }
+    check(pulled, "a loud sound driven into the ladder and the diode pulls their resonance down");
+}
+
+// Drive keeps the level a sound goes in at: its saturator's output is brought back by followers of the power going in
+// and coming out. A saw at C3 through a low-pass and a Sallen-Key low-pass, both open (at 20 kHz, without resonance), at
+// -24, -12, 0 and +6 dB and Drive 50 % and 100 %, comes out within 1 dB of its level undriven, where Drive taking its
+// output down by its square root put a full-level saw 5 dB under and a quiet one 9 dB over. And a note starting at full
+// level, full Drive, peaks no more than 2 dB over where it settles. (One starting with a jump to full level, as an
+// operator whose Phase starts it at its peak does, peaks about 4 dB over for its first cycle: the followers have heard
+// only its loudest part.)
+void driveLevelChecks() {
+    std::printf("drive keeps the level:\n");
+    const double rate = 96000.0; // the voices' at 2x
+    auto run = [&](FilterType type, double drive, double level, std::vector<double> &out) {
+        const FilterSettings s = filterSettings(type, 1, 20000.0, 0.0, drive, rate);
+        Filter filter;
+        std::vector<float> comb(16, 0.0f);
+        out.resize(static_cast<size_t>(rate * 0.4));
+        for (size_t i = 0; i < out.size(); ++i) { // from 0, as an operator's saw starts
+            const double phase = std::fmod(0.5 + i * keyHz(48) / rate, 1.0);
+            out[i] = filter.process(level * (2.0 * phase - 1.0), s, comb.data(), static_cast<int>(comb.size()));
+        }
+    };
+    auto rmsFrom = [](const std::vector<double> &x, size_t from) {
+        double sum = 0.0;
+        for (size_t i = from; i < x.size(); ++i)
+            sum += x[i] * x[i];
+        return std::sqrt(sum / static_cast<double>(x.size() - from));
+    };
+    const size_t settled = static_cast<size_t>(rate * 0.2);
+    bool kept = true;
+    double worst = 0.0;
+    for (FilterType type : {FilterType::LowPass, FilterType::SallenKeyLow})
+        for (double levelDb : {-24.0, -12.0, 0.0, 6.0}) {
+            const double level = std::pow(10.0, levelDb / 20.0);
+            std::vector<double> clean, out;
+            run(type, 0.0, level, clean);
+            const double undriven = rmsFrom(clean, settled);
+            for (double drive : {0.5, 1.0}) {
+                run(type, drive, level, out);
+                const double change = 20.0 * std::log10(rmsFrom(out, settled) / undriven);
+                worst = std::max(worst, std::abs(change));
+                kept = kept && std::abs(change) < 1.0;
+            }
+        }
+    std::vector<double> out;
+    run(FilterType::LowPass, 1.0, 1.0, out);
+    const size_t start = static_cast<size_t>(rate * 0.02);
+    double onset = 0.0, after = 0.0;
+    for (size_t i = 0; i < start; ++i)
+        onset = std::max(onset, std::abs(out[i]));
+    for (size_t i = settled; i < out.size(); ++i)
+        after = std::max(after, std::abs(out[i]));
+    std::printf("      saw at -24 to +6 dB, Drive 50 and 100 %%: level within %.2f dB of undriven; a note's first 20 ms "
+                "peaking %.2f dB over where it settles\n",
+                worst, 20.0 * std::log10(onset / after));
+    check(kept, "a sound driven into a filter keeps its level, quiet or loud");
+    check(onset < after * std::pow(10.0, 2.0 / 20.0), "a driven note starts at about the level it settles at");
 }
 
 // The scope: an operator's output, phase-locked to it, captured only while asked for.
@@ -6418,9 +6533,10 @@ int main() {
              p[paramIndex(0, FilterParam::Out)] = 0.25;
          },
          -45.0},
-        // The ladder saturates in each of its stages as well as through Drive (which feeds it at full level), resonant
-        // here and cut off above the note's 4th harmonic: its stages' harmonics, which are what it sounds of, alias
-        // some 6 dB more than the driven low-pass's at 2x, falling as the oversampling rises.
+        // The ladder saturates in each of its stages as well as through Drive (which feeds it at full level, held
+        // under kAnalogDriveCeiling, so its stages take the loudest of it), resonant here and cut off above the note's
+        // 4th harmonic: its stages' harmonics, which are what it sounds of, alias some 8 dB more than the driven
+        // low-pass's at 2x (2 dB more than when Drive held what it fed it under 1), falling as the oversampling rises.
         {"saw into driven ladder at C6", 84,
          [](ParamValues &p) {
              p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Saw);
@@ -6437,7 +6553,8 @@ int main() {
          -40.0},
         // The diode, saturating at its input, and the Sallen-Key, clipping in its loop, driven and resonant likewise.
         // The diode's one saturation takes its input less all of its feedback, so it clips harder there than the
-        // ladder's stages do, and aliases some 6 dB more at 2x, falling as the oversampling rises.
+        // ladder's stages do, and aliases some 2 dB more at 2x (Drive's ceiling sharing the clipping out with it, 2 dB
+        // less than when Drive held what it fed it under 1), falling as the oversampling rises.
         {"saw into driven diode at C6", 84,
          [](ParamValues &p) {
              p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Saw);
@@ -6451,6 +6568,38 @@ int main() {
              p[paramIndex(0, FilterParam::Out)] = 0.25;
          },
          -35.0},
+        // The ladder's high-pass and band-pass saturate in their stages as its low-pass does, Drive held under the
+        // same ceiling; the high-pass, cut off under the note, passes all of its harmonics through them. Neither's peak
+        // sits on the note's top harmonics as the low-pass's does here: the high-pass aliases some 7 dB less at 2x,
+        // and the band-pass, its input taken down as its resonance rises, some 16 dB less.
+        {"saw into driven LAD HP at C6", 84,
+         [](ParamValues &p) {
+             p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Saw);
+             p[paramIndex(0, OpParam::Out)] = 0.0;
+             p[sendIndex(0, 0)] = 1.0;
+             p[paramIndex(0, FilterParam::Enabled)] = 1.0;
+             p[paramIndex(0, FilterParam::Type)] = static_cast<double>(FilterType::LadderHigh);
+             p[paramIndex(0, FilterParam::Slope)] = 3.0;
+             p[paramIndex(0, FilterParam::Cutoff)] = normFromCutoff(800.0);
+             p[paramIndex(0, FilterParam::Resonance)] = 0.7;
+             p[paramIndex(0, FilterParam::Drive)] = 1.0;
+             p[paramIndex(0, FilterParam::Out)] = 0.25;
+         },
+         -45.0},
+        {"saw into driven LAD BP at C6", 84,
+         [](ParamValues &p) {
+             p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Saw);
+             p[paramIndex(0, OpParam::Out)] = 0.0;
+             p[sendIndex(0, 0)] = 1.0;
+             p[paramIndex(0, FilterParam::Enabled)] = 1.0;
+             p[paramIndex(0, FilterParam::Type)] = static_cast<double>(FilterType::LadderBand);
+             p[paramIndex(0, FilterParam::Slope)] = 3.0;
+             p[paramIndex(0, FilterParam::Cutoff)] = normFromCutoff(3000.0);
+             p[paramIndex(0, FilterParam::Resonance)] = 0.7;
+             p[paramIndex(0, FilterParam::Drive)] = 1.0;
+             p[paramIndex(0, FilterParam::Out)] = 0.25;
+         },
+         -45.0},
         {"saw into driven Sallen-Key at C6", 84,
          [](ParamValues &p) {
              p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Saw);
@@ -6481,6 +6630,8 @@ int main() {
     syncWarpChecks(factors);
     newerEffectChecks();
     unisonModeChecks();
+    driveIntoLadderChecks();
+    driveLevelChecks();
 
     // --- Zipper: modulation stepping once per control block leaves partials
     // around multiples of the control rate. A 20 Hz LFO on a 220 Hz sine should

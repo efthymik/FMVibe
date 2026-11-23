@@ -83,8 +83,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     playing an A4's 3rd harmonic alone, at 3.5 times its harmonics, not 1540 Hz, and at 16 times its 16th alone; a low-pass at 300 Hz and a high-pass
     at 2 kHz move that ratio the right way (the low-pass's Mix at 0 leaving the saw as it was, at 50 % between), each slope from 6 to 24 dB harder than the one before (the 6 dB
     low-pass a one-pole), and a band-pass set to 6 or 18 dB plays 12 or 24;
-  - the ladder's slopes tapping one to four of its one-pole stages; the ladder, the diode and both Sallen-Key's, at
-    full resonance and plucked, ringing on at their cutoff, steady and finite (silent by then at 80 %); an A4 sine
+  - the ladder's slopes tapping one to four of its one-pole stages, its high-pass's one to four one-pole high-passes,
+    and its band-pass two poles at 12 dB and two of them at 24 (6 and 18 playing 12 and 24), those two played at a
+    quarter of an operator's level, under their stages' saturation; the ladder (its low-,
+    high- and band-pass), the diode and both Sallen-Key's, at full resonance and plucked, ringing on at their cutoff, steady and finite (silent by then at 80 %); an A4 sine
     under the ladder's cutoff coming out with a 3rd harmonic from its saturation, more with Drive, where the
     low-pass's stays clean, and its resonance thinning the note, where the low-pass's leaves it as it was; the diode
     playing 24 dB whatever its slope says, the Sallen-Key low-pass two poles at its cutoff and its high-pass lifting
@@ -229,7 +231,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
 - **Audio quality** (`tests/quality.cpp`): drives the engine directly and measures, at every oversampling factor:
   - the decimator's passband ripple and alias rejection;
   - aliasing (the energy off the harmonics, 20 Hz–20 kHz) of a high saw, bright FM (phase, linear and ring),
-    feedback, a driven filter and a driven, resonant ladder, diode and Sallen-Key;
+    feedback, a driven filter and a driven, resonant ladder (its low-, high- and band-pass), diode and Sallen-Key;
   - zipper noise from an LFO on an operator's level and Pan, a matrix amount, a filter cutoff, a resonant ladder's
     cutoff, a formant's vowel, a morph's place and a wire of the effects graph; and on the voice filters (a resonant
     low-pass's and a quiet ladder's cutoff, a formant's vowel and a morph's place, each within one stretch of its curve,
@@ -339,6 +341,13 @@ the plain CMake commands and installing into a host are in the [README](README.m
     high shelf, a low cut and a high cut) sounding within 1.25 dB of their drawn curves from 3 to 15 kHz, and a
     delay's sixth echo of a 10 kHz burst, at a time between two samples, within 0.5 dB of Feedback's fifth power
     under its first;
+  - Drive into the ladder and the diode, in a voice filter and the filter effect: a full-level saw through 85 %
+    resonance coming out of full Drive with its peak some 20 dB further under its fundamental than undriven (with
+    Drive held under 1, as it was, 9 to 10 dB in a voice filter and 14 in the effect, which hears the voices 12 dB
+    down);
+  - Drive keeping a sound's level: a saw at -24 to +6 dB through an open low-pass and Sallen-Key low-pass, at Drive
+    50 and 100 %, coming out within 1 dB of its level undriven, and a note starting at full Drive peaking no more than
+    2 dB over where it settles;
   - the Random source's steps and glides, and at 0 Hz a value for each note, anywhere, at once and held (a mono
     retrigger taking a new one), a freeform shape's points at one time (a vertical line, its last
     counting, and a point at the cycle's end holding a one-shot there), a Curve source playing sample for sample as
@@ -672,9 +681,12 @@ the plain CMake commands and installing into a host are in the [README](README.m
     row routing it into the other shaper and, on the diagonal, into itself;
   - picking a filter's slope from its list, a band-pass's 6 and 18 dB refused, the hand cursor showing only over
     an entry it can pick (not over a refused one, the list's edge or around it); its type's list (as a shaper's
-    curve's) showing each type with its icon (read off the rendered pixels) and picking Ladder, and the wheel over it
-    stepping the type, a run of notches one undo step, held at the list's end; and the filter card's type list
-    picking Comb; a morph's slope's list picking 24 dB (18 refused) and its notch switch beside it (the notch's icon)
+    curve's) showing the seven families with their icons (read off the rendered pixels) and picking one; the Model
+    list beside the slope's picking a low-pass's Ladder, a family picked keeping the model where it has it (Ladder's
+    high-pass and band-pass) and else taking its first; the wheel over the type's button stepping the family and over
+    the Model button the model, a run of notches one undo step, held at the lists' ends, and the Model button's arrows
+    stepping round its family; and the filter card's type list picking Comb, and its Model button, short and without
+    arrows, picking a low-pass's Diode from its list; a morph's slope's list picking 24 dB (18 refused) and its notch switch beside it (the notch's icon)
     going through the notch and back, its six knobs, its Morph after Resonance turning, and a formant's, its Vowel after Q turning;
   - Points | Steps and Snap in the other big shape editors: Steps drawing a step in the note source's curve with a
     plain click, and Snap snapping a shaper effect's curve point in its editor;
