@@ -6872,7 +6872,8 @@ void View::mouseUp(Point p, Modifiers) {
         const auto target = hitTest(p);
         // On a depth handle or a row of a pill's list: it becomes that modulation's aux; on a panel's own that takes it
         // (a MODS row's aux cell, as the aux too), what that panel makes of it.
-        const bool row = target && target->popup && target->kind != Kind::ModList;
+        // (A row names its modulation: the list's own scrollbar, a popup too, names none.)
+        const bool row = target && target->popup && target->kind != Kind::ModList && target->a >= 0 && target->b >= 0;
         if (target && (target->kind == Kind::ModDot || row) && target->a != w.a)
             mods_.setAux(target->a, target->b, w.a);
         else if (target && droppable(*target, w.a)) // only where the overlay rings a target
@@ -8070,7 +8071,11 @@ void View::endTyping(bool commit) {
         const size_t start = t.text.find_first_not_of(' ');
         std::string name = start == std::string::npos ? std::string()
                                                       : t.text.substr(start, t.text.find_last_not_of(' ') - start + 1);
-        name = name.substr(0, 24);
+        // As many bytes as the state saves, cut between whole characters (never in the middle of one's UTF-8).
+        size_t cut = std::min(name.size(), kMaxMacroName);
+        while (cut > 0 && cut < name.size() && (static_cast<unsigned char>(name[cut]) & 0xC0) == 0x80)
+            --cut;
+        name.resize(cut);
         if (name == trf(Str::MacroDefaultName, {std::to_string(t.widget.a + 1)}))
             name.clear();
         UiLayout &layout = controller_.layout();

@@ -496,7 +496,9 @@ What the plugin does and how its editor works, in full. Building and installing 
     in step at every frequency: a split's bands sum back flat whatever runs on them, and a path beside one of these
     effects doesn't comb with it. Such an effect is as late switched off as on (what it passes then, and what it fades
     from, goes up and down or waits too), so switching it moves nothing; a new effect, another oversampling, TZF
-    switched or a wire moved that changes how late a path is crossfades that path over 5 ms. The output is
+    switched or a wire moved that changes how late a path is crossfades that path over 5 ms. A wait started afresh
+    (a flanger through zero coming in, its dry sound's new path, a new pad) is silent for its 6.5 ms, longer than the
+    fade, so what fades in waits for it to fill and what fades out goes on meanwhile, leaving no gap. The output is
     then as late as its latest path, which, with the voices' decimator's couple of samples, is the latency the plugin
     reports to the host; a change that moves it asks the host to restart the plugin, which takes up the new one (see
     Restarting, under CLAP and VST3). Only what the output hears runs: an effect no wire takes on to the
@@ -802,7 +804,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     Its knobs come in two rows, Gain and Pan above Width and Mono Bass.
   - **Lo-Fi** (under DRIVE in the list of effects): an early digital converter. **Bits** (1–16, 8 to begin with) puts
     each sample on the nearest of that many bits' levels (2 to the Bits), each in the middle of its share of full
-    scale, so 1 bit plays ±0.5; **Rate** (200 Hz–20 kHz, 12 kHz to begin
+    scale, so 1 bit plays ±0.5 (silence going in for 10 ms, under -120 dB, coming out as silence rather than half a step
+    off 0); **Rate** (200 Hz–20 kHz, 12 kHz to begin
     with) holds each side between samples taken that often, the steps between folding the top back down as such
     converters did; **Smooth** (50 % to begin with) blends in what a 12 dB low-pass just under half Rate makes of it,
     as a converter's output filter does; **Mix** blends it with the dry sound. Its display draws two cycles of a sine
@@ -1130,8 +1133,12 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     it began, so it reaches notes that didn't show as it started). A patch loaded (a preset, Init, a
     project) fits the roll to its pattern's notes: the whole pattern across, and the rows about the notes, lower where
     they don't all fit.
-  - **No two notes on one spot**: a note put down, moved, stretched or transposed onto another's start and pitch takes
-    its place, the one there removed in the same undo step.
+  - **No two notes on one spot**: a note put down, moved, stretched, quantized or transposed onto another's start and
+    pitch takes its place, the one there removed in the same undo step; notes picked that land on one another (quantized
+    onto one step, stretched against the pattern's end) leave the first of them.
+  - **Picks**: the notes picked are let go of as a patch loads (a preset, Init, the host's state), whose notes are
+    another's; notes past the pattern's end (its Length shortened, which keeps them for when it grows again) are
+    never picked.
   - **Keys**, while the mouse is over the editor (as for undo): **Ctrl+A** picks every note of the pattern; **Left**
     and **Right** move the notes picked a grid step (a step with the snap off), **Up** and **Down** a row (a degree of
     the scale while folded), and **Shift+Up** and **Shift+Down** an octave, and **Delete** removes them, each an undo step. Moved up or down, the
@@ -1641,6 +1648,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     source's menu. An empty modulation is a row with no source or no target yet ("Source…" and "Target…" in their
     places, a hollow dot, and only its ×): it modulates nothing. Picking its source and its target from their menus,
     in either order, makes it a modulation of that source, as its handle dropped on the target makes one (at +30 %),
+    (an effect taken out, or a split's crossover or a join's level reset, takes the target of an empty modulation onto
+    it away, as a source removed does its own),
     which takes its place among the source's rows; until then its source's menu offers any source with a slot free,
     and its target's every target. An empty modulation whose source already has rows goes right after them, as
     soon as it has that source (added from it, or once it is picked), and the list jumps there, showing as many of
@@ -2160,7 +2169,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
 - **Macros** (in the keyboard strip, above the keys): eight knobs, each in a color of its own, with a handle
   beside it to drag onto anything a source can modulate, just like an LFO's, and its name under it: double-click
   the name to change it (Enter
-  keeps it, Escape doesn't, an empty name brings back "Macro 1" and so on; an undo step, saved with the patch).
+  keeps it, Escape doesn't, an empty name brings back "Macro 1" and so on; an undo step, saved with the patch, up to
+  24 bytes of it in UTF-8, cut between whole characters).
   Hovering a handle draws lines to what it moves; the dots and rings on its targets work like a source's. A macro's
   knob takes modulation like any other knob (a source's handle dropped on it, its depth handles under it), but not
   its own macro's handle nor one that would loop, which says why as it is let go of; its dot then shows where the
