@@ -1741,10 +1741,12 @@ std::vector<View::Widget> View::widgets() const {
             // stays inside it at the user's size; past what fits, as many as leave room for the pill. A wire's or
             // OUT label, in the graph and on the operator page's INPUTS tab, has them centered just under it and its
             // ranges on its outline's top, so its depth stays readable. A matrix cell has them centered along its
-            // foot, its ranges along its top; a depth bar in its top right corner, its ranges along its bottom.
+            // foot, its ranges along its top; a depth bar in its top right corner, its ranges along its bottom. A
+            // cell's sit low enough that a large handle's aux ring clears its number, and no lower than keeps the ring
+            // (5.55 px out, its stroke 1.3) inside the 4 px gap above the next cell.
             const bool cell = kind == Kind::GridCell || kind == Kind::SlotBar;
             const float margin = std::max(cell ? 4.0f : 3.0f, sizes.dotCompact + 1.0f), step = cell ? 7.0f : 8.0f,
-                        y = kind == Kind::GridCell ? r.bottom() - 4.0f
+                        y = kind == Kind::GridCell ? r.bottom() - 2.5f
                             : cell                 ? r.y + 4.0f
                                                    : r.bottom() + 0.75f + sizes.dotCompact;
             const int fit = static_cast<int>((r.w - 2.0f * margin) / step) + 1;

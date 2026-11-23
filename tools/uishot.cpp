@@ -11477,9 +11477,17 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
                 pixels.push_back(renderer.pixel({x, y}));
         return pixels;
     };
+    const Point below = gridCellCenter(2, 2);
+    auto belowTop = [&] { // the top half of the cell under it, where its ranges go
+        std::vector<uint32_t> pixels;
+        for (float y = below.y - 14.0f; y < below.y; y += 1.0f)
+            for (float x = below.x - 20.0f; x < below.x + 20.0f; x += 1.0f)
+                pixels.push_back(renderer.pixel({x, y}));
+        return pixels;
+    };
     view.mouseMove({600.0f, 468.0f}, {});
     renderer.save(view, dir / "40i-cell-none.png");
-    const std::vector<uint32_t> plain = corner();
+    const std::vector<uint32_t> plain = corner(), plainBelow = belowTop();
     const int route = matrixIndex(1, 2);
     for (int s = 8; s < 14; ++s) {
         model.set(paramIndex(s, SourceParam::Type), static_cast<double>(SourceType::Lfo));
@@ -11511,6 +11519,17 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     check(mediumShot && largeShot && mediumHandles != smallHandles && largeHandles != mediumHandles &&
               handles() == smallHandles,
           "the depth handles and pills are drawn in the size picked, Small as before");
+
+    // Large, each with an aux and the route at 75 %: the handles sit low under the number, their aux rings clear of
+    // the cell below (read off the rendered pixels).
+    model.handles = 2;
+    model.set(route, 0.75);
+    for (int s = 8; s < 14; ++s)
+        model.set(slotAuxIndex(s, 0), slotAuxValue(kMaxSources + 1)); // Macro 2
+    view.poll();
+    const bool auxShot = renderer.save(view, dir / "40n-cell-aux-large.png");
+    check(auxShot && belowTop() == plainBelow, "a matrix cell's large handles with an aux stay clear of the cell below");
+    model.handles = 0;
 }
 
 // A delay's time knobs are named under them whether they set times or, synced, note values (Time L and Time R, Rate L
