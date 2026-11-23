@@ -163,6 +163,8 @@ UserSettings parsed(const std::string &text) {
             settings.links = std::clamp(number(line.c_str() + 14), 0.0, 1.0);
         else if (line.starts_with("gridIntensity="))
             settings.grid = std::clamp(number(line.c_str() + 14), 0.0, 1.0);
+        else if (line.starts_with("tintedCards="))
+            settings.tintedCards = std::atoi(line.c_str() + 12) != 0;
         else if (line.starts_with("seqFull="))
             settings.seqFull = std::atoi(line.c_str() + 8) != 0;
         else if (line.starts_with("zoom="))
@@ -270,7 +272,8 @@ bool writeFile(const std::filesystem::path &file, const UserSettings &settings) 
         out.imbue(std::locale::classic()); // its numbers as number() reads them, whatever locale the host has set
         out << "theme=" << settings.theme << "\nglowLevel=" << settings.glow << "\nhandleSize=" << settings.handleSize
             << "\nlinkIntensity=" << settings.links << "\ngridIntensity=" << settings.grid
-            << "\nseqFull=" << (settings.seqFull ? 1 : 0) << '\n';
+            << "\nseqFull=" << (settings.seqFull ? 1 : 0) << "\ntintedCards=" << (settings.tintedCards ? 1 : 0)
+            << '\n';
         if (settings.hue >= 0.0)
             out << "hue=" << settings.hue << '\n';
         if (settings.zoom > 0.0)
@@ -374,6 +377,8 @@ UserSettings merged(const UserSettings &base, const UserSettings &mine, const Us
         out.grid = mine.grid;
     if (mine.seqFull != base.seqFull)
         out.seqFull = mine.seqFull;
+    if (mine.tintedCards != base.tintedCards)
+        out.tintedCards = mine.tintedCards;
     if (mine.zoom != base.zoom)
         out.zoom = mine.zoom;
     if (mine.keysCollapsed != base.keysCollapsed)

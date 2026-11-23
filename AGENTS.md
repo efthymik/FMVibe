@@ -532,7 +532,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     whole paint and those parts take printed); with no notes playing, a compressor's meter the panels' row and the
     host's tempo the whole editor;
     with none playing, a free LFO's dot moving repainting its card alone, and the editor telling the plugin while one
-    runs (so it keeps processing); a retrigger one showing no dot, but while the effects' tail runs it its dot moving
+    runs (so it keeps processing), and its card repainted hundreds of times noting the cards no more often than a
+    whole paint does; a retrigger one showing no dot, but while the effects' tail runs it its dot moving
     there, gone again with the tail;
   - the list of effects opened on a band's + closing at an undo, and an effect picked from it after its split went
     behind the editor's back going at the line's end;
@@ -550,7 +551,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     container's Low knob setting the low band's level, lowering that band's curve on its display (read off the
     rendered pixels), its S buttons soloing each band on its own, the band shown faint while the other is soloed (read
     off the rendered pixels), both undone, and its crossover handle dragged; the
-    graph and back leaving every wire as it was; the container folded to a strip and unfolded; dragged by its title
+    graph and back leaving every wire as it was; its fold showing while the mouse is over it or a card
+    on its band (read off the rendered pixels); the container folded to a strip and unfolded; dragged by its title
     past the next card, with its bands, the card gliding into its place a step at a time (read off the rendered
     pixels), undone; no arrow into a band's dashed card (read off the rendered pixels); a card at its band's end
     moved right within its own place, or carried straight down out of the panel, moving nothing, carried over its neighbor and then the
@@ -815,7 +817,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     inside the editor at the chain's right end and staying over a switched-off card's dimming, read off the rendered
     pixels; the sources' closing
     at a click around it, and shutting for good as the SEQ view covers their panel), and the arrow between two effects adding one there;
-  - picking the oversampling, MPE and its bend range (leaving the patch alone), the theme (Spectrum, the default, and Porcelain first in its list) and the depth handles'
+  - picking the oversampling, MPE and its bend range (leaving the patch alone), the theme (Spectrum, the default, and Porcelain first in its list), Cards' Plain | Tinted (disabled in Midnight) and the depth handles'
     size (drawn bigger at each, read off the rendered pixels), and dragging the hue slider (the accent taking its hue, read off the rendered pixels), the glow slider, the lines slider (a source's dashed line drawn as strongly as it says, and not at all when off, read off the rendered pixels) and the grid slider, a double-click putting each back where it starts and each showing its tooltip under it while the mouse rests on it and not while it is dragged (read off the rendered pixels), in the settings dialog (with the editor rendered in each theme, and glowing), its book opening the user manual and
     leaving it open, closing it with its x
     or a click around it, and the wheel scrolling nothing behind it;
@@ -825,7 +827,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     its category's dot at its left, its name in the middle and its author at its right (read off the rendered pixels),
     and its tooltip; its info card's star making the preset a favorite, Edit Info, Show in Browser, Escape
     and a click around it closing it, and a factory preset's offering Save Copy; the browser opening on Factory, then where it was left, Show in Browser on the preset's
-    folder, listing its subfolders' presets unless Subfolders is off, a click loading a preset and leaving it open, a
+    folder, listing its subfolders' presets unless Subfolders is off, its names standing
+    out from their authors in every theme (read off the rendered pixels), a click loading a preset and leaving it open, a
     double-click loading one and closing it, and Close closing it; its sidebar's All, Favorites and Recent, its tree's folders opening and closing and its categories
     filtering (two at once, Clear taking them off); the folder's path leading back up and the file's button
     showing the preset's file (none for a factory preset); its search finding presets by
@@ -894,8 +897,13 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - a knob's modulation ring cut off at the knob's end ending in a line across it, and one within range not (read
     off the rendered pixels);
   - in Spectrum, a source card outlined only while the mouse is over it (read off the rendered pixels);
+  - with tinted cards on, Spectrum's and Porcelain's cards tinted with their own color and Midnight's and Light's left
+    as they are (read off the rendered pixels);
   - a card title's fold and x showing an action's face only under the mouse, in Midnight and Spectrum (read off the
     rendered pixels);
+  - a card's fold drawn only while the mouse is over the card and its x always, in Midnight and Spectrum, the hidden
+    fold still folding it, and showing with no mouse once a finger has touched the editor (read off the rendered
+    pixels);
   - in every theme, Porcelain among them, a filter's and a shaper's display on the inspector's lens standing apart from
     the lens's face (read off the rendered pixels);
   - in Spectrum, a modulated knob's arc keeping the accent and a ring from a source of a like color (LFO 1's) drawn
