@@ -463,7 +463,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     ends on a point the curve drops (or jumps) from straight away, going down with the drop. The note's voice runs
     on until the curve has ended, so what it modulates follows it down. In mono a new key struck while it plays on
     starts it again from its Phase (legato, a key played over a held one leaves it looping where it is). It is the
-    fifth button of a Curve card's clock modes (see below).
+    last of a Curve card's clock modes (see below).
   - **Unipolar** makes an LFO swing from 0 to 1 instead of −1 to 1, so it only pushes its targets one way, like an
     envelope. It is the same choice the LFO's right-click menu offers, and its display then has its zero line at the
     bottom.
@@ -1729,7 +1729,9 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     read, on round values), and in the widened card along the top of the plot, with the ruler's labels at the plot's
     foot. It is set as the Seq view's loop is: drag an end to size it, its middle to move it, or across the strip
     outside it to draw a new one, on the grid's columns, its ends staying a column apart; a double-click loops the
-    whole curve again. Each drag is one undo step. Over the loop the mouse shows a move cursor, elsewhere a left-right
+    whole curve again. With Shift or Ctrl held, a drag goes off the columns, where the mouse is (an end, the loop
+    moved as far as the mouse goes, or a new loop), its ends still a 256th of the curve apart; pressed or let go
+    mid-drag, from there on. Each drag is one undo step. Over the loop the mouse shows a move cursor, elsewhere a left-right
     one. Its ends are dashed across the plot, and what the clock mode doesn't play is dimmed: past the loop in
     Retrigger, either side of it in Free and Anchor, nothing in Sustain. One-Shot, which plays the whole curve, shows
     no bar. A point's right-click menu has **Set as Loop Start** and **Set as Loop End**, which put that end exactly
@@ -1970,9 +1972,10 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   covers it), then **+ Source**,
   shaped like + Effect (a drawn plus, the word and a chevron), which opens the list of source types under it to add
   one, and beside it how many of the 32 places are taken, as in 4/32 (with every
-  place taken it is dimmed, and a click says so). Random and Curve cards are laid out as an LFO's (see below), but
-  have **Unipolar** | **Bipolar** (as icons) where an LFO's shape list is, one of them lit, which sets which way their
-  depths swing, as the polarity in its title's menu does, and no Unipolar switch; a Random card has no Phase knob. A MIDI card has its input's list (CC,
+  place taken it is dimmed, and a click says so). Random and Curve cards are laid out as an LFO's (see below). A
+  Random card has **Unipolar** | **Bipolar** (as icons) where an LFO's shape list is, one of them lit, which sets which
+  way its depths swing, as the polarity in its title's menu does, no Unipolar switch and no Phase knob. A Curve card
+  has its clock modes as a list there instead (see below), and an LFO's Unipolar switch. A MIDI card has its input's list (CC,
   Pressure or Slide, where an LFO's shape is; its tooltip says what the input follows), and right of it its CC stepper
   (while its input is a controller) and Slew; under them, both cards'
   display is a bar of what the newest voice gets now (from the middle while the source is bipolar), with its value.
@@ -2038,10 +2041,13 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     wide as it, are its clock modes side by side, as Poly | Mono are, the one it runs in lit, each drawn as an icon
     (named on hover): a rise that starts again at each dot for **Retrigger**, an infinity sign for **Free**, an
     anchor for **Anchor** and a single cycle that ends in a dot for **One-Shot** (a Random card's two, Retrigger and
-    Free, each twice as wide). A Curve card has a fifth, **Sustain**, a rise, a level between two ticks and a fall,
-    under its sync switch, where an LFO's Unipolar switch is (a Curve's polarity is its Unipolar | Bipolar). A click
-    picks one (a click on the
-    one lit leaves it), and the wheel over them steps to the next one. Right of those two rows, centered
+    Free, each twice as wide). A click picks one (a click on the
+    one lit leaves it), and the wheel over them steps to the next one. A Curve card has its five, with **Sustain**
+    last (a rise, a level between two ticks and a fall), as a list where an LFO's shape list is: its button shows the
+    mode it runs in, its icon and name, with arrows that step along the list, round its ends, and the wheel over it
+    steps along it too; its list shows the five with their icons, the one in force checked (the button shows no
+    tooltip, as an LFO's shape list doesn't). Each pick, step or wheel notch is one undo step. The row under it, where an LFO's clock buttons are, is
+    clear but for the Unipolar switch. Right of those two rows, centered
     on them, are the Rate and Phase knobs (a Random card's Rate alone; a Curve's Rate labeled Length while it reads as
     one),
     over a Random card's Smooth and Chaos, with the sync switch between the shape list and Rate, level with the list: a small square button

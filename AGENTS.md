@@ -635,7 +635,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     its controller and its input's list pressure or slide instead, its CC knob going, and the list button's tooltip
     following its input; a Random card's Unipolar | Bipolar, where an LFO's shape list is, bipolar to begin
     with, setting its polarity (read off the rendered pixels), undoably; a Curve source added second from the list,
-    unipolar and widened, its Unipolar | Bipolar in the same place setting its Unipolar, undoably, and folded showing
+    unipolar and widened, its Unipolar switch under the sync button, as an LFO's, undoably, and folded showing
     CRV and its number (read off the rendered pixels);
   - with an LFO in each of the 32 places, a MODS row's source menu listing them in two columns of 16 inside the
     editor, the last place's at the second's foot taking the row's modulation;
@@ -879,15 +879,18 @@ the plain CMake commands and installing into a host are in the [README](README.m
     full-size editor greying the card's editor out (taking no clicks) until it closes, by its done button or a view
     tab, the card staying widened, also while the SEQ view covers the modulation panel, and the
     card back to its size by its collapse button;
-  - a Curve source's loop and Sustain: its card's fifth clock mode, Sustain, under its sync switch, a click turning
-    the others off, undoably, the wheel stepping onto it, and its tooltip (read off the rendered pixels), an LFO card
-    beside it keeping its four and its Unipolar switch where they were; its Rate, unsynced, shown and typed as the
+  - a Curve source's loop and Sustain: its card's clock modes a list where an LFO's shape list is, a pick, its
+    arrows (round its ends) and the wheel (held at its ends) setting the mode, each one undo step, no tooltip under
+    it (read off the rendered pixels), the LFO's Unipolar switch under its sync button, undoably, and the row
+    under the list clear (a click there setting nothing, read off the rendered pixels), an LFO card beside it keeping
+    its four clock buttons and its Unipolar switch where they were; its Rate, unsynced, shown and typed as the
     curve's length in One-Shot and Sustain (a length in s or ms, or a rate in Hz) and as a rate retriggered; its
     places reading as times there, in bars and beats synced, else as a share; its full-size editor's title row
     setting its clock mode and sync; its loop's strip over the full-size plot, on the grid's columns: an end dragged
     sizing it, the start too, its middle moving it, a drag outside it drawing a new one, its ends a column apart and
     a double-click looping the whole curve, each one undo step, with the move cursor over it and the left-right one
-    elsewhere; what each clock mode doesn't play dimmed and no bar one-shot (read off the rendered pixels); a point's
+    elsewhere; with Shift and with Ctrl, an end, the loop's middle and a new loop dragged off the columns, where the
+    mouse is, each one undo step, the ends kept 1/256 apart; what each clock mode doesn't play dimmed and no bar one-shot (read off the rendered pixels); a point's
     Set as Loop Start and Set as Loop End putting that end exactly there, off the grid too, undoably, an entry that
     would cross the other end left out; the widened card's strip along its plot's top, none one-shot; and, let go in
     Sustain, its dot keeping to its curve while a dashed line across moves to the level it puts out (read off the

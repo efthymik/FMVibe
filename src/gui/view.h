@@ -444,6 +444,9 @@ private:
     // How many clock modes its card offers: a random one only Retrigger and Free.
     int lfoClockCount(int lfo) const;
     void setLfoClock(int lfo, LfoClock clock);
+    // What a list's entry (or its arrows, or the wheel) picks: its param's value, or a Curve's clock mode through
+    // setLfoClock() (see detail::isCurveClock()).
+    void pickListValue(int param, int to);
     // Whether a widget is one of an LFO's clock modes (a Choice on its Free, a = the LFO, b = the mode).
     static bool isLfoClockChoice(const Widget &w) {
         return w.kind == Kind::Choice && sourceFieldOf(w.param) == SourceParam::Free;

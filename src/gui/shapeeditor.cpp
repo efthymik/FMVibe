@@ -47,6 +47,7 @@ ShapeEditor::ShapeEditor(PanelHost &host)
 constexpr float kClipEditorW = 520.0f;
 constexpr float kShapeRulerRoom = 12.0f; // what an LFO's plot gives up for its loop's strip
 constexpr float kTitleClockW = 88.0f;    // a clock mode's button in a Curve's title row, its icon and name
+constexpr double kLoopApart = 1.0 / 256.0; // how near a loop's ends come, dragged off the grid's columns
 Rect ShapeEditor::shapePanel() const {
     const int shape = shapeEditing();
     if (shape >= 0 && isClipCurve(shape))
@@ -2039,6 +2040,7 @@ void ShapeEditor::set(int index, double v) { // within its range, as the View se
 
 void ShapeEditor::drag(const DragState &d) {
     drag_.now = d.now;
+    drag_.loopFree = d.mods.shift || d.mods.ctrl; // a loop's drag, as the mouse moves (see moveTo())
     moveTo(d.now, d.mods.ctrl);
 }
 
@@ -2090,29 +2092,35 @@ void ShapeEditor::moveTo(Point p, bool ctrl) {
     }
     case DragKind::Loop: {
         // As the SEQ view's loop, on the grid's columns: a new one at least a column long, moved as long as it was and
-        // within the curve, or an end, a column at least from the other. One undo step (see press()).
+        // within the curve, or an end, a column at least from the other. With Shift or Ctrl held, off them, where the
+        // mouse is, its ends still kLoopApart apart. One undo step (see press()).
         const int shape = w.a;
+        const bool free = drag_.loopFree;
         const double column = 1.0 / controller().layout().shapeGridX;
-        const double at = loopColumn(shape, p);
+        const double apart = free ? kLoopApart : column;
+        auto along = [&](Point at) { return std::clamp(shapeXAt(shape, at), 0.0, 1.0); };
+        const double at = free ? along(p) : loopColumn(shape, p);
+        const double from = free ? along(drag_.start) : drag_.loopFrom;
         LfoLoop loop = drag_.loopWas;
         switch (drag_.loopGrab) {
         case LoopGrab::New:
-            loop = {std::min(drag_.loopFrom, at), std::max(drag_.loopFrom, at)};
-            if (loop.end - loop.start < column - 1e-9)
+            loop = {std::min(from, at), std::max(from, at)};
+            if (loop.end - loop.start < apart - 1e-9)
                 return;
             break;
         case LoopGrab::Move: {
             const double length = drag_.loopWas.end - drag_.loopWas.start;
-            const double by = std::round((shapeXAt(shape, p) - shapeXAt(shape, drag_.start)) / column) * column;
+            const double moved = shapeXAt(shape, p) - shapeXAt(shape, drag_.start);
+            const double by = free ? moved : std::round(moved / column) * column;
             loop.start = std::clamp(drag_.loopWas.start + by, 0.0, 1.0 - length);
             loop.end = loop.start + length;
             break;
         }
         case LoopGrab::Start:
-            loop.start = std::max(std::min(at, loop.end - column), 0.0);
+            loop.start = std::max(std::min(at, loop.end - apart), 0.0);
             break;
         case LoopGrab::End:
-            loop.end = std::min(std::max(at, loop.start + column), 1.0);
+            loop.end = std::min(std::max(at, loop.start + apart), 1.0);
             break;
         }
         const int start = paramIndex(shape, SourceParam::LoopStart), end = paramIndex(shape, SourceParam::LoopEnd);

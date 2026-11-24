@@ -711,7 +711,9 @@ The **shape tools**, each one undo step:
 - **Shift left** / **Shift right**: moves it one grid column, around the cycle.
 - **Copy** and **Paste**: copies the shape into another Curve source.
 
-For editing points, see [Shape editors](#shape-editors). **Unipolar | Bipolar** buttons replace the LFO's shape list.
+For editing points, see [Shape editors](#shape-editors). Where an LFO has its shape list, a Curve source has its
+**clock mode** as a list; its arrows and the mouse wheel step through the modes. The **Unipolar** switch sits under the
+sync button, as on an LFO.
 
 A Curve source has a fifth clock mode, **Sustain**, after One-Shot. It works like an envelope with a sustain loop:
 
@@ -729,10 +731,11 @@ The loop shows as a bar over the shape, in the widened card and the full-size ed
 
 - Drag an end of the bar to resize the loop, or its middle to move it.
 - Drag outside the bar to draw a new loop.
+- Hold Shift or Ctrl while dragging to place the loop off the grid.
 - Double-click the bar to loop the whole curve again.
 - Right-click a point and choose **Set as Loop Start** or **Set as Loop End** to put that end exactly on the point.
 
-The bar snaps to the grid's columns. One-Shot shows no bar. The parts of the curve the clock mode never plays are
+The bar snaps to the grid's columns unless Shift or Ctrl is held. One-Shot shows no bar. The parts of the curve the clock mode never plays are
 dimmed.
 
 In One-Shot and Sustain, with Sync off, the **Rate** knob shows the curve's **length** instead (for example 1.20 s).

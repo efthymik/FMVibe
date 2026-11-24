@@ -32,13 +32,14 @@ Spectrum theme, from the real card geometry in `src/gui/layout.h`).
 | --- | --- |
 | MSEG | No new source type. The Curve source grows the missing parts. |
 | Clock modes | A fifth, **Sustain**, after One-Shot, on Curve cards only. LFO and Random cards keep theirs. |
+| Curve card's clock modes and polarity | **A list (a dropdown)**, not a row of buttons: the clock mode picked from a list button where the Curve card's Unipolar \| Bipolar is now (an LFO's shape list's place). Its polarity becomes **the LFO's Unipolar switch**, under the sync button. (Added after Phase 2 landed.) |
 | Loop region | Every Curve has one: a start and an end along the curve. A new Curve's (and every existing patch's) is the **whole curve**, so nothing plays differently until it is moved. |
 | Retrigger | Plays from where notes start it (Phase), then loops the region. With the whole curve as the region, as today. |
 | Free, Anchor | Cycle only the region. |
 | One-Shot | Ignores the region: plays the whole curve once, then holds, as today. |
 | Sustain | Plays from Phase to the region and loops it while the key is down (or the sustain pedal holds the note). Let go, it leaves the loop **at once** and plays on from the level it is at, as a DX7's envelope releases (it goes to its last stage from wherever it is). It holds at the curve's end. A voice runs on until the curve has ended, as it does for a releasing mod envelope. |
 | Nothing after the loop | (The loop ends at the curve's end, as a new Sustain curve's does.) Let go, it **glides to the last point over a few ms** rather than jumping. |
-| Setting the loop | **As the sequencer's loop is set**: a bar on a ruler over the shape, its ends dragged to size it and its middle to move it, a drag across the ruler outside it drawing a new one, a double-click looping the whole curve, snapped to the grid's columns, its ends staying a column apart, what isn't played shaded. |
+| Setting the loop | **As the sequencer's loop is set**: a bar on a ruler over the shape, its ends dragged to size it and its middle to move it, a drag across the ruler outside it drawing a new one, a double-click looping the whole curve, snapped to the grid's columns, its ends staying a column apart, what isn't played shaded. **With Shift or Ctrl held**, a drag of the loop or either end goes **without snapping**, wherever the mouse is (as a note moved with Shift does in the sequencer). |
 | Point menu | A point's right-click menu adds **Set as Loop Start** and **Set as Loop End** (beside today's Delete point). They put that end exactly at the point, on the grid or not. |
 | Rate as a length | In One-Shot and Sustain, unsynced, the Rate knob and the editors read and take a length (1.20 s) instead of Hz. Rate stays the whole curve's length in every mode, so the region plays at the speed it is drawn: a loop half as long comes round twice as often. |
 | Operator envelopes | Each operator can draw its own envelope: the ENVELOPE tab's **ADSR \| Curve** switch (variant D1 in the drafts; following a Curve source, D2, was not taken). Its own One-Shot \| Sustain, loop region and length. |
@@ -59,7 +60,7 @@ Spectrum theme, from the real card geometry in `src/gui/layout.h`).
 | ![E: copy and paste](curve-sustain-plan/e-copy-paste.png) | **E · Copy and paste.** 1 Copy from a shape's right-click menu or Ctrl+C. 2 Into an operator envelope, as it is. 3 Into a sequencer lane, across the pattern. 4 Into the velocity curve, thinned to 16 points. 5 Into a shaper, its ends kept at the ends, and Paste dimmed while nothing is copied. |
 
 In the drafts the Sustain loop's ends sit on two points that aren't on the 12-column grid; that is a loop set with
-the point menu. A loop dragged on the ruler snaps to the columns.
+the point menu. A loop dragged on the ruler snaps to the columns, unless Shift or Ctrl is held.
 
 ---
 
@@ -173,6 +174,10 @@ beside them), and `tests/quality.cpp` where a check measures sound:
 
 ### The card's fifth clock mode
 
+(Built in `2d124d3`. The card's row of five buttons is to become a list: see "The Curve card's clock modes as a list"
+below. What follows stays true of the full-size editor's title row, the icon, the tips, the wheel and
+`setLfoClock()`.)
+
 - Curve cards have no Unipolar switch at the clock row's right (Random and Curve put Unipolar | Bipolar where the
   LFO's shape list is), so the Curve's row widens under the sync button: five buttons across 152 px, each as wide as
   an LFO's (draft A). LFO cards keep four across 122 px with the Unipolar switch beside them; Random keeps its two.
@@ -203,6 +208,17 @@ The sequencer's loop is the model (`src/gui/seqpanel.cpp`; nothing there is shar
 
 - Each drag is one undo step (`editMany` of LoopStart and LoopEnd).
 - The bar shows in Retrigger, Free, Anchor and Sustain, not in One-Shot (draft C).
+- **Without snapping (added after Phase 2 landed, in `2d124d3`; built since).** With Shift or Ctrl held, a drag
+  on the strip doesn't snap: an end goes exactly where the mouse is, the loop moves by exactly as far as the mouse
+  has, and a new loop is drawn from where it was pressed to where the mouse is. The modifier is read as the mouse
+  moves (`DragState::mods`, as `moveTo()` reads Ctrl for points), so pressing it mid-drag frees the drag from there.
+  Freed ends still never meet: they keep at least 1/256 of the curve apart (a zero-length loop is a host's or a
+  state's only), and a moved loop stays within the curve. Where it goes: `ShapeEditor::moveTo()`'s
+  `DragKind::Loop` case (`loopColumn()` and the column steps there), which takes `d.mods.shift || d.mods.ctrl`.
+  The Snap switch doesn't change it: the loop snaps to the columns unless Shift or Ctrl is held, whatever Snap
+  says. The strip's tip says so (`TipShapeLoop`, "Drag to set the loop, Shift for free, double-click for the whole
+  curve", or as close as reads well). Docs: `docs/features.md` (the shape editor's loop paragraph) and
+  `docs/manual.md` (the Curve source's loop list).
 - The full-size editor (`paintShapeEditor()` `shapeeditor.cpp:752-812`, widgets `1311-1365`, mouse
   `press` 1653 / `doubleClick` 1806 / `drag` 1841 / `drop` 1925 / `release` 1939, cursor 1607) gains the ruler at its
   plot's top; the widened card (`paintLfoCard()` `shapeeditor.cpp:1244-1294`, `cardWidgets()` 1389-1431,
@@ -232,6 +248,47 @@ it is.
   unsynced, bars and beats when synced (`1.2.1`), and % of the cycle otherwise. The ruler's labels follow the same
   rule (draft C: seconds, %, beats).
 
+### The Curve card's clock modes as a list (added after Phase 2 landed; built since)
+
+The Curve card's controls become an LFO card's, with a list of clock modes in the place of its shape list:
+
+- **The list.** A list button at `lfoShapeButton(card)` (`gui/layout.h`, the LFO's shape list's place and the
+  Curve's Unipolar | Bipolar's now, `randomPolaritySwitch()`): the mode in force, its icon (`lfoClockIcon()`) and
+  name (`SwitchRetrigger`..`SwitchSustain`, which the full-size editor's title row already uses), and the arrows that
+  step along it, round its ends, as the LFO's shape list has (`isSteppableList()`, `listStepButton()`); the wheel
+  over it steps along it, as the clock buttons' wheel does now (`view.cpp`, `isLfoClockChoice()` in `wheel()`). Its
+  list opens under it, as the shape list's does, with the five modes in order, each its icon and name, the one in
+  force checked. The list button shows no tooltip, as an LFO's shape list doesn't (decided with the user after it was
+  built with one); its arrows keep their Previous / Next tips.
+- **What it edits.** The clock mode isn't one param but the switches `setLfoClock()` sets (Free, Anchor, One-Shot,
+  CurveSustain): the list button takes `paramIndex(s, SourceParam::Free)` as the clock Choices do now
+  (`isLfoClockChoice()` keys on it), and picking an entry, an arrow or a wheel notch goes through `setLfoClock()`, one
+  undo step, never through `edit()` of the param. `gui/lists.h`'s `listCount()`, `listItemValue()` and
+  `listItemName()` (and `isSteppableList()`) need a case for it: five entries, valued by `LfoClock`, named by
+  `SwitchRetrigger`..`SwitchSustain`; `View`'s list pick (where a `ListItem` is taken) routes it to `setLfoClock()`.
+- **The polarity.** The Curve card's Unipolar | Bipolar Choice pair (`view.cpp`, the `random || curve` branch beside
+  the shape list) goes for a Curve; it gets the LFO's Unipolar Toggle at `lfoUnipolarSwitch(card)`, under the sync
+  button, the same widget, icon and tip as an LFO's (`TipUnipolar`/`TipBipolar`). The param doesn't change (a
+  Curve's polarity was its Unipolar already), nor does a new Curve starting unipolar. A Random card keeps its
+  Unipolar | Bipolar (its Bipolar) where it is.
+- **The second row.** The row under the list, where an LFO's clock buttons are, holds nothing left of the Unipolar
+  switch on a Curve card: the display, the knobs and a widened card's tools stay where they are, as every source
+  card keeps its controls in an LFO card's places. `lfoModeSwitch()`'s five-wide Curve row (`kCurveModes` there)
+  goes. That space stays clear (decided with the user: the display doesn't move up into it).
+- **Unchanged.** The full-size editor's title row keeps its five named buttons (it has the room); LFO cards keep
+  their shape list, four clock buttons and Unipolar switch; Random cards their two clock buttons and Unipolar |
+  Bipolar; the engine and the stored params.
+- **Tests** (`tools/uishot.cpp`, `testCurveLoop`): the list button shows the mode in force; its list opens with the
+  five, one checked, and picking Sustain sets the switches as `setLfoClock()` does, one undo step; its arrows and the
+  wheel step along it (round its ends for the arrows); its tooltip; the Unipolar switch under the sync button flips
+  the Curve's Unipolar, undoably, and the card shows no Unipolar | Bipolar pair (read off the rendered pixels); an
+  LFO card beside it unchanged (its four clock buttons and Unipolar switch where they were). The Phase 2 replays that
+  click the Curve's clock buttons (`sustainToggle`, `oneShotToggle(0)`, `retriggerToggle(0)` on a Curve card, and
+  the `randomPolaritySwitch` clicks on Curve cards in `testWideLfoCard` and around `uishot.cpp:15034`) go through the
+  list and the switch instead.
+- **Docs.** `docs/features.md` (the source cards' paragraph on the clock modes and the Unipolar switch, and the
+  Curve's Sustain bullet that says it is the fifth button) and `docs/manual.md` (the Curve source section).
+
 ### Tests (Phase 2)
 
 New replays in `tools/uishot.cpp`, beside `testWideLfoCard` (`4558-4726`) and the full-size Curve editor replay in
@@ -244,7 +301,9 @@ New replays in `tools/uishot.cpp`, beside `testWideLfoCard` (`4558-4726`) and th
 - The loop bar in the full-size editor and the widened card, mirroring the Seq loop replays (`testSeq`,
   `7856-7881`): ends dragged to size it (snapped to columns, a column apart), its middle moving it, a drag outside
   drawing a new one, a double-click looping the whole curve, each one undo step, the cursors, the shading per mode
-  (read off the rendered pixels), no bar in One-Shot.
+  (read off the rendered pixels), no bar in One-Shot. With Shift, and again with Ctrl: an end, the loop's middle and
+  a new loop dragged landing off the columns, where the mouse is (an end let go between two columns staying there),
+  each one undo step, and the ends kept 1/256 apart when one is pushed onto the other (in `testCurveLoop`).
 - The point menu: Set as Loop Start / End on a point (the first and the last too), off the grid, one undo step; the
   entry left out where it would cross the other end; Delete point as before.
 - Rate shown and typed as a length in One-Shot and Sustain; the readouts and ruler labels in each case.

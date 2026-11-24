@@ -42,6 +42,16 @@ inline bool isLfoShape(int param) {
     return sourceFieldOf(param) == SourceParam::Shape;
 }
 
+// A Curve card's list of clock modes, which its button keys on the source's Free switch, as the clock buttons do (see
+// View::isLfoClockChoice()): its entries are the five modes (LfoClock), each its icon and name, and what it picks it
+// sets through View::setLfoClock(), the switches together, never by editing that param.
+inline bool isCurveClock(int param) {
+    return sourceFieldOf(param) == SourceParam::Free;
+}
+constexpr Str kCurveClockNames[] = {Str::SwitchRetrigger, Str::SwitchFree, Str::SwitchAnchor, Str::SwitchOneShot,
+                                    Str::SwitchSustain};
+static_assert(std::size(kCurveClockNames) == static_cast<size_t>(kCurveModes));
+
 inline bool isClipMode(int param) {
     return fxFieldOf(param) == FxParam::ShaperMode || shaperFieldOf(param) == ShaperParam::Mode;
 }
@@ -180,7 +190,7 @@ inline bool isModelList(const Widget &w) {
 inline bool isSteppableList(int param) {
     const FxParam field = fxFieldOf(param);
     return isFilterTypeList(param) || isClipMode(param) || field == FxParam::AmpModel || field == FxParam::AmpCab ||
-           field == FxParam::ReverbType || isLfoShape(param);
+           field == FxParam::ReverbType || isLfoShape(param) || isCurveClock(param);
 }
 
 // Adds widgets to a list: `add(kind, rect, param, a, b)`. A list button whose list has arrows gets them, over it.
@@ -234,6 +244,7 @@ inline int listCount(int param, int shown = 0, bool model = false) {
            : isFilterTypeList(param)                  ? (model ? filterFamilyTypes(filterTypeAt(shown)).count
                                                                : kFilterFamilies)
            : isLfoShape(param)                        ? kLfoShapeItems
+           : isCurveClock(param)                      ? kCurveModes
            : isMidiInput(param)                       ? static_cast<int>(MidiInput::Count)
            : fxFieldOf(param) == FxParam::ReverbType ? static_cast<int>(ReverbType::Count)
            : fxFieldOf(param) == FxParam::AmpModel   ? static_cast<int>(AmpModel::Count)
@@ -251,6 +262,8 @@ inline std::string listItemName(int param, int value, bool model = false) {
         return model ? filterModelName(filterTypeAt(value)) : filterFamilyName(filterTypeAt(value));
     if (isLfoShape(param))
         return lfoShapeName(static_cast<LfoShape>(value));
+    if (isCurveClock(param))
+        return tr(kCurveClockNames[std::clamp(value, 0, kCurveModes - 1)]);
     if (isMidiInput(param))
         return midiInputName(static_cast<MidiInput>(value));
     if (fxFieldOf(param) == FxParam::AmpModel)

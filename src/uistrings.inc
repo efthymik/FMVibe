@@ -1196,7 +1196,7 @@ STR(TipShapeShiftLeft, "Shift left")
 STR(TipShapeShiftRight, "Shift right")
 STR(TipShapeCopy, "Copy shape")
 STR(TipShapePaste, "Paste copied shape")
-STR(TipShapeLoop, "Drag to set the loop, double-click for the whole curve") // a Curve's loop bar
+STR(TipShapeLoop, "Drag to set the loop (Shift: off the grid), double-click for the whole curve") // a Curve's loop bar
 STR(TipShapePoints, "Double click to add and move points")
 STR(TipShapeSteps, "Click to draw steps, Alt+click for points")
 STR(TipShapeSnap, "Snap to grid")
@@ -1225,6 +1225,8 @@ STR(TipPrevCabinet, "Previous cabinet")
 STR(TipNextCabinet, "Next cabinet")
 STR(TipPrevShape, "Previous shape")
 STR(TipNextShape, "Next shape")
+STR(TipPrevClock, "Previous clock mode") // the arrows of a Curve card's list of clock modes
+STR(TipNextClock, "Next clock mode")
 STR(TipPrevAlgorithm, "Previous algorithm")
 STR(TipNextAlgorithm, "Next algorithm")
 STR(TipRetrigger, "Restart with each note") // an LFO's clock modes

@@ -858,12 +858,12 @@ inline Rect lfoWidenButton(float card) {
 // an LFO's.
 constexpr int kLfoModes = static_cast<int>(LfoClock::OneShot) + 1;
 static_assert(static_cast<int>(LfoClock::Sustain) == kLfoModes, "an LFO card's clock modes are those before Sustain");
-// A Curve card's five, each as wide as an LFO's, run on under its sync switch, where an LFO's Unipolar switch is (a
-// Curve's polarity is its Unipolar | Bipolar).
+// A Curve's five are a list instead, where an LFO's shape list is (see detail::isCurveClock()), that row left clear but
+// for its Unipolar switch; its full-size editor's title row has them as buttons.
 constexpr int kCurveModes = static_cast<int>(LfoClock::Count);
 inline Rect lfoModeSwitch(float card, int mode, int modes = kLfoModes) {
     const Rect p = sourceCard(card);
-    const float w = modes == kCurveModes ? 30.5f : 30.5f * kLfoModes / modes;
+    const float w = 30.5f * kLfoModes / modes;
     return {p.x + 16.0f + mode * w, p.y + 72.0f, w, 16.0f};
 }
 
@@ -883,8 +883,8 @@ constexpr ClipMode kClipModesOffered[] = {ClipMode::Hard,   ClipMode::Soft,     
                                           ClipMode::Fold,   ClipMode::Stack,    ClipMode::Custom};
 static_assert(std::size(kClipModesOffered) == static_cast<size_t>(ClipMode::Count), "the list offers every curve");
 
-// A Random or Curve card's polarity, Unipolar (0) | Bipolar (1), where an LFO's shape list is, each half of it, over
-// its clock modes as an LFO's.
+// A Random card's polarity, Unipolar (0) | Bipolar (1), where an LFO's shape list is, each half of it, over its clock
+// modes as an LFO's. (A Curve card has its clock modes' list there, and an LFO's Unipolar switch.)
 inline Rect randomPolaritySwitch(float card, int bipolar) {
     const Rect list = lfoShapeButton(card);
     return {list.x + bipolar * list.w * 0.5f, list.y, list.w * 0.5f, list.h};

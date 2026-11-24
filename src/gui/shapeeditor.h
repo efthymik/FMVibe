@@ -273,7 +273,8 @@ private:
         ShapeStep, // a step just drawn, following the mouse (shapeBefore: the shape before it)
         ShapeBox,  // a box across a shape from where it was pressed to where the mouse is, picking the points it reaches
         Partials,
-        Loop, // a Curve's loop on its strip: loopGrab what it took, loopFrom the column pressed, loopWas the loop then
+        Loop, // a Curve's loop on its strip: loopGrab what it took, loopFrom the column pressed, loopWas the loop then,
+              // loopFree whether Shift or Ctrl is held now (off the columns)
     };
     struct Drag {
         DragKind kind = DragKind::None;
@@ -294,6 +295,7 @@ private:
         LoopGrab loopGrab = LoopGrab::New;
         double loopFrom = 0.0;
         LfoLoop loopWas;
+        bool loopFree = false;
     };
     // The widget a readout names: the point (or partials) being dragged, else the one under the mouse.
     const Widget *focused(DragKind dragged) const;
