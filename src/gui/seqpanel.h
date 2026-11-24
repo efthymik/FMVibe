@@ -28,6 +28,7 @@ struct SeqRoll; // see layout.h
 class SeqPanel : public Panel {
 public:
     explicit SeqPanel(PanelHost &host);
+    ~SeqPanel() override { seqBlipEnd(); } // a note an arrow's move put on let go as the editor closes
 
     // The confirm dialog's question this panel asks (see View::confirm_, whose other kinds are the View's and the
     // preset browser's): every note of the pattern going.
@@ -44,6 +45,9 @@ public:
     bool full() const;
     const detail::SeqRoll &roll() const;
     void toggleSize(); // the full size or the half, kept in the user's settings
+    bool seqOn() const; // the sequencer's power switch: off, the view takes no input but at it and the size button
+    // Where the Play button starts the pattern: the start of the first note picked in the loop, or -1 (its start).
+    double seqPreviewFrom() const;
 
     void widgets(std::vector<Widget> &list) const override;
     void popups(std::vector<Widget> &list) const override; // the scale's and the snap's lists, over everything
@@ -59,6 +63,9 @@ public:
     bool tipAtMouse(const Widget &w) const override;
     // The cursor over the roll (a pen while drawing, moving and stretching over a note), none elsewhere.
     std::optional<CursorKind> cursor(const Widget &w) const override;
+    // With Bend, what the roll shows follows the mouse across it: the faint point on a bend's line, the point or
+    // segment's middle lit, and the bend lit of the note under the mouse.
+    bool hoverMoves(Point before, Point now) const override;
     void poll(const Telemetry &now, std::vector<Rect> &repaint) override;
     bool step() override;
     void pressing(const Widget *hit) override;
@@ -188,6 +195,80 @@ private:
     void setSeqCurvePick(std::vector<int> points);
     // The points picked, moved together after the one grabbed (seqDrag_.anchor), now where `to` is.
     void moveSeqCurvePoints(SeqCurvePoint to);
+    // --- The notes' own bends (see SeqNoteBendParam), drawn over the rows (a row a semitone) and edited with the Bend
+    // tool.
+    bool seqDrawing() const; // Draw picked (not Select or Bend)
+    bool seqBendTool() const;
+    // A note's points as stored, and written back (the points past them back to their defaults, so a preset saved
+    // sparse leaves them out), in the undo step open.
+    std::vector<SeqCurvePoint> seqBendPoints(int slot) const;
+    void setSeqBend(int slot, const std::vector<SeqCurvePoint> &points);
+    // The farthest a note bends from its pitch, signed (0 without points).
+    double seqBendExtreme(int slot) const;
+    // Where a pitch (fractions between) sits on the roll, up and down: between the middles of the rows it falls
+    // between, in proportion (folded to the scale too), a row a semitone past the pitches the roll can show; and the
+    // pitch at `y`.
+    float seqPitchY(double pitch) const;
+    double seqPitchAtY(float y) const;
+    // Where a note's bend of `semitones` sits up and down on the roll, and the bend at `y` there.
+    float seqBendY(const SeqNote &n, double semitones) const;
+    double seqBendAtY(const SeqNote &n, float y) const;
+    // With the Bend tool, every bent note's points and segments' handles take the mouse.
+    struct BendHit {
+        int slot = -1;
+        int index = -1; // its point, or its segment
+        bool operator==(const BendHit &) const = default;
+    };
+    BendHit seqBendPointAt(Point p) const;
+    BendHit seqBendSegmentAt(Point p) const; // a segment's middle: its bend handle
+    // With the Bend tool, the bend's line under `p` (within the note, clear of its points and handles): the note, the
+    // point on the line there (from the note's start, as it runs) and where it shows.
+    struct BendLineHit {
+        int slot = -1;
+        SeqCurvePoint point{};
+        Point at{};
+    };
+    std::optional<BendLineHit> seqBendLineAt(Point p) const;
+    // With the Bend tool, the note whose bend is lit at `p`: the one whose point, segment's middle or line is there,
+    // else the note there; -1 for none.
+    int seqBendLitNote(Point p) const;
+    // With the Bend tool, the note under `p` whose bend runs over its bar there (one without a bend always does), which
+    // a press bends; -1 for none. Where the bend has left the bar, the bar takes nothing.
+    int seqBendNoteAt(Point p) const;
+    // Whether a segment takes a bend (it rises or falls and has room for its handle), and where its handle is.
+    bool seqBendSegmentBends(const SeqNote &n, const std::vector<SeqCurvePoint> &points, int segment) const;
+    Point seqBendSegmentPos(const SeqNote &n, const std::vector<SeqCurvePoint> &points, int segment) const;
+    // A point put where the mouse is on note `n`: within the note, on the snap's lines and up and down on the rows (only
+    // the scale's while folded), or with `free` anywhere, to the cent.
+    SeqCurvePoint seqBendPointFor(const SeqNote &n, Point p, bool free) const;
+    // Puts it in among the note's points (after those at its time), a point at the note's start at 0 first where the
+    // note has none and it goes later; its index, -1 (flashing why) where the note bends through as many as it can.
+    int addSeqBendPoint(int slot, SeqCurvePoint point);
+    // Shift+drag with Bend: the note's bend drawn from `from` (at `fromValue`) on to `step` (at `v`), a point on every
+    // line of the grid (`unit` steps apart) past `from`, in place of the points there.
+    void paintSeqBend(int slot, double from, double fromValue, double step, double v, double unit);
+    std::optional<SeqNote> seqNoteOf(int slot) const;
+    BendHit seqBendJustAdded_; // the point the last press put down, which a double-click leaves
+    // The bend points picked (a box from empty space with Bend, Shift or Ctrl+click, Ctrl+A), as the lane's curve's are:
+    // of the pattern shown, each while its note has as many points as when it was picked; moved together, and Delete
+    // removing them.
+    struct BendPick {
+        int pattern = -1;
+        std::vector<BendHit> points;
+        std::vector<int> counts; // each one's note's points as it was picked
+    };
+    BendPick seqBendPick_;
+    std::vector<BendHit> seqBendPicked() const;
+    void setSeqBendPick(std::vector<BendHit> points);
+    // The points picked, moved together after the one grabbed (seqDrag_.anchor, bendIndex), now where `p` is.
+    void moveSeqBendPoints(Point p);
+    void removeSeqBendPoints(const std::vector<BendHit> &points); // one undo step
+    void doubleClickBend(Point p);
+    // The notes' bends on the roll.
+    void paintSeqBends(Canvas &c, const std::vector<SeqNote> &notes);
+    // Every param of a note (its fields, then its bend's), as it is copied, cleared and pasted.
+    static std::vector<int> seqSlotParams(int pattern, int slot);
+    static constexpr int kSeqSlotParamCount = kSeqNoteParamCount + kSeqNoteBendParamCount;
     Rect seqScrollTrack() const;
     Rect seqScrollThumb() const;
     Rect seqScrollYThumb() const; // the rows' bar's thumb: high up for high rows
@@ -264,7 +345,7 @@ private:
     // The notes copied (Ctrl+C, Ctrl+X, the roll's menu), kept by the editor for any pattern: each note's fields, its
     // start from the first one's; and how far they reach, from that start to the last one's end on the grid.
     struct SeqClip {
-        std::vector<std::array<double, kSeqNoteParamCount>> notes;
+        std::vector<std::array<double, kSeqSlotParamCount>> notes; // its fields and its bend (see seqSlotParams())
         double from = 0.0; // where the first one started
         double span = 0.0;
     };
@@ -280,7 +361,7 @@ private:
     struct SeqDrag {
         enum class Mode { None, Move, Resize, ResizeStart, Box, Paint, Velocity, Lane, LaneGroup, Loop, LoopStart,
                           LoopEnd, LoopMove, Field, Audition, Scroll, ScrollY, CurvePoint, CurveBend, CurvePaint,
-                          CurveBox, LaneBox, Tile, ViewRect };
+                          CurveBox, LaneBox, Tile, ViewRect, BendPoint, BendCurve, BendPaint, BendGroup, BendBox };
         Mode mode = Mode::None;
         Point start, now;                // where the mouse went down, and where it is now
         int anchor = -1;                 // the note grabbed (Move, Resize), the field (Field), the key (Audition)
@@ -312,9 +393,24 @@ private:
         // Box: where it started on the roll, in rows up from the first of seqPitchList()'s (and across in grabStep's
         // steps), so that corner stays on the notes it started by as the roll scrolls under a drag held at its edge.
         float boxRow = 0.0f;
+        // BendPoint, BendCurve, BendPaint: the note's point or segment (with the note in `anchor`), and whether a stroke
+        // ran out of points (flashed once).
+        int bendIndex = -1;
+        bool bendFull = false;
+        // BendGroup: the points picked, moved together, and where they were as they were grabbed; BendBox: those picked
+        // before the box, which Shift or Ctrl adds it to.
+        std::vector<BendHit> bendPoints;
+        std::vector<SeqCurvePoint> bendOrigin;
     };
     Point seqBoxStart() const; // the Box's starting corner, where the roll shows it now
     void seqHear(int pitch); // that note heard from now on in the drag, the one before let go; -1 lets it go
+    // The notes picked moved a row or an octave by the arrows, heard for a moment at their new pitches (each pitch
+    // once), those heard before let go; poll() lets them go once kSeqBlipSeconds have passed.
+    void seqBlip(const std::vector<int> &slots);
+    void seqBlipEnd();
+    static constexpr double kSeqBlipSeconds = 0.3;
+    std::vector<int> seqBlipPitches_; // the pitches heard
+    double seqBlipUntil_ = 0.0;       // until when, on the editor's clock (see PanelHost::now())
     SeqDrag seqDrag_;
     bool dragging() const { return seqDrag_.mode != SeqDrag::Mode::None; } // a drag of its own goes on
     // The pattern's loop, in steps, as its params have it (the end, 0 for the pattern's, as the pattern's end), and

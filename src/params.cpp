@@ -41,7 +41,7 @@ constexpr bool idsRoundTrip(int from, int to) {
     return true;
 }
 // (MSVC allows an expression 1,048,576 steps, fewer than GCC, so the parts are small.)
-static_assert(kParamCount == 38008 && kParamCount <= 13 * 3000);
+static_assert(kParamCount == 50808 && kParamCount <= 17 * 3000);
 static_assert(idsRoundTrip(0, 1500), "param id layout overlaps");
 static_assert(idsRoundTrip(1500, 3000), "param id layout overlaps");
 static_assert(idsRoundTrip(3000, 4500), "param id layout overlaps");
@@ -68,6 +68,14 @@ static_assert(idsRoundTrip(33000, 34500), "param id layout overlaps");
 static_assert(idsRoundTrip(34500, 36000), "param id layout overlaps");
 static_assert(idsRoundTrip(36000, 37500), "param id layout overlaps");
 static_assert(idsRoundTrip(37500, 39000), "param id layout overlaps");
+static_assert(idsRoundTrip(39000, 40500), "param id layout overlaps");
+static_assert(idsRoundTrip(40500, 42000), "param id layout overlaps");
+static_assert(idsRoundTrip(42000, 43500), "param id layout overlaps");
+static_assert(idsRoundTrip(43500, 45000), "param id layout overlaps");
+static_assert(idsRoundTrip(45000, 46500), "param id layout overlaps");
+static_assert(idsRoundTrip(46500, 48000), "param id layout overlaps");
+static_assert(idsRoundTrip(48000, 49500), "param id layout overlaps");
+static_assert(idsRoundTrip(49500, 51000), "param id layout overlaps");
 #endif
 
 namespace {
@@ -1064,7 +1072,7 @@ void buildTable(ParamTable &t) {
         setting(SeqParam::Enabled, Str::ParamSeqOn, ParamKind::Toggle, 0.0, 1.0, 0.0);
         setting(SeqParam::Pattern, Str::ParamSeqPattern, ParamKind::SeqPattern, 0.0, kSeqPatterns - 1.0, 0.0);
         setting(SeqParam::Play, Str::ParamSeqPlay, ParamKind::SeqPlay, 0.0, static_cast<double>(SeqPlay::Count) - 1.0,
-                0.0);
+                static_cast<double>(SeqPlay::Key));
         setting(SeqParam::Rate, Str::ParamSeqSpeed, ParamKind::SeqRate, 0.0, static_cast<double>(SeqRate::Count) - 1.0,
                 static_cast<double>(SeqRate::Sixteenth));
         setting(SeqParam::Swing, Str::ParamSeqSwing, ParamKind::Percent, 0.5, 0.75, 0.5);
@@ -1102,6 +1110,19 @@ void buildTable(ParamTable &t) {
                 field(SeqNoteParam::Chance, Str::ParamSeqNoteChance, ParamKind::ShapePoint, 0.0, 1.0, 1.0);
                 field(SeqNoteParam::Slide, Str::ParamSeqNoteSlide, ParamKind::ShapeCount, 0.0, 1.0, 0.0);
                 field(SeqNoteParam::Mute, Str::ParamSeqNoteMute, ParamKind::ShapeCount, 0.0, 1.0, 0.0);
+                // Its bend, none to begin with.
+                const std::string b = n + tr(Str::ParamSeqNoteBend) + " ";
+                add(seqNoteBendCountIndex(pattern, slot), b + tr(Str::ParamPoints), module, ParamKind::ShapeCount, 0.0,
+                    kSeqNoteBendPoints, 0.0);
+                for (int point = 0; point < kSeqNoteBendPoints; ++point) {
+                    const std::string at = b + std::to_string(point + 1) + " ";
+                    add(seqNoteBendIndex(pattern, slot, point, PointField::X), at + "X", module, ParamKind::ShapePoint,
+                        0.0, kSeqMaxSteps, 0.0);
+                    add(seqNoteBendIndex(pattern, slot, point, PointField::Y), at + "Y", module, ParamKind::ShapePoint,
+                        -kSeqMaxNoteBend, kSeqMaxNoteBend, 0.0);
+                    add(seqNoteBendIndex(pattern, slot, point, PointField::Curve), at + tr(Str::ParamCurve), module,
+                        ParamKind::ShapePoint, -1.0, 1.0, 0.0);
+                }
             }
             // Its curves, empty to begin with.
             for (int c = 0; c < kSeqCurves; ++c) {

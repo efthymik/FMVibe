@@ -149,6 +149,7 @@ struct Telemetry {
     // Where the sequencer plays, in its pattern's steps, and which pattern; -1 while it doesn't (see Sequencer).
     float seqPosition = -1.0f;
     int seqPattern = 0;
+    bool seqPreview = false; // the Play button plays the pattern (see Synth::setSeqPreview())
     std::array<uint32_t, 4> seqKeys{}; // the pitches the notes the sequencer holds on are written at, as `keys` has keys
     // What the sequencer's mod wheel curve adds to the Mod Wheel param as it plays, 0 while it doesn't: the mod wheel
     // shows the param as the editor has it with this on top. (What its bend curve adds is in `bend`.)
@@ -305,6 +306,10 @@ public:
     int activeVoiceCount() const;
     // Whether the sequencer may start notes of its own (see Sequencer::wantsProcessing()), or holds some on.
     bool sequencerAwake() const { return seq_.wantsProcessing() || seq_.sounding(); }
+    // The editor's Play button (see Sequencer::preview()): the sequencer plays its pattern whatever Play says, from its
+    // loop's start or the pattern's step `from`, the keys playing notes meanwhile. The telemetry's seqPreview says
+    // whether it does.
+    void setSeqPreview(bool on, double from = -1.0) { seq_.preview(on, from); }
     // Whether the sequencer's curves take the pitch bend, the mod wheel or a macro's knob anywhere now.
     bool seqCurvesApplied() const { return seqBend_ != 0.0 || seqWheel_ != 0.0 || seqMacroHeld_ != 0; }
     // Whether a key or a sustain pedal holds a note whose end only a later event can bring: a key down (the sequencer's
@@ -335,6 +340,11 @@ private:
     void renderSpan(float *left, float *right, uint32_t frames, const ParamValues &params, bool sameParams);
     void applySeqEvent(const SeqEvent &e);
     void applySeqEvents(int count);
+    // The bent notes' bends over the stretch the sequencer planned last (see Sequencer::bends()), `covered` frames: those
+    // of the voices playing them now, and those of the notes it starts as they start (see applySeqEvent()).
+    void applySeqBends(uint32_t covered);
+    uint32_t seqCovered_ = 0;  // the frames the stretch planned last covers
+    uint32_t seqPlanFrame_ = 0; // and where an event applied now starts in it
     // The host's notes the sequencer took as keys (in Key and Latch), which no voice plays: they end as their keys come
     // up, or a reset, choke or All Sound Off ends them. Whether any matched `match`; `report` reports their ends.
     bool releaseKeys(const NoteRef &match);
@@ -452,6 +462,12 @@ private:
         uint64_t order = 0;     // note-on sequence number, for stealing the oldest
         double peak = 0.0;      // loudest audible envelope, for stealing the quietest
         double tuning = 0.0;    // note expressions
+        // The sequencer's bend of its note, in semitones, going to seqTuneTo by seqTuneStep a frame for seqTuneLeft more
+        // frames (see Sequencer::bends()).
+        double seqTune = 0.0;
+        double seqTuneTo = 0.0;
+        double seqTuneStep = 0.0;
+        uint32_t seqTuneLeft = 0;
         double exprGain = 1.0;
         double exprPan = 0.0;
         double pressure = -1.0; // its note's aftertouch, 0..1, or -1 while none came: the channel's stands in
@@ -549,6 +565,8 @@ private:
     Voice *stealable();
     // Sounding and still playing its note: not ended, not fading out.
     static bool live(const Voice &v) { return v.active && !v.fading; }
+    // A voice playing a bent note of the sequencer's taking up its bend `frame` frames into the stretch planned last.
+    void bendVoice(Voice &v, const SeqBend &b, uint32_t frame);
     Voice *newestVoice();
     Voice *voicePlaying(const NoteRef &note);
     bool voiceHas(const NoteRef &note) const;

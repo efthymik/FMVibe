@@ -1191,11 +1191,14 @@ Each pattern has a **loop** (the whole pattern by default), which is what plays.
   modulate it too: drag a source's handle onto the buttons. Modulation moves it in whole patterns, and the pattern it
   picks gets a ring (with nothing playing, the one the macros and mod wheel pick). Under the buttons, a line shows how far each modulation reaches, with depth handles
   you can drag, as under a knob. A pattern picked this way takes over at the end of the loop, as a click does.
+- **Play** button, at the right of the Pattern row: plays the pattern from the start of its loop, whatever the Play
+  mode below is set to. If notes are selected in the roll, it starts at the earliest selected note in the loop
+  instead. While it plays, the keyboard plays notes as usual, and the button shows **Stop**: click it to stop.
 - **Play**:
   - **Host**: plays with the host's transport, locked to its bars. You can still play the synth from the keyboard
     on top. The browser demo's transport always runs, so there a preset set to Host starts playing as soon as you
     load it. To stop it, switch the sequencer off or pick **Key**.
-  - **Key**: plays while a key is held, from the pattern's start, transposed by the newest key relative to C4: C4
+  - **Key** (the default): plays while a key is held, from the pattern's start, transposed by the newest key relative to C4: C4
     plays the pattern as written, D4 two semitones higher. The scale's **Root** doesn't move it.
   - **Latch**: starts with a key and keeps playing after release; a new key transposes it. All Notes Off or All
     Sound Off (which hosts send when they stop) ends it.
@@ -1208,7 +1211,9 @@ Each pattern has a **loop** (the whole pattern by default), which is what plays.
 - **Swing** (50–75 %), **Gate** (5–200 % of each note's length), **Humanize** (repeatable timing and velocity
   variation) and **Velocity** (scales the notes' velocities; at 0 % every note plays at 100). You can modulate these
   four: drag a source's handle onto the knob, as with any other control.
-- **Order**: forward, backward, ping-pong or random.
+- **Order**: forward, backward, ping-pong or random. **Random** jumps between the steps where notes start: it plays a
+  note, carries on until the next note's step, then jumps to a random one, so it plays the pattern's notes in a
+  random order, keeping their timing. The same note can come up twice in a row.
 - **Scale**: the **Root** (drag or scroll; double-click for C), the scale (Chromatic, Major, Minor, Dorian,
   Phrygian, Lydian, Mixolydian, Harmonic Minor, Melodic Minor, Pentatonic Major and Minor, Blues) and **Fold**,
   which shows only the scale's rows. Notes off the scale are hatched.
@@ -1231,11 +1236,12 @@ part of it the piano roll shows, and the one playing shows the playhead.
 
 The **toolbar** above the roll has:
 
-- **Select | Draw**: the editing tool.
+- **Select | Draw | Bend**: the editing tool.
 - **Snap** and its list (Off, 1/4 to 1/64, triplets; the wheel steps it).
 - **×2** and **÷2**: makes the selected notes (or all notes) twice or half as long and as far apart.
-- The **note field**: Note, Vel, Chance, Len and Offset of the selected notes. Drag or scroll a value to change every
-  selected note; double-click to reset Vel to 100, Chance to full and Offset to 0.
+- The **note field**: Note, Vel, Chance, Len, Offset and Bend of the selected notes. Drag or scroll a value to change
+  every selected note; double-click to reset Vel to 100, Chance to full and Offset to 0. Bend shows how far the note
+  bends, in semitones: drag it to make the selected notes' bends deeper or shallower, double-click to remove them.
 - **Slide** and **Mute** for the selected notes.
 - The **bin**, which clears the pattern after asking.
 
@@ -1259,18 +1265,36 @@ hook marks Slide. While the sequencer plays, the playhead moves and notes glow a
 - Shift+drag paints a note into each empty grid step you cross.
 - Clicking an existing note moves or stretches it, as in Select.
 
+**Bending notes with Bend**: each note can bend its own pitch, like a finger on an MPE controller. Only that note's
+voice bends; the other notes of a chord stay where they are.
+
+- Press a note and drag up or down to bend it there. The bend starts from the note's pitch at its start. Each row is
+  a semitone (a scale degree with FOLD).
+- Hold Alt, or Shift while dragging, to bend off the grid, to the cent.
+- Drag a point to move it; drag the middle of a rising or falling segment to curve it.
+- Click on a bend's line to add a point on the line and drag it.
+- Drag a box from empty space to select points, or Shift+click or Ctrl+click points to add or remove them. Drag one
+  of the selected points to move them all together. Ctrl+A selects every point; Delete removes the selected points.
+- Double-click a point to delete it, or a segment's middle to straighten it.
+- Shift+drag across a note to draw its bend, a point on every grid line.
+- A note bends through up to 8 points, up to two octaves either way.
+
+The bend is drawn as a line across the rows. It moves, copies and pastes with its note. A note shortened by Gate
+holds the pitch it reached when it ends.
+
 A note placed on another note's start and pitch replaces it. Notes you click, draw or move sound while the mouse
 button is held.
 
 **The loop**: drag its ends to resize it, its middle to move it, or across the bars outside it to draw a new one.
-Double-click the ruler to loop the whole pattern.
+Double-click the ruler to loop the whole pattern. If you change the loop while the pattern plays, it keeps playing from
+where it is. If the playhead ends up outside the new loop, it continues inside it.
 
 **Navigation**:
 
 - The mouse wheel scrolls the rows; Shift+wheel or a sideways wheel scrolls across.
 - Ctrl+wheel zooms across, Alt+wheel zooms the rows, or use the − and + buttons.
 - Drag with the middle button to pan.
-- Dragging a note or box past the edge scrolls the roll.
+- Dragging a note, a box or a bend point past the edge scrolls the roll.
 
 **Grid**: lines at every snap length, beats and bars stronger.
 
@@ -1313,8 +1337,8 @@ With the mouse over the plugin window:
 | Ctrl+C / Ctrl+X / Ctrl+V | Copy, cut, paste (at the mouse position on the roll) |
 | Ctrl+D | Duplicate the selected notes and place the copies right after them |
 
-With no notes selected, these keys go to your host. The roll's right-click menu offers Cut, Copy, Paste, Duplicate,
-Delete, Select All, Slide, Mute and **Quantize** (moves the selected notes onto the snap grid).
+The roll's right-click menu offers Cut, Copy, Paste, Duplicate, Delete, Select All, Slide, Mute and **Quantize**
+(moves the selected notes onto the snap grid).
 
 ### Sequencer behavior
 
@@ -1450,6 +1474,7 @@ does not contain the instance settings (oversampling and MPE).
 | Preset | Category | Description |
 | --- | --- | --- |
 | Acid Rubber | Seq | Squelchy, rubbery acid bass line with slides. |
+| Bender | Seq | Soft pad chords whose voices bend one by one into the next chords while you hold a key. |
 | Chip Pluck | Pluck | Crisp video-game arpeggio while you hold a key. The Bite macro adds edge. |
 | Classic Synlead | Lead | Classic analog-style lead with a bite and a delayed vibrato. |
 | Clubbing | Seq | Huge, wide saw chords with airy noise, made for the club. |

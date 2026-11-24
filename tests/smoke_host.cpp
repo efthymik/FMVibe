@@ -2550,6 +2550,7 @@ int main(int argc, char **argv) {
         };
         out.noteEnds.clear();
         setParams({{paramIndex(SeqParam::Enabled), 1.0},
+                   {paramIndex(SeqParam::Play), static_cast<double>(SeqPlay::Host)},
                    {seqNoteIndex(0, 0, SeqNoteParam::Start), 0.0},
                    {seqNoteIndex(0, 0, SeqNoteParam::Length), 2.0},
                    {seqNoteIndex(0, 0, SeqNoteParam::Pitch), 69.0}});
@@ -2576,7 +2577,7 @@ int main(int argc, char **argv) {
         check(idle == 0.0f && keyed > 0.05f && heldNoEnd && keyEnded && after == 0.0f,
               "in Key, a key held plays the pattern, and its end is reported as it is let go");
         setParams({{paramIndex(SeqParam::Enabled), 0.0},
-                   {paramIndex(SeqParam::Play), 0.0},
+                   {paramIndex(SeqParam::Play), static_cast<double>(SeqPlay::Key)},
                    {seqNoteIndex(0, 0, SeqNoteParam::Length), 0.0},
                    {seqNoteIndex(0, 0, SeqNoteParam::Pitch), 60.0}});
         out.noteEnds.clear();
@@ -4952,6 +4953,10 @@ int main(int argc, char **argv) {
         check(volumeKept == volumeAfter, "a value from the host just after the plugin told it one is not taken");
         in.events.clear();
 
+        // Once that moment has passed, the host's values are taken again: those of the params the patch loaded back
+        // above changed too, which the SEQ tab's check switches the sequencer on by (and the checks below).
+        Sleep(600);
+
         // The SEQ tab: the wheel with Ctrl in its message's keys (and this thread's own idea of Ctrl up, as while the
         // host has the keyboard) zooms the roll in about its middle, so a double-click at its left edge puts a note
         // further on than step 0, where it put one before. (Coordinates in view units, scaled by 0.75.)
@@ -4969,6 +4974,12 @@ int main(int argc, char **argv) {
                 params->get_value(plugin, idOfIndex(index), &v);
                 return v;
             };
+            // The view takes no input while the sequencer is off, as it is in a new instance: the host switches it on.
+            const int seqEnabled = paramIndex(SeqParam::Enabled);
+            const clap_event_param_value_t seqOn = paramEvent(seqEnabled, 1.0);
+            in.events = {&seqOn.header};
+            params->flush(plugin, &in.list, &out.list);
+            in.events.clear();
             SendMessageW(editor, WM_LBUTTONDOWN, MK_LBUTTON, at(308.0f, 116.0f)); // the SEQ tab
             SendMessageW(editor, WM_LBUTTONUP, 0, at(308.0f, 116.0f));
             const LPARAM edge = at(382.0f, 290.0f); // the grid's left edge, on C4's row
@@ -4985,12 +4996,15 @@ int main(int argc, char **argv) {
             doubleClick(edge);
             SendMessageW(editor, WM_LBUTTONDOWN, MK_LBUTTON, at(64.0f, 116.0f)); // back to ROUTING
             SendMessageW(editor, WM_LBUTTONUP, 0, at(64.0f, 116.0f));
+            const clap_event_param_value_t seqOff = paramEvent(seqEnabled, 0.0);
+            in.events = {&seqOff.header};
+            params->flush(plugin, &in.list, &out.list);
+            in.events.clear();
             std::printf("      a note at the roll's left edge: step %.2f, zoomed in by Ctrl+wheel step %.2f\n", unzoomed,
                         zoomed);
             check(put && ctrlUp && unzoomed == 0.0 && zoomed >= 2.0 && read(length) == 0.0,
                   "Ctrl in a wheel message's keys zooms the SEQ view's roll, whatever this thread thinks of Ctrl");
         }
-        Sleep(600); // and once that moment has passed, the host's values are taken again (checked below)
 
         // A shaper effect dragged along the line leaves it for a moment as its wires change one by one: no restart is
         // asked for, since the latency ends as it was. One taken out of the line does ask for one, once the edit is
@@ -5907,6 +5921,7 @@ int main(int argc, char **argv) {
         for (int source = kMaxSources - kFirstSources; source-- > 0;) // the rest of the sources' places
             layout.push_back(static_cast<float>(source));
         layout.push_back(9.0f); // the places past the first kFirstSources folded
+        layout.push_back(1.0f); // the SEQ view's roll bending notes (its Bend tool)
 
         MemoryStream big;
         auto put = [&](const void *data, size_t size) {

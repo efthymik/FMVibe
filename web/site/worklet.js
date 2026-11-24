@@ -50,6 +50,12 @@ class FMVibeProcessor extends AudioWorkletProcessor {
       case 'note':
         this.dsp.dsp_note(message.key, message.on ? 1 : 0, message.velocity ?? 100, message.audition ? 1 : 0);
         break;
+      case 'auditionBend':
+        this.dsp.dsp_audition_bend(message.semitones);
+        break;
+      case 'seqPreview':
+        this.dsp.dsp_seq_preview(message.on ? 1 : 0, message.from ?? -1);
+        break;
       case 'tempo':
         this.dsp.dsp_tempo(message.bpm);
         break;
