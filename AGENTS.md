@@ -72,7 +72,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - sound comes out and `NOTE_END` arrives after the release;
   - voice stealing and choke, and a reset ending the notes playing, their ends reported in the next block;
   - per-voice host modulation, and a mod-envelope slot driving its target, and running its release out after
-    the operators have faded (the voice reporting `NOTE_END` only then);
+    the operators have faded (the voice reporting `NOTE_END` only then); likewise a Curve in Sustain, let go in its
+    loop, playing on to its curve's end (`NOTE_END` half a second on, once; at once with nothing to modulate), and
+    looping on under the sustain pedal until it comes up;
   - spectrum checks on an A4: the matrix produces FM sidebands; a Ring route at 100 % leaves only the sum and
     difference and at 50 % is AM, Linear FM keeps the mean pitch (through zero too) where Exp FM lifts it by its
     octaves, and feedback stays Phase whatever its mode param says; every wave sounds; a saw's 2nd harmonic sits at
@@ -424,6 +426,16 @@ the plain CMake commands and installing into a host are in the [README](README.m
     not (a one-shot not anchored), synced down to 8/1 (a cycle every eight bars, 4/1D's number as it was),
     following it through a block split into pieces, running on from there while the
     transport is stopped, and a Random source anchored running free and one-shot retriggering;
+  - a Curve's loop region and Sustain: with its loop the whole curve, a retriggered one's phase and a free one's
+    shared clock moving block by block as `phase - floor(phase)` moved them, to the bit; Retrigger playing from its
+    Phase into its loop and then round the loop alone at the speed it is drawn, Free cycling the loop alone, Anchor
+    standing on the loop's cycles from the song's start (synced and not), One-Shot playing the whole curve whatever
+    its loop, Sustain winning over the other switches (an LFO having none) and the loop's ends no modulation target;
+    Sustain looping while the key is down, let go leaving the loop at once from the level it was at (no step past the
+    curve's own) and sliding onto the next point, on to the curve's end, its voice running on until then, the pedal
+    holding it in its loop, a loop to the curve's end gliding there over 5 ms, in mono a new key in its release
+    starting it again and legato keys looping on; a loop of no length holding, and one the other way round, outside
+    the curve or not a number playing in order or as the whole curve;
   - the scope capturing nothing until asked, then an operator's cycles from where they start (a sine's a sine, a
     square's a square), standing still from one span to the next under FM, two cycles differing under a modulator
     at half the ratio, a slow span shown as it fills, nothing again once it isn't asked for, a low note's (an A0's)
@@ -1464,17 +1476,25 @@ itself.
   the shape list doesn't offer it, a state from before version 11 loads an LFO with it as a Random source, and an LFO
   a later state holds with it plays it as a Random source does; and the LFO's Custom shape (`LfoShape::Custom`),
   which the Curve source took over, a state from before version 12 loading an LFO with it as a Curve source.
-- Like an effect slot, each of the 32 source places has the fields of every type (an LFO's, an envelope's, and
-  Slew, CC, Bipolar and Input for Random and MIDI), and a Type param (Empty, LFO, Envelope, Random, MIDI or Curve) that
-  picks which are used (`sourceFieldUsedBy()`). A Random source is a random LFO: it runs through the LFOs' code with
-  the LFO's clock fields, Smooth and Chaos, as an LFO of the retired Random shape (`lfoShape()`), its polarity its own
-  Bipolar. A Curve source is an LFO of a drawn shape: it runs as an LFO of the retired Custom shape, with every LFO
-  field but Shape (its polarity the LFO's Unipolar, which the editor turns on for a new one) and its place's freeform
-  shape. Hosts are given only a place's slot depths and Amounts; its fields go by place
+- Like an effect slot, each of the 32 source places has the fields of every type (an LFO's, an envelope's, Slew, CC,
+  Bipolar and Input for Random and MIDI, and Curve's Sustain and loop region), and a Type param (Empty, LFO, Envelope,
+  Random, MIDI or Curve) that picks which are used (`sourceFieldUsedBy()`). A Random source is a random LFO: it runs
+  through the LFOs' code with the LFO's clock fields, Smooth and Chaos, as an LFO of the retired Random shape
+  (`lfoShape()`), its polarity its own Bipolar. A Curve source is an LFO of a drawn shape: it runs as an LFO of the
+  retired Custom shape, with every LFO field but Shape (its polarity the LFO's Unipolar, which the editor turns on for
+  a new one) and its place's freeform shape, and two fields of its own after Anchor. Its loop region, `LoopStart` and
+  `LoopEnd` (along the curve, the whole curve to begin with; `ShapePoint`s, so hidden and never modulated; in order
+  whichever way a state holds them, `lfoLoop()`), is what Retrigger, Free, Anchor and Sustain loop (`loopPhase()`,
+  `anchoredPhase()`), Rate staying the whole curve's. `CurveSustain` is a fifth clock mode (`LfoClock::Sustain`,
+  `lfoSustain()`), winning over Free, Anchor and One-Shot: it loops while the key is down and, let go
+  (`Synth::releaseVoice()` marks the voice's LFOs, and its next block's `leaveLoop()` acts on it), leaves the loop
+  from the level it is at, an offset on top of the curve fading by the next point (or over 5 ms, `kCurveGlide`), on
+  to the curve's end; `Synth::modulationReleasing()` keeps the voice until then, as it does for a releasing mod
+  envelope. Hosts are given only a place's slot depths and Amounts; its fields go by place
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 2,027 of the 38,008 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 2,027 of the 38,104 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 1,600 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain's retired order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'

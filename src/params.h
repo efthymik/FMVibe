@@ -225,6 +225,11 @@ enum class SourceParam {
     Bipolar,   // both's
     MidiInput, // Midi's (see MidiInput)
     Anchor,    // an LFO's (see lfoAnchored())
+    // A Curve's: its Sustain clock mode (see lfoSustain()), and the loop region along its curve, 0..1 (see lfoLoop()),
+    // the whole curve to begin with. Hidden and never modulated: the editor sets them.
+    CurveSustain,
+    LoopStart,
+    LoopEnd,
     Count
 };
 // A freeform LFO shape, one per source: PointCount points, then
@@ -1197,6 +1202,10 @@ constexpr bool sourceFieldUsedBy(SourceParam f, SourceType t) {
         return t == SourceType::Midi;
     case SourceParam::Bipolar:
         return t == SourceType::Random || t == SourceType::Midi;
+    case SourceParam::CurveSustain:
+    case SourceParam::LoopStart:
+    case SourceParam::LoopEnd:
+        return t == SourceType::Curve;
     default:
         return f < SourceParam::Attack ? t == SourceType::Lfo : t == SourceType::Env;
     }
@@ -1217,34 +1226,49 @@ LfoShape lfoShape(const Get &get, int source) {
     const long shape = std::lround(get(paramIndex(source, SourceParam::Shape)));
     return static_cast<LfoShape>(std::clamp(shape, 0l, static_cast<long>(LfoShape::Count) - 1));
 }
+// Whether the Curve in place `source` is in Sustain, reading its params through `get`: from each note it plays from
+// its Phase on into its loop region and loops it while the key is down (or the sustain pedal holds the note); let go,
+// it leaves the loop at once, from the level it is at, and plays on to the curve's end, where it stays. Only a Curve
+// has it, and it wins over the other clock modes' switches.
+template <class Get>
+bool lfoSustain(const Get &get, int source) {
+    return get(paramIndex(source, SourceParam::CurveSustain)) >= 0.5 &&
+           sourceType(get(paramIndex(source, SourceParam::Type))) == SourceType::Curve;
+}
 // Whether the LFO in place `source` follows the host's transport (see SourceParam), or runs on one clock all voices
 // share (an anchored one too, while the transport is stopped), reading its params through `get`. A one-shot is
-// neither. A random one (Random, or the retired Random shape) is never anchored nor one-shot: its values can't be
-// told ahead, so neither means anything to it. Anchored, it runs free; one-shot, it retriggers (as lfoShared() says).
+// neither, nor is a Curve in Sustain. A random one (Random, or the retired Random shape) is never anchored nor
+// one-shot: its values can't be told ahead, so neither means anything to it. Anchored, it runs free; one-shot, it
+// retriggers (as lfoShared() says).
 template <class Get>
 bool lfoAnchored(const Get &get, int source) {
     return get(paramIndex(source, SourceParam::Anchor)) >= 0.5 &&
-           get(paramIndex(source, SourceParam::OneShot)) < 0.5 && lfoShape(get, source) != LfoShape::Random;
+           get(paramIndex(source, SourceParam::OneShot)) < 0.5 && lfoShape(get, source) != LfoShape::Random &&
+           !lfoSustain(get, source);
 }
 template <class Get>
 bool lfoOneShot(const Get &get, int source) {
-    return get(paramIndex(source, SourceParam::OneShot)) >= 0.5 && lfoShape(get, source) != LfoShape::Random;
+    return get(paramIndex(source, SourceParam::OneShot)) >= 0.5 && lfoShape(get, source) != LfoShape::Random &&
+           !lfoSustain(get, source);
 }
 template <class Get>
 bool lfoShared(const Get &get, int source) {
     return get(paramIndex(source, SourceParam::OneShot)) < 0.5 &&
            (get(paramIndex(source, SourceParam::Free)) >= 0.5 ||
-            get(paramIndex(source, SourceParam::Anchor)) >= 0.5);
+            get(paramIndex(source, SourceParam::Anchor)) >= 0.5) &&
+           !lfoSustain(get, source);
 }
-// What an LFO's Free, Anchor and One-Shot make of it, as the engine reads them (One-Shot over Anchor over Free): the
-// editor picks one, setting the switches for it. A random one only retriggers or runs free (kRandomClocks).
-enum class LfoClock { Retrigger, Free, Anchor, OneShot, Count };
+// What an LFO's Free, Anchor and One-Shot make of it, as the engine reads them (One-Shot over Anchor over Free), and a
+// Curve's Sustain (over them all): the editor picks one, setting the switches for it. A random one only retriggers or
+// runs free (kRandomClocks).
+enum class LfoClock { Retrigger, Free, Anchor, OneShot, Sustain, Count };
 constexpr int kRandomClocks = static_cast<int>(LfoClock::Anchor);
 template <class Get>
 LfoClock lfoClock(const Get &get, int source) {
     if (lfoShape(get, source) == LfoShape::Random)
         return lfoShared(get, source) ? LfoClock::Free : LfoClock::Retrigger;
-    return get(paramIndex(source, SourceParam::OneShot)) >= 0.5  ? LfoClock::OneShot
+    return lfoSustain(get, source)                               ? LfoClock::Sustain
+           : get(paramIndex(source, SourceParam::OneShot)) >= 0.5 ? LfoClock::OneShot
            : get(paramIndex(source, SourceParam::Anchor)) >= 0.5 ? LfoClock::Anchor
            : get(paramIndex(source, SourceParam::Free)) >= 0.5   ? LfoClock::Free
                                                                  : LfoClock::Retrigger;
@@ -1254,6 +1278,44 @@ LfoClock lfoClock(const Get &get, int source) {
 template <class Get>
 bool lfoHeld(const Get &get, int source) {
     return get(paramIndex(source, SourceParam::Sync)) < 0.5 && get(paramIndex(source, SourceParam::Rate)) <= 0.0;
+}
+// A loop region along an LFO's cycle (0..1), its start no later than its end. A Curve's is its LoopStart and LoopEnd,
+// in order (a state can hold them the other way round); every other source's is the whole cycle, as a new Curve's is.
+// Rate is still the whole cycle's, so a region plays at the speed it is drawn.
+struct LfoLoop {
+    double start = 0.0, end = 1.0;
+};
+template <class Get>
+LfoLoop lfoLoop(const Get &get, int source) {
+    if (sourceType(get(paramIndex(source, SourceParam::Type))) != SourceType::Curve)
+        return {};
+    double a = get(paramIndex(source, SourceParam::LoopStart)), b = get(paramIndex(source, SourceParam::LoopEnd));
+    a = std::isfinite(a) ? std::clamp(a, 0.0, 1.0) : 0.0;
+    b = std::isfinite(b) ? std::clamp(b, 0.0, 1.0) : 1.0;
+    return a <= b ? LfoLoop{a, b} : LfoLoop{b, a};
+}
+// Where a phase that stood at `before` and has moved on to `phase` stands, looping `loop` (as Retrigger, Free and a
+// Curve's Sustain while its key is down loop): reaching the loop's end, it comes round to the loop's start, as far into
+// the loop as it went past the end. A phase past the loop's end (a note started it there, or the loop moved) runs on to
+// the cycle's end first. A loop of no length holds at its start. Over the whole cycle this is phase - floor(phase), to
+// the bit. Returns whether it came round.
+inline bool loopPhase(double before, double &phase, LfoLoop loop) {
+    const double end = before <= loop.end ? loop.end : 1.0;
+    if (phase < end)
+        return false;
+    const double length = loop.end - loop.start;
+    phase = length > 0.0 ? loop.start + std::fmod(phase - end, length) : loop.start;
+    return true;
+}
+// Where an anchored LFO stands `cycles` cycles after the song's start, where it stood at `start` (its Phase): its loop
+// comes round every (end - start) of a cycle, as it does running. Over the whole cycle this is the fraction of
+// cycles + start, to the bit.
+inline double anchoredPhase(double cycles, double start, LfoLoop loop) {
+    const double length = loop.end - loop.start;
+    if (!(length > 0.0))
+        return loop.start;
+    const double at = (cycles + start - loop.start) / length;
+    return loop.start + length * (at - std::floor(at));
 }
 // The shaper a param belongs to, and which of its fields it is; -1 / Count for other params.
 constexpr int shaperOf(int index) {
@@ -1897,6 +1959,8 @@ static_assert(idOfIndex(paramIndex(0, SourceParam::Type)) == 2800 &&
                   idOfIndex(paramIndex(kFirstSources - 1, SourceParam::MidiInput)) == 3432 &&
                   idOfIndex(paramIndex(0, SourceParam::Anchor)) == 2833 &&
                   idOfIndex(paramIndex(kFirstSources - 1, SourceParam::Anchor)) == 3433 &&
+                  idOfIndex(paramIndex(0, SourceParam::CurveSustain)) == 2834 &&
+                  idOfIndex(paramIndex(kFirstSources - 1, SourceParam::LoopEnd)) == 3436 &&
                   idOfIndex(slotTargetIndex(0, kFirstSlots)) == 6000 &&
                   idOfIndex(slotAmountIndex(kFirstSources - 1, kSlots - 1)) == 6473,
               "source param ids moved");
@@ -2020,6 +2084,8 @@ static_assert(idOfIndex(slotAuxDepthIndex(0, 0)) == 49000 && idOfIndex(slotAuxDe
 static_assert(idOfIndex(paramIndex(kFirstSources, SourceParam::Type)) == 58000 &&
                   idOfIndex(slotAmountIndex(kFirstSources, kSlots - 1)) == 58033 &&
                   idOfIndex(paramIndex(kMaxSources - 1, SourceParam::Anchor)) == 59557 &&
+                  idOfIndex(paramIndex(kFirstSources, SourceParam::CurveSustain)) == 58058 &&
+                  idOfIndex(paramIndex(kMaxSources - 1, SourceParam::LoopEnd)) == 59560 &&
                   kSourceParamCount <= 100 && idOfIndex(shapeCountIndex(kFirstSources)) == 60000 &&
                   idOfIndex(shapePointIndex(kMaxSources - 1, kMaxShapePoints - 1, PointField::Curve)) == 63192 &&
                   kShapeParamCount <= 200 && idOfIndex(slotBypassIndex(kFirstSources, 0)) == 9680 &&

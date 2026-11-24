@@ -7290,6 +7290,365 @@ int main() {
         check(std::abs(randomOneShot - 0.5) < 0.01, "a one-shot Random source retriggers, running on past its cycle");
     }
 
+    // --- A Curve's loop region and its Sustain. With the loop the whole curve (every Curve's before it had one, and a
+    // new one's), it plays as it did, to the bit. Retrigger plays from its Phase, then round its loop alone; Free and
+    // Anchor cycle the loop alone; One-Shot plays the whole curve once, whatever its loop. Sustain loops while the key
+    // is down (or the pedal holds it); let go, it leaves the loop at once from the level it was at, plays the rest of
+    // the curve and stays at its end, its voice running on until then.
+    std::printf("Curve loop region and Sustain:\n");
+    {
+        auto telemetry = std::make_unique<Telemetry>();
+        using Points = std::vector<std::array<double, 2>>;
+        // A ramp from -1 to 1 at the curve's end (a point there), so its value tells where it is: 2 x - 1.
+        const Points ramp{{0.0, -1.0}, {1.0, 1.0}};
+        // An envelope's shape: up to 1 at a quarter, down to 0 at the half, up to 0.5 at three quarters, and back down
+        // to the first point's -1 at the curve's end.
+        const Points env{{0.0, -1.0}, {0.25, 1.0}, {0.5, 0.0}, {0.75, 0.5}};
+        auto envAt = [](double x) {
+            return x < 0.25 ? -1.0 + 8.0 * x : x < 0.5 ? 1.0 - 4.0 * (x - 0.25) : x < 0.75 ? 2.0 * (x - 0.5)
+                                                                                           : 0.5 - 6.0 * (x - 0.75);
+        };
+        // A Curve in place 0, bipolar, unsynced at `hz`, on FM Amount (which a lone carrier doesn't hear), its shape
+        // `points` with straight segments, its loop `start` to `end`.
+        auto curveOn = [](Engine &e, double hz, const Points &points, double start = 0.0, double end = 1.0) {
+            e.p[paramIndex(0, SourceParam::Type)] = static_cast<double>(SourceType::Curve);
+            e.p[sourceEnabledIndex(0)] = 1.0;
+            e.p[paramIndex(0, SourceParam::Sync)] = 0.0;
+            e.p[paramIndex(0, SourceParam::Rate)] = normFromRate(hz);
+            e.p[slotTargetIndex(0, 0)] = slotTargetValue(paramIndex(GlobalParam::FmAmount));
+            e.p[slotAmountIndex(0, 0)] = 0.25;
+            e.p[shapeCountIndex(0)] = static_cast<double>(points.size());
+            for (size_t i = 0; i < points.size(); ++i) {
+                e.p[shapePointIndex(0, static_cast<int>(i), PointField::X)] = points[i][0];
+                e.p[shapePointIndex(0, static_cast<int>(i), PointField::Y)] = points[i][1];
+                e.p[shapePointIndex(0, static_cast<int>(i), PointField::Curve)] = 0.0;
+            }
+            e.p[paramIndex(0, SourceParam::LoopStart)] = start;
+            e.p[paramIndex(0, SourceParam::LoopEnd)] = end;
+        };
+        // What telemetry shows after each control block of `seconds`: the Curve's value (as the block started), its
+        // phase (as it ended), whether it has left its loop, what it carries on top of its curve, and the voices.
+        struct Run {
+            std::vector<double> values, phases, offsets;
+            std::vector<bool> left;
+            std::vector<int> voices;
+            size_t size() const { return values.size(); }
+        };
+        auto run = [&](Engine &e, double seconds, Run &r) {
+            for (long n = std::lround(seconds * kSampleRate / 32.0); n > 0; --n) {
+                e.render(32);
+                e.synth().telemetry(*telemetry);
+                r.values.push_back(telemetry->sources[0]);
+                r.phases.push_back(telemetry->lfoPhases[0]);
+                r.offsets.push_back(telemetry->lfoOffsets[0]);
+                r.left.push_back((telemetry->lfoLeft & 1u) != 0);
+                r.voices.push_back(telemetry->voices);
+            }
+            return r.size();
+        };
+        const long perSecond = std::lround(kSampleRate / 32.0); // control blocks
+        auto within = [](const Run &r, size_t from, size_t to, double low, double high) {
+            for (size_t i = from; i < std::min(to, r.size()); ++i)
+                if (r.voices[i] > 0 && (r.values[i] < low - 1e-6 || r.values[i] > high + 1e-6))
+                    return false;
+            return true;
+        };
+        auto range = [](const Run &r, size_t from, size_t to) {
+            std::pair<double, double> lh{1e9, -1e9};
+            for (size_t i = from; i < std::min(to, r.size()); ++i)
+                lh = {std::min(lh.first, r.values[i]), std::max(lh.second, r.values[i])};
+            return lh;
+        };
+        auto mostStep = [](const Run &r, size_t from, size_t to) { // the largest step from one block to the next
+            double most = 0.0;
+            for (size_t i = std::max<size_t>(from, 1); i < std::min(to, r.size()); ++i)
+                if (r.voices[i] > 0 && r.voices[i - 1] > 0)
+                    most = std::max(most, std::abs(r.values[i] - r.values[i - 1]));
+            return most;
+        };
+        auto near = [](double a, double b, double within) { return std::abs(a - b) <= within; };
+
+        // The whole curve as its loop: a retriggered one from its Phase, and a free one's shared clock with no note,
+        // moving on a control block at a time as phase - floor(phase) took them, to the bit.
+        for (const bool free : {false, true}) {
+            Engine e(1);
+            curveOn(e, 7.0, ramp);
+            e.p[paramIndex(0, SourceParam::Phase)] = 0.3;
+            e.p[paramIndex(0, SourceParam::Free)] = free ? 1.0 : 0.0;
+            const double hz = sweepRateHz(e.p[paramIndex(0, SourceParam::Rate)]);
+            if (!free)
+                e.noteOn(57);
+            double phase = free ? 0.0 : 0.3;
+            bool same = true;
+            int blocks = 0;
+            for (; blocks < 3000 && same; ++blocks) {
+                e.render(32);
+                phase += hz * 32u / kSampleRate;
+                if (phase >= 1.0)
+                    phase -= std::floor(phase);
+                e.synth().telemetry(*telemetry);
+                same = telemetry->lfoPhases[0] == static_cast<float>(phase);
+            }
+            std::printf("      %s, its loop the whole curve: %s for %d blocks\n", free ? "free" : "retriggered",
+                        same ? "as before" : "moved off", blocks);
+            check(same, free ? "a free Curve with its loop the whole curve runs as it did, to the bit"
+                             : "a retriggered Curve with its loop the whole curve runs as it did, to the bit");
+        }
+
+        // Retrigger, its loop [0.25, 0.75] of the ramp at 2 Hz: from its Phase (0) up through the loop to its end, at
+        // 0.375 s, then round the loop alone, -0.5 to 0.5, every quarter of a second (half the curve at its rate).
+        {
+            Engine e(1);
+            curveOn(e, 2.0, ramp, 0.25, 0.75);
+            e.noteOn(57);
+            Run r;
+            run(e, 1.5, r);
+            std::vector<size_t> rounds; // where it came round
+            for (size_t i = 1; i < r.size(); ++i)
+                if (r.values[i] < r.values[i - 1] - 0.5)
+                    rounds.push_back(i);
+            bool even = rounds.size() >= 3;
+            for (size_t k = 1; k < rounds.size(); ++k)
+                even = even && near(static_cast<double>(rounds[k] - rounds[k - 1]), perSecond * 0.25, 1.0);
+            const auto [low, high] = range(r, rounds.empty() ? 0 : rounds[0], r.size());
+            std::printf("      retriggered, looping [0.25, 0.75]: starts at %.3f, comes round %zu times, first at "
+                        "%.3f s, then between %.3f and %.3f\n",
+                        r.values[0], rounds.size(), rounds.empty() ? 0.0 : rounds[0] / static_cast<double>(perSecond),
+                        low, high);
+            check(r.values[0] == -1.0 && !rounds.empty() &&
+                      near(static_cast<double>(rounds[0]), perSecond * 0.375, 2.0) && even &&
+                      within(r, rounds.empty() ? 0 : rounds[0], r.size(), -0.5, 0.5) && low < -0.49 && high > 0.49,
+                  "a retriggered Curve plays from its Phase into its loop, then round the loop alone at its speed");
+        }
+
+        // Free, the same loop: its shared clock comes round the loop alone once in it (from 0, a quarter of a cycle
+        // in), with no note.
+        {
+            Engine e(1);
+            curveOn(e, 2.0, ramp, 0.25, 0.75);
+            e.p[paramIndex(0, SourceParam::Free)] = 1.0;
+            Run r;
+            run(e, 1.5, r);
+            double low = 1.0, high = 0.0;
+            for (size_t i = static_cast<size_t>(perSecond / 4); i < r.size(); ++i)
+                low = std::min(low, r.phases[i]), high = std::max(high, r.phases[i]);
+            std::printf("      free, looping [0.25, 0.75]: its clock between %.3f and %.3f\n", low, high);
+            check(low >= 0.25 && low < 0.26 && high <= 0.75 && high > 0.74,
+                  "a free Curve's shared clock cycles its loop alone");
+        }
+
+        // Anchored, the same loop, synced on quarter notes at 120 BPM or unsynced at 2 Hz: where the transport puts it
+        // counting the loop's cycles from the song's start, where it stood at its Phase: at beat 2.4 with Phase 50 %,
+        // (2.4 + 0.5 - 0.25) / 0.5 = 5.3 loops along, at 0.4; at 7.6, 14.7 along, at 0.6; unsynced 0.55 s in (1.1
+        // cycles), at 0.6.
+        {
+            auto phaseAt = [&](double beats, double phase, bool synced) {
+                Engine e(1);
+                e.synth().setTempo(120.0);
+                curveOn(e, 2.0, ramp, 0.25, 0.75);
+                e.p[paramIndex(0, SourceParam::Sync)] = synced ? 1.0 : 0.0;
+                e.p[paramIndex(0, SourceParam::Division)] = 13.0; // 1/4
+                e.p[paramIndex(0, SourceParam::Anchor)] = 1.0;
+                e.p[paramIndex(0, SourceParam::Phase)] = phase;
+                e.synth().setTransport(true, beats, beats * 0.5);
+                e.noteOn(57);
+                e.render(32);
+                e.synth().telemetry(*telemetry);
+                return static_cast<double>(telemetry->lfoPhases[0]);
+            };
+            const double offset = phaseAt(2.4, 0.5, true), later = phaseAt(7.6, 0.0, true),
+                         unsynced = phaseAt(1.1, 0.0, false);
+            std::printf("      anchored, looping [0.25, 0.75]: %.4f at beat 2.4 (Phase 50 %%), %.4f at 7.6, %.4f "
+                        "unsynced 0.55 s in\n",
+                        offset, later, unsynced);
+            check(near(offset, 0.4, 1e-4) && near(later, 0.6, 1e-4) && near(unsynced, 0.6, 1e-4),
+                  "an anchored Curve stands on its loop's cycles from the song's start, from its Phase");
+        }
+
+        // One-Shot ignores the loop: the whole ramp once, staying at its end, 1.
+        {
+            Engine e(1);
+            curveOn(e, 2.0, ramp, 0.25, 0.75);
+            e.p[paramIndex(0, SourceParam::OneShot)] = 1.0;
+            e.noteOn(57);
+            Run r;
+            run(e, 1.0, r);
+            const auto [low, high] = range(r, 0, r.size());
+            std::printf("      one-shot, its loop [0.25, 0.75]: from %.3f to %.3f, its phase at %.3f\n", low, high,
+                        r.phases.back());
+            check(low == -1.0 && r.values.back() == 1.0 && r.phases.back() == 1.0f,
+                  "a one-shot Curve plays its whole curve once and stays at its end, whatever its loop");
+        }
+
+        // Sustain wins over the other switches, and only a Curve has it.
+        {
+            ParamValues p{};
+            for (int i = 0; i < kParamCount; ++i)
+                p[i] = paramTable()[i].def;
+            auto get = [&p](int i) { return p[i]; };
+            p[paramIndex(0, SourceParam::Type)] = static_cast<double>(SourceType::Curve);
+            p[paramIndex(0, SourceParam::CurveSustain)] = 1.0;
+            p[paramIndex(0, SourceParam::OneShot)] = 1.0;
+            p[paramIndex(0, SourceParam::Free)] = 1.0;
+            const bool curve = lfoClock(get, 0) == LfoClock::Sustain && !lfoOneShot(get, 0) && !lfoShared(get, 0);
+            p[paramIndex(0, SourceParam::Type)] = static_cast<double>(SourceType::Lfo);
+            const bool lfo = lfoClock(get, 0) == LfoClock::OneShot && !lfoSustain(get, 0);
+            check(curve && lfo && paramTable()[paramIndex(0, SourceParam::LoopEnd)].def == 1.0 &&
+                      paramTable()[paramIndex(0, SourceParam::LoopStart)].def == 0.0 &&
+                      !isModTarget(paramIndex(0, SourceParam::LoopStart)) &&
+                      !isModTarget(paramIndex(0, SourceParam::LoopEnd)) &&
+                      !hostListed(paramIndex(0, SourceParam::CurveSustain)),
+                  "a Curve's Sustain wins over its other clock switches, an LFO has none, and its loop (the whole "
+                  "curve to begin with) is no modulation target");
+        }
+
+        // Sustain, looping [0.25, 0.5] of the envelope at 1 Hz (down from 1 to 0, every quarter of a second): held for
+        // 0.6 s, at 0.35 along (0.6) as the key goes up. Let go, it goes on from there at the loop's end, carrying
+        // 0.6 on top of the curve, fading by the next point, so it slides from 0.6 to that point's 0.5 by 0.75, then
+        // down to the curve's end, -1, where it stays half a second after the key went up; its voice runs on till then.
+        {
+            Engine e(1);
+            curveOn(e, 1.0, env, 0.25, 0.5);
+            e.p[paramIndex(0, SourceParam::CurveSustain)] = 1.0;
+            e.noteOn(57);
+            Run r;
+            const size_t up = run(e, 0.6, r);
+            e.noteOff(57);
+            run(e, 1.0, r);
+            const bool looped = within(r, static_cast<size_t>(perSecond / 4) + 1, up, 0.0, 1.0);
+            const double step = mostStep(r, up - 4, up + 40);
+            const double mid = r.values[up + static_cast<size_t>(perSecond / 8)],
+                         onPoint = r.values[up + static_cast<size_t>(perSecond / 4)];
+            size_t last = up; // the last block its voice played
+            while (last + 1 < r.size() && r.voices[last + 1] > 0)
+                ++last;
+            const double ended = static_cast<double>(last + 1 - up) / perSecond;
+            std::printf("      sustain: looped %s while held, %.3f as the key went up, then %.3f (step at most %.4f), "
+                        "%.3f, %.3f on the next point; its voice ended %.3f s after the key, at %.3f\n",
+                        looped ? "its loop" : "out of its loop", r.values[up - 1], r.values[up], step, mid, onPoint,
+                        ended, r.values[last]);
+            check(looped, "a Curve in Sustain loops its loop while the key is down");
+            check(near(r.values[up], envAt(0.35), 0.01) && step < 0.006 && near(mid, 0.55, 0.01) &&
+                      near(onPoint, 0.5, 0.01) && r.left[up] && near(r.offsets[up], 0.6, 0.01) &&
+                      near(r.offsets[up + static_cast<size_t>(perSecond / 4) + 2], 0.0, 1e-6),
+                  "a Curve in Sustain let go leaves its loop at once, from the level it was at, on to the next point");
+            check(near(ended, 0.5, 0.01) && r.values[last] < -0.95,
+                  "a Curve in Sustain let go plays on to its curve's end, its voice running on until then");
+        }
+
+        // The sustain pedal holds it in its loop once the key is up; let up, it leaves.
+        {
+            Engine e(1);
+            curveOn(e, 1.0, env, 0.25, 0.5);
+            e.p[paramIndex(0, SourceParam::CurveSustain)] = 1.0;
+            e.noteOn(57);
+            Run r;
+            run(e, 0.6, r);
+            e.synth().setPedal(0, true);
+            e.noteOff(57);
+            const size_t from = r.size();
+            const size_t pedalUp = run(e, 1.0, r);
+            e.synth().setPedal(0, false);
+            run(e, 0.6, r);
+            const bool held = within(r, from, pedalUp, 0.0, 1.0) && !r.left[pedalUp - 1] && r.voices[pedalUp - 1] == 1;
+            std::printf("      sustain under the pedal: %s, then %s\n", held ? "looping" : "not looping",
+                        r.left[pedalUp] ? "leaving" : "still looping");
+            check(held && r.left[pedalUp] && r.voices.back() == 0,
+                  "the sustain pedal holds a Curve in Sustain in its loop, and lets it go as it comes up");
+        }
+
+        // Nothing after the loop ([0.5, 1], to the curve's end): let go at 0.6 along (0.2), it glides to the end's -1
+        // over 5 ms, rather than jumping there.
+        {
+            Engine e(1);
+            curveOn(e, 1.0, env, 0.5, 1.0);
+            e.p[paramIndex(0, SourceParam::CurveSustain)] = 1.0;
+            e.noteOn(57);
+            Run r;
+            const size_t up = run(e, 0.6, r);
+            e.noteOff(57);
+            run(e, 0.1, r);
+            const double step = mostStep(r, up - 2, up + 20);
+            size_t at = up; // the first block at the end
+            while (at < r.size() && r.voices[at] > 0 && r.values[at] > -1.0 + 1e-6)
+                ++at;
+            std::printf("      sustain, its loop to the curve's end: %.3f as the key went up, at the end (%.3f) "
+                        "%zu blocks later, steps at most %.3f\n",
+                        r.values[up], r.values[std::min(at, r.size() - 1)], at - up, step);
+            check(near(r.values[up], envAt(0.6), 0.01) && at >= up + 7 && at <= up + 9 && step < 0.2 &&
+                      r.values[std::min(at, r.size() - 1)] == -1.0,
+                  "a Curve in Sustain with nothing after its loop glides to the curve's end over a few ms, let go");
+        }
+
+        // Mono: a key let go and another struck in its release starts it again from its Phase, looping; legato, a key
+        // played over a held one leaves it looping where it is, and it leaves its loop once both are up.
+        {
+            Engine e(1);
+            curveOn(e, 1.0, env, 0.25, 0.5);
+            e.p[paramIndex(0, SourceParam::CurveSustain)] = 1.0;
+            e.synth().setPlayMode(true, false, false);
+            e.noteOn(57);
+            Run r;
+            run(e, 0.6, r);
+            e.noteOff(57);
+            run(e, 0.1, r);
+            const bool leaving = r.left.back();
+            e.noteOn(60);
+            const size_t again = run(e, 0.6, r) - static_cast<size_t>(0.6 * perSecond);
+            const bool restarted = near(r.values[again], -1.0, 1e-6) && !r.left[again] && r.voices[again] == 1 &&
+                                   within(r, again + static_cast<size_t>(perSecond / 4) + 1, r.size(), 0.0, 1.0);
+
+            Engine l(1);
+            curveOn(l, 1.0, env, 0.25, 0.5);
+            l.p[paramIndex(0, SourceParam::CurveSustain)] = 1.0;
+            l.synth().setPlayMode(true, true, false);
+            l.noteOn(57);
+            Run m;
+            const size_t over = run(l, 0.6, m);
+            l.noteOn(60);
+            run(l, 0.5, m);
+            l.noteOff(60); // back to the key still down
+            const size_t both = run(l, 0.5, m);
+            l.noteOff(57);
+            run(l, 0.2, m);
+            const bool kept = mostStep(m, over - 4, over + 40) < 0.006 && within(m, over, both, 0.0, 1.0) &&
+                              !m.left[both - 1] && m.left.back() && m.voices[over] == 1;
+            std::printf("      mono: %s let go, then %s by a new key; legato: %s\n", leaving ? "leaving" : "looping",
+                        restarted ? "restarted" : "not restarted", kept ? "looping on, leaving once both are up"
+                                                                         : "not as it should");
+            check(leaving && restarted, "in mono, a new key in a Curve's release in Sustain starts it looping again");
+            check(kept, "in mono legato, a Curve in Sustain loops on through the keys held");
+        }
+
+        // A loop of no length (only a host or a state makes one) holds at its place once there; one the other way
+        // round plays as its ends in order; one outside 0..1, or not a number, as the whole curve.
+        {
+            auto values = [&](double start, double end) {
+                Engine e(1);
+                curveOn(e, 2.0, ramp, start, end);
+                e.noteOn(57);
+                Run r;
+                run(e, 1.0, r);
+                return r;
+            };
+            const Run none = values(0.3, 0.3), reversed = values(0.75, 0.25), inOrder = values(0.25, 0.75),
+                      outside = values(-2.0, 5.0), notANumber = values(std::numeric_limits<double>::quiet_NaN(), 1.0),
+                      whole = values(0.0, 1.0);
+            const size_t settled = static_cast<size_t>(perSecond / 5); // 0.2 s: past 0.3 along at 2 Hz
+            const auto [low, high] = range(none, settled, none.size());
+            bool finite = true;
+            for (const Run *r : {&none, &reversed, &outside, &notANumber})
+                for (double v : r->values)
+                    finite = finite && std::isfinite(v);
+            std::printf("      a loop of no length at 0.3: between %.4f and %.4f once there\n", low, high);
+            check(near(low, -0.4, 1e-6) && near(high, -0.4, 1e-6) && none.phases.back() == 0.3f,
+                  "a Curve's loop of no length holds at its place");
+            check(finite && reversed.values == inOrder.values && outside.values == whole.values &&
+                      notANumber.values == whole.values,
+                  "a Curve's loop the other way round plays in order, and one outside the curve as the whole curve");
+        }
+    }
+
     // --- The parametric EQ's and phase disperser's analyzers: a sine shows in its band, at its level (a flat EQ
     // passes it as it is, and so does a disperser all wet, an all-pass).
     std::printf("parametric EQ and phase disperser analyzers:\n");

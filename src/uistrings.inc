@@ -342,6 +342,9 @@ STR(ParamFree, "Free")
 STR(ParamUnipolar, "Unipolar")
 STR(ParamOneShot, "One-Shot")
 STR(ParamAnchor, "Anchor") // an LFO's: tied to the host's transport
+STR(ParamCurveSustain, "Sustain Mode") // a Curve's clock mode: loops while the key is down (not an envelope's level)
+STR(ParamCurveLoopStart, "Loop Start") // a Curve's loop region along its shape
+STR(ParamCurveLoopEnd, "Loop End")
 STR(ParamSmooth, "Smooth")
 STR(ParamChaos, "Chaos")
 

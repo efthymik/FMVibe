@@ -269,7 +269,8 @@ What the plugin does and how its editor works, in full. Building and installing 
   operator's envelope has them), Curve sources (LFOs of a drawn shape), and two that follow what a note or the
   controller brings:
   - **Curve**: an LFO of a shape drawn from points (see below), with everything an LFO has (Rate or a synced note
-    value, the clock modes, anchoring, Phase) but the shape list. It starts unipolar, where an LFO starts bipolar.
+    value, the clock modes, anchoring, Phase) but the shape list, and a loop region and a fifth clock mode,
+    **Sustain**, of its own (see below). It starts unipolar, where an LFO starts bipolar.
     It replaces the LFO's Custom shape, which the LFOs no longer offer: a patch saved before (state version 11 and
     earlier) loads an LFO with that shape as a Curve source running as the LFO ran, its points and polarity kept.
   - **Random**: a random LFO. It runs as an LFO does, with the LFO's Rate (or, synced, a note value: it starts synced
@@ -329,9 +330,12 @@ What the plugin does and how its editor works, in full. Building and installing 
   let go, a mod envelope that modulates something runs its release out even after the operators have faded: the
   voice keeps running its modulation alone (rendering no sound) until the release is over, so what it moves, an
   effect's knob for one, follows it down instead of jumping back, and only then reports its note's end to the host.
+  A Curve source in Sustain that modulates something keeps the voice running the same way until it has played on to
+  its curve's end.
   Once the last voice has ended, its modulation of the effects (and of Volume) runs on while they ring out, so an
   LFO on a filter after a long reverb keeps sweeping the reverb's tail: a Free or Anchor LFO along its shared clock,
-  a Retrigger or One-Shot one carrying on from where the voice left it, its own params as every voice has them
+  a Retrigger or One-Shot one carrying on from where the voice left it (a Curve in Sustain, let go with its voice,
+  playing on to its curve's end), its own params as every voice has them
   (what is set, with the host's and the macros' modulation); the other sources' modulations keep what they last
   gave. Once the effects have put out silence (below -100 dB) for a second, the effects' params go back to their
   knobs, where nothing is heard, and a new note takes over from its first block. The voice itself still ends, and
@@ -419,7 +423,8 @@ What the plugin does and how its editor works, in full. Building and installing 
   - An LFO runs in one of four clock modes, picked one at a time: **Retrigger** (the default), **Free**, **Anchor** or
     **One-Shot**. Retrigger restarts the LFO from its Phase with every note. Each of the other three is a switch
     hosts see; the editor turns the other two off as it picks one. Should a host turn on more than one, One-Shot
-    wins, then Anchor. A Random source has only Retrigger and Free (see Random above).
+    wins, then Anchor. A Random source has only Retrigger and Free (see Random above). A Curve source has a fifth,
+    **Sustain** (below), which wins over the other three.
   - **Free** makes an LFO run on without restarting at each note. All voices then follow one shared clock, which
     runs at the rate the newest voice hears (like the effects) and keeps going between notes.
   - **Anchor** ties an LFO to the host's transport: while it plays, the LFO stands where it would had it started at
@@ -447,7 +452,17 @@ What the plugin does and how its editor works, in full. Building and installing 
   - **One-Shot** runs an LFO through one cycle from each note and then holds it where the cycle ends (a one-shot
     is never free or anchored): for a sine, a triangle or a drawn shape that is where it started, while a saw holds
     at its top, a square low and a Random source at the value it took. A drawn shape with a point at the cycle's end
-    (100 %) holds at that point's level instead, so a ramp from 0 up to 1 there stays at 1.
+    (100 %) holds at that point's level instead, so a ramp from 0 up to 1 there stays at 1. A Curve source's
+    one-shot plays its whole curve whatever its loop region.
+  - **Sustain**, a Curve source's alone, plays it as an envelope with a sustain loop: from each note it plays from its
+    Phase on into its loop region and round the loop for as long as the key is down, or the sustain pedal holds the
+    note. As the key comes up it leaves the loop at once, wherever it is (before the loop or in it), and plays on from
+    the level it is at: it goes on from the loop's end, the step between that level and the curve there fading out
+    along the way to the next point, so it lands on that point and plays the rest of the curve, then holds at the
+    curve's end, as a one-shot does. A loop that ends at the curve's end glides there over 5 ms. The note's voice runs
+    on until the curve has ended, so what it modulates follows it down. In mono a new key struck while it plays on
+    starts it again from its Phase (legato, a key played over a held one leaves it looping where it is). The editor
+    has no button for it yet.
   - **Unipolar** makes an LFO swing from 0 to 1 instead of −1 to 1, so it only pushes its targets one way, like an
     envelope. It is the same choice the LFO's right-click menu offers, and its display then has its zero line at the
     bottom.
@@ -456,6 +471,14 @@ What the plugin does and how its editor works, in full. Building and installing 
     to easing out, and the last segment wraps around to the first point, so the cycle loops without a jump. The
     points are saved with the patch (as params of the editor's own, which hosts aren't given: see
     [CLAP and VST3](#clap-and-vst3)).
+  - Every Curve source has a **loop region**, a start and an end along its curve, the whole curve to begin with (so
+    a patch from before plays as it did). Retrigger plays from its Phase on into the loop, then round the loop alone (a
+    Phase past the loop plays on to the curve's end first); Free and Anchor cycle the loop alone, an anchored one
+    counting the loop's cycles from the song's start; One-Shot ignores it; Sustain loops it while the key is down.
+    Rate (or the synced note value) stays the whole curve's, so the loop plays at the speed it is drawn: a loop half
+    the curve long comes round twice as often. A loop of no length, which only a host or a saved state can make,
+    holds where it is. Its ends are saved with the patch, as params of the editor's own that nothing modulates; the
+    editor has no controls for them yet.
 - **Effects**, after the voices: everything the operators and filters send to the output runs through up to 32
   effects. A new instance starts with none. Any effect can be added more than once, switched on and off, reordered and
   removed. A patch saved while the chain held 16 loads its effects in the order they had. Once nothing goes in and
@@ -2518,12 +2541,12 @@ switched off and on again, say) allocates the voices again and ends the notes pl
 next block. A VST3 host stopping processing ends them too, unless a restart was asked for: then they end only if
 processing starts again without it.
 
-Hosts are given 2,027 of FMVibe's 38,008 parameters: the globals, the operators, the matrix and the routes' modes,
+Hosts are given 2,027 of FMVibe's 38,104 parameters: the globals, the operators, the matrix and the routes' modes,
 the filters, the shapers, the macros' knobs, the note source's, the mod wheel's, velocity's, the pitch bend's and the
 operators' own as sources, and every modulation's depth and Amount (16 slots for each of the 50 sources, used or not). The rest are set in the editor only:
 the effects, the LFOs', envelopes' and other sources' own knobs, what each modulation targets and its aux, curve and
-bypass, the Curve sources' drawn shapes, the shaper curves and the note source's curve, the Custom waves' partials and their
-counts, the effects graph (its splits, joins and wires), the chain's retired order, the feedback's route modes and the
+bypass, the Curve sources' drawn shapes and loop regions, the shaper curves and the note source's curve, the Custom
+waves' partials and their counts, the effects graph (its splits, joins and wires), the chain's retired order, the feedback's route modes and the
 retired fields. They are
 saved with the project and in presets like the others, the editor's sources modulate them and its history undoes
 them, but hosts can't automate them and don't record their edits: an edit of one marks the project changed

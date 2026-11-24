@@ -41,7 +41,7 @@ constexpr bool idsRoundTrip(int from, int to) {
     return true;
 }
 // (MSVC allows an expression 1,048,576 steps, fewer than GCC, so the parts are small.)
-static_assert(kParamCount == 38008 && kParamCount <= 13 * 3000);
+static_assert(kParamCount == 38104 && kParamCount <= 13 * 3000);
 static_assert(idsRoundTrip(0, 1500), "param id layout overlaps");
 static_assert(idsRoundTrip(1500, 3000), "param id layout overlaps");
 static_assert(idsRoundTrip(3000, 4500), "param id layout overlaps");
@@ -1030,6 +1030,11 @@ void buildTable(ParamTable &t) {
         field(SourceParam::MidiInput, tr(Str::ParamInput), ParamKind::MidiInput, 0.0,
               static_cast<double>(MidiInput::Count) - 1.0, 0.0);
         field(SourceParam::Anchor, tr(Str::ParamAnchor), ParamKind::Toggle, 0.0, 1.0, 0.0);
+        // A Curve's Sustain, off, and its loop region, the whole curve, so it plays as it did before it had them. The
+        // region's ends are drawn in the editor, as the shape's points are: hidden, and never modulated.
+        field(SourceParam::CurveSustain, tr(Str::ParamCurveSustain), ParamKind::Toggle, 0.0, 1.0, 0.0);
+        field(SourceParam::LoopStart, tr(Str::ParamCurveLoopStart), ParamKind::ShapePoint, 0.0, 1.0, 0.0);
+        field(SourceParam::LoopEnd, tr(Str::ParamCurveLoopEnd), ParamKind::ShapePoint, 0.0, 1.0, 1.0);
 
         // Freeform shapes start as a triangle: up from the bottom to the top at the middle of the
         // cycle, and down again as the last segment wraps around.

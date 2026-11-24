@@ -1053,6 +1053,74 @@ int main(int argc, char **argv) {
               "a released voice runs on while a mod envelope that modulates something releases");
     }
 
+    // Likewise while a Curve in Sustain, let go, plays on to its curve's end: at 1 Hz, looping from a quarter of its
+    // curve to its half, the key going up 0.6 s in (in its loop), it goes on from the half and reports NOTE_END half a
+    // second on, once; with nothing to modulate, at once. Under the sustain pedal it loops on, and its note ends half a
+    // second after the pedal comes up.
+    {
+        const int curve1 = 6;
+        std::vector<clap_event_param_value_t> settings{
+            paramEvent(paramIndex(curve1, SourceParam::Type), static_cast<double>(SourceType::Curve)),
+            paramEvent(paramIndex(curve1, SourceParam::Sync), 0.0),
+            paramEvent(paramIndex(curve1, SourceParam::Rate), normFromRate(1.0)),
+            paramEvent(paramIndex(curve1, SourceParam::CurveSustain), 1.0),
+            paramEvent(paramIndex(curve1, SourceParam::LoopStart), 0.25),
+            paramEvent(paramIndex(curve1, SourceParam::LoopEnd), 0.5),
+            paramEvent(slotTargetIndex(curve1, 0), slotTargetValue(paramIndex(GlobalParam::FmAmount))),
+            paramEvent(shapeCountIndex(curve1), 4.0)};
+        const double points[4][2] = {{0.0, -1.0}, {0.25, 1.0}, {0.5, 0.0}, {0.75, 0.5}};
+        for (int point = 0; point < 4; ++point) {
+            settings.push_back(paramEvent(shapePointIndex(curve1, point, PointField::X), points[point][0]));
+            settings.push_back(paramEvent(shapePointIndex(curve1, point, PointField::Y), points[point][1]));
+        }
+        std::vector<const clap_event_header_t *> setup;
+        for (const clap_event_param_value_t &ev : settings)
+            setup.push_back(&ev.header);
+        runBlock(setup);
+        const clap_event_midi_t pedalDown = midiEvent(0xB0, 64, 127), pedalUp = midiEvent(0xB0, 64, 0);
+        // Seconds from the key (or the pedal) going up to the note's NOTE_END, and how many it reported; -1 if it
+        // ended while the pedal held it.
+        auto endsAfter = [&](double amount, bool pedal, std::ptrdiff_t &ends) {
+            const clap_event_param_value_t depth = paramEvent(slotAmountIndex(curve1, 0), amount);
+            const clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 12, 62);
+            const clap_event_note_t off = noteEvent(CLAP_EVENT_NOTE_OFF, 12, 62);
+            runBlock({&depth.header, &on.header});
+            runBlocks(blocksPerSecond * 3 / 5 - 1); // 0.6 s in: 0.35 along its curve, in its loop
+            out.noteEnds.clear();
+            if (pedal) {
+                runBlock({&pedalDown.header, &off.header});
+                runBlocks(blocksPerSecond - 1);
+                if (!out.noteEnds.empty())
+                    return -1.0;
+                runBlock({&pedalUp.header});
+            } else {
+                runBlock({&off.header});
+            }
+            uint32_t blocks = 1;
+            for (; out.noteEnds.empty() && blocks < 2 * blocksPerSecond; ++blocks)
+                runBlock();
+            runBlocks(blocksPerSecond / 2); // any more after it
+            ends = std::count_if(out.noteEnds.begin(), out.noteEnds.end(),
+                                 [](const clap_event_note_t &n) { return n.note_id == 12; });
+            out.noteEnds.clear();
+            return blocks * static_cast<double>(kBlock) / kSampleRate;
+        };
+        std::ptrdiff_t heldEnds = 0, unheldEnds = 0, pedalEnds = 0;
+        const double held = endsAfter(0.3, false, heldEnds), unheld = endsAfter(0.0, false, unheldEnds),
+                     pedaled = endsAfter(0.3, true, pedalEnds);
+        const clap_event_param_value_t clear[] = {paramEvent(slotTargetIndex(curve1, 0), 0.0),
+                                                  paramEvent(slotAmountIndex(curve1, 0), 0.0),
+                                                  paramEvent(paramIndex(curve1, SourceParam::Type), 0.0)};
+        runBlock({&clear[0].header, &clear[1].header, &clear[2].header});
+        std::printf("      NOTE_END %.3f s after the key with a Curve in Sustain going on to its end, %.3f s without a "
+                    "target, %.3f s after the pedal\n",
+                    held, unheld, pedaled);
+        check(held > 0.45 && held < 0.6 && heldEnds == 1 && unheld < 0.1 && unheldEnds == 1,
+              "a released voice runs on while a Curve in Sustain that modulates something plays on to its end");
+        check(pedaled > 0.45 && pedaled < 0.6 && pedalEnds == 1,
+              "the sustain pedal holds a Curve in Sustain in its loop, and it plays on to its end once let up");
+    }
+
     // An empty place modulates nothing, even with its slots set; once it holds an
     // envelope it does, and switched off it stops again.
     {

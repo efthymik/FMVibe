@@ -906,13 +906,17 @@ void View::removeSource(int source) {
 
 // Snapshots come once per audio block, which can be tens of milliseconds apart;
 // in between, the phase moves on at the LFO's rate, so the dot glides. A host
-// that stopped processing doesn't send it far. A one-shot stops at the end of its cycle.
+// that stopped processing doesn't send it far. A one-shot stops at the end of its cycle, as does a Curve in Sustain
+// that has left its loop; else it comes round its loop region as the engine's does (see loopPhase()).
 double View::lfoPhaseNow(int lfo) const {
+    auto get = [this](int i) { return value(i); };
     const double age = std::clamp(static_cast<double>(telemetry_.age), 0.0, 0.1);
-    const double phase = telemetry_.lfoPhases[lfo] + telemetry_.lfoRates[lfo] * age;
-    if (lfoOneShot([this](int i) { return value(i); }, lfo))
+    const double before = telemetry_.lfoPhases[lfo];
+    double phase = before + telemetry_.lfoRates[lfo] * age;
+    if (lfoOneShot(get, lfo) || (telemetry_.lfoLeft & (1u << lfo)) != 0)
         return std::min(phase, 1.0);
-    return phase - std::floor(phase);
+    loopPhase(before, phase, lfoLoop(get, lfo));
+    return phase;
 }
 
 LfoClock View::lfoClockOf(int lfo) const {
@@ -923,11 +927,12 @@ int View::lfoClockCount(int lfo) const {
     return mods_.lfoShapeOf(lfo) == LfoShape::Random ? kRandomClocks : kLfoModes;
 }
 
-// Free, Anchor and One-Shot set for `clock` alone (none for Retrigger), in one undo step.
+// Free, Anchor, One-Shot and a Curve's Sustain set for `clock` alone (none for Retrigger), in one undo step.
 void View::setLfoClock(int lfo, LfoClock clock) {
     const std::pair<SourceParam, LfoClock> modes[] = {{SourceParam::Free, LfoClock::Free},
                                                       {SourceParam::Anchor, LfoClock::Anchor},
-                                                      {SourceParam::OneShot, LfoClock::OneShot}};
+                                                      {SourceParam::OneShot, LfoClock::OneShot},
+                                                      {SourceParam::CurveSustain, LfoClock::Sustain}};
     std::vector<std::pair<int, double>> changes;
     for (const auto &[field, mode] : modes) {
         const double to = mode == clock ? 1.0 : 0.0;
@@ -974,8 +979,9 @@ double View::lfoValueNow(int lfo) const {
         const double out = telemetry_.sources[lfo];
         return mods_.sourceBipolar(lfo) ? out : out * 2.0 - 1.0;
     }
-    if (shape == LfoShape::Custom)
-        return shapeValue([this](int index) { return value(index); }, lfo, lfoPhaseNow(lfo));
+    if (shape == LfoShape::Custom) // with what a Curve that has left its loop carries on top (see Synth::Lfo)
+        return shapeValue([this](int index) { return value(index); }, lfo, lfoPhaseNow(lfo)) +
+               telemetry_.lfoOffsets[lfo];
     return lfoValue(shape, lfoPhaseNow(lfo), 0.0);
 }
 
@@ -1137,8 +1143,8 @@ bool View::poll() {
         for (int s = 0; s < kMaxSources && !everywhere; ++s)
             if (t.sources[s] != telemetry_.sources[s] || t.lfoPhases[s] != telemetry_.lfoPhases[s] ||
                 t.lfoRates[s] != telemetry_.lfoRates[s] || t.lfoFrom[s] != telemetry_.lfoFrom[s] ||
-                t.lfoTo[s] != telemetry_.lfoTo[s] || t.envPos[s] != telemetry_.envPos[s] ||
-                (t.voices > 0 && t.lfoRates[s] != 0.0f))
+                t.lfoTo[s] != telemetry_.lfoTo[s] || t.lfoOffsets[s] != telemetry_.lfoOffsets[s] ||
+                t.envPos[s] != telemetry_.envPos[s] || (t.voices > 0 && t.lfoRates[s] != 0.0f))
                 inCard(s);
     }
     // A compressor's and an amp's meters move on while a tail drives them once the notes have ended, in the FX view;

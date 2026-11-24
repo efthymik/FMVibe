@@ -854,8 +854,10 @@ inline Rect lfoWidenButton(float card) {
 
 // An LFO's shape list (a button with the shape's icon and name, and the list it opens under it) over its clock modes
 // (retrigger, free, anchor and one-shot, as icons), side by side as Poly | Mono are, the two rows as wide. A random
-// one has only the first `modes` (retrigger and free), each as much wider.
-constexpr int kLfoModes = static_cast<int>(LfoClock::Count);
+// one has only the first `modes` (retrigger and free), each as much wider. A Curve's Sustain, after them, isn't among
+// an LFO's.
+constexpr int kLfoModes = static_cast<int>(LfoClock::OneShot) + 1;
+static_assert(static_cast<int>(LfoClock::Sustain) == kLfoModes, "an LFO card's clock modes are those before Sustain");
 inline Rect lfoModeSwitch(float card, int mode, int modes = kLfoModes) {
     const Rect p = sourceCard(card);
     const float w = 30.5f * kLfoModes / modes;
