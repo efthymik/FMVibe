@@ -670,6 +670,8 @@ const clap_plugin_gui_t Plugin::kGui = {
             editor->setScale(scale);
         return true;
 #else
+        (void)p;
+        (void)scale;
         return false; // the editor asks Windows for the DPI
 #endif
     },

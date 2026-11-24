@@ -5180,10 +5180,6 @@ int main(int argc, char **argv) {
         // The keyboard strip's toggle asks for a shorter or taller window. The host here applies what it asks for,
         // so the fold can be clicked again, and neither size may run past the screen's work area.
         if (editor) {
-            RECT work{};
-            const bool haveWork = SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0) != FALSE;
-            const uint32_t workWidth = static_cast<uint32_t>(work.right - work.left);
-            const uint32_t workHeight = static_cast<uint32_t>(work.bottom - work.top);
             auto toggleKeys = [&] {
                 uint32_t width = 0, height = 0;
                 gui->get_size(plugin, &width, &height);
@@ -5205,7 +5201,7 @@ int main(int argc, char **argv) {
             });
             for (const auto &[w, h] : resizeRequests)
                 std::printf("      keyboard fold resize: %u x %u\n", w, h);
-            check(haveWork && resizeRequests.size() == 2 && within,
+            check(haveWorkArea && resizeRequests.size() == 2 && within,
                   "folding the keyboard asks for sizes within the screen's work area");
         }
 
@@ -5221,25 +5217,21 @@ int main(int argc, char **argv) {
             userSettings.zoom = 3.0;
             writeUserSettings();
             const clap_plugin_t *zoomed = factory->create_plugin(factory, &kHost, desc->id);
-            uint32_t width = 0, height = 0;
+            uint32_t zoomedWidth = 0, zoomedHeight = 0;
             bool got = false;
             if (zoomed) {
                 zoomed->init(zoomed);
                 const auto *zoomGui =
                     static_cast<const clap_plugin_gui_t *>(zoomed->get_extension(zoomed, CLAP_EXT_GUI));
                 const bool created = zoomGui && zoomGui->create(zoomed, CLAP_WINDOW_API_WIN32, false);
-                got = created && zoomGui->get_size(zoomed, &width, &height);
+                got = created && zoomGui->get_size(zoomed, &zoomedWidth, &zoomedHeight);
                 if (created)
                     zoomGui->destroy(zoomed);
                 zoomed->destroy(zoomed);
             }
-            RECT work{};
-            const bool haveWork = SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0) != FALSE;
-            const uint32_t workWidth = static_cast<uint32_t>(work.right - work.left);
-            const uint32_t workHeight = static_cast<uint32_t>(work.bottom - work.top);
-            std::printf("      a new plugin saved at zoom 3 opens %u x %u in a %u x %u work area\n", width, height,
-                        workWidth, workHeight);
-            check(got && haveWork && width <= workWidth && height <= workHeight,
+            std::printf("      a new plugin saved at zoom 3 opens %u x %u in a %u x %u work area\n", zoomedWidth,
+                        zoomedHeight, workWidth, workHeight);
+            check(got && haveWorkArea && zoomedWidth <= workWidth && zoomedHeight <= workHeight,
                   "a new plugin's saved size opens within the screen's work area");
             userSettings.zoom = zoomWas;
             writeUserSettings();
@@ -5825,7 +5817,7 @@ int main(int argc, char **argv) {
                            value(slotAuxIndex(kMaxSources, 0)) == slotAuxValue(0) &&
                            value(slotAuxIndex(0, 2)) == slotAuxValue(kFirstSources);
         MemoryStream again;
-        const bool saved = state->save(plugin, &again.out);
+        const bool savedAgain = state->save(plugin, &again.out);
         auto savedValue = [&](int index) { // the full state's pair for the param
             const uint32_t id = idOfIndex(index);
             for (size_t at = 12; at + 12 <= 12 + static_cast<size_t>(kParamCount) * 12 && at + 12 <= again.data.size();
@@ -5847,7 +5839,7 @@ int main(int argc, char **argv) {
         std::printf("      auxes stored as %.0f, %.0f, %.0f and %.0f load as %.0f, %.0f, %.0f and %.0f\n", stored[0].second,
                     stored[1].second, stored[2].second, stored[3].second, value(slotAuxIndex(0, 0)),
                     value(slotAuxIndex(0, 1)), value(slotAuxIndex(kMaxSources, 0)), value(slotAuxIndex(0, 2)));
-        check(loaded && named && saved && kept,
+        check(loaded && named && savedAgain && kept,
               "a slot's aux keeps its source by the number it is stored by, a version 15 state's and a later place's");
         const uint32_t initHeader[] = {0x38454C43, 15, 0};
         MemoryStream init;

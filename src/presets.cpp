@@ -94,11 +94,6 @@ std::wstring lowered(std::wstring text) {
 }
 
 // Whether `text` starts with `prefix`, ignoring the case.
-bool startsNoCase(const std::wstring &text, const std::wstring &prefix) {
-    return text.size() >= prefix.size() &&
-           lowered(text.substr(0, prefix.size())) == lowered(prefix);
-}
-
 bool startsNoCase(const std::string &text, const std::string &prefix) {
     if (text.size() < prefix.size())
         return false;

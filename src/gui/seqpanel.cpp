@@ -1497,8 +1497,9 @@ void SeqPanel::paintSeqBends(Canvas &c, const std::vector<SeqNote> &notes) {
             continue;
         for (int i = 0; i + 1 < count; ++i)
             if (seqBendSegmentBends(n, points, i)) {
-                const bool hot = hotSegment == BendHit{n.slot, i};
-                c.strokeCircle(seqBendSegmentPos(n, points, i), hot ? 4.0f : 2.5f, ink.alpha(hot ? 1.0f : 0.7f), 1.2f);
+                const bool segmentHot = hotSegment == BendHit{n.slot, i};
+                c.strokeCircle(seqBendSegmentPos(n, points, i), segmentHot ? 4.0f : 2.5f,
+                               ink.alpha(segmentHot ? 1.0f : 0.7f), 1.2f);
             }
         for (int i = 0; i < count; ++i) {
             const SeqCurvePoint &q = points[static_cast<size_t>(i)];

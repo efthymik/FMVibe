@@ -218,29 +218,6 @@ private:
     std::string output_;
 };
 
-// A program started and left running (`xdg-open`). A child of our own starts it in a session of its own and ends at
-// once, which is all this waits for: the program itself goes to init, which reaps it, so it leaves no zombie and the
-// host's UI thread is never held by it (xdg-open itself can wait for what it opens).
-void runDetached(const char *const *argv) {
-    if (!argv || !argv[0])
-        return;
-    const pid_t pid = ::fork();
-    if (pid < 0)
-        return;
-    if (pid == 0) {
-        ::setsid();
-        posix_spawnattr_t attributes;
-        posix_spawnattr_init(&attributes);
-        pid_t spawned = -1;
-        posix_spawnp(&spawned, argv[0], nullptr, &attributes, const_cast<char *const *>(argv), environ);
-        posix_spawnattr_destroy(&attributes);
-        ::_exit(0);
-    }
-    int status = 0;
-    while (::waitpid(pid, &status, 0) < 0 && errno == EINTR) {
-    }
-}
-
 std::string trimmed(std::string text) {
     while (!text.empty() && (text.back() == '\n' || text.back() == '\r' || text.back() == ' '))
         text.pop_back();
