@@ -924,7 +924,9 @@ LfoClock View::lfoClockOf(int lfo) const {
 }
 
 int View::lfoClockCount(int lfo) const {
-    return mods_.lfoShapeOf(lfo) == LfoShape::Random ? kRandomClocks : kLfoModes;
+    return mods_.lfoShapeOf(lfo) == LfoShape::Random       ? kRandomClocks
+           : mods_.sourceTypeOf(lfo) == SourceType::Curve ? kCurveModes
+                                                           : kLfoModes;
 }
 
 // Free, Anchor, One-Shot and a Curve's Sustain set for `clock` alone (none for Retrigger), in one undo step.
@@ -979,10 +981,13 @@ double View::lfoValueNow(int lfo) const {
         const double out = telemetry_.sources[lfo];
         return mods_.sourceBipolar(lfo) ? out : out * 2.0 - 1.0;
     }
-    if (shape == LfoShape::Custom) // with what a Curve that has left its loop carries on top (see Synth::Lfo)
-        return shapeValue([this](int index) { return value(index); }, lfo, lfoPhaseNow(lfo)) +
-               telemetry_.lfoOffsets[lfo];
+    if (shape == LfoShape::Custom)
+        return shapeValue([this](int index) { return value(index); }, lfo, lfoPhaseNow(lfo));
     return lfoValue(shape, lfoPhaseNow(lfo), 0.0);
+}
+
+double View::lfoLevelNow(int lfo) const { // with what a Curve that has left its loop carries on top (see Synth::Lfo)
+    return lfoValueNow(lfo) + telemetry_.lfoOffsets[lfo];
 }
 
 void View::traceRandomLfos() {
@@ -1618,9 +1623,11 @@ std::vector<View::Widget> View::widgets() const {
             merge(modes);
             if (!random && !curve)
                 add(Kind::Toggle, lfoUnipolarSwitch(card), paramIndex(s, SourceParam::Unipolar));
+            // A Curve playing its curve once from each note takes and shows a length (see shownValue()).
             const bool synced = value(paramIndex(s, SourceParam::Sync)) >= 0.5;
+            const bool length = mods_.curveTime(s) == ModulationModel::CurveTime::Seconds;
             knob(synced ? paramIndex(s, SourceParam::Division) : paramIndex(s, SourceParam::Rate),
-                 lfoKnob(card, 0), 30.0f, synced ? nullptr : tr(Str::LabelRate));
+                 lfoKnob(card, 0), 30.0f, synced ? nullptr : tr(length ? Str::LabelLength : Str::LabelRate));
             if (!random)
                 knob(paramIndex(s, SourceParam::Phase), lfoKnob(card, 1), 30.0f, tr(Str::LabelPhase));
         } else if (mods_.sourceTypeOf(s) == SourceType::Env) {
@@ -4082,6 +4089,13 @@ void View::paintLfo(Canvas &c, Rect r, int lfo) {
     plotLine(c, points.data(), points.size(), color, 2.0f);
 
     if (lfoRunning(lfo) && (sweep || holding || shape != LfoShape::Random)) {
+        // A Curve's dot keeps to its curve, as an envelope's does, and a line across shows the level it puts out, which
+        // a release in Sustain takes off the curve for a while (see Synth::Lfo).
+        if (mods_.sourceTypeOf(lfo) == SourceType::Curve) {
+            const double level = std::clamp(lfoLevelNow(lfo), -1.0, 1.0);
+            const float y = inner.center().y - static_cast<float>(level) * inner.h * 0.5f;
+            c.line({inner.x, y}, {inner.right(), y}, color.alpha(0.35f), 1.0f, true);
+        }
         const Point dot = sweep || holding ? points.back()
                                 : Point{inner.x + static_cast<float>(lfoPhaseNow(lfo)) * inner.w,
                                         inner.center().y - static_cast<float>(lfoValueNow(lfo)) * inner.h * 0.5f};
@@ -4308,7 +4322,14 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             fxSwitchIcon(c, w.rect.center(), field, on ? litInk(color) : (hovered ? kText : kDim));
         else if (isLfoSync(w.param)) // an LFO's SYNC, the effects' metronome
             fxSwitchIcon(c, w.rect.center(), FxParam::DelaySync, on ? litInk(color) : (hovered ? kText : kDim));
-        else if (clockMode)
+        else if (clockMode && w.label) { // a Curve's full-size editor's: its icon, then its name
+            const Color ink = on ? litInk(kText) : (hovered ? kText : kDim);
+            const float textW = c.textWidth(w.label, kTextLabel, on);
+            const float left = w.rect.center().x - (26.0f + textW) * 0.5f;
+            lfoClockIcon(c, {left + 10.0f, w.rect.center().y}, static_cast<LfoClock>(w.b), on ? litInk(color) : ink,
+                         switchIconScale());
+            c.text({left + 26.0f, w.rect.y, textW + 2.0f, w.rect.h}, w.label, kTextLabel, ink, Align::Left, on);
+        } else if (clockMode)
             lfoClockIcon(c, w.rect.center(), static_cast<LfoClock>(w.b), on ? litInk(color) : (hovered ? kText : kDim),
                          switchIconScale());
         else if (sourceFieldOf(w.param) == SourceParam::Unipolar) // humps on a baseline, as a MODS row's; a Curve
@@ -5248,9 +5269,7 @@ void View::paintKnob(Canvas &c, const Widget &w) {
     if (offset != 0.0f)
         c.fillCircle(Canvas::onCircle(center, radius - 2.0f, knobAngle(n + offset / (def.max - def.min))), 2.5f, kText);
 
-    char text[64];
-    formatParam(w.param, value(w.param), text, sizeof(text));
-    std::string shown = text;
+    std::string shown = shownValue(w.param, value(w.param));
     if (def.kind == ParamKind::Ratio)
         shown = "\xC3\x97" + shown;
     if (w.compact) {
@@ -5681,8 +5700,9 @@ void View::paintTooltip(Canvas &c) {
         text = tr(slopeFits(static_cast<FilterType>(std::lround(value(slopeTypeParam(param)))), 0) ? Str::TipSlope
                                                                                                   : Str::TipSlopeBand);
     else if (isLfoClockChoice(*hover_)) {
-        const Str tips[] = {Str::TipRetrigger, Str::TipFree, Str::TipAnchor, Str::TipOneShot};
-        text = tr(tips[std::clamp(hover_->b, 0, kLfoModes - 1)]);
+        const Str tips[] = {Str::TipRetrigger, Str::TipFree, Str::TipAnchor, Str::TipOneShot, Str::TipSustain};
+        static_assert(std::size(tips) == static_cast<size_t>(kCurveModes));
+        text = tr(tips[std::clamp(hover_->b, 0, kCurveModes - 1)]);
     }
     else if (sourceFieldOf(param) == SourceParam::Unipolar) // the LFO's switch, or a Curve card's Unipolar | Bipolar
         text = tr(hover_->kind == Kind::Choice && hover_->b == 0 ? Str::TipBipolar : Str::TipUnipolar);
@@ -7947,10 +7967,54 @@ void View::startTyping(const Widget &w) {
         caretTicks_ = 0;
         return;
     }
-    char text[64];
-    formatParam(w.param, value(w.param), text, sizeof(text));
-    typing_ = Typing{w, text, std::string_view(text).size(), true};
+    const std::string text = shownValue(w.param, value(w.param));
+    typing_ = Typing{w, text, text.size(), true};
     caretTicks_ = 0;
+}
+
+namespace {
+// Whether a Curve's Rate param reads as its curve's length now.
+bool rateAsLength(const ModulationModel &mods, int index) {
+    return sourceFieldOf(index) == SourceParam::Rate &&
+           mods.curveTime(sourceOf(index)) == ModulationModel::CurveTime::Seconds;
+}
+} // namespace
+
+std::string View::shownValue(int index, double v) const {
+    if (rateAsLength(mods_, index) && v > 0.0) { // as times are shown, ms up to a second
+        const double seconds = 1.0 / sweepRateHz(v);
+        const double ms = std::round(seconds * 10000.0) / 10.0;
+        char text[32];
+        if (ms < 1000.0)
+            std::snprintf(text, sizeof(text), "%.1f ms", ms);
+        else
+            std::snprintf(text, sizeof(text), "%.2f s", seconds);
+        return text;
+    }
+    char text[64];
+    formatParam(index, v, text, sizeof(text));
+    return text;
+}
+
+bool View::parseShown(int index, const std::string &text, double *out) const {
+    std::string lower = text;
+    std::transform(lower.begin(), lower.end(), lower.begin(),
+                   [](char ch) { return static_cast<char>(std::tolower(static_cast<unsigned char>(ch))); });
+    if (!rateAsLength(mods_, index) || lower.find("hz") != std::string::npos)
+        return parseParam(index, text.c_str(), out);
+    // "s" means seconds, anything else (a bare number too) milliseconds, as for the times; at most the fastest rate's
+    // length, at least the slowest's.
+    char *end = nullptr;
+    const double number = std::strtod(text.c_str(), &end);
+    if (end == text.c_str() || !std::isfinite(number))
+        return false;
+    while (*end == ' ')
+        ++end;
+    const double seconds = *end == 's' || *end == 'S' ? number : number / 1000.0;
+    if (!(seconds > 0.0))
+        return false;
+    *out = std::max(normFromRate(std::clamp(1.0 / seconds, kMinRate, kMaxRate)), kLeastNorm);
+    return true;
 }
 
 void View::typeChar(char32_t c) {
@@ -8137,13 +8201,12 @@ void View::endTyping(bool commit) {
     // Spaces around it don't count. Left as it was shown, or emptied, the value stays as it is,
     // rather than being rounded to what the text says.
     const size_t first = t.text.find_first_not_of(' ');
-    char shown[64];
-    formatParam(t.widget.param, value(t.widget.param), shown, sizeof(shown));
+    const std::string shown = shownValue(t.widget.param, value(t.widget.param));
     if (!commit || first == std::string::npos || t.text == shown)
         return;
     const std::string text = t.text.substr(first, t.text.find_last_not_of(' ') - first + 1);
     double v = 0.0;
-    if (parseParam(t.widget.param, text.c_str(), &v))
+    if (parseShown(t.widget.param, text, &v))
         edit(t.widget.param, v);
     else
         flash(trf(Str::MsgBadValue, {text, mods_.paramName(t.widget.param)}));

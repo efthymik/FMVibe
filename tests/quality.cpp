@@ -7580,6 +7580,31 @@ int main() {
                   "a Curve in Sustain with nothing after its loop glides to the curve's end over a few ms, let go");
         }
 
+        // A loop ending on a point where the curve drops straight down ([0.25, 0.5], down from 1 to -0.5 at 0.5): let go,
+        // it goes down with the drop over 5 ms, as with nothing after the loop, then follows the curve on from its foot,
+        // rather than carrying the level it was at along the rest of the curve.
+        {
+            Engine e(1);
+            const Points drop{{0.0, -1.0}, {0.25, 1.0}, {0.5, 1.0}, {0.5, -0.5}, {0.75, -0.75}};
+            curveOn(e, 1.0, drop, 0.25, 0.5);
+            e.p[paramIndex(0, SourceParam::CurveSustain)] = 1.0;
+            e.noteOn(57);
+            Run r;
+            const size_t up = run(e, 0.6, r);
+            e.noteOff(57);
+            run(e, 0.3, r);
+            auto get = [&e](int i) { return e.p[i]; };
+            double off = 0.0; // how far from its curve, once the drop is over
+            for (size_t i = up + 9; i < up + 300; ++i)
+                off = std::max(off, std::abs(r.values[i] - shapeValue(get, 0, r.phases[i - 1])));
+            const double step = mostStep(r, up, up + 9);
+            std::printf("      sustain, its loop ending on a drop: %.3f as the key went up, steps at most %.3f, then "
+                        "%.6f off its curve\n",
+                        r.values[up], step, off);
+            check(near(r.values[up], 1.0, 1e-6) && step < 0.25 && off < 1e-4,
+                  "a Curve in Sustain whose loop ends on a drop goes down with it over a few ms, then follows its curve");
+        }
+
         // Mono: a key let go and another struck in its release starts it again from its Phase, looping; legato, a key
         // played over a held one leaves it looping where it is, and it leaves its loop once both are up.
         {

@@ -713,6 +713,34 @@ The **shape tools**, each one undo step:
 
 For editing points, see [Shape editors](#shape-editors). **Unipolar | Bipolar** buttons replace the LFO's shape list.
 
+A Curve source has a fifth clock mode, **Sustain**, after One-Shot. It works like an envelope with a sustain loop:
+
+- Each note plays the curve from Phase, then loops the **loop** while the key is down (or the sustain pedal holds it).
+- When you let go, it leaves the loop at once and plays on from the level it is at to the end of the curve, then
+  holds there. The note keeps running until then, so what the curve modulates follows it down.
+
+The **loop** is a part of the curve. A new Curve source loops the whole curve. In the other clock modes:
+
+- **Retrigger** plays from Phase into the loop, then repeats the loop.
+- **Free** and **Anchor** repeat only the loop.
+- **One-Shot** ignores the loop and plays the whole curve once.
+
+The loop shows as a bar over the shape, in the widened card and the full-size editor. To set it:
+
+- Drag an end of the bar to resize the loop, or its middle to move it.
+- Drag outside the bar to draw a new loop.
+- Double-click the bar to loop the whole curve again.
+- Right-click a point and choose **Set as Loop Start** or **Set as Loop End** to put that end exactly on the point.
+
+The bar snaps to the grid's columns. One-Shot shows no bar. The parts of the curve the clock mode never plays are
+dimmed.
+
+In One-Shot and Sustain, with Sync off, the **Rate** knob shows the curve's **length** instead (for example 1.20 s).
+You can type a length too, such as "1.5 s" or "800 ms". The point readout and the ruler then show times. With Sync on
+they show bars and beats, otherwise a percentage of the cycle.
+
+The full-size editor's title row has the clock modes, the sync button and Rate, as on the card.
+
 ### Random
 
 A Random source is a random LFO: it takes a new value every cycle.

@@ -427,8 +427,8 @@ private:
     // editor and widened card the place had let go.
     int addSource(SourceType type, int copyOf = -1); // the place it fills, or -1 with none free
     void removeSource(int source);
-    // Where an LFO of the newest voice is now, and its output there; with no voice, a free or anchored one's shared
-    // clock.
+    // Where an LFO of the newest voice is now, and its shape there; with no voice, a free or anchored one's shared
+    // clock. What it puts out is lfoLevelNow() (see PanelHost).
     double lfoPhaseNow(int lfo) const;
     double lfoValueNow(int lfo) const;
     // Whether an LFO's dot shows where it is: while a note plays, or, free or anchored, while none does too, and
@@ -475,6 +475,11 @@ private:
     // Whether `p` is on the number widget `w` shows, where a double-click starts typing.
     static bool onValue(const Widget &w, Point p);
     void startTyping(const Widget &w);
+    // A param's value as the editor shows it, formatParam()'s, but a Curve's Rate as its curve's length while its
+    // places read as times (see ModulationModel::curveTime()); and what typing it takes back: a length there ("1.2 s",
+    // "800 ms", or a rate given in Hz), else what parseParam() takes.
+    std::string shownValue(int index, double v) const;
+    bool parseShown(int index, const std::string &text, double *out) const;
     // Where the value being typed shows, over the number it replaces.
     Rect typingField() const;
     // Pixels per unit of normalized time: what fills the display, or while its zoom is held (see envZoom_), the held
@@ -669,6 +674,7 @@ private:
     Rect shapeHome(int shape) const override;
     void revealCard(int card) override { revealSource(card); }
     std::optional<std::pair<double, double>> lfoNow(int lfo) const override;
+    double lfoLevelNow(int lfo) const override;
     std::vector<Widget> listedWidgets() const override { return widgets(); }
     int openList() const override { return listMenu_; }
     bool openListModel() const override { return listMenu_ >= 0 && listModel_; }

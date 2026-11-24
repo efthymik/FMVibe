@@ -786,6 +786,11 @@ STR(CaptionNoteSync, "NOTE SYNC") // on the WARP display, while the operator is 
 STR(SwitchPoints, "Points") // what a click on an LFO's shape does
 STR(SwitchSteps, "Steps")
 STR(SwitchSnap, "Snap") // an LFO's shape points to the grid
+STR(SwitchRetrigger, "Retrigger") // a Curve's clock modes, named beside their icons in its full-size editor
+STR(SwitchFree, "Free")
+STR(SwitchAnchor, "Anchor")
+STR(SwitchOneShot, "One-Shot")
+STR(SwitchSustain, "Sustain")
 STR(SwitchHard, "HARD") // the shaper effect's first three curves
 STR(SwitchSoft, "SOFT")
 STR(SwitchAsym, "ASYM")
@@ -1008,6 +1013,9 @@ STR(CaptionShapePoint, "point {1}  ·  {2} % of the cycle  ·  {3}")
 STR(CaptionCardPointNumber, "#{1}")
 STR(CaptionCardPoint, "{1} %  ·  {2}")
 STR(HintCardPoint, "Hover a point")
+// The same where a Curve's place reads as a time or in bars and beats (its readouts, as its ruler's), not a share.
+STR(CaptionShapePointAt, "point {1}  ·  {2}  ·  {3}")
+STR(CaptionCardPointAt, "{1}  ·  {2}")
 STR(CaptionCurvePoint, "point {1}  ·  in {2}  ·  out {3}")
 STR(CaptionNotePoint, "point {1}  ·  {2}  ·  out {3} %")
 STR(CaptionVelocityPoint, "point {1}  ·  velocity {2}  ·  out {3} %")
@@ -1188,6 +1196,7 @@ STR(TipShapeShiftLeft, "Shift left")
 STR(TipShapeShiftRight, "Shift right")
 STR(TipShapeCopy, "Copy shape")
 STR(TipShapePaste, "Paste copied shape")
+STR(TipShapeLoop, "Drag to set the loop, double-click for the whole curve") // a Curve's loop bar
 STR(TipShapePoints, "Double click to add and move points")
 STR(TipShapeSteps, "Click to draw steps, Alt+click for points")
 STR(TipShapeSnap, "Snap to grid")
@@ -1222,6 +1231,7 @@ STR(TipRetrigger, "Restart with each note") // an LFO's clock modes
 STR(TipFree, "Free")
 STR(TipOneShot, "One shot")
 STR(TipAnchor, "Anchor to song position") // an LFO's switch: its phase follows the host's transport
+STR(TipSustain, "Loop while the key is down, then play on") // a Curve's fifth clock mode
 STR(TipUnipolar, "Unipolar")
 STR(TipBipolar, "Bipolar") // a Random card's switch, beside Unipolar
 STR(TipDelaySync, "Sync times to tempo")
@@ -1288,6 +1298,8 @@ STR(MenuEditAuxDepth, "Edit aux depth…") // how far down the aux can take the 
 STR(MenuRemoveAll, "Remove all modulation")
 STR(MenuDeletePoint, "Delete point")
 STR(MenuStraighten, "Straighten")
+STR(MenuSetLoopStart, "Set as Loop Start") // a Curve's point: its loop starts there
+STR(MenuSetLoopEnd, "Set as Loop End")
 STR(MenuSwitchOff, "Switch off {1}")
 STR(MenuDisconnect, "Disconnect")
 STR(MenuEditValue, "Edit value…")

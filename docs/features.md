@@ -459,10 +459,11 @@ What the plugin does and how its editor works, in full. Building and installing 
     note. As the key comes up it leaves the loop at once, wherever it is (before the loop or in it), and plays on from
     the level it is at: it goes on from the loop's end, the step between that level and the curve there fading out
     along the way to the next point, so it lands on that point and plays the rest of the curve, then holds at the
-    curve's end, as a one-shot does. A loop that ends at the curve's end glides there over 5 ms. The note's voice runs
+    curve's end, as a one-shot does. A loop that ends at the curve's end glides there over 5 ms, and so does one that
+    ends on a point the curve drops (or jumps) from straight away, going down with the drop. The note's voice runs
     on until the curve has ended, so what it modulates follows it down. In mono a new key struck while it plays on
-    starts it again from its Phase (legato, a key played over a held one leaves it looping where it is). The editor
-    has no button for it yet.
+    starts it again from its Phase (legato, a key played over a held one leaves it looping where it is). It is the
+    fifth button of a Curve card's clock modes (see below).
   - **Unipolar** makes an LFO swing from 0 to 1 instead of −1 to 1, so it only pushes its targets one way, like an
     envelope. It is the same choice the LFO's right-click menu offers, and its display then has its zero line at the
     bottom.
@@ -477,8 +478,14 @@ What the plugin does and how its editor works, in full. Building and installing 
     counting the loop's cycles from the song's start; One-Shot ignores it; Sustain loops it while the key is down.
     Rate (or the synced note value) stays the whole curve's, so the loop plays at the speed it is drawn: a loop half
     the curve long comes round twice as often. A loop of no length, which only a host or a saved state can make,
-    holds where it is. Its ends are saved with the patch, as params of the editor's own that nothing modulates; the
-    editor has no controls for them yet.
+    holds where it is. Its ends are saved with the patch, as params of the editor's own that nothing modulates, and
+    are set on the loop's bar over the shape, or from a point's right-click menu (see the shape editor).
+  - In One-Shot and Sustain, unsynced, a Curve source's **Rate** reads as the curve's **length** (1.20 s rather than
+    0.83 Hz), on its knob and in its full-size editor, whose label then says Length, and a length typed into it ("1.5
+    s", "800 ms") sets it; a rate typed with "Hz" still goes. The param is still the rate, so nothing saved changes.
+    At 0 Hz it reads as a rate, as it always did. Its places along the curve (a point's readout, the ruler over its
+    full-size editor) read likewise as times there; synced, in bars and beats (1.2.1: bar, beat, sixteenth, from
+    the cycle's start); otherwise as a share of the cycle.
 - **Effects**, after the voices: everything the operators and filters send to the output runs through up to 32
   effects. A new instance starts with none. Any effect can be added more than once, switched on and off, reordered and
   removed. A patch saved while the chain held 16 loads its effects in the order they had. Once nothing goes in and
@@ -1702,8 +1709,9 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     whole, to edit the shape right there while the panels above stay in use: the inspector's knobs, the routes and
     the other views can be turned and switched as the shape changes. The widened card keeps the source's own controls where a normal card has them,
     with the shape tools and drawing modes where its display was (see below), and the shape's plot beside them,
-    264 px across; under the plot, the point under the mouse in numbers (its number, its place in the cycle and its
-    level) and the grid's steppers, and over it, as its tooltip, how to edit it. Its title row has, before the
+    264 px across; under the plot, the point under the mouse in numbers (its number, its place in the cycle, as a time
+    or in beats where a Curve's places read so, and its level) and the grid's steppers, and over it, as its tooltip,
+    how to edit it. Its title row has, before the
     fold, power and remove buttons, the reset button (a circular arrow), which puts back the shape it started with,
     the collapse button (two arrows pointing in), which takes the card back to its size, and right of it the
     full-size button (two arrows pointing apart); another shape, folding the card and removing it take it back to
@@ -1713,7 +1721,20 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     again; it isn't saved with the patch. The full-size button opens the shape over the routing panel and the inspector,
     which it hides while it is open, the card staying widened under it with its own editor greyed out (it takes no
     input there meanwhile); the done button (a check mark, top right) closes it, as a view tab does, and the card's
-    editor is back in use.
+    editor is back in use. A Curve's full-size editor has, in its title row after its name, its five clock modes,
+    each its icon and name, its sync switch and its Rate (Length, or the note value synced) as a small knob, which
+    work as the card's do; the hint goes after them.
+    A Curve source's **loop** (see the modulation above) shows as a bar in its color on a strip over the shape: in
+    the full-size editor over the plot, with the ruler's labels under the bar (times, beats or shares, as its places
+    read, on round values), and in the widened card along the top of the plot, with the ruler's labels at the plot's
+    foot. It is set as the Seq view's loop is: drag an end to size it, its middle to move it, or across the strip
+    outside it to draw a new one, on the grid's columns, its ends staying a column apart; a double-click loops the
+    whole curve again. Each drag is one undo step. Over the loop the mouse shows a move cursor, elsewhere a left-right
+    one. Its ends are dashed across the plot, and what the clock mode doesn't play is dimmed: past the loop in
+    Retrigger, either side of it in Free and Anchor, nothing in Sustain. One-Shot, which plays the whole curve, shows
+    no bar. A point's right-click menu has **Set as Loop Start** and **Set as Loop End**, which put that end exactly
+    at the point, on the grid or not, each one undo step (an entry that would put an end at or past the other is left
+    out), before Delete point.
     The **shape tools**, a row of icons (named on hover), each change the whole shape in one undo step, a quick
     second click being another: **Invert** flips it upside down; **Reverse** plays it back to front, the first point
     staying first and each segment bent the other way; **Shift left** and **Shift right** move it a column of the
@@ -2017,15 +2038,21 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     wide as it, are its clock modes side by side, as Poly | Mono are, the one it runs in lit, each drawn as an icon
     (named on hover): a rise that starts again at each dot for **Retrigger**, an infinity sign for **Free**, an
     anchor for **Anchor** and a single cycle that ends in a dot for **One-Shot** (a Random card's two, Retrigger and
-    Free, each twice as wide). A click picks one (a click on the
+    Free, each twice as wide). A Curve card has a fifth, **Sustain**, a rise, a level between two ticks and a fall,
+    under its sync switch, where an LFO's Unipolar switch is (a Curve's polarity is its Unipolar | Bipolar). A click
+    picks one (a click on the
     one lit leaves it), and the wheel over them steps to the next one. Right of those two rows, centered
-    on them, are the Rate and Phase knobs (a Random card's Rate alone),
+    on them, are the Rate and Phase knobs (a Random card's Rate alone; a Curve's Rate labeled Length while it reads as
+    one),
     over a Random card's Smooth and Chaos, with the sync switch between the shape list and Rate, level with the list: a small square button
     with the metronome the effects' SYNC has, which turns the Rate knob into a note-value knob (as it starts, on).
     Under it, level with the clock modes, is the **Unipolar** switch, a hump on a baseline as a Mods row's
     polarity switch has.
     The Phase knob is faint while it does nothing (on a free LFO that isn't anchored), and otherwise
-    a thin line on the display marks where notes start the LFO (or where the song starts an anchored one). A
+    a thin line on the display marks where notes start the LFO (or where the song starts an anchored one). A Curve's
+    dot keeps to its curve, as an envelope's does, and a dashed line across, while it runs, shows the level it puts
+    out, which a release in Sustain takes off the curve until the next point (in its widened card and full-size
+    editor alike). A
     unipolar LFO's display has its zero line at the bottom. A Curve source's
     display, or the expand button in its title row, widens its card, to edit the shape there (see the shape editor);
     a new one starts widened.

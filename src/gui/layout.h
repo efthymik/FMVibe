@@ -858,9 +858,12 @@ inline Rect lfoWidenButton(float card) {
 // an LFO's.
 constexpr int kLfoModes = static_cast<int>(LfoClock::OneShot) + 1;
 static_assert(static_cast<int>(LfoClock::Sustain) == kLfoModes, "an LFO card's clock modes are those before Sustain");
+// A Curve card's five, each as wide as an LFO's, run on under its sync switch, where an LFO's Unipolar switch is (a
+// Curve's polarity is its Unipolar | Bipolar).
+constexpr int kCurveModes = static_cast<int>(LfoClock::Count);
 inline Rect lfoModeSwitch(float card, int mode, int modes = kLfoModes) {
     const Rect p = sourceCard(card);
-    const float w = 30.5f * kLfoModes / modes;
+    const float w = modes == kCurveModes ? 30.5f : 30.5f * kLfoModes / modes;
     return {p.x + 16.0f + mode * w, p.y + 72.0f, w, 16.0f};
 }
 

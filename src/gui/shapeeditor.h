@@ -58,9 +58,12 @@ public:
     // front, move it a grid column earlier or later (round the cycle), and copy it to paste into another LFO.
     enum class ShapeTool { Invert, Reverse, ShiftLeft, ShiftRight, Copy, Paste };
     // Its context menu's commands (see contextMenu()): a bend's Straighten and a point's Delete Point, as the View
-    // numbered them; taken only while its own menu is open, so they may share their numbers with the View's.
+    // numbered them, and a Curve's point's Set as Loop Start and Set as Loop End; taken only while its own menu is open,
+    // so they may share their numbers with the View's.
     static constexpr int kMenuStraighten = 1;
     static constexpr int kMenuDeletePoint = 5;
+    static constexpr int kMenuSetLoopStart = 6;
+    static constexpr int kMenuSetLoopEnd = 7;
 
     // The big editor shows over the routing panel and the inspector while the LFO's shape is Custom, over the routing
     // panel while the note source's or velocity's curve or a voice shaper's is open, or over the effects for a shaper
@@ -159,6 +162,30 @@ private:
                                                                     const std::vector<DrawnPoint> &points) const;
     // How to edit a shape in the big editor or a widened LFO card, as Points | Steps and Snap have it.
     std::string shapeHint() const;
+    // A Curve source's shape (not a retired Custom LFO's): it has a loop (see fmvibe::lfoLoop()) and a ruler reading
+    // places along it (see ModulationModel::curvePlace()). Its loop's bar shows but in One-Shot, which plays the whole
+    // curve. The strip that holds the bar: over the big editor's plot, with the ruler's labels, or along the top of a
+    // widened card's plot. What a press on it at `x` takes, as on the SEQ view's ruler: an end within 6 px, the loop
+    // inside it, or else a new loop drawn across; and where the mouse is on the grid's columns, which a loop's ends
+    // snap to.
+    bool curveShape(int shape) const;
+    bool loopShown(int shape) const;
+    LfoLoop loopOf(int shape) const;
+    Rect loopStrip(int shape) const;
+    enum class LoopGrab { New, Move, Start, End };
+    LoopGrab loopGrabAt(int shape, float x) const;
+    double loopColumn(int shape, Point p) const;
+    // Its loop over the plot `r` (what the clock mode doesn't play dimmed, its ends, its bar) and its ruler's labels: in
+    // the strip over the big editor's plot, at the foot of a widened card's (`card`).
+    void paintLoop(Canvas &c, int shape, Rect r, bool card);
+    // The ruler's labels along a plot `width` wide, at least `gap` apart: where each is (0..1) and what it reads.
+    std::vector<std::pair<double, std::string>> rulerMarks(int shape, float width, float gap) const;
+    // A Curve's big editor's title row: its name, then its clock modes (named beside their icons), its sync switch and
+    // its Rate (or note value), before the hint.
+    Rect shapeTitle() const;
+    Rect shapeClockButton(int mode) const;
+    Rect shapeSyncButton() const;
+    Rect shapeRateKnob() const;
     // Whether a widened card's Copy has kept a shape for Paste.
     static bool shapeCopied();
     // Its geometry: its buttons, and where a shape is edited (the big editor's plot, or where it shows in place while
@@ -246,6 +273,7 @@ private:
         ShapeStep, // a step just drawn, following the mouse (shapeBefore: the shape before it)
         ShapeBox,  // a box across a shape from where it was pressed to where the mouse is, picking the points it reaches
         Partials,
+        Loop, // a Curve's loop on its strip: loopGrab what it took, loopFrom the column pressed, loopWas the loop then
     };
     struct Drag {
         DragKind kind = DragKind::None;
@@ -263,6 +291,9 @@ private:
         bool unpick = false;
         bool narrow = false;
         std::vector<int> boxBase;
+        LoopGrab loopGrab = LoopGrab::New;
+        double loopFrom = 0.0;
+        LfoLoop loopWas;
     };
     // The widget a readout names: the point (or partials) being dragged, else the one under the mouse.
     const Widget *focused(DragKind dragged) const;
@@ -285,6 +316,7 @@ private:
     int partialEditor_ = -1;                 // the operator whose Custom wave's partials it shows, or -1
     std::mt19937 random_{std::random_device{}()}; // the partial editor's dice
     std::pair<int, int> menuPoint_{-1, -1}; // shape and point of the open context menu's Delete Point
+    std::pair<int, double> menuLoop_{-1, 0.0}; // shape and place its Set as Loop Start and End take
     int menuCurve_ = -1;                     // the bend the open context menu straightens, or -1
     // Where each shape is edited, kept while the host's scope goes on: by shape + 1, to kVelocityCurve.
     std::array<ScopeCache<Rect>, kMaxSources + kShaperUnits + 3> shapeAreas_{};

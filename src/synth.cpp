@@ -179,12 +179,21 @@ FMVIBE_NOINLINE void leaveLoop(const ParamValues &params, int source, Lfo &lfo, 
     lfo.phase = loop.end;
     release.offset = level - shapeValue(get, source, loop.end);
     release.fadeFrom = loop.end;
-    release.fadeTo = 1.0; // the curve's end, back at its first point (or on a point there)
+    // It fades out by the next point after the loop's end, the end of the segment the curve goes on along: the point
+    // after it, where the loop ends between two; where it ends on a point, the one after that (the curve's end, back
+    // at its first point, after the last), and at once, over kCurveGlide, where that one sits there too (the curve
+    // jumping straight up or down as the loop ends), or the loop ends at the curve's end.
     const int count = shapePointCount(params[shapeCountIndex(source)]);
-    for (int point = 1; point < count; ++point) {
-        const double x = params[shapePointIndex(source, point, PointField::X)];
-        if (x > loop.end) {
-            release.fadeTo = std::min(x, 1.0);
+    auto x = [&](int point) { return point == 0 ? 0.0 : params[shapePointIndex(source, point, PointField::X)]; };
+    release.fadeTo = 1.0;
+    for (int point = 0; point < count; ++point) {
+        if (x(point) > loop.end + kShapeSameTime) {
+            release.fadeTo = std::min(x(point), 1.0);
+            break;
+        }
+        if (x(point) >= loop.end - kShapeSameTime) { // on the loop's end
+            const double next = point + 1 < count ? std::min(x(point + 1), 1.0) : 1.0;
+            release.fadeTo = next > loop.end + kShapeSameTime ? next : loop.end;
             break;
         }
     }
@@ -1383,7 +1392,9 @@ int Synth::fxTailBlock(const ParamValues &params, uint32_t frames) {
             lfo.left = false;
         else if (!lfo.left)
             leaveLoop(params, s, lfo, fxTail_.curveReleases[s], loop);
-        const double value = lfoOutput(get, params, s, lfo) + leftOffset(lfo, fxTail_.curveReleases[s]);
+        const double curve = lfoOutput(get, params, s, lfo);
+        const double value =
+            lfo.left ? std::clamp(curve + leftOffset(lfo, fxTail_.curveReleases[s]), -1.0, 1.0) : curve;
         const bool bipolar = sourceBipolar(get, s);
         fxTail_.auxOut[s] = 0.5 * (value + 1.0);
         const double swing = bipolar ? 0.5 * value : 0.5 * (value + 1.0);
@@ -2890,7 +2901,9 @@ FMVIBE_NOINLINE double Synth::voiceLfo(Voice &v, int s, const double *p, const P
         lfo.left = false;
     else if (lfo.letGo && !lfo.left)
         leaveLoop(params, s, lfo, v.curveReleases[s], loop);
-    const double value = lfoOutput(get, params, s, lfo) + (lfo.left ? leftOffset(lfo, v.curveReleases[s]) : 0.0);
+    // Left in Sustain, the level it was at carried on top of the curve, within the curve's reach.
+    const double curve = lfoOutput(get, params, s, lfo);
+    const double value = lfo.left ? std::clamp(curve + leftOffset(lfo, v.curveReleases[s]), -1.0, 1.0) : curve;
     if (!free)
         advanceLfo(lfo, lfoHz(get, s, tempo_), hostFrames, v.rng, oneShot, chaos, loop, &v.curveReleases[s]);
     return value;

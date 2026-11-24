@@ -302,7 +302,8 @@ void fxSwitchIcon(Canvas &c, Point m, FxParam field, Color color) {
 }
 
 // An LFO's clock modes, named in their tooltips: RETRIGGER a rise that starts again at each dot (a note), FREE an
-// infinity sign, ANCHOR an anchor, ONE-SHOT a single cycle that then stays where it ends.
+// infinity sign, ANCHOR an anchor, ONE-SHOT a single cycle that then stays where it ends; and a Curve's SUSTAIN a rise,
+// a level between two ticks (its loop) and a fall.
 void lfoClockIcon(Canvas &c, Point m, LfoClock clock, Color color, float scale) {
     auto at = [&](float x, float y) { return Point{m.x + x * scale, m.y + y * scale}; };
     const std::vector<double> key{static_cast<double>(Curve::ModeIcon), m.x, m.y, static_cast<double>(clock), scale};
@@ -323,6 +324,9 @@ void lfoClockIcon(Canvas &c, Point m, LfoClock clock, Color color, float scale) 
                 const float t = (0.1f + 0.8f * i / 24.0f) * kPi;
                 points.push_back(at(-5.0f * std::cos(t), 0.2f + 5.0f * std::sin(t)));
             }
+        } else if (clock == LfoClock::Sustain) { // the ticks drawn below
+            for (const Point p : {Point{-10.0f, 5.0f}, Point{-6.0f, -3.0f}, Point{6.0f, -3.0f}, Point{10.0f, 5.0f}})
+                points.push_back(at(p.x, p.y));
         } else {
             for (int i = 0; i <= 24; ++i)
                 points.push_back(at(-10.0f + i * 0.5f, -4.5f * std::sin(i / 24.0f * 2.0f * kPi)));
@@ -337,8 +341,12 @@ void lfoClockIcon(Canvas &c, Point m, LfoClock clock, Color color, float scale) 
         c.strokeCircle(at(0.0f, -4.0f), 1.4f * scale, color, 1.1f);
         c.line(at(0.0f, -2.6f), at(0.0f, 5.2f), color, 1.4f);
         c.line(at(-2.8f, -0.8f), at(2.8f, -0.8f), color, 1.4f);
-    } else if (clock == LfoClock::OneShot)
+    } else if (clock == LfoClock::OneShot) {
         c.fillCircle(points.back(), 1.7f * scale, color);
+    } else if (clock == LfoClock::Sustain) { // where its loop starts and ends, over the level
+        for (const float x : {-3.0f, 3.0f})
+            c.line(at(x, -6.0f), at(x, -0.5f), color, 1.1f);
+    }
     c.polyline(points.data(), points.size(), color, 1.4f);
 }
 

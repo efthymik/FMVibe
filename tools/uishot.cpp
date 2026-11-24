@@ -869,9 +869,10 @@ Point sourceListItem(const View &view, Point click, SourceType type) {
 
 
 // The freeform shape editor: x 0..1 across, y -1..1 up. An LFO's spans the routing panel and the inspector, its
-// plot 1088 wide; the note source's curve, like the partial editor, fills the routing panel only, 772 wide.
+// plot 1088 wide, under the strip of a Curve's loop (12 px lower and shorter than the others'); the note source's curve,
+// like the partial editor, fills the routing panel only, 772 wide.
 Point shapeAt(double x, double y, float width = 1088.0f) {
-    return {56.0f + static_cast<float>(x) * width, 330.0f - static_cast<float>(y) * 126.0f};
+    return {56.0f + static_cast<float>(x) * width, 336.0f - static_cast<float>(y) * 120.0f};
 }
 Point noteCurveAt(double x, double y) { // over the routing panel, right of the lens
     return {detail::kRouting.x + 40.0f + static_cast<float>(x) * 772.0f, 330.0f - static_cast<float>(y) * 126.0f};
@@ -4555,6 +4556,267 @@ void testSeqCurvePick(const std::filesystem::path &dir, Renderer &renderer) {
 // pick how a click works and whether points snap; its full-size button opens the shape over the panels, greying the
 // card's editor out until it closes, and its own collapse button, another shape or folding takes the card back to
 // its size; collapsing the modulation panel leaves it widened.
+// A Curve source's loop and its Sustain, as the editor works them. Its card's five clock modes, Sustain last, under the
+// sync switch, where an LFO's four leave its Unipolar switch; its Rate shown and typed as the curve's length while it
+// plays its curve once from each note; its loop's bar on a strip over its plot, in the full-size editor and in the
+// widened card, dragged as the SEQ view's loop, on the grid's columns; what the clock mode doesn't play dimmed; its
+// points' Set as Loop Start and Set as Loop End; its places read as times, beats or a share of the cycle.
+void testCurveLoop(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    model.values[paramIndex(0, SourceParam::Type)] = static_cast<double>(SourceType::Curve);
+    model.values[paramIndex(1, SourceParam::Type)] = static_cast<double>(SourceType::Lfo);
+    view.poll();
+    const int sustain = paramIndex(0, SourceParam::CurveSustain), oneShot = paramIndex(0, SourceParam::OneShot);
+    const int loopStart = paramIndex(0, SourceParam::LoopStart), loopEnd = paramIndex(0, SourceParam::LoopEnd);
+    auto loopIs = [&](double start, double end) {
+        return std::abs(model.value(loopStart) - start) < 1e-9 && std::abs(model.value(loopEnd) - end) < 1e-9;
+    };
+    // A Curve card's fifth clock mode, Sustain, under the sync switch; the others' as an LFO's.
+    auto sustainToggle = [](float card) { return Point{cardX(card) + 153.25f, 644.0f}; };
+
+    // Its five clock modes: Sustain a click, turning the others off, one undo step; the wheel steps along all five.
+    click(view, oneShotToggle(0));
+    click(view, sustainToggle(0));
+    const bool sustained = model.value(sustain) == 1.0 && model.value(oneShot) == 0.0;
+    view.undo();
+    const bool undone = model.value(sustain) == 0.0 && model.value(oneShot) == 1.0;
+    view.wheel(oneShotToggle(0), 1.0f, {});
+    const bool wheeled = model.value(sustain) == 1.0 && model.value(oneShot) == 0.0;
+    view.wheel(sustainToggle(0), 1.0f, {});
+    const bool held = model.value(sustain) == 1.0;
+    click(view, retriggerToggle(0));
+    const bool retriggered = model.value(sustain) == 0.0 && model.value(oneShot) == 0.0;
+    // The LFO card beside it keeps its four, and its Unipolar switch under the sync switch.
+    click(view, oneShotToggle(1));
+    click(view, unipolarToggle(1));
+    const bool lfoKept = model.value(paramIndex(1, SourceParam::OneShot)) == 1.0 &&
+                         model.value(paramIndex(1, SourceParam::Unipolar)) == 1.0 &&
+                         model.value(paramIndex(1, SourceParam::CurveSustain)) == 0.0;
+    // Its tooltip, under it (read off the rendered pixels).
+    const Point under{sustainToggle(0).x, 644.0f + 8.0f + 6.0f + 11.0f};
+    auto tipShown = [&](Point at, const char *name) {
+        view.mouseMove(at, {});
+        renderer.save(view, dir / name);
+        const uint32_t tip = renderer.pixel(under);
+        view.mouseMove({600.0f, 328.0f}, {});
+        renderer.save(view, dir / "10h-curve-card-no-tip.png");
+        return tip != renderer.pixel(under);
+    };
+    const bool tip = tipShown(sustainToggle(0), "10h-curve-sustain-tip.png");
+    check(sustained && undone && wheeled && held && retriggered && lfoKept && tip,
+          "a Curve card's Sustain, its fifth clock mode, takes a click and the wheel, undoably, and shows its tooltip; "
+          "an LFO card's four and its Unipolar switch stay where they were");
+
+    // Its Rate, unsynced, reads as the curve's length while it plays it once from each note, and takes one typed (a rate
+    // in Hz too); retriggered, a rate.
+    model.set(paramIndex(0, SourceParam::Sync), 0.0);
+    model.set(paramIndex(0, SourceParam::Rate), normFromRate(1.0 / 1.2));
+    view.poll();
+    auto menuEntry = [&](Point at, const std::string &label) {
+        for (const MenuItem &item : view.contextMenu(at))
+            if (item.label == label)
+                return item.command;
+        return -1;
+    };
+    auto shown = [&] { // the Rate as typing it starts
+        view.menuCommand(menuEntry(rateKnob(0), tr(Str::MenuEditValue)));
+        const std::string text = view.copyText(false);
+        view.endTyping(false);
+        return text;
+    };
+    const std::string asRate = shown();
+    click(view, sustainToggle(0));
+    const std::string asLength = shown();
+    auto typeRate = [&](const char *text) {
+        view.menuCommand(menuEntry(rateKnob(0), tr(Str::MenuEditValue)));
+        type(view, text);
+        view.typeKey(View::Key::Enter);
+        return sweepRateHz(model.value(paramIndex(0, SourceParam::Rate)));
+    };
+    const double typedLength = typeRate("1.5 s"), typedMs = typeRate("800 ms"), typedHz = typeRate("2 Hz");
+    click(view, oneShotToggle(0));
+    const std::string oneShotShown = shown();
+    std::printf("      a Curve's Rate: %s retriggered, %s in Sustain; typed 1.5 s: %.3f Hz, 800 ms: %.3f Hz, "
+                "2 Hz: %.3f Hz; one-shot %s\n",
+                asRate.c_str(), asLength.c_str(), typedLength, typedMs, typedHz, oneShotShown.c_str());
+    check(asRate == "0.83 Hz" && asLength == "1.20 s" && std::abs(typedLength - 1.0 / 1.5) < 1e-6 &&
+              std::abs(typedMs - 1.25) < 1e-6 && std::abs(typedHz - 2.0) < 1e-6 && oneShotShown == "500.0 ms",
+          "a Curve's Rate reads and takes a length in One-Shot and Sustain, unsynced, and a rate otherwise");
+
+    // Its places read as times there, in bars and beats synced, else as a share of the cycle.
+    {
+        ModulationModel mods(model);
+        model.set(paramIndex(0, SourceParam::Rate), normFromRate(1.0 / 1.2));
+        const std::string seconds = mods.curvePlace(0, 0.25, false), secondsBrief = mods.curvePlace(0, 0.25, true);
+        model.set(paramIndex(0, SourceParam::Sync), 1.0);
+        int whole = 0;
+        for (int d = static_cast<int>(kSlowestDivision); d < kDivisions; ++d)
+            if (divisionName(d) == std::string("1/1"))
+                whole = d;
+        model.set(paramIndex(0, SourceParam::Division), whole);
+        const std::string beats = mods.curvePlace(0, 0.3125, false), beat = mods.curvePlace(0, 0.25, true);
+        model.set(paramIndex(0, SourceParam::Sync), 0.0);
+        model.set(oneShot, 0.0);
+        const std::string share = mods.curvePlace(0, 0.31, false);
+        std::printf("      a Curve's places: %s (%s), %s (%s), %s\n", seconds.c_str(), secondsBrief.c_str(),
+                    beats.c_str(), beat.c_str(), share.c_str());
+        check(seconds == "0.30 s" && secondsBrief == "0.3 s" && beats == "1.2.2" && beat == "1.2" && share == "31.0 %",
+              "a Curve's places read as times in One-Shot and Sustain, in bars and beats synced, else as a share");
+    }
+    model.set(paramIndex(0, SourceParam::Rate), normFromRate(1.0 / 1.2));
+    view.poll();
+
+    // The full-size editor: its title row's clock modes, named, and its sync switch and Rate.
+    click(view, lfoDisplay(0));
+    click(view, wideButton(0, 2));
+    auto titleClock = [](int mode) { return Point{148.0f + 44.0f + 88.0f * static_cast<float>(mode), 152.0f}; };
+    click(view, titleClock(4));
+    const bool titleSustain = model.value(sustain) == 1.0;
+    click(view, titleClock(0));
+    const bool titleRetrigger = model.value(sustain) == 0.0 && model.value(oneShot) == 0.0;
+    click(view, {607.0f, 152.0f}); // its sync switch
+    const bool titleSync = model.value(paramIndex(0, SourceParam::Sync)) == 1.0;
+    view.undo();
+    check(titleSustain && titleRetrigger && titleSync, "a Curve's full-size editor's title row sets its clock and sync");
+
+    // Its loop's strip over the plot, on 16 columns: an end dragged sizes it, the start too, its middle moves it as long
+    // as it is, a drag outside it draws a new one, its ends stay a column apart, and a double-click loops the whole
+    // curve again; each one undo step.
+    auto stripAt = [](double x) { return Point{56.0f + static_cast<float>(x) * 1088.0f, 180.0f}; };
+    drag(view, stripAt(1.0), stripAt(0.76));
+    const bool end = loopIs(0.0, 0.75);
+    drag(view, stripAt(0.0), stripAt(0.24));
+    const bool start = loopIs(0.25, 0.75);
+    view.undo();
+    const bool oneStep = loopIs(0.0, 0.75);
+    view.redo();
+    drag(view, stripAt(0.5), stripAt(0.63));
+    const bool moved = loopIs(0.375, 0.875);
+    drag(view, stripAt(0.0625), stripAt(0.19));
+    const bool drawn = loopIs(0.0625, 0.1875);
+    drag(view, stripAt(0.1875), stripAt(0.0));
+    const bool apart = loopIs(0.0625, 0.125);
+    view.doubleClick(stripAt(0.5), {});
+    const bool whole = loopIs(0.0, 1.0);
+    view.undo();
+    const bool wholeUndone = loopIs(0.0625, 0.125);
+    // The cursors: moving over the loop, left and right over an end or outside it.
+    model.set(loopStart, 0.25);
+    model.set(loopEnd, 0.5);
+    view.poll();
+    view.mouseMove(stripAt(0.375), {});
+    const bool moveCursor = view.cursor() == CursorKind::Move;
+    view.mouseMove(stripAt(0.5), {});
+    const bool endCursor = view.cursor() == CursorKind::Horizontal;
+    view.mouseMove(stripAt(0.8), {});
+    const bool outCursor = view.cursor() == CursorKind::Horizontal;
+    std::printf("      the loop's strip: %d %d %d %d %d %d %d %d, cursors %d %d %d\n", end, start, oneStep, moved, drawn,
+                apart, whole, wholeUndone, moveCursor, endCursor, outCursor);
+    check(end && start && oneStep && moved && drawn && apart && whole && wholeUndone,
+          "a Curve's loop is set on its strip as the SEQ view's loop is, on the grid's columns, each drag one undo step");
+    check(moveCursor && endCursor && outCursor, "the loop's strip shows moving over the loop, left and right elsewhere");
+
+    // What the mode doesn't play dimmed (read off the rendered pixels): past the loop retriggered, either side of it
+    // free, nothing in Sustain; no bar one-shot, whose drag on the strip sets nothing.
+    const Point after = shapeAt(0.8, 0.7), before = shapeAt(0.1, 0.7), bar = stripAt(0.375);
+    view.mouseMove({600.0f, 500.0f}, {});
+    renderer.save(view, dir / "10h-curve-loop-retrigger.png");
+    const uint32_t retriggerAfter = renderer.pixel(after), retriggerBefore = renderer.pixel(before),
+                   retriggerBar = renderer.pixel(bar);
+    click(view, titleClock(1));
+    renderer.save(view, dir / "10h-curve-loop-free.png");
+    const uint32_t freeBefore = renderer.pixel(before);
+    click(view, titleClock(4));
+    renderer.save(view, dir / "10h-curve-loop-sustain.png");
+    const uint32_t sustainAfter = renderer.pixel(after), sustainBefore = renderer.pixel(before);
+    click(view, titleClock(3));
+    renderer.save(view, dir / "10h-curve-loop-one-shot.png");
+    const uint32_t oneShotAfter = renderer.pixel(after), oneShotBar = renderer.pixel(bar);
+    drag(view, stripAt(0.5), stripAt(0.75));
+    const bool noBar = loopIs(0.25, 0.5);
+    check(retriggerAfter != sustainAfter && retriggerBefore == sustainBefore && freeBefore != retriggerBefore &&
+              oneShotAfter == sustainAfter && oneShotBar != retriggerBar && noBar,
+          "a Curve's full-size editor dims what its clock mode doesn't play, and has no loop bar one-shot (read off "
+          "the rendered pixels)");
+
+    // A point's menu: Set as Loop Start and End, exactly at the point (off the grid too), each one undo step, left out
+    // where that end would cross the other; Delete point as before.
+    click(view, titleClock(4)); // Sustain
+    view.doubleClick(shapeAt(0.37, 0.0), {}); // a point off the grid, the second of three
+    const double pointX = model.value(shapePointIndex(0, 1, PointField::X));
+    auto labels = [&](Point at) {
+        std::vector<std::string> found;
+        for (const MenuItem &item : view.contextMenu(at))
+            found.push_back(item.label);
+        return found;
+    };
+    view.menuCommand(menuEntry(shapeAt(pointX, 0.0), tr(Str::MenuSetLoopEnd)));
+    const bool setEnd = loopIs(0.25, pointX);
+    view.menuCommand(menuEntry(shapeAt(0.0, -1.0), tr(Str::MenuSetLoopStart))); // the first point
+    const bool setStart = loopIs(0.0, pointX);
+    view.undo();
+    const bool startUndone = loopIs(0.25, pointX);
+    const std::vector<std::string> onEnd = labels(shapeAt(pointX, 0.0)); // the loop's end: no Set as Loop Start
+    const std::vector<std::string> first = labels(shapeAt(0.0, -1.0));  // left of its start: no Set as Loop End
+    const std::vector<std::string> wanted{tr(Str::MenuSetLoopEnd), "", tr(Str::MenuDeletePoint)};
+    const std::vector<std::string> firstWanted{tr(Str::MenuSetLoopStart)};
+    std::printf("      a point's menu: %zu entries at the loop's end, %zu on the first point; loop %.4f to %.4f\n",
+                onEnd.size(), first.size(), model.value(loopStart), model.value(loopEnd));
+    check(setEnd && setStart && startUndone && onEnd == wanted && first == firstWanted,
+          "a Curve's point's menu sets the loop's start or end exactly there, undoably, and leaves out what would cross");
+    view.mouseMove(shapeAt(pointX, 0.0), {});
+    check(renderer.save(view, dir / "10h-curve-editor-sustain.png"), "render a Curve's full-size editor in Sustain");
+
+    // The widened card: its loop's strip along the top of its plot, its end dragged and a double-click looping the
+    // whole curve again; no strip one-shot.
+    click(view, kShapeDone);
+    auto cardStripAt = [](double x) { return Point{cardX(0) + 281.0f + static_cast<float>(x) * 264.0f, 605.0f}; };
+    model.set(loopStart, 0.25);
+    model.set(loopEnd, 0.5);
+    view.poll();
+    drag(view, cardStripAt(0.5), cardStripAt(0.74));
+    const bool cardEnd = loopIs(0.25, 0.75);
+    view.mouseMove(cardShapeAt(0, 0.5, 1.0), {});
+    const bool cardShot = renderer.save(view, dir / "10h-curve-card-sustain.png");
+    view.doubleClick(cardStripAt(0.5), {});
+    const bool cardWhole = loopIs(0.0, 1.0);
+    click(view, oneShotToggle(0));
+    model.set(loopEnd, 0.5);
+    view.poll();
+    drag(view, cardStripAt(0.5), cardStripAt(0.74));
+    const bool cardNoBar = loopIs(0.0, 0.5);
+    check(cardEnd && cardShot && cardWhole && cardNoBar,
+          "a widened Curve card's loop is set on a strip along its plot's top, and has none one-shot");
+
+    // Let go in Sustain, a Curve's dot keeps to its curve, as an envelope's does, and a dashed line across shows the
+    // level it puts out (read off the rendered pixels): what it carries on top of the curve moves the line, not the dot.
+    click(view, sustainToggle(0));
+    view.mouseMove({600.0f, 328.0f}, {});
+    auto get = [&model](int index) { return model.value(index); };
+    const Point onCurve = cardShapeAt(0, 0.6, shapeValue(get, 0, 0.6));
+    auto released = [&](float offset, const char *name) {
+        model.live.voices = 1;
+        model.live.lfoPhases[0] = 0.6f;
+        model.live.lfoRates[0] = 0.0f;
+        model.live.lfoLeft = 1u;
+        model.live.lfoOffsets[0] = offset;
+        view.poll();
+        renderer.save(view, dir / name);
+        std::vector<uint32_t> row; // along where the line goes for a level of -0.2, left of the curve's dot
+        for (double x = 0.05; x < 0.25; x += 0.01)
+            row.push_back(renderer.pixel(cardShapeAt(0, x, -0.2)));
+        return std::pair{renderer.pixel(onCurve), row};
+    };
+    const auto [dotOn, rowOn] = released(0.0f, "10h-curve-card-on-curve.png");
+    const float lower = static_cast<float>(-0.2 - shapeValue(get, 0, 0.6));
+    const auto [dotOff, rowOff] = released(lower, "10h-curve-card-released.png");
+    model.live = {};
+    view.poll();
+    check(dotOn == dotOff && rowOn != rowOff,
+          "a Curve let go in Sustain keeps its dot on its curve, a line across showing the level it puts out");
+}
+
 void testWideLfoCard(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -15517,6 +15779,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testFxEmptyMods(dir, renderer);
     testBrowserPickRescanned(dir, renderer);
     testWideLfoCard(dir, renderer);
+    testCurveLoop(dir, renderer);
     testFolding(dir, renderer);
     testFxGraph(dir, renderer);
     testFxListAfterUndo(dir, renderer);

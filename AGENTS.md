@@ -433,7 +433,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     its loop, Sustain winning over the other switches (an LFO having none) and the loop's ends no modulation target;
     Sustain looping while the key is down, let go leaving the loop at once from the level it was at (no step past the
     curve's own) and sliding onto the next point, on to the curve's end, its voice running on until then, the pedal
-    holding it in its loop, a loop to the curve's end gliding there over 5 ms, in mono a new key in its release
+    holding it in its loop, a loop to the curve's end gliding there over 5 ms, one ending on a drop going down with it
+    over as long and following its curve after, in mono a new key in its release
     starting it again and legato keys looping on; a loop of no length holding, and one the other way round, outside
     the curve or not a number playing in order or as the whole curve;
   - the scope capturing nothing until asked, then an operator's cycles from where they start (a sine's a sine, a
@@ -878,6 +879,19 @@ the plain CMake commands and installing into a host are in the [README](README.m
     full-size editor greying the card's editor out (taking no clicks) until it closes, by its done button or a view
     tab, the card staying widened, also while the SEQ view covers the modulation panel, and the
     card back to its size by its collapse button;
+  - a Curve source's loop and Sustain: its card's fifth clock mode, Sustain, under its sync switch, a click turning
+    the others off, undoably, the wheel stepping onto it, and its tooltip (read off the rendered pixels), an LFO card
+    beside it keeping its four and its Unipolar switch where they were; its Rate, unsynced, shown and typed as the
+    curve's length in One-Shot and Sustain (a length in s or ms, or a rate in Hz) and as a rate retriggered; its
+    places reading as times there, in bars and beats synced, else as a share; its full-size editor's title row
+    setting its clock mode and sync; its loop's strip over the full-size plot, on the grid's columns: an end dragged
+    sizing it, the start too, its middle moving it, a drag outside it drawing a new one, its ends a column apart and
+    a double-click looping the whole curve, each one undo step, with the move cursor over it and the left-right one
+    elsewhere; what each clock mode doesn't play dimmed and no bar one-shot (read off the rendered pixels); a point's
+    Set as Loop Start and Set as Loop End putting that end exactly there, off the grid too, undoably, an entry that
+    would cross the other end left out; the widened card's strip along its plot's top, none one-shot; and, let go in
+    Sustain, its dot keeping to its curve while a dashed line across moves to the level it puts out (read off the
+    rendered pixels);
   - an LFO's shape list (going with the LFO undone, offering no Random or Custom shape, the wheel stepping along it
     to Square), a Random
     source starting synced and bipolar, its knobs, its dot waiting at the end of a cycle and, at 0 Hz, a line at the value it holds

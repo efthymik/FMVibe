@@ -45,6 +45,8 @@ ShapeEditor::ShapeEditor(PanelHost &host)
 // takes a narrower panel in the middle of the effects' panel it opens from, so its plot is closer to square, the
 // inspector still covered; the note source's curve and velocity's fill the routing panel.
 constexpr float kClipEditorW = 520.0f;
+constexpr float kShapeRulerRoom = 12.0f; // what an LFO's plot gives up for its loop's strip
+constexpr float kTitleClockW = 88.0f;    // a clock mode's button in a Curve's title row, its icon and name
 Rect ShapeEditor::shapePanel() const {
     const int shape = shapeEditing();
     if (shape >= 0 && isClipCurve(shape))
@@ -67,8 +69,11 @@ Rect ShapeEditor::shapeAreaNow(int shape) const {
     // In its card, on its page in the inspector, or an LFO's in its widened card, where what shows it puts it.
     if (shape >= 0 && (isClipCurve(shape) || isShaperCurve(shape) || !isCurve(shape)) && shapeEditing() != shape)
         return host_.shapeHome(shape);
+    // An LFO's (a Curve's) plot leaves room above it for its loop's strip and ruler, under the title row.
     const Rect panel = shapePanel();
-    return {panel.x + 40.0f, panel.y + 60.0f, panel.w - 80.0f, panel.h - 96.0f};
+    const int editing = shape >= 0 ? shape : shapeEditing();
+    const float ruler = editing >= 0 && !isCurve(editing) ? kShapeRulerRoom : 0.0f;
+    return {panel.x + 40.0f, panel.y + 60.0f + ruler, panel.w - 80.0f, panel.h - 96.0f - ruler};
 }
 
 Rect ShapeEditor::shapeDone() const {
@@ -79,6 +84,26 @@ Rect ShapeEditor::shapeDone() const {
 Rect ShapeEditor::shapeReset() const {
     const Rect done = shapeDone();
     return {done.x - 6.0f - 28.0f, done.y, 28.0f, 22.0f};
+}
+
+// A Curve's (an LFO's) big editor's title row, from the left: its name, its clock modes, its sync switch and its Rate.
+Rect ShapeEditor::shapeTitle() const {
+    const Rect panel = shapePanel();
+    return {panel.x + 16.0f, panel.y + 9.0f, 104.0f, 22.0f};
+}
+
+Rect ShapeEditor::shapeClockButton(int mode) const {
+    const Rect title = shapeTitle();
+    return {title.right() + 12.0f + mode * kTitleClockW, title.y, kTitleClockW, title.h};
+}
+
+Rect ShapeEditor::shapeSyncButton() const {
+    const Rect last = shapeClockButton(kCurveModes - 1);
+    return {last.right() + 8.0f, last.y, 22.0f, 22.0f};
+}
+
+Rect ShapeEditor::shapeRateKnob() const {
+    return {shapeSyncButton().right() + 8.0f, shapePanel().y, 92.0f, 40.0f};
 }
 
 Rect ShapeEditor::partialRandom() const {
@@ -184,6 +209,117 @@ Color ShapeEditor::shapeColor(int shape) const {
     return isStripCurve(shape)                        ? kSourceColors[sourceOfCurve(shape)]
            : isClipCurve(shape) || isShaperCurve(shape) ? clipColor(shape - kMaxSources)
                                                         : kSourceColors[shape];
+}
+
+bool ShapeEditor::curveShape(int shape) const {
+    return shape >= 0 && shape < kMaxSources && mods_.sourceTypeOf(shape) == SourceType::Curve;
+}
+
+bool ShapeEditor::loopShown(int shape) const {
+    return curveShape(shape) && lfoClock([this](int index) { return value(index); }, shape) != LfoClock::OneShot;
+}
+
+LfoLoop ShapeEditor::loopOf(int shape) const {
+    return lfoLoop([this](int index) { return value(index); }, shape);
+}
+
+// Over the big editor's plot frame, under the title row; along the top of a widened card's plot, in its frame.
+Rect ShapeEditor::loopStrip(int shape) const {
+    const Rect r = shapeArea(shape);
+    if (shapeEditing() == shape)
+        return {r.x - 8.0f, r.y - 8.0f - 24.0f, r.w + 16.0f, 20.0f};
+    return {r.x - 8.0f, r.y - 8.0f, r.w + 16.0f, 10.0f};
+}
+
+ShapeEditor::LoopGrab ShapeEditor::loopGrabAt(int shape, float x) const {
+    const LfoLoop loop = loopOf(shape);
+    const Rect r = shapeArea(shape);
+    const float x0 = r.x + static_cast<float>(loop.start) * r.w, x1 = r.x + static_cast<float>(loop.end) * r.w;
+    if (std::abs(x - x1) <= 6.0f)
+        return LoopGrab::End;
+    if (std::abs(x - x0) <= 6.0f)
+        return LoopGrab::Start;
+    return x > x0 && x < x1 ? LoopGrab::Move : LoopGrab::New;
+}
+
+double ShapeEditor::loopColumn(int shape, Point p) const {
+    const double columns = controller().layout().shapeGridX;
+    return std::clamp(std::round(shapeXAt(shape, p) * columns) / columns, 0.0, 1.0);
+}
+
+std::vector<std::pair<double, std::string>> ShapeEditor::rulerMarks(int shape, float width, float gap) const {
+    // How far along the curve a unit of the ruler is, and the units it steps by: a share of the cycle in fives, tens,
+    // quarters and halves; a time in ones, twos and fives of a power of ten; beats in sixteenths, eighths and on up.
+    double unit = 0.01;
+    std::vector<double> steps{5.0, 10.0, 25.0, 50.0, 100.0};
+    const ModulationModel::CurveTime time = mods_.curveTime(shape);
+    if (time == ModulationModel::CurveTime::Seconds) {
+        unit = 1.0 / mods_.curveLength(shape);
+        steps.clear();
+        for (double decade = 0.001; decade < 100.0; decade *= 10.0)
+            for (const double times : {1.0, 2.0, 5.0})
+                steps.push_back(times * decade);
+    } else if (time == ModulationModel::CurveTime::Beats) {
+        const int division = static_cast<int>(std::lround(value(paramIndex(shape, SourceParam::Division))));
+        unit = 1.0 / (4.0 * divisionBeats(division));
+        steps = {1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0};
+    }
+    double step = steps.back();
+    for (const double s : steps)
+        if (s * unit * width >= gap) {
+            step = s;
+            break;
+        }
+    std::vector<std::pair<double, std::string>> marks;
+    for (int k = 0; k * step * unit <= 1.0 + 1e-9; ++k) {
+        const double x = std::min(k * step * unit, 1.0);
+        const bool start = k == 0 && time != ModulationModel::CurveTime::Beats; // "0", where beats count from 1
+        marks.push_back({x, start ? "0" : mods_.curvePlace(shape, x, true)});
+    }
+    return marks;
+}
+
+void ShapeEditor::paintLoop(Canvas &c, int shape, Rect r, bool card) {
+    const Color color = kSourceColors[shape];
+    // The ruler's labels on round places (see rulerMarks()): at the foot of a card's plot, in the strip under the bar
+    // in the big editor, its end right of its place.
+    const float gap = card ? 60.0f : 80.0f;
+    const Rect strip = loopStrip(shape);
+    for (const auto &[x, text] : rulerMarks(shape, r.w, gap)) {
+        const float at = r.x + static_cast<float>(x) * r.w;
+        if (card && at > r.right() - 30.0f)
+            continue; // no room for it
+        if (card)
+            c.text({at + 3.0f, r.bottom() - 13.0f, gap - 6.0f, 12.0f}, text, kTextSmall, kFaint, Align::Left);
+        else if (at > r.right() - 30.0f)
+            c.text({at - 80.0f, strip.y + 8.0f, 80.0f, 12.0f}, text, kTextSmall, kFaint, Align::Right);
+        else
+            c.text({at + (x == 0.0 ? 0.0f : 3.0f), strip.y + 8.0f, gap - 6.0f, 12.0f}, text, kTextSmall, kFaint,
+                   Align::Left);
+    }
+    if (!loopShown(shape))
+        return;
+    // What the clock mode doesn't play dimmed, as the SEQ view's roll is outside its loop: past the loop retriggered
+    // (each note plays on into it), either side of it free or anchored; none in Sustain, which plays on past it once let
+    // go. Its ends dashed across the plot, and its bar on the strip.
+    const LfoLoop loop = loopOf(shape);
+    const float x0 = r.x + static_cast<float>(loop.start) * r.w, x1 = r.x + static_cast<float>(loop.end) * r.w;
+    const LfoClock clock = lfoClock([this](int index) { return value(index); }, shape);
+    if (clock == LfoClock::Free || clock == LfoClock::Anchor)
+        c.fillRect({r.x, r.y, x0 - r.x, r.h}, kBackground.alpha(0.45f));
+    if (clock != LfoClock::Sustain)
+        c.fillRect({x1, r.y, r.right() - x1, r.h}, kBackground.alpha(0.45f));
+    for (const float x : {x0, x1})
+        if (x > r.x + 0.5f && x < r.right() - 0.5f) // not along the plot's edges
+            c.line({x, r.y}, {x, r.bottom()}, color.alpha(0.6f), 1.0f, true);
+    const Color bar = color.alpha(mods_.sourceOn(shape) ? 0.85f : 0.4f);
+    if (card) {
+        c.fillRect({x0, strip.y + 2.0f, std::max(x1 - x0, 1.0f), 4.0f}, bar, kRadiusMark);
+    } else {
+        c.fillRect({x0, strip.y + 3.0f, std::max(x1 - x0, 1.0f), 5.0f}, bar, kRadiusMark);
+        for (const float x : {x0, x1}) // its ends, which drag
+            c.fillCircle({x, strip.y + 5.5f}, 3.5f, bar);
+    }
 }
 
 int ShapeEditor::shapeIndex(int shape, int point, PointField field) const {
@@ -764,14 +900,17 @@ void ShapeEditor::paintShapeEditor(Canvas &c, int shape) {
     }
     const int lfo = shape;
     const Color color = kSourceColors[lfo];
-    const Rect title{kRouting.x + 16.0f, kRouting.y + 9.0f, 104.0f, 22.0f};
+    const Rect title = shapeTitle();
     c.fillRect(title, color.alpha(0.18f), kRadiusControl);
     c.text(title, trf(Str::TitleShape, {mods_.sourceName(lfo)}), kTextBody, color, Align::Center, true);
-    c.text({title.right() + 12.0f, kRouting.y + 10.0f, shapeReset().x - title.right() - 24.0f, 22.0f},
-           shapeHint(), kTextLabel, kFaint, Align::Right);
+    const float hint = curveShape(lfo) ? shapeRateKnob().right() : title.right(); // after a Curve's clock and Rate
+    c.text({hint + 12.0f, title.y + 1.0f, shapeReset().x - hint - 24.0f, 22.0f}, shapeHint(), kTextLabel, kFaint,
+           Align::Right);
 
     const Rect r = shapeArea();
     c.fillRect(r.inset(-8.0f), kDisplayColor, kRadiusCard);
+    if (curveShape(lfo)) // the loop's strip and the ruler, over the plot's frame
+        c.fillRect(loopStrip(lfo), kDisplayColor, kRadiusControl);
     // The zero line: in the middle, or at the bottom for a unipolar LFO, which only swings up from it.
     const double zero = value(paramIndex(lfo, SourceParam::Unipolar)) >= 0.5 ? -1.0 : 0.0;
     paintShapeGrid(c, shapeArea(), zero, false);
@@ -791,23 +930,32 @@ void ShapeEditor::paintShapeEditor(Canvas &c, int shape) {
     area.push_back(shapeAt(0.0, zero));
     c.fillPolygon(area.data(), area.size(), color.alpha(0.12f));
     plotLine(c, points.data(), points.size(), color, 2.0f);
+    if (curveShape(lfo))
+        paintLoop(c, lfo, r, false);
 
     if (const auto now = host_.lfoNow(lfo)) {
+        if (curveShape(lfo)) { // a line across at the level it puts out, which a release can take off its curve
+            const float y = shapeAt(0.0, std::clamp(host_.lfoLevelNow(lfo), -1.0, 1.0)).y;
+            c.line({r.x, y}, {r.right(), y}, color.alpha(0.35f), 1.0f, true);
+        }
         const Point dot = shapeAt(now->first, now->second);
         c.fillCircle(dot, 8.0f, color.alpha(0.25f));
         c.fillCircle(dot, 3.5f, kText);
     }
 
-    // The point under the mouse, in numbers.
+    // The point under the mouse, in numbers: where it is along the cycle (a Curve's in time or in beats, where its
+    // places read so) and what the LFO puts out there, a unipolar one mapping -1..1 onto 0..1.
     const Widget *focus = focused(DragKind::ShapePoint);
     if (focus && focus->kind == Kind::ShapePoint && focus->a == lfo) {
         const double x = shapePointX(lfo, focus->b);
-        const std::string cycle = number("%.1f", x * 100.0);
-        // What the LFO puts out there: a unipolar one maps -1..1 onto 0..1.
         const double y = value(shapePointIndex(lfo, focus->b, PointField::Y));
         const std::string level = zero < 0.0 ? number("%.2f", 0.5 * (y + 1.0)) : number("%+.2f", y);
+        const std::string point = std::to_string(focus->b + 1);
         c.text({r.x, r.bottom() + 10.0f, shapeModeButton(0).x - 12.0f - r.x, 16.0f},
-               trf(Str::CaptionShapePoint, {std::to_string(focus->b + 1), cycle, level}), kTextLabel, kDim, Align::Left);
+               mods_.curveTime(lfo) == ModulationModel::CurveTime::Share
+                   ? trf(Str::CaptionShapePoint, {point, number("%.1f", x * 100.0), level})
+                   : trf(Str::CaptionShapePointAt, {point, mods_.curvePlace(lfo, x, false), level}),
+               kTextLabel, kDim, Align::Left);
     }
 }
 
@@ -1261,7 +1409,13 @@ void ShapeEditor::paintLfoCard(Canvas &c, float card, int lfo) {
     area.push_back(areaAt(r, 0.0, zero));
     c.fillPolygon(area.data(), area.size(), color.alpha(0.12f));
     plotLine(c, points.data(), points.size(), color, 2.0f);
+    if (curveShape(lfo) && shapeEditing() != lfo) // the big editor has it, and shows it
+        paintLoop(c, lfo, r, true);
     if (const auto now = host_.lfoNow(lfo)) {
+        if (curveShape(lfo)) { // and a line across at the level it puts out, as in the big editor
+            const float y = areaAt(r, 0.0, std::clamp(host_.lfoLevelNow(lfo), -1.0, 1.0)).y;
+            c.line({r.x, y}, {r.right(), y}, color.alpha(0.35f), 1.0f, true);
+        }
         const Point dot = areaAt(r, now->first, now->second);
         c.fillCircle(dot, 7.0f, color.alpha(0.25f));
         c.fillCircle(dot, 3.5f, kText);
@@ -1277,8 +1431,12 @@ void ShapeEditor::paintLfoCard(Canvas &c, float card, int lfo) {
         const std::string level = zero < 0.0 ? number("%.2f", 0.5 * (y + 1.0)) : number("%+.2f", y);
         c.text(text, trf(Str::CaptionCardPointNumber, {std::to_string(focus->b + 1)}), kTextLabel, kText, Align::Left,
                true);
-        c.text(text, trf(Str::CaptionCardPoint, {number("%.1f", shapePointX(lfo, focus->b) * 100.0), level}), kTextLabel,
-               kDim, Align::Right);
+        const double x = shapePointX(lfo, focus->b);
+        c.text(text,
+               mods_.curveTime(lfo) == ModulationModel::CurveTime::Share
+                   ? trf(Str::CaptionCardPoint, {number("%.1f", x * 100.0), level})
+                   : trf(Str::CaptionCardPointAt, {mods_.curvePlace(lfo, x, false), level}),
+               kTextLabel, kDim, Align::Right);
     } else {
         c.text(text, tr(Str::HintCardPoint), kTextLabel, kFaint, Align::Left);
     }
@@ -1320,6 +1478,28 @@ void ShapeEditor::widgets(std::vector<Widget> &list) const {
             for (int part = 0; part < 3; ++part)
                 add(Kind::ShapeGrid, shapeGridButton(axis, part), -1, axis, part - 1);
         add(Kind::ShapeArea, shapeArea().inset(-8.0f), -1, editing);
+        if (curveShape(editing)) {
+            // Its clock modes, named, one of them lit, as on its card (see View::setLfoClock()); its sync switch and its
+            // Rate, or the note value it is synced to, as a compact knob.
+            const Str names[] = {Str::SwitchRetrigger, Str::SwitchFree, Str::SwitchAnchor, Str::SwitchOneShot,
+                                 Str::SwitchSustain};
+            static_assert(std::size(names) == static_cast<size_t>(kCurveModes));
+            const size_t clocks = list.size();
+            for (int mode = 0; mode < kCurveModes; ++mode) {
+                add(Kind::Choice, shapeClockButton(mode), paramIndex(editing, SourceParam::Free), editing, mode);
+                list.back().label = tr(names[mode]);
+            }
+            merge(clocks);
+            add(Kind::Toggle, shapeSyncButton(), paramIndex(editing, SourceParam::Sync));
+            const bool synced = value(paramIndex(editing, SourceParam::Sync)) >= 0.5;
+            const bool length = mods_.curveTime(editing) == ModulationModel::CurveTime::Seconds;
+            add(Kind::Knob, shapeRateKnob(),
+                paramIndex(editing, synced ? SourceParam::Division : SourceParam::Rate));
+            list.back().label = tr(length ? Str::LabelLength : Str::LabelRate);
+            list.back().compact = true;
+            if (loopShown(editing)) // over the plot, under the points
+                add(Kind::ShapeLoop, loopStrip(editing), -1, editing);
+        }
         for (int mode = 0; mode < 3; ++mode) { // Points | Steps in one pill, and Snap, as in a widened LFO card
             add(Kind::ShapeMode, shapeModeButton(mode), -1, editing, mode);
             if (mode == 1)
@@ -1409,6 +1589,8 @@ void ShapeEditor::cardWidgets(std::vector<Widget> &list, int lfo, float card) co
         for (int part = 0; part < 3; ++part)
             add(Kind::ShapeGrid, lfoCardGridButton(card, axis, part), -1, axis, part - 1);
     add(Kind::ShapeArea, lfoCardPlot(card).inset(-8.0f), -1, s);
+    if (loopShown(s)) // along the plot's top, under the points
+        add(Kind::ShapeLoop, loopStrip(s), -1, s);
     for (size_t i = editorStart; i < list.size(); ++i)
         list[i].disabled = elsewhere;
     if (!elsewhere) {
@@ -1522,7 +1704,8 @@ bool ShapeEditor::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         break;
     }
     case Kind::PartialArea:
-        break; // drawn with its editor
+    case Kind::ShapeLoop:
+        break; // drawn with its editor or card
     case Kind::ShapeDone:
         paintActionFace(c, w.rect, hovered);
         doneIcon(c, w.rect.center(), kText);
@@ -1597,6 +1780,8 @@ std::string ShapeEditor::tooltip(const Widget &w) const {
     }
     case Kind::ShapeMode:
         return tr(w.b == 0 ? Str::TipShapePoints : w.b == 1 ? Str::TipShapeSteps : Str::TipShapeSnap);
+    case Kind::ShapeLoop:
+        return tr(Str::TipShapeLoop);
     case Kind::ShapeGrid:
         return w.b != 0 ? tr(w.a == 0 ? Str::TipGridAcross : Str::TipGridUpDown) : std::string();
     default:
@@ -1610,6 +1795,10 @@ std::optional<CursorKind> ShapeEditor::cursor(const Widget &w) const {
         return CursorKind::Vertical;
     case Kind::ShapeArea:
         return CursorKind::Arrow;
+    case Kind::ShapeLoop: { // moving over the loop, left and right over an end of it or a new one, as the SEQ view's
+        const LoopGrab grab = drag_.kind == DragKind::Loop ? drag_.loopGrab : loopGrabAt(w.a, host_.mouse().x);
+        return grab == LoopGrab::Move ? CursorKind::Move : CursorKind::Horizontal;
+    }
     case Kind::ShapePoint:
         return CursorKind::Move;
     case Kind::PartialArea:
@@ -1764,6 +1953,13 @@ bool ShapeEditor::press(const Widget &w, Point p, Modifiers mods) {
         drag_.startValue = value(w.param);
         controller().beginEdit(w.param);
         return true;
+    case Kind::ShapeLoop: // an end of the loop, the whole of it, or a new loop across the columns outside it
+        controller().beginStep(); // one undo step, however far it goes
+        startDrag(DragKind::Loop, w, p, true);
+        drag_.loopGrab = loopGrabAt(w.a, p.x);
+        drag_.loopFrom = loopColumn(w.a, p);
+        drag_.loopWas = loopOf(w.a);
+        return true;
     case Kind::PartialArea:
         controller().beginStep(); // one undo step for the whole stroke
         startDrag(DragKind::Partials, w, p, true);
@@ -1821,6 +2017,9 @@ bool ShapeEditor::doubleClick(const Widget &w, Point p, Modifiers mods) {
         return true;
     case Kind::ShapeCurve:
         mods_.edit(w.param, 0.0); // straight again: 0 %, whatever the segment started as
+        return true;
+    case Kind::ShapeLoop: // the loop over the whole curve again
+        editMany({{paramIndex(w.a, SourceParam::LoopStart), 0.0}, {paramIndex(w.a, SourceParam::LoopEnd), 1.0}});
         return true;
     default:
         return false;
@@ -1889,6 +2088,38 @@ void ShapeEditor::moveTo(Point p, bool ctrl) {
         setShapePick(w.a, std::move(picked));
         break;
     }
+    case DragKind::Loop: {
+        // As the SEQ view's loop, on the grid's columns: a new one at least a column long, moved as long as it was and
+        // within the curve, or an end, a column at least from the other. One undo step (see press()).
+        const int shape = w.a;
+        const double column = 1.0 / controller().layout().shapeGridX;
+        const double at = loopColumn(shape, p);
+        LfoLoop loop = drag_.loopWas;
+        switch (drag_.loopGrab) {
+        case LoopGrab::New:
+            loop = {std::min(drag_.loopFrom, at), std::max(drag_.loopFrom, at)};
+            if (loop.end - loop.start < column - 1e-9)
+                return;
+            break;
+        case LoopGrab::Move: {
+            const double length = drag_.loopWas.end - drag_.loopWas.start;
+            const double by = std::round((shapeXAt(shape, p) - shapeXAt(shape, drag_.start)) / column) * column;
+            loop.start = std::clamp(drag_.loopWas.start + by, 0.0, 1.0 - length);
+            loop.end = loop.start + length;
+            break;
+        }
+        case LoopGrab::Start:
+            loop.start = std::max(std::min(at, loop.end - column), 0.0);
+            break;
+        case LoopGrab::End:
+            loop.end = std::min(std::max(at, loop.start + column), 1.0);
+            break;
+        }
+        const int start = paramIndex(shape, SourceParam::LoopStart), end = paramIndex(shape, SourceParam::LoopEnd);
+        if (loop.start != value(start) || loop.end != value(end))
+            editMany({{start, loop.start}, {end, loop.end}});
+        break;
+    }
     case DragKind::Partials: {
         // A quick sweep sets every bar it passed, along a line (in bar heights) from where the last move was.
         const int op = w.a;
@@ -1952,6 +2183,7 @@ void ShapeEditor::release() {
     case DragKind::Partials:
     case DragKind::ShapeStep:
     case DragKind::ShapeBox:
+    case DragKind::Loop:
     case DragKind::None:
         break;
     }
@@ -1960,17 +2192,30 @@ void ShapeEditor::release() {
 
 bool ShapeEditor::dragsOnTouch(const Widget &w) const {
     return w.kind == Kind::ShapeArea || w.kind == Kind::ShapePoint || w.kind == Kind::ShapeCurve ||
-           w.kind == Kind::PartialArea || drawsStep(w, {});
+           w.kind == Kind::PartialArea || w.kind == Kind::ShapeLoop || drawsStep(w, {});
 }
 
-// A point's Delete Point, while it can go, and a bend's Straighten.
+// A Curve's point's Set as Loop Start and Set as Loop End, where that end would stay on its side of the other; a
+// point's Delete Point, while it can go; and a bend's Straighten.
 bool ShapeEditor::contextMenu(const std::optional<Widget> &hit, Point, std::vector<MenuItem> &items) {
     menuPoint_ = {-1, -1};
+    menuLoop_ = {-1, 0.0};
     menuCurve_ = -1;
     if (hit && hit->kind == Kind::ShapePoint) {
+        if (curveShape(hit->a)) {
+            const double x = shapePointX(hit->a, hit->b);
+            const LfoLoop loop = loopOf(hit->a);
+            menuLoop_ = {hit->a, x};
+            if (x < loop.end)
+                items.push_back({kMenuSetLoopStart, tr(Str::MenuSetLoopStart)});
+            if (x > loop.start)
+                items.push_back({kMenuSetLoopEnd, tr(Str::MenuSetLoopEnd)});
+        }
         const bool end = isCurve(hit->a) && hit->b + 1 == shapePointCount(hit->a);
         if (hit->b > 0 && !end && shapePointCount(hit->a) > 2) {
             menuPoint_ = {hit->a, hit->b};
+            if (!items.empty())
+                items.push_back({0, {}});
             items.push_back({kMenuDeletePoint, tr(Str::MenuDeletePoint)});
         }
         return true;
@@ -1984,6 +2229,12 @@ bool ShapeEditor::contextMenu(const std::optional<Widget> &hit, Point, std::vect
 }
 
 bool ShapeEditor::menuCommand(int command) {
+    if ((command == kMenuSetLoopStart || command == kMenuSetLoopEnd) && menuLoop_.first >= 0) { // exactly at the point
+        mods_.edit(paramIndex(menuLoop_.first,
+                              command == kMenuSetLoopStart ? SourceParam::LoopStart : SourceParam::LoopEnd),
+                   menuLoop_.second);
+        return true;
+    }
     if (command == kMenuDeletePoint && menuPoint_.first >= 0) {
         removeShapePoint(menuPoint_.first, menuPoint_.second);
         return true;

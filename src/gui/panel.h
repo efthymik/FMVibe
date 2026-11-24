@@ -128,9 +128,12 @@ public:
     // A param's value where modulation takes the newest voice right now, in its range (the macros' with no note), as
     // the effects play it: what their displays draw.
     virtual double liveValue(int param) const = 0;
-    // Where an LFO is along its cycle now (0..1) and what it puts out there (-1..1), while its dot shows (it runs: a
-    // note plays, or it runs free or anchored, or in the effects' tail); nothing while it doesn't.
+    // Where an LFO is along its cycle now (0..1) and its shape there (-1..1), where its dot goes, while the dot shows (it
+    // runs: a note plays, or it runs free or anchored, or in the effects' tail); nothing while it doesn't. And what it
+    // puts out: the same, but for a Curve that has left its loop in Sustain and goes on from the level it was at, which
+    // its dot doesn't follow (as an envelope's released from above its sustain doesn't: a line across shows it).
     virtual std::optional<std::pair<double, double>> lfoNow(int lfo) const = 0;
+    virtual double lfoLevelNow(int lfo) const = 0;
     // The param whose list (a ListButton's) is open, or -1: a list of the panel's own, which it lists (see
     // Panel::popups()) and whose entries the View picks as it picks every list's.
     virtual int openList() const = 0;
