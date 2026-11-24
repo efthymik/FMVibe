@@ -1109,7 +1109,8 @@ what it started goes on.
     field of the notes picked (its Note, Vel, Chance, Len and Offset, the offset a note's start off the grid in
     hundredths of a step, and Bend, the farthest the first one bends, in semitones; each dragged up and down or
     scrolled, moving every note picked, one undo step, Bend scaling each one's bend, its farthest point a semitone a
-    step further or nearer; a double-click puts Vel back to 100, Chance to full and Offset to 0, on the grid, and
+    step further or nearer, scaled down to nothing taking it away (a drag back bringing it back as it was, as the
+    drag scales the bends it started with); a double-click puts Vel back to 100, Chance to full and Offset to 0, on the grid, and
     takes Bend's bends away), **Slide** and
     **Mute** (for the notes picked: on, or off if they all are) and the bin, which clears the pattern, its notes and curves, asking first.
     The roll's settings (the tool, the snap, the lane, the rows scrolled to and Fold) belong to the editor: a preset
@@ -1157,8 +1158,9 @@ what it started goes on.
     bend) puts a point down where the mouse is and drags it (where the bend has left the bar, the bar takes nothing), on the rows (only the scale's while folded) and the
     snap's lines, within the note (from a point at its start at its pitch, where it had none); with Alt held, or
     Shift while dragging, off the grid, to the cent; a point dragged moves between its neighbors, and a segment's
-    middle dragged up or down bends it; the mouse over a bend's line shows a faint point there, following it along the
-    line, under the arrow, and a press there puts a point down on the line as it runs and drags it; a double-click on a point takes it away (a lone
+    middle dragged up or down bends it; the mouse over a bend's line shows a faint point on it where the snap's
+    nearest line crosses it (with the snap off, at the mouse), following it along the line, under the arrow, and a
+    press there puts a point down there on the line as it runs (with Alt, at the mouse) and drags it; a double-click on a point takes it away (a lone
     point at 0 left going with it)
     and on a segment's middle straightens it, but leaves a point its own first click put down; with Shift, a drag
     across a note draws its bend, a point on every line of the grid it crosses, in place of the points there (pressed

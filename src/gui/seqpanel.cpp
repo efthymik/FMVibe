@@ -282,6 +282,12 @@ void SeqPanel::poll(const Telemetry &t, std::vector<Rect> &repaint) {
         moved = true;
     if (wide() && t.seqPreview != was.seqPreview) // the Play button, played or stopped
         repaint.push_back(kSeqPreviewButton);
+    // What it was last asked shown until the telemetry says so, or the audio thread didn't take it in time.
+    if (seqPreviewAsked_ && (t.seqPreview == *seqPreviewAsked_ || host_.now() - seqPreviewAskedAt_ >= kSeqPreviewWait)) {
+        if (t.seqPreview != *seqPreviewAsked_ && wide())
+            repaint.push_back(kSeqPreviewButton);
+        seqPreviewAsked_.reset();
+    }
     if (wide() && seqTrackGlows(t))
         moved = true;
     if (seqFollowKeys(t) && wide())
@@ -445,6 +451,12 @@ bool SeqPanel::seqSelected(int slot) const {
     return seqSelectionPattern_ == seqPattern() &&
            std::find(seqSelection_.begin(), seqSelection_.end(), slot) != seqSelection_.end() &&
            value(seqNoteIndex(seqPattern(), slot, SeqNoteParam::Start)) < seqSteps();
+}
+
+bool SeqPanel::seqPreviewShown() const {
+    if (seqPreviewAsked_ && host_.now() - seqPreviewAskedAt_ < kSeqPreviewWait)
+        return *seqPreviewAsked_;
+    return host_.telemetry().seqPreview;
 }
 
 double SeqPanel::seqPreviewFrom() const {
@@ -648,16 +660,8 @@ void SeqPanel::stepSeqField(int field, double steps) {
         return;
     const int pattern = seqPattern();
     if (field == kFieldBend) { // each note's bend scaled, its farthest point a semitone a step further or nearer
-        for (int slot : picked) {
-            const double extreme = std::abs(seqBendExtreme(slot));
-            if (extreme < 1e-9)
-                continue;
-            const double factor = std::clamp(extreme + steps, 0.0, kSeqMaxNoteBend) / extreme;
-            std::vector<SeqCurvePoint> points = seqBendPoints(slot);
-            for (SeqCurvePoint &q : points)
-                q.y = std::clamp(q.y * factor, -kSeqMaxNoteBend, kSeqMaxNoteBend);
-            setSeqBend(slot, points);
-        }
+        for (int slot : picked)
+            scaleSeqBend(slot, seqBendPoints(slot), steps);
         return;
     }
     const double grid = kSeqSnaps[std::clamp(controller().layout().seqSnap, 0, kSeqSnapCount - 1)];
@@ -1098,6 +1102,23 @@ void SeqPanel::setSeqBend(int slot, const std::vector<SeqCurvePoint> &points) {
         editMany(changes);
 }
 
+void SeqPanel::scaleSeqBend(int slot, const std::vector<SeqCurvePoint> &from, double steps) {
+    double extreme = 0.0;
+    for (const SeqCurvePoint &q : from)
+        extreme = std::max(extreme, std::abs(q.y));
+    if (extreme < 1e-9)
+        return;
+    const double target = std::clamp(extreme + steps, 0.0, kSeqMaxNoteBend);
+    if (target < 1e-9) { // flat: no bend, which a sparse preset leaves out
+        setSeqBend(slot, {});
+        return;
+    }
+    std::vector<SeqCurvePoint> points = from;
+    for (SeqCurvePoint &q : points)
+        q.y = std::clamp(q.y * target / extreme, -kSeqMaxNoteBend, kSeqMaxNoteBend);
+    setSeqBend(slot, points);
+}
+
 double SeqPanel::seqBendExtreme(int slot) const {
     double extreme = 0.0;
     for (const SeqCurvePoint &q : seqBendPoints(slot))
@@ -1196,21 +1217,26 @@ SeqPanel::BendHit SeqPanel::seqBendSegmentAt(Point p) const {
     return {};
 }
 
-std::optional<SeqPanel::BendLineHit> SeqPanel::seqBendLineAt(Point p) const {
+std::optional<SeqPanel::BendLineHit> SeqPanel::seqBendLineAt(Point p, bool free) const {
     if (!seqBendTool() || seqBendPointAt(p).slot >= 0 || seqBendSegmentAt(p).slot >= 0)
         return std::nullopt;
     const std::vector<SeqNote> notes = seqNotes();
     const double step = seqStepAt(p.x);
+    const double grid = free ? 0.0 : kSeqSnaps[std::clamp(controller().layout().seqSnap, 0, kSeqSnapCount - 1)];
     for (auto it = notes.rbegin(); it != notes.rend(); ++it) {
         const double t = step - it->start;
         if (t < 0.0 || t > it->length)
             continue;
         const std::vector<SeqCurvePoint> points = seqBendPoints(it->slot); // none: the line runs along its pitch
-        const double v = seqNoteBendAt(static_cast<int>(points.size()),
-                                       [&](int i) { return points[static_cast<size_t>(i)]; }, t);
-        const float y = seqBendY(*it, v);
-        if (std::abs(p.y - y) <= 5.0f)
-            return BendLineHit{it->slot, {t, v, 0.0}, {p.x, y}};
+        auto bendAt = [&](double at) {
+            return seqNoteBendAt(static_cast<int>(points.size()), [&](int i) { return points[static_cast<size_t>(i)]; }, at);
+        };
+        if (std::abs(p.y - seqBendY(*it, bendAt(t))) > 5.0f)
+            continue;
+        // The point a press puts down: on the line where the snap's nearest line crosses it, within the note.
+        const double at = grid > 0.0 ? std::clamp(std::round(step / grid) * grid - it->start, 0.0, it->length) : t;
+        const double v = bendAt(at);
+        return BendLineHit{it->slot, {at, v, 0.0}, {seqStepX(it->start + at), seqBendY(*it, v)}};
     }
     return std::nullopt;
 }
@@ -2127,6 +2153,9 @@ bool SeqPanel::pressAs(const Widget &w, Point p, Modifiers mods, const Widget &h
             startDrag(SeqDrag::Mode::Field, true);
             seqDrag_.anchor = w.b;
             seqDrag_.loopFrom = 0.0; // the steps applied so far
+            if (w.b == kFieldBend) // scaled from these all along, so that a drag back undoes what it did
+                for (int slot : seqPicked())
+                    seqDrag_.fieldBends.push_back({slot, seqBendPoints(slot)});
         }
         return true;
     case Kind::SeqFlag:
@@ -2138,9 +2167,13 @@ bool SeqPanel::pressAs(const Widget &w, Point p, Modifiers mods, const Widget &h
     case Kind::SeqSize:
         toggleSize();
         return true;
-    case Kind::SeqPreview: // played or stopped, as it shows (switched off, it takes no clicks)
-        controller().playSeqPreview(!host_.telemetry().seqPreview, seqPreviewFrom());
+    case Kind::SeqPreview: { // played or stopped, as it shows (switched off, it takes no clicks)
+        const bool play = !seqPreviewShown();
+        controller().playSeqPreview(play, seqPreviewFrom());
+        seqPreviewAsked_ = play;
+        seqPreviewAskedAt_ = host_.now();
         return true;
+    }
     case Kind::SeqTile: {
         // What the roll shows, in the shown pattern's tile: dragged, it scrolls the roll (see seqDrag()).
         if (seqViewGrabbed(w.b, p)) {
@@ -2387,7 +2420,8 @@ bool SeqPanel::pressAs(const Widget &w, Point p, Modifiers mods, const Widget &h
                 return true;
             }
             // A point put down on the line, as it runs (with Shift over a bar, its bend drawn below).
-            if (const std::optional<BendLineHit> line = mods.shift && seqBendNoteAt(p) >= 0 ? std::nullopt : seqBendLineAt(p)) {
+            if (const std::optional<BendLineHit> line =
+                    mods.shift && seqBendNoteAt(p) >= 0 ? std::nullopt : seqBendLineAt(p, mods.alt)) {
                 startDrag(SeqDrag::Mode::BendPoint, true);
                 seqDrag_.anchor = line->slot;
                 seqDrag_.free = mods.alt;
@@ -2752,7 +2786,13 @@ void SeqPanel::seqDrag(Point p) {
     }
     case SeqDrag::Mode::Field: {
         const double want = std::round((d.start.y - p.y) / kFieldPixels[std::clamp(d.anchor, 0, kFieldCount - 1)]);
-        stepSeqField(d.anchor, want - d.loopFrom);
+        if (d.anchor == kFieldBend) {
+            if (want != d.loopFrom)
+                for (const auto &[slot, points] : d.fieldBends)
+                    scaleSeqBend(slot, points, want);
+        } else {
+            stepSeqField(d.anchor, want - d.loopFrom);
+        }
         d.loopFrom = want;
         break;
     }
@@ -3157,7 +3197,7 @@ std::string SeqPanel::tooltip(const Widget &w) const {
     if (w.kind == Kind::SeqSize)
         return tr(full() ? Str::TipSeqHalf : Str::TipSeqFull);
     if (w.kind == Kind::SeqPreview)
-        return tr(host_.telemetry().seqPreview ? Str::TipSeqPreviewStop
+        return tr(seqPreviewShown() ? Str::TipSeqPreviewStop
                   : seqPreviewFrom() >= 0.0    ? Str::TipSeqPreviewPlayFrom
                                                : Str::TipSeqPreviewPlay);
     switch (w.kind) {
@@ -3900,7 +3940,7 @@ bool SeqPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
     case Kind::SeqPreview: {
         // The card's main action; while the pattern plays, Stop, lit. Switched off, the View draws it dimmed and the
         // mouse passes it by.
-        const bool playing = host_.telemetry().seqPreview;
+        const bool playing = seqPreviewShown();
         const Color ink = paintMainActionFace(c, w.rect, hovered, playing);
         transportIcon(c, {w.rect.x + 15.0f, w.rect.center().y}, ink, playing);
         c.text({w.rect.x + 25.0f, w.rect.y, w.rect.w - 29.0f, w.rect.h}, tr(playing ? Str::SeqPreviewStop : Str::SeqPreviewPlay),

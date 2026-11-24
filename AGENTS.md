@@ -958,7 +958,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the SEQ view covering the modulation panel, as tall as the editor was, its source cards and title taking no clicks;
   - the SEQ card's Play button: with the sequencer off doing nothing, and the whole view dimmed but the power switch
     and the size button (read off the rendered pixels) and taking no input (a double-click on the roll, a drag, a
-    pattern button, Ctrl+A, the roll's menu), the size button and the power switch still working; on, a click playing the pattern and a second stopping it, lit
+    pattern button, Ctrl+A, the roll's menu), the size button and the power switch still working; on, a click playing the pattern and a second stopping it (also before the telemetry has caught up), lit
     while the telemetry says it plays (read off the rendered pixels), editing no param and leaving nothing to undo,
     starting at the first note picked within the loop (none, the loop's start; two, the earlier); and
     a note's end dragged past the pattern's end, the note dragged right and moved by the Right arrow stopping at it;
@@ -974,9 +974,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
     its start), heard at the pitch it bends to (`Controller::auditionBend()`), its line drawn over the rows (read off
     the rendered pixels), with Alt off the grid, a point dragged stopping at its neighbor, a segment's middle bent and
     straightened by a double-click and a point double-clicked going, Shift+drag drawing the bend a point a grid line;
-    the field's Bend scaling and clearing the picked notes' bends; a bend copied, pasted, stretched by x2 and removed
+    the field's Bend scaling and clearing the picked notes' bends (dragged down past nothing taking them away and back
+    up in the same drag bringing them back); a bend copied, pasted, stretched by x2 and removed
     with its note; folded to a scale, a row up a degree of it; and the mouse over a bend's line showing a faint point
     there and following it along the line, the editor told to paint again as it moves (read off the rendered pixels),
+    on the snap's nearest line, as a press there puts it (with Alt at the mouse),
     and the arrow, a press there putting a point down on the line, a note without a bend showing its line flat along
     its pitch (read off the rendered pixels), which takes the mouse and a press as a bend's line does, the notes faint with
     Bend and the bend of the note under the mouse lit (read off the rendered pixels), a bar its bend has left taking no

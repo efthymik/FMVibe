@@ -34,7 +34,7 @@ void powerIcon(Canvas &c, Point center, Color color) {
 
 void transportIcon(Canvas &c, Point center, Color color, bool stop) {
     if (stop) {
-        c.fillRect({center.x - 4.0f, center.y - 4.0f, 8.0f, 8.0f}, color, 1.5f);
+        c.fillRect({center.x - 4.0f, center.y - 4.0f, 8.0f, 8.0f}, color, kRadiusMark);
         return;
     }
     // Its middle a little left of its tip, so it looks centered.

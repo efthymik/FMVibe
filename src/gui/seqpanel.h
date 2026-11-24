@@ -48,6 +48,13 @@ public:
     bool seqOn() const; // the sequencer's power switch: off, the view takes no input but at it and the size button
     // Where the Play button starts the pattern: the start of the first note picked in the loop, or -1 (its start).
     double seqPreviewFrom() const;
+    // Whether the Play button shows the pattern playing: as it was last asked, until the telemetry says so (or a moment
+    // has passed, the audio thread not taking it), then as the telemetry says. So a second click soon after the first
+    // stops what the first started, though the telemetry hasn't caught up.
+    bool seqPreviewShown() const;
+    std::optional<bool> seqPreviewAsked_;
+    double seqPreviewAskedAt_ = 0.0;
+    static constexpr double kSeqPreviewWait = 0.5; // seconds
 
     void widgets(std::vector<Widget> &list) const override;
     void popups(std::vector<Widget> &list) const override; // the scale's and the snap's lists, over everything
@@ -205,6 +212,10 @@ private:
     void setSeqBend(int slot, const std::vector<SeqCurvePoint> &points);
     // The farthest a note bends from its pitch, signed (0 without points).
     double seqBendExtreme(int slot) const;
+    // The field's BEND: note `slot`'s bend set to `from` (its points as they were) scaled so that its farthest point is
+    // `steps` semitones further from its pitch (nearer, below 0), within ±kSeqMaxNoteBend; scaled down to nothing, the
+    // bend goes. A note without a bend keeps none.
+    void scaleSeqBend(int slot, const std::vector<SeqCurvePoint> &from, double steps);
     // Where a pitch (fractions between) sits on the roll, up and down: between the middles of the rows it falls
     // between, in proportion (folded to the scale too), a row a semitone past the pitches the roll can show; and the
     // pitch at `y`.
@@ -222,13 +233,14 @@ private:
     BendHit seqBendPointAt(Point p) const;
     BendHit seqBendSegmentAt(Point p) const; // a segment's middle: its bend handle
     // With the Bend tool, the bend's line under `p` (within the note, clear of its points and handles): the note, the
-    // point on the line there (from the note's start, as it runs) and where it shows.
+    // point a press puts down on the line (from the note's start, as it runs) and where it shows.
     struct BendLineHit {
         int slot = -1;
         SeqCurvePoint point{};
         Point at{};
     };
-    std::optional<BendLineHit> seqBendLineAt(Point p) const;
+    // The point is on the snap's nearest line, or with `free` (Alt) where the mouse is.
+    std::optional<BendLineHit> seqBendLineAt(Point p, bool free = false) const;
     // With the Bend tool, the note whose bend is lit at `p`: the one whose point, segment's middle or line is there,
     // else the note there; -1 for none.
     int seqBendLitNote(Point p) const;
@@ -401,6 +413,8 @@ private:
         // before the box, which Shift or Ctrl adds it to.
         std::vector<BendHit> bendPoints;
         std::vector<SeqCurvePoint> bendOrigin;
+        // Field on BEND: the notes picked and their bends as the drag began, which it scales.
+        std::vector<std::pair<int, std::vector<SeqCurvePoint>>> fieldBends;
     };
     Point seqBoxStart() const; // the Box's starting corner, where the roll shows it now
     void seqHear(int pitch); // that note heard from now on in the drag, the one before let go; -1 lets it go

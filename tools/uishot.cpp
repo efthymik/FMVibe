@@ -4409,6 +4409,19 @@ void testSeqPlay(const std::filesystem::path &dir, Renderer &renderer) {
     check(playShot && model.previews.size() == 2 && model.previews[0] && !model.previews[1] && playing != resting &&
               stopped == resting && untouched,
           "the SEQ card's Play button plays the pattern and stops it, lit while it plays, editing nothing");
+    // A second click before the telemetry has caught up (no poll between) stops what the first started; the button
+    // lit meanwhile (read off the rendered pixels).
+    model.previews.clear();
+    click(view, button);
+    view.mouseMove({600.0f, 690.0f}, {});
+    renderer.save(view, dir / "36w-seq-play-asked.png");
+    const uint32_t asked = renderer.pixel(face);
+    click(view, button);
+    view.poll();
+    const bool quick = model.previews.size() == 2 && model.previews[0] && !model.previews[1];
+    std::printf("      two quick clicks: Play asked %zu times (%s), the button %06x after the first\n", model.previews.size(),
+                quick ? "on, off" : "?", asked & 0xFFFFFF);
+    check(quick && asked == playing, "a second click on Play before the telemetry catches up stops the pattern");
 
     // From the notes picked: none, from the loop's start (-1); the note at step 8 clicked, from it; both picked (Ctrl+A),
     // from the earlier, at 4; and with the loop from step 6, the note at 4 outside it left out, from 8.
@@ -4571,13 +4584,26 @@ void testSeqNoteBend(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseUp({bendField.x, bendField.y - 12.0f}, {});
     const bool scaled = nearly(py(0, 1), 4.0) && nearly(px(0, 1), 2.0);
     view.undo();
+    // Dragged down past nothing (+2, +1, 0, still 0), the bend goes; back up in the same drag, it comes back as it was.
+    view.mouseDown(bendField, {});
+    view.mouseMove({bendField.x, bendField.y + 6.0f}, {});
+    view.mouseMove({bendField.x, bendField.y + 12.0f}, {});
+    view.mouseMove({bendField.x, bendField.y + 18.0f}, {});
+    const bool flattened = count(0) == 0.0;
+    view.mouseMove({bendField.x, bendField.y + 6.0f}, {});
+    view.mouseMove({bendField.x, bendField.y}, {});
+    view.mouseUp({bendField.x, bendField.y}, {});
+    const bool restored = count(0) == 2.0 && nearly(py(0, 1), 2.0) && nearly(px(0, 1), 2.0) && nearly(py(0, 0), 0.0);
+    if (!(flattened && restored))
+        std::printf("      the field down past 0 and back: %g points, %+.2f\n", count(0), py(0, 1));
     view.mouseMove({600.0f, 40.0f}, {});
     const bool fieldShot = renderer.save(view, dir / "36v-seq-bend-field.png");
     doubleClick(view, bendField);
     const bool cleared = count(0) == 0.0;
     view.undo();
-    check(scaled && fieldShot && cleared && count(0) == 2.0,
-          "the field's Bend scales the picked notes' bends, and a double-click clears them");
+    check(scaled && flattened && restored && fieldShot && cleared && count(0) == 2.0,
+          "the field's Bend scales the picked notes' bends, a drag back bringing back what it scaled away, and a "
+          "double-click clears them");
 
     // Copied and pasted, the copy bends as the note does; stretched twice as long, its bend too; removed, its bend's
     // params back to their defaults.
@@ -4643,9 +4669,10 @@ void testSeqNoteBend(const std::filesystem::path &dir, Renderer &renderer) {
     // along its pitch (read off the rendered pixels), which takes the mouse as a bend's line does; over a bar its bend
     // has left, the arrow too, and a press there putting nothing down; a press on the line puts a point down on it as it
     // runs, a flat one's too. The notes are faint with Bend, and the bend of the note under the mouse lit (read off the
-    // rendered pixels).
+    // rendered pixels). (At 1/32, so that the places the mouse goes are on the snap's lines.)
     const Point onLine = at(7.0, 62.0), alongLine = at(7.5, 62.0), onNote = at(5.0, 60.0), plain = at(12.0, 55.0);
     const Point offFlat{plain.x, plain.y + 3.0f}; // on the bar, clear of its flat line
+    model.ui.seqSnap = 4;
     view.mouseMove({600.0f, 40.0f}, {});
     renderer.save(view, dir / "36v-seq-bend-line.png");
     const int lineBare = lit(renderer.pixel(onLine)), alongBare = lit(renderer.pixel(alongLine));
@@ -4674,6 +4701,27 @@ void testSeqNoteBend(const std::filesystem::path &dir, Renderer &renderer) {
     const bool onFlat = count(1) == 2.0 && nearly(px(1, 0), 0.0) && nearly(py(1, 0), 0.0) &&
                         nearly(px(1, 1), 2.0, 0.05) && nearly(py(1, 1), 0.0);
     view.undo();
+    // At 1/16, the faint point and a press on the line are on the snap's nearest line (the mouse at 3.4 steps into the
+    // note, the point at 3), and with Alt where the mouse is.
+    model.ui.seqSnap = 3;
+    const Point between = at(7.4, 62.0);
+    view.mouseMove({600.0f, 40.0f}, {});
+    view.mouseMove(between, {});
+    renderer.save(view, dir / "36v-seq-bend-line-snap.png");
+    const int snappedShown = lit(renderer.pixel(onLine)), mouseShown = lit(renderer.pixel(between));
+    click(view, between);
+    const bool snappedPress = count(0) == 3.0 && nearly(px(0, 2), 3.0) && nearly(py(0, 2), 2.0, 0.05);
+    view.undo();
+    click(view, between, {false, false, true});
+    const bool freePress = count(0) == 3.0 && nearly(px(0, 2), 3.4, 0.05);
+    view.undo();
+    // (Against the lit line without a point on it: the note is lit while the mouse is over its line.)
+    std::printf("      the mouse between the snap's lines: %d on the snap's line, %d at the mouse, %d the lit line\n",
+                snappedShown, mouseShown, lineLit);
+    check(std::abs(snappedShown - lineLit) > 20 && std::abs(mouseShown - lineLit) < 20 && snappedPress && freePress &&
+              count(0) == 2.0,
+          "with Bend, the faint point on a line and a press there are on the snap's nearest line, with Alt where the "
+          "mouse is");
     click(view, rectCenter(detail::seqToolButton(0)));
     view.mouseMove({600.0f, 40.0f}, {});
     renderer.save(view, dir / "36v-seq-bend-select.png");
