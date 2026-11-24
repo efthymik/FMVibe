@@ -1500,8 +1500,18 @@ inline Rect knobRect(Point center, float diameter) {
     return {center.x - diameter * 0.5f, center.y - diameter * 0.5f, diameter, diameter + 18.0f};
 }
 
-inline Rect chip(Point center, float width = 38.0f) {
-    return {center.x - width * 0.5f, center.y - 9.0f, width, 18.0f};
+// A depth label in the routing graph, a chip centered on its wire: kWireLabelH tall, as wide as a wire's (a line to
+// OUT's a little wider, a loop's wider still, for its "fb"), its depth in kTextBody. A mode other than Phase widens it
+// by kLabelGlyphW. Open into a pill, its mode's part goes on its left and its x on its right. Its depth handles go
+// under it in a knob's size, as far apart as under a knob (see View::widgets()).
+constexpr float kWireLabelH = 19.0f;
+constexpr float kWireLabelW = 46.0f, kOutLabelW = 48.0f, kLoopLabelW = 54.0f;
+constexpr float kLabelGlyphW = 20.0f;
+constexpr float kLabelModeW = 32.0f, kLabelRemoveW = 22.0f;
+// A loop's label beside it on its right, its left edge 10 px right of the loop's center.
+constexpr float kLoopLabelX = 10.0f + 0.5f * kLoopLabelW;
+inline Rect chip(Point center, float width = kWireLabelW) {
+    return {center.x - width * 0.5f, center.y - 0.5f * kWireLabelH, width, kWireLabelH};
 }
 
 inline Point normalize(Point v) {

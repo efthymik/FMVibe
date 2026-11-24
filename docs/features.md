@@ -2097,7 +2097,8 @@ what it started goes on.
     for the modulation range, plus a small dot of the same color under the
     knob (on a matrix cell, centered along its foot, the ranges along its top, right of a mode's glyph; on a wire or OUT label in the
     graph and on the Inputs tab's labels, centered just under it, the ranges running along its outline's top, so
-    its depth stays readable). Where a range runs past its target's end, cut off there, a short line across the
+    its depth stays readable; the graph's labels, 19 px tall with their depth in the size of list rows,
+    have dots as large as a knob's, 10 px apart, and their ranges a little thicker). Where a range runs past its target's end, cut off there, a short line across the
     ring or bar marks that end (in every theme; the Ratio readout's track has its arrow instead). The dots stay
     inside their knob's column, label or cell at each handle size; past
     what fits, the rest go into a "+n" pill. Drag that dot to set the depth; double-click it
@@ -2109,9 +2110,10 @@ what it started goes on.
     a depth bar in the Mods view): the bar then has the dot in its top right corner, a strip under it shows
     how far the depth swings, and hovering the handle draws a dashed line to it like to any other target.
   - **More than fit**: a knob, label, cell or depth bar shows as many depth handles as its width holds (under a 24 or
-    26 px knob 2, under a 30 or 32 px one 3, under a 34 px one 4; on a wire label 5, a matrix cell 5, a depth bar 11), in the order the
+    26 px knob 2, under a 30 or 32 px one 3, under a 34 px one 4; on a wire label in the graph 4, on the Inputs tab
+    6, a matrix cell 5, a depth bar 11), in the order the
     sources show. Past that, as many as fit beside a **+n** pill (2 under a knob, 3 on a label, 4 on a cell, 9 on
-    a depth bar) hold the rest, so nothing runs under the next control. Hovering the pill draws the ranges of the
+    a depth bar; the graph's labels' as large as a knob's) hold the rest, so nothing runs under the next control. Hovering the pill draws the ranges of the
     modulations it holds wider, and says how many there are; a hovered source whose depth handle the pill holds
     draws its dashed line to the pill, ringed in the source's color. A click opens the pill's list, under it (over
     it, short of room below), in the accent color while it is open: the target's name and every modulation of it,
@@ -2557,7 +2559,8 @@ what it started goes on.
   its grid lines: Off draws none, 100 % twice as strongly as 50 %. With the mouse resting on any of the four sliders
   (not while one is dragged), a tooltip under it says what it sets and that a double-click puts it back. **Handles**, Small (to begin
   with), Medium or Large, draws the depth handles and their **+n** pills bigger, each step about half a pixel more in
-  radius and a pixel more across, in the same places (so on a label or cell, Large ones overlap a little). **Cards**,
+  radius and a pixel more across, in the same places (so on an Inputs tab label or a cell, Large ones overlap a
+  little). **Cards**,
   Plain (to begin with) or Tinted, tints each effect's and source card's face with its own color in Spectrum and
   Porcelain, as those themes drew their cards before they were plain (switched off, faintly); Midnight and Light
   outline their cards in their colors instead, so there its name and buttons are faint and disabled, taking no

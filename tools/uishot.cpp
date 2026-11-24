@@ -10271,10 +10271,13 @@ void testRouteModes(const std::filesystem::path &dir, Renderer &renderer) {
     const Point start = toward(b, 24.0f), end = toward(a, 32.0f);
     const Point label{0.25f * start.x + 0.5f * control.x + 0.25f * end.x,
                       0.25f * start.y + 0.5f * control.y + 0.25f * end.y};
-    // The pill's mode part, left of the label (38 px across) and 28 px across; its x, 20 px across, right of it; and
-    // where a resting label shows a mode other than Phase, at its left.
-    const Point modePart{label.x - 19.0f - 14.0f, label.y}, removePart{label.x + 19.0f + 10.0f, label.y};
-    const Point glyph{label.x - 24.0f, label.y};
+    // The pill's mode part, left of the label (kWireLabelW across) and kLabelModeW across; its x right of it, past where
+    // a glyph moves it to; and where a resting label shows a mode other than Phase, at its left.
+    const float half = 0.5f * detail::kWireLabelW;
+    const Point modePart{label.x - half - 0.5f * detail::kLabelModeW, label.y};
+    const Point removePart{label.x + half + 0.5f * detail::kLabelGlyphW + 5.0f, label.y};
+    const Point glyph{label.x - half - 0.5f * detail::kLabelGlyphW + 16.0f, label.y};
+    const float listTop = label.y + 0.5f * detail::kWireLabelH + 4.0f; // the list of modes, under the pill
     auto pixelsAround = [&](Point at) {
         std::vector<uint32_t> pixels;
         for (float y = at.y - 5.0f; y <= at.y + 5.0f; y += 1.0f)
@@ -10293,7 +10296,7 @@ void testRouteModes(const std::filesystem::path &dir, Renderer &renderer) {
     const bool opens = pixelsAround(removePart) != removeAway;
     view.mouseMove(modePart, {});
     click(view, modePart);
-    const Point ringItem{modePart.x - 14.0f + 56.0f, label.y + 9.0f + 4.0f + 4.0f + 3 * 22.0f + 11.0f};
+    const Point ringItem{modePart.x - 0.5f * detail::kLabelModeW + 56.0f, listTop + 4.0f + 3 * 22.0f + 11.0f};
     view.mouseMove(ringItem, {});
     const bool listShot = renderer.save(view, dir / "2l-route-mode-list.png");
     click(view, ringItem);
@@ -10400,8 +10403,9 @@ void testRouteModes(const std::filesystem::path &dir, Renderer &renderer) {
     const bool back = model.value(matrixIndex(1, 0)) == 0.5 && model.value(mode) == 2.0;
     const Point out = outLabelOf(layout, 0);
     view.mouseMove(out, {});
-    view.mouseMove({out.x + 30.0f, out.y}, {});
-    click(view, {out.x + 30.0f, out.y});
+    const float outX = 0.5f * (detail::kOutLabelW + detail::kLabelRemoveW); // the middle of its x
+    view.mouseMove({out.x + outX, out.y}, {});
+    click(view, {out.x + outX, out.y});
     check(moved && removeShot && removed && back && model.value(paramIndex(0, OpParam::Out)) == 0.0,
           "a route moved onto another operator keeps its mode; a label's x removes its route (back as Phase) and an "
           "OUT label's its node's output");
@@ -10427,8 +10431,9 @@ void testPillOnTop(const std::filesystem::path &dir, Renderer &renderer) {
     place(1, b);
     const Point label = detail::wireBetween(1, b, 0, a, kDefaultWireBend).label;
     // The pill's parts around the label (see testRouteModes()), a node over each, its wire running down past the pill.
-    const Rect modeRect{label.x - 19.0f - 28.0f, label.y - 9.0f, 28.0f, 18.0f};
-    const Rect removeRect{label.x + 19.0f, label.y - 9.0f, 20.0f, 18.0f};
+    const float half = 0.5f * detail::kWireLabelW, halfH = 0.5f * detail::kWireLabelH;
+    const Rect modeRect{label.x - half - detail::kLabelModeW, label.y - halfH, detail::kLabelModeW, detail::kWireLabelH};
+    const Rect removeRect{label.x + half, label.y - halfH, detail::kLabelRemoveW, detail::kWireLabelH};
     const Point d{modeRect.center().x, label.y - 43.0f}, e{d.x, label.y + 120.0f};
     const Point c{removeRect.center().x, d.y}, f{c.x, e.y};
     place(3, d);
@@ -10456,8 +10461,8 @@ void testPillOnTop(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove(onMode, {});
     const bool shot = renderer.save(view, dir / "2n2-route-pill-on-top.png");
     click(view, onMode);
-    view.mouseMove({modeRect.x + 56.0f, label.y + 9.0f + 4.0f + 4.0f + 3 * 22.0f + 11.0f}, {});
-    click(view, {modeRect.x + 56.0f, label.y + 9.0f + 4.0f + 4.0f + 3 * 22.0f + 11.0f});
+    view.mouseMove({modeRect.x + 56.0f, label.y + halfH + 4.0f + 4.0f + 3 * 22.0f + 11.0f}, {});
+    click(view, {modeRect.x + 56.0f, label.y + halfH + 4.0f + 4.0f + 3 * 22.0f + 11.0f});
     const bool picked = model.value(mode) == static_cast<double>(RouteMode::Ring);
     view.undo();
     view.mouseMove(label, {});

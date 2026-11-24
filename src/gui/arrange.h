@@ -177,7 +177,7 @@ inline ArrangeScore arrangeScore(const ArrangeGraph &graph, const UiLayout &layo
             const Wire w = wireBetween(r.from, centers[r.from], r.to, centers[r.to], arrangeBend(layout, r));
             start = w.start, control = w.control, end = w.end, label = w.label;
         }
-        Path path{r.from, r.to, {}, {label.x - 19.0f, label.y - 9.0f, 38.0f, 18.0f}};
+        Path path{r.from, r.to, {}, chip(label)};
         float length = 0.0f;
         for (int k = 0; k <= kSamples; ++k) {
             const float t = static_cast<float>(k) / kSamples, s = 1.0f - t;
@@ -262,7 +262,7 @@ inline ArrangeScore arrangeScore(const ArrangeGraph &graph, const UiLayout &layo
         if (!looped[node])
             continue;
         const Point loop = loopCenter(node, centers[node]);
-        const Rect label{loop.x + 32.0f - 22.0f, loop.y - 9.0f, 44.0f, 18.0f};
+        const Rect label = chip({loop.x + kLoopLabelX, loop.y}, kLoopLabelW);
         for (const Path &p : paths) {
             if (through(p, label))
                 score.cost += 150.0f;
