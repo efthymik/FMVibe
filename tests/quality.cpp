@@ -8642,6 +8642,45 @@ int main() {
         }
         check(sane, "the example presets hold valid values and sound at a sane level");
     }
+
+    // --- The example presets' triads at full velocity, struck together as a host's quantized chord is, held 2 s and
+    // let go. Their Volume keeps them at -1 dBFS at most (see AGENTS.md); this leaves that dB for what a note's
+    // randomness moves. A drum preset is played a hit at a time.
+    std::printf("example presets' triads (peak at full velocity, dBFS):\n");
+    {
+        const std::vector<std::vector<int>> chords = {{48, 52, 55}, {60, 64, 67}, {72, 76, 79}};
+        const std::vector<std::vector<int>> hits = {{36}, {60}, {84}};
+        constexpr int kHeld = static_cast<int>(2.0 * kSampleRate / kBlock), kLetGo = kHeld / 2;
+        bool under = true;
+        for (const FactoryPreset &preset : factoryPresets()) {
+            ParamValues values;
+            gui::UiLayout layout;
+            loadFactoryPreset(preset, values, layout);
+            // As the plugin plays it: its voices and play mode (see PluginCore::applyPlayMode()).
+            auto on = [&values](GlobalParam p) { return values[paramIndex(p)] >= 0.5; };
+            const int voices = static_cast<int>(std::lround(values[paramIndex(GlobalParam::Voices)]));
+            float peak = 0.0f;
+            for (const std::vector<int> &keys : layout.presetInfo.category == "Drum" ? hits : chords) {
+                Engine e(2, voices);
+                e.synth().setPlayMode(on(GlobalParam::Mono), on(GlobalParam::Legato), on(GlobalParam::GlideAlways));
+                e.p = values;
+                for (int key : keys)
+                    e.noteOn(key);
+                float left[kBlock], right[kBlock];
+                for (int b = 0; b < kHeld + kLetGo; ++b) {
+                    if (b == kHeld)
+                        for (int key : keys)
+                            e.noteOff(key);
+                    e.synth().render(left, right, kBlock, e.p);
+                    for (uint32_t s = 0; s < kBlock; ++s)
+                        peak = std::max({peak, std::abs(left[s]), std::abs(right[s])});
+                }
+            }
+            std::printf("      %-16s %6.1f\n", preset.name.c_str(), 20.0 * std::log10(peak + 1e-30f));
+            under = under && peak < 1.0f;
+        }
+        check(under, "the example presets' triads at full velocity peak under 0 dBFS");
+    }
     presetContentChecks();
     scopeChecks();
     outScopeChecks();

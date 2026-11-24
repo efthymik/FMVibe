@@ -356,7 +356,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     counting, and a point at the cycle's end holding a one-shot there), a Curve source playing sample for sample as
     an LFO with the retired Custom shape did, the phaser's and flanger's sweeps synced to the host tempo, the parametric
     EQ's, the phase disperser's and the voice filters' analyzers (falling away as fast at 96 kHz as at 48), and that each example preset holds valid values
-    and sounds at a sane level;
+    and sounds at a sane level, its triads at full velocity (a drum's single hits) peaking under 0 dBFS;
   - each factory preset's file being sparse, as the preset tool writes it, and each saying it is FMVibe's, in a
     built-in category, with a line of 80 characters at most; and a name from up to 0.11 ("LD Screamer") naming the
     preset as it is named now;
@@ -1208,10 +1208,14 @@ a factory preset for the built-in one, so a project naming it loads the built-in
 
 Their Volume levels them to about -14 LUFS (integrated, K-weighted and gated as BS.1770 has it): three single
 notes, an octave apart and a fifth, held 2 s (0.75 s for a Pluck, Drum or Keys preset), a Bass an octave lower, a
-riser by where it ends up. One whose note would then peak past -1 dBFS stays that far under, so the presets with
-sharp attacks (Razor Pluck, Neon Pluck, Laser Zap) come out quieter. The level was set by ear on Clubbing,
-Randomizer, Kick 1 and Snare 1, which sit at it or up to a few dB over it. A new preset comes in at about that
-level, and is tried by ear.
+riser by where it ends up. None peaks past -1 dBFS at full velocity: not a single note anywhere from C2 to C6, held
+and let go, nor, but for a Drum preset (played a hit at a time), a major triad at C3, C4 or C5 struck together, as a
+host's quantized chord is (with the transport playing). One that would stays that far under, so the presets with
+sharp attacks and the polyphonic Keys, Pads and Plucks, whose chords add up, come out quieter: Comb String, Pluck
+Delay, Koto Pluck, Mallet Steps and Razor Pluck 7 to 13 dB under it. A chord of four notes can still go past
+-1 dBFS. The level was set by ear on Clubbing, Randomizer, Kick 1 and Snare 1, which sit within a couple of dB of
+it. A new preset comes in at about that level, and is tried by ear; the quality test fails on one whose triads peak
+past 0 dBFS.
 
 Factory presets are not pinned by checksum, so changing or adding one needs no test edit. Don't add a checksum test
 for them: a preset is meant to change as its sound is tuned, and a pinned hash only forces an edit to the test on
