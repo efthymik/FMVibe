@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drawnenvelope.h"
 #include "params.h"
 
 #include <algorithm>
@@ -58,6 +59,9 @@ inline EnvRates envRates(double attack, double hold, double decay, double sustai
 // arrived, the level keeps following the sustain param, so sustain changes
 // while a note is held don't click. A restart rises from the current level at
 // the attack's own pace, as if the attack had already come that far.
+// An operator's may follow a drawn envelope instead (see DrawnEnvelope, OpParam::EnvMode): follow() hands it one for
+// a block, whose levels next() then gives, so the voices' loop calls next() as it always does; it stands idle once
+// that one is done. start() and release() are the AHDSR's: the drawn one is started and released by its owner.
 class Envelope {
 public:
     void start() {
@@ -65,10 +69,29 @@ public:
         t_ = -1.0; // placed on the curve at the first sample, once the slope is known
     }
     void release() {
-        if (stage_ == Stage::Idle)
+        if (stage_ == Stage::Idle || stage_ == Stage::Drawn)
             return;
         stage_ = Stage::Release;
         enterSegment();
+    }
+    // Follows `drawn` for this block (where it is idle, stands idle); and whether it does.
+    void follow(DrawnEnvelope &drawn) {
+        if (drawn.idle()) {
+            if (stage_ != Stage::Idle)
+                stop();
+            return;
+        }
+        drawn_ = &drawn;
+        stage_ = Stage::Drawn;
+    }
+    bool following() const { return stage_ == Stage::Drawn; }
+    // Back to its AHDSR from where the drawn envelope left it: rising again while the key is down, else releasing.
+    void unfollow(bool held) {
+        start();
+        if (!held) {
+            stage_ = Stage::Release;
+            enterSegment();
+        }
     }
     void stop() {
         stage_ = Stage::Idle;
@@ -80,7 +103,7 @@ public:
     bool rising() const { return stage_ == Stage::Attack || stage_ == Stage::Hold; }
     double level() const { return level_; }
     // Where it is, for the editor: its stage (0 attack, 1 hold, 2 decay, 3 sustain, 4 release) plus how far
-    // along that stage (0..1; the sustain, which has no end, at 0); -1 when idle.
+    // along that stage (0..1; the sustain, which has no end, at 0); -1 when idle or following a drawn envelope.
     double position(const EnvRates &r) const {
         switch (stage_) {
         case Stage::Attack:
@@ -94,6 +117,7 @@ public:
         case Stage::Release:
             return 4.0 + std::clamp(t_, 0.0, 1.0);
         case Stage::Idle:
+        case Stage::Drawn:
             break;
         }
         return -1.0;
@@ -132,6 +156,7 @@ public:
                 break;
             case Stage::Attack:
             case Stage::Hold:
+            case Stage::Drawn:
                 out[s++] = nextStage(r);
                 break;
             }
@@ -139,7 +164,7 @@ public:
     }
 
 private:
-    enum class Stage { Idle, Attack, Hold, Decay, Sustain, Release };
+    enum class Stage { Idle, Attack, Hold, Decay, Sustain, Release, Drawn };
 
     double nextStage(const EnvRates &r) {
         switch (stage_) {
@@ -165,6 +190,11 @@ private:
             return decayStep(r);
         case Stage::Release:
             return releaseStep(r);
+        case Stage::Drawn:
+            level_ = drawn_->next();
+            if (drawn_->idle())
+                stop();
+            return level_;
         case Stage::Sustain: // see next()
         case Stage::Idle:
             break;
@@ -217,6 +247,7 @@ private:
     double e_ = 1.0;    // exp(-k * t_)
     double k_ = 0.0;
     bool resync_ = true;
+    DrawnEnvelope *drawn_ = nullptr; // what it follows, while it does
 };
 
 } // namespace fmvibe

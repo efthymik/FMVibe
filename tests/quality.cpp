@@ -7674,6 +7674,221 @@ int main() {
         }
     }
 
+    // --- An operator's drawn envelope (see DrawnEnvelope): a sample at a time along its shape, exactly as the shape
+    // is drawn; held, One-Shot stays at its end and Sustain loops its loop; let go, it goes on from the level it was
+    // at, no step larger than the shape's own, to its end, where it fades out over 5 ms and stands idle. Then in the
+    // synth: an operator's level following it, and its voice ending once it has.
+    std::printf("drawn operator envelopes:\n");
+    {
+        using Points = std::vector<std::array<double, 3>>; // x, y (-1..1), curve
+        auto shapeOf = [](const Points &points) {
+            std::vector<double> shape(kShapeParamCount, 0.0);
+            shape[0] = static_cast<double>(points.size());
+            for (size_t i = 0; i < points.size(); ++i)
+                for (int f = 0; f < 3; ++f)
+                    shape[shapeFieldIndex(0, static_cast<int>(i), static_cast<PointField>(f))] = points[i][f];
+            return shape;
+        };
+        // The level the shape draws at x (a curve: its last point at the end), as shapeBend() bends each segment.
+        auto drawn = [](const Points &points, double x) {
+            size_t k = 0;
+            while (k + 2 < points.size() && points[k + 1][0] <= x)
+                ++k;
+            const double x0 = points[k][0], x1 = k + 2 == points.size() ? 1.0 : points[k + 1][0];
+            const double t = std::clamp((x - x0) / (x1 - x0), 0.0, 1.0);
+            const double y = points[k][1] + (points[k + 1][1] - points[k][1]) * shapeBend(t, points[k][2]);
+            return 0.5 * (y + 1.0);
+        };
+        constexpr double kRate = 48000.0;
+        auto mostStep = [](const std::vector<double> &levels, size_t from, size_t to) {
+            double most = 0.0;
+            for (size_t i = std::max<size_t>(from, 1); i < std::min(to, levels.size()); ++i)
+                most = std::max(most, std::abs(levels[i] - levels[i - 1]));
+            return most;
+        };
+
+        // One-Shot, held: each sample where the shape draws it, bends and all, then its end level, held.
+        {
+            const Points points{{0.0, -1.0, 0.5}, {0.4, 1.0, -0.3}, {1.0, -0.2, 0.0}};
+            const std::vector<double> shape = shapeOf(points);
+            DrawnEnvelope d;
+            d.start();
+            d.prepare(shape.data(), 4800.0, 0.0, 1.0, false, 0.0, kRate);
+            double off = 0.0;
+            for (int n = 1; n <= 4800; ++n)
+                off = std::max(off, std::abs(d.next() - drawn(points, n / 4800.0)));
+            double held = 0.0;
+            for (int n = 0; n < 4800; ++n)
+                held = std::max(held, std::abs(d.next() - 0.4));
+            std::printf("      one-shot: %.2e off its shape, %.2e off its end held\n", off, held);
+            check(off < 1e-9 && held < 1e-12 && !d.idle(),
+                  "a drawn envelope plays its shape sample for sample, bends and all, and holds its end while held");
+            // Let go there, it fades out over 5 ms (240 samples) and stands idle.
+            d.release();
+            d.prepare(shape.data(), 4800.0, 0.0, 1.0, false, 0.4, kRate);
+            int samples = 0;
+            while (!d.idle() && samples < 1000) {
+                d.next();
+                ++samples;
+            }
+            std::printf("      let go at its end: idle %d samples later\n", samples);
+            check(samples >= 239 && samples <= 241, "a drawn envelope let go at its end fades out over 5 ms");
+        }
+
+        // Sustain, its loop [0.25, 0.5] of a rise to 1 at a quarter and a fall to 0.5 by the half, flat after: held, it
+        // rises once, then comes round its loop; let go mid-loop, it goes on from the level it was at, sliding onto the
+        // shape by its end, no step past the shape's own, and fades out from there.
+        {
+            const Points points{{0.0, -1.0, 0.0}, {0.25, 1.0, 0.0}, {0.5, 0.0, 0.0}, {1.0, 0.0, 0.0}};
+            const std::vector<double> shape = shapeOf(points);
+            DrawnEnvelope d;
+            d.start();
+            std::vector<double> levels;
+            for (int block = 0; block < 1700; ++block) { // blocks of 32, a second's shape
+                if (block == 1000) // two thirds round its loop the second time: let go
+                    d.release();
+                d.prepare(shape.data(), kRate, 0.25, 0.5, true, d.level(), kRate);
+                for (int s = 0; s < 32; ++s)
+                    levels.push_back(d.next());
+            }
+            const size_t up = 1000 * 32;
+            double low = 1.0, high = 0.0;
+            for (size_t i = 12100; i < up; ++i)
+                low = std::min(low, levels[i]), high = std::max(high, levels[i]);
+            const double own = 2.0 / kRate; // the rise's step, the shape's steepest
+            const double step = mostStep(levels, up - 50, up + 20000);
+            std::printf("      sustain: looped between %.3f and %.3f, %.3f as it was let go, steps at most %.2e "
+                        "(its shape's %.2e), %.3f a quarter later\n",
+                        low, high, levels[up - 1], step, own, levels[up + 12000 - 1]);
+            check(low >= 0.5 - 1e-9 && high <= 1.0 + 1e-9 && low < 0.51 && high > 0.99,
+                  "a drawn envelope in Sustain loops its loop while held");
+            check(step <= own + 1e-9 && std::abs(levels[up + 12000 - 1] - (0.5 + 0.5 * (levels[up - 1] - 0.5))) < 1e-3,
+                  "a drawn envelope let go leaves its loop from the level it was at, sliding onto its shape by its end");
+        }
+
+        // Its loop ending on a point the shape drops from (to 0.25 at once): let go, it goes down with the drop over
+        // 5 ms, then plays its shape as drawn.
+        {
+            const Points points{{0.0, -1.0, 0.0}, {0.25, 1.0, 0.0}, {0.5, 1.0, 0.0}, {0.5, -0.5, 0.0}, {1.0, -1.0, 0.0}};
+            const std::vector<double> shape = shapeOf(points);
+            DrawnEnvelope d;
+            d.start();
+            d.prepare(shape.data(), kRate, 0.25, 0.5, true, 0.0, kRate);
+            for (int n = 0; n < 18000; ++n)
+                d.next();
+            d.release();
+            d.prepare(shape.data(), kRate, 0.25, 0.5, true, d.level(), kRate);
+            std::vector<double> levels;
+            for (int n = 0; n < 2000; ++n)
+                levels.push_back(d.next());
+            double off = 0.0;
+            for (int n = 300; n < 2000; ++n) // past the glide: on the shape from 0.5 on
+                off = std::max(off, std::abs(levels[n] - drawn(points, 0.5 + (n + 1) / kRate)));
+            const double step = mostStep(levels, 0, 300);
+            std::printf("      a loop ending on a drop: steps at most %.4f gliding down, then %.2e off the shape\n", step,
+                        off);
+            check(step < 0.75 / 200.0 && off < 1e-9,
+                  "a drawn envelope whose loop ends on a drop goes down with it over 5 ms, then plays its shape");
+        }
+
+        // Started again where it is (a mono note retriggering it), it goes on from that level, sliding onto its first
+        // segment by that segment's end, rather than jumping back to its start.
+        {
+            const Points points{{0.0, -1.0, 0.0}, {0.5, 1.0, 0.0}, {1.0, -1.0, 0.0}};
+            const std::vector<double> shape = shapeOf(points);
+            DrawnEnvelope d;
+            d.start();
+            d.prepare(shape.data(), kRate, 0.0, 1.0, false, 0.0, kRate);
+            std::vector<double> levels;
+            for (int n = 0; n < 24000; ++n)
+                levels.push_back(d.next());
+            d.start();
+            d.prepare(shape.data(), kRate, 0.0, 1.0, false, d.level(), kRate);
+            for (int n = 0; n < 24000; ++n)
+                levels.push_back(d.next());
+            const double step = mostStep(levels, 23990, 24010);
+            std::printf("      started again at %.3f: steps at most %.2e there\n", levels[23999], step);
+            check(step <= 2.0 / kRate + 1e-9 && std::abs(levels.back() - 1.0) < 1e-3,
+                  "a drawn envelope started again goes on from the level it was at");
+        }
+
+        // In the synth: operator A's drawn envelope, One-Shot, a second long, a rise to full over its first quarter and
+        // half back down by its end. Its level (as telemetry has it, after each block) follows the shape; held at the
+        // end, it stays; let go, its voice ends about 5 ms later.
+        auto telemetry = std::make_unique<Telemetry>();
+        auto drawnOn = [&](Engine &e, const Points &points, bool sustain, double loopStart, double loopEnd) {
+            e.p[paramIndex(0, OpParam::EnvMode)] = 1.0;
+            e.p[paramIndex(0, OpParam::EnvSustain)] = sustain ? 1.0 : 0.0;
+            e.p[paramIndex(0, OpParam::EnvLength)] = normFromTime(1.0);
+            e.p[paramIndex(0, OpParam::EnvLoopStart)] = loopStart;
+            e.p[paramIndex(0, OpParam::EnvLoopEnd)] = loopEnd;
+            const int base = opEnvShapeIndex(0);
+            e.p[base] = static_cast<double>(points.size());
+            for (size_t i = 0; i < points.size(); ++i)
+                for (int f = 0; f < 3; ++f)
+                    e.p[shapeFieldIndex(base, static_cast<int>(i), static_cast<PointField>(f))] = points[i][f];
+        };
+        {
+            const Points points{{0.0, -1.0, 0.0}, {0.25, 1.0, 0.0}, {1.0, 0.0, 0.0}};
+            Engine e(1);
+            drawnOn(e, points, false, 0.0, 1.0);
+            const double seconds = timeFromNorm(normFromTime(1.0));
+            e.noteOn(57);
+            double off = 0.0, phaseOff = 0.0;
+            for (int block = 1; block <= 1800; ++block) { // 1.2 s
+                e.render(32);
+                e.synth().telemetry(*telemetry);
+                const double x = std::min(block * 32.0 / (seconds * kSampleRate), 1.0);
+                off = std::max(off, std::abs(telemetry->opEnvLevels[0] - drawn(points, x)));
+                phaseOff = std::max(phaseOff, std::abs(telemetry->opEnvPhase[0] - x));
+            }
+            e.noteOff(57);
+            int blocks = 0;
+            for (; blocks < 1000; ++blocks) {
+                e.render(32);
+                e.synth().telemetry(*telemetry);
+                if (telemetry->voices == 0)
+                    break;
+            }
+            std::printf("      in the synth: %.2e off its shape, phase %.2e off; let go at its end, its voice ended %.1f ms "
+                        "later\n",
+                        off, phaseOff, blocks * 32.0 / kSampleRate * 1000.0);
+            check(off < 1e-5 && phaseOff < 1e-5,
+                  "an operator plays its drawn envelope, its level and place following the shape");
+            check(blocks * 32.0 / kSampleRate < 0.02, "a voice ends once its operator's drawn envelope has faded out");
+        }
+        // Sustain in the synth: held, it loops [0.25, 0.5], its voice playing on; let go, it plays on to its end, its
+        // voice ending then (0.5 s on from the loop's end at a second's shape, its end level faded out over 5 ms).
+        {
+            const Points points{{0.0, -1.0, 0.0}, {0.25, 1.0, 0.0}, {0.5, 0.0, 0.0}, {1.0, 0.0, 0.0}};
+            Engine e(1);
+            drawnOn(e, points, true, 0.25, 0.5);
+            e.noteOn(57);
+            double low = 1.0, high = 0.0;
+            for (int block = 1; block <= 3000; ++block) { // 2 s held
+                e.render(32);
+                e.synth().telemetry(*telemetry);
+                if (block > 400)
+                    low = std::min(low, static_cast<double>(telemetry->opEnvLevels[0])),
+                    high = std::max(high, static_cast<double>(telemetry->opEnvLevels[0]));
+            }
+            e.noteOff(57);
+            int blocks = 0;
+            for (; blocks < 2000; ++blocks) {
+                e.render(32);
+                e.synth().telemetry(*telemetry);
+                if (telemetry->voices == 0)
+                    break;
+            }
+            const double ended = blocks * 32.0 / kSampleRate;
+            std::printf("      sustain in the synth: looped between %.3f and %.3f for 2 s, its voice ended %.3f s after "
+                        "the key\n",
+                        low, high, ended);
+            check(low > 0.49 && high < 1.0001 && high > 0.99 && ended > 0.49 && ended < 0.53,
+                  "an operator's drawn envelope in Sustain loops while held, its voice playing on to its end once let go");
+        }
+    }
+
     // --- The parametric EQ's and phase disperser's analyzers: a sine shows in its band, at its level (a flat EQ
     // passes it as it is, and so does a disperser all wet, an all-pass).
     std::printf("parametric EQ and phase disperser analyzers:\n");

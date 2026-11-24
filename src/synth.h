@@ -121,6 +121,9 @@ struct Telemetry {
     std::array<float, kOps> opEnvLevels{};      // operator envelope alone (0..1)
     // Where each operator's and mod envelope is, see Envelope::position(); -1 idle (or not an envelope).
     std::array<float, kOps> opEnvPos{};
+    // Where an operator's drawn envelope is along its shape, 0..1 (see DrawnEnvelope::phase()); -1 while it plays its
+    // AHDSR or none.
+    std::array<float, kOps> opEnvPhase{};
     std::array<float, kMaxSources> envPos{};
     std::array<std::array<float, kMcBands>, kFxSlots> fxReduction{}; // compressor gain reduction, dB
     // Three-band dynamics' bands: their detectors' levels (1 is full scale) and their gains (dB), see
@@ -554,6 +557,9 @@ private:
         std::array<double, kOps> opLevel{};
         std::array<double, kOps> phaseSet{}; // where each operator's Phase has moved its wave to (see turnPhase())
         std::array<CurveRelease, kMaxSources> curveReleases{}; // its LFOs' (see Lfo::left)
+        // Its operators' drawn envelopes (see OpParam::EnvMode), which their Envelopes follow while they play one:
+        // started and released with them, kept apart from them so the fields the voice's samples read stay together.
+        std::array<DrawnEnvelope, kOps> drawn{};
     };
 
     struct HeldNote {
@@ -621,6 +627,9 @@ private:
     void advanceLfo(Lfo &lfo, double hz, uint32_t frames, uint32_t &rng, bool oneShot, double chaos,
                     LfoLoop loop = {}, CurveRelease *release = nullptr) const;
     double voiceLfo(Voice &v, int s, const double *p, const ParamValues &params, uint32_t hostFrames) const;
+    // An operator's drawn envelope for this block, its Envelope following it, or its AHDSR again once it is switched
+    // back (see OpParam::EnvMode); `p` are the voice's params.
+    void followDrawn(Voice &v, int op, const double *p, const ParamValues &params);
     // Moves the free and anchored LFOs' shared clocks on by `frames`, which end `end` frames into this render(); with
     // no frames, only the anchored ones go to where the transport stands `end` frames in. Their params are what is
     // set with the host's, the macros' and the newest voice's modulation.

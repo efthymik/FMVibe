@@ -51,7 +51,7 @@ bool InspectorPanel::covered() const {
     const bool editor = shape >= 0 || shapes_.partialEditing() >= 0; // over the panels' row
     return (view == RoutingView::Fx && shape < 0) ||
            ((view == RoutingView::Mods || view == RoutingView::Seq) && !editor) ||
-           (shape >= 0 && !isStripCurve(shape) && !isShaperCurve(shape));
+           (shape >= 0 && !isStripCurve(shape) && !isShaperCurve(shape) && !isOpEnvCurve(shape));
 }
 
 int InspectorPanel::scopeShown() const {
@@ -280,13 +280,31 @@ void InspectorPanel::widgets(std::vector<Widget> &list) const {
             add(Kind::Toggle, kSyncButton, paramIndex(op, OpParam::Sync));
         }
         if (tab == InspectorTab::Envelope) {
-            const int ahdsr[] = {paramIndex(op, OpParam::Attack), paramIndex(op, OpParam::Hold),
-                                 paramIndex(op, OpParam::Decay), paramIndex(op, OpParam::Sustain),
-                                 paramIndex(op, OpParam::Release)};
-            const float step = (kInspector.w - 32.0f) / 5.0f;
-            for (int i = 0; i < 5; ++i)
-                knob(ahdsr[i], {kInspector.x + 16.0f + step * (i + 0.5f), kOpControlsY}, kOpKnobD,
-                     tr(envLabels[i]));
+            // ADSR | Curve; for a drawn envelope, One-Shot | Sustain, its sync switch, its pencil and its Length, else
+            // the AHDSR's knobs.
+            const size_t modes = list.size();
+            for (int curve = 0; curve < 2; ++curve)
+                add(Kind::Choice, opEnvModeButton(curve), paramIndex(op, OpParam::EnvMode), op, curve);
+            merge(modes);
+            if (opEnvDrawn(op)) {
+                const size_t sustain = list.size();
+                for (int s = 0; s < 2; ++s)
+                    add(Kind::Choice, opEnvSustainButton(s), paramIndex(op, OpParam::EnvSustain), op, s);
+                merge(sustain);
+                add(Kind::Toggle, opEnvSyncButton(), paramIndex(op, OpParam::EnvSync));
+                const bool synced = value(paramIndex(op, OpParam::EnvSync)) >= 0.5;
+                knob(paramIndex(op, synced ? OpParam::EnvDivision : OpParam::EnvLength), kOpEnvLengthKnob, kOpKnobD,
+                     tr(Str::LabelLength));
+                shapes_.opEnvWidgets(list, op);
+            } else {
+                const int ahdsr[] = {paramIndex(op, OpParam::Attack), paramIndex(op, OpParam::Hold),
+                                     paramIndex(op, OpParam::Decay), paramIndex(op, OpParam::Sustain),
+                                     paramIndex(op, OpParam::Release)};
+                const float step = (kInspector.w - 32.0f) / 5.0f;
+                for (int i = 0; i < 5; ++i)
+                    knob(ahdsr[i], {kInspector.x + 16.0f + step * (i + 0.5f), kOpControlsY}, kOpKnobD,
+                         tr(envLabels[i]));
+            }
         }
     } else {
         const int filter = node - kOps;
@@ -328,7 +346,7 @@ void InspectorPanel::widgets(std::vector<Widget> &list) const {
         inputKnobs(node);
     }
     // The operator's envelope's handles, on its ENVELOPE tab, as the View lists every envelope's.
-    if (node < kOps && opTabShown(node) == InspectorTab::Envelope)
+    if (node < kOps && opTabShown(node) == InspectorTab::Envelope && !opEnvDrawn(node))
         host_.envelopeWidgets(list, node);
 }
 
@@ -493,7 +511,10 @@ void InspectorPanel::paintBack(Canvas &c) {
                 paintUnison(c, kUnisonRect, op);
             break;
         case InspectorTab::Envelope:
-            host_.paintEnvelope(c, kOpEnvRect, op, kAccent, true);
+            if (opEnvDrawn(op))
+                shapes_.paintOpEnvelope(c, op);
+            else
+                host_.paintEnvelope(c, kOpEnvRect, op, kAccent, true);
             break;
         case InspectorTab::Scope:
         case InspectorTab::Warp:
@@ -703,6 +724,10 @@ void InspectorPanel::paintInputs(Canvas &c, int op) {
     c.popClip();
 }
 
+bool InspectorPanel::opEnvDrawn(int op) const {
+    return value(paramIndex(op, OpParam::EnvMode)) >= 0.5;
+}
+
 InspectorTab InspectorPanel::opTabShown(int op) const {
     const InspectorTab tab = controller().layout().opTab;
     if (tab == InspectorTab::Scope || tab == InspectorTab::Warp) // the scope is on the WARP tab
@@ -718,8 +743,10 @@ bool InspectorPanel::opTabModulated(int op, InspectorTab tab) const {
                   paramIndex(op, OpParam::UnisonSpread), paramIndex(op, OpParam::UnisonBlend),
                   paramIndex(op, OpParam::PhaseRandom)};
     if (tab == InspectorTab::Envelope)
-        params = {paramIndex(op, OpParam::Attack), paramIndex(op, OpParam::Hold), paramIndex(op, OpParam::Decay),
-                  paramIndex(op, OpParam::Sustain), paramIndex(op, OpParam::Release)};
+        params = opEnvDrawn(op) ? std::vector<int>{paramIndex(op, OpParam::EnvLength)}
+                                : std::vector<int>{paramIndex(op, OpParam::Attack), paramIndex(op, OpParam::Hold),
+                                                   paramIndex(op, OpParam::Decay), paramIndex(op, OpParam::Sustain),
+                                                   paramIndex(op, OpParam::Release)};
     if (tab == InspectorTab::Warp && !isNoise(op))
         params = {paramIndex(op, OpParam::WarpAmount)};
     for (const Assignment &m : assignments())
@@ -1090,7 +1117,8 @@ std::optional<CursorKind> InspectorPanel::cursor(const Widget &w) const {
 void InspectorPanel::poll(const Telemetry &t, std::vector<Rect> &repaint) {
     const Telemetry &was = host_.telemetry();
     if (t.voices > 0 || was.voices > 0) {
-        if (t.opLevels != was.opLevels || t.opEnvLevels != was.opEnvLevels || t.opEnvPos != was.opEnvPos)
+        if (t.opLevels != was.opLevels || t.opEnvLevels != was.opEnvLevels || t.opEnvPos != was.opEnvPos ||
+            t.opEnvPhase != was.opEnvPhase)
             repaint.push_back(kInspector);
         if (t.scope != was.scope || t.scopeBins != was.scopeBins || t.scopeCursor != was.scopeCursor)
             repaint.push_back(kInspector);

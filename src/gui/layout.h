@@ -204,8 +204,22 @@ inline Rect inputsName(float y) { return {kOpWell.x + 8.0f, y, 26.0f, 18.0f}; }
 inline Rect inputsMode(float y, int mode) { return {kOpWell.x + 36.0f + mode * 26.0f, y, 26.0f, 18.0f}; }
 inline Rect inputsModeName(float y) { return {kOpWell.x + 146.0f, y, 66.0f, 18.0f}; }
 inline Rect inputsDepth(float y) { return {kOpWell.right() - 12.0f - 48.0f, y, 48.0f, 18.0f}; }
-// Envelope: the curve, its knobs under the well.
-constexpr Rect kOpEnvRect = kOpDisplay;
+// Envelope: a row under the tabs (ADSR | Curve, and for a drawn envelope One-Shot | Sustain, its sync switch and, at
+// the right, the pencil that opens its full-size editor), then the curve, its knobs under the well (a drawn
+// envelope's Length alone, in the middle).
+constexpr float kOpEnvRowH = 28.0f;
+constexpr Rect kOpEnvRect{kOpDisplay.x, kOpDisplay.y + kOpEnvRowH, kOpDisplay.w, kOpDisplay.h - kOpEnvRowH};
+inline Rect opEnvModeButton(int curve) { // 0 ADSR, 1 Curve
+    return {kOpDisplay.x + 6.0f + curve * 52.0f, kOpDisplay.y + 4.0f, 52.0f, 20.0f};
+}
+inline Rect opEnvSustainButton(int sustain) { // 0 One-Shot, 1 Sustain, as the Curve's clock modes' icons
+    return {opEnvModeButton(1).right() + 10.0f + sustain * 30.0f, kOpDisplay.y + 4.0f, 30.0f, 20.0f};
+}
+inline Rect opEnvSyncButton() { return {opEnvSustainButton(1).right() + 10.0f, kOpDisplay.y + 4.0f, 22.0f, 20.0f}; }
+inline Rect opEnvEditButton() { return {kOpDisplay.right() - 6.0f - 28.0f, kOpDisplay.y + 4.0f, 28.0f, 20.0f}; }
+// A drawn envelope's plot in the display: room above it for its loop's strip, and the plot's margins.
+constexpr Rect kOpEnvPlot{kOpEnvRect.x + 8.0f, kOpEnvRect.y + 10.0f, kOpEnvRect.w - 16.0f, kOpEnvRect.h - 18.0f};
+constexpr Point kOpEnvLengthKnob{kInspector.x + kInspector.w * 0.5f, kOpControlsY};
 // Unison: where the copies sit, over a row of buttons along the well's bottom (how they spread in pitch, then, past a
 // rule, where they sit across), its knobs under the well.
 constexpr float kUnisonKnobsY = kOpControlsY;

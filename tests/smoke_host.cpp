@@ -1121,6 +1121,51 @@ int main(int argc, char **argv) {
               "the sustain pedal holds a Curve in Sustain in its loop, and it plays on to its end once let up");
     }
 
+    // An operator's drawn envelope, One-Shot, a second long, up to full in its first quarter and down to half by its
+    // end: let go 0.3 s in, its voice plays on to the shape's end and fades out there, reporting NOTE_END once, about
+    // 0.7 s after the key; as an AHDSR again, at once.
+    {
+        const int base = opEnvShapeIndex(0);
+        const clap_event_param_value_t settings[] = {
+            paramEvent(paramIndex(0, OpParam::EnvMode), 1.0),
+            paramEvent(paramIndex(0, OpParam::EnvSustain), 0.0),
+            paramEvent(paramIndex(0, OpParam::EnvLength), normFromTime(1.0)),
+            paramEvent(base, 3.0),
+            paramEvent(shapeFieldIndex(base, 1, PointField::X), 0.25),
+            paramEvent(shapeFieldIndex(base, 1, PointField::Y), 1.0),
+            paramEvent(shapeFieldIndex(base, 2, PointField::Y), 0.0)};
+        std::vector<const clap_event_header_t *> setup;
+        for (const clap_event_param_value_t &ev : settings)
+            setup.push_back(&ev.header);
+        runBlock(setup);
+        auto endsAfter = [&](std::ptrdiff_t &ends) { // seconds from the key going up to its NOTE_END
+            const clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 14, 64);
+            const clap_event_note_t off = noteEvent(CLAP_EVENT_NOTE_OFF, 14, 64);
+            runBlock({&on.header});
+            runBlocks(blocksPerSecond * 3 / 10 - 1);
+            out.noteEnds.clear();
+            runBlock({&off.header});
+            uint32_t blocks = 1;
+            for (; out.noteEnds.empty() && blocks < 3 * blocksPerSecond; ++blocks)
+                runBlock();
+            runBlocks(blocksPerSecond / 2); // any more after it
+            ends = std::count_if(out.noteEnds.begin(), out.noteEnds.end(),
+                                 [](const clap_event_note_t &n) { return n.note_id == 14; });
+            out.noteEnds.clear();
+            return blocks * static_cast<double>(kBlock) / kSampleRate;
+        };
+        std::ptrdiff_t drawnEnds = 0, adsrEnds = 0;
+        const double drawnEnded = endsAfter(drawnEnds);
+        const clap_event_param_value_t adsr = paramEvent(paramIndex(0, OpParam::EnvMode), 0.0);
+        runBlock({&adsr.header});
+        const double adsrEnded = endsAfter(adsrEnds);
+        std::printf("      NOTE_END %.3f s after the key with a drawn envelope playing on to its end, %.3f s as an "
+                    "AHDSR\n",
+                    drawnEnded, adsrEnded);
+        check(drawnEnded > 0.68 && drawnEnded < 0.76 && drawnEnds == 1 && adsrEnded < 0.1 && adsrEnds == 1,
+              "an operator's drawn envelope, let go, plays on to its shape's end, and its voice reports NOTE_END once");
+    }
+
     // An empty place modulates nothing, even with its slots set; once it holds an
     // envelope it does, and switched off it stops again.
     {

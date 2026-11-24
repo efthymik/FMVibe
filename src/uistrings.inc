@@ -345,6 +345,14 @@ STR(ParamAnchor, "Anchor") // an LFO's: tied to the host's transport
 STR(ParamCurveSustain, "Sustain Mode") // a Curve's clock mode: loops while the key is down (not an envelope's level)
 STR(ParamCurveLoopStart, "Loop Start") // a Curve's loop region along its shape
 STR(ParamCurveLoopEnd, "Loop End")
+STR(ParamEnvMode, "Envelope Mode") // an operator's: its AHDSR, or its drawn envelope (Curve)
+STR(ParamEnvSustain, "Envelope Sustain Mode") // its drawn envelope's: loop while held, or One-Shot
+STR(ParamEnvLoopStart, "Envelope Loop Start")
+STR(ParamEnvLoopEnd, "Envelope Loop End")
+STR(ParamEnvLength, "Envelope Length")
+STR(ParamEnvSync, "Envelope Sync")
+STR(ParamEnvDivision, "Envelope Division")
+STR(ParamEnvShape, "Envelope Shape")
 STR(ParamSmooth, "Smooth")
 STR(ParamChaos, "Chaos")
 
@@ -673,6 +681,7 @@ STR(FxTitleLoFi, "Lo-Fi")
 
 // The big editors' titles.
 STR(TitleShape, "{1} SHAPE")
+STR(TitleOpEnvelope, "{1} ENVELOPE") // an operator's drawn envelope's full-size editor, by its letter
 STR(TitleFxShaperCurve, "FX {1} SHAPER CURVE")
 STR(TitleShaperCurve, "SHAPER {1} CURVE")
 STR(TitleNoteCurve, "NOTE CURVE")
@@ -791,6 +800,8 @@ STR(SwitchFree, "Free")
 STR(SwitchAnchor, "Anchor")
 STR(SwitchOneShot, "One-Shot")
 STR(SwitchSustain, "Sustain")
+STR(SwitchAdsr, "ADSR") // an operator's ENVELOPE tab: its AHDSR, or its drawn envelope
+STR(SwitchCurve, "Curve")
 STR(SwitchHard, "HARD") // the shaper effect's first three curves
 STR(SwitchSoft, "SOFT")
 STR(SwitchAsym, "ASYM")
@@ -1212,6 +1223,10 @@ STR(TipLegato, "Overlapping notes don't retrigger envelopes")
 STR(TipFxOn, "Click to turn off, drag to move")
 STR(TipFxOff, "Click to turn on, drag to move")
 STR(TipLfoSync, "Sync rate to tempo")
+STR(TipEnvAdsr, "Attack, hold, decay, sustain and release") // an operator's ENVELOPE tab's ADSR | Curve
+STR(TipEnvCurve, "Draw the envelope")
+STR(TipEnvOneShot, "Play the envelope once, holding its end while the key is down")
+STR(TipEnvSync, "Sync length to tempo")
 STR(TipSlope, "Filter slope")
 STR(TipSlopeBand, "Filter slope")
 STR(TipFilterModel, "Filter model") // the Model list beside the slope
@@ -1300,6 +1315,8 @@ STR(MenuEditAuxDepth, "Edit aux depth…") // how far down the aux can take the 
 STR(MenuRemoveAll, "Remove all modulation")
 STR(MenuDeletePoint, "Delete point")
 STR(MenuStraighten, "Straighten")
+STR(MenuCopyShape, "Copy Shape") // over any drawn shape
+STR(MenuPasteShape, "Paste Shape")
 STR(MenuSetLoopStart, "Set as Loop Start") // a Curve's point: its loop starts there
 STR(MenuSetLoopEnd, "Set as Loop End")
 STR(MenuSwitchOff, "Switch off {1}")
@@ -1348,6 +1365,13 @@ STR(MsgSeqPatternCopied, "Pattern {1} copied")
 STR(MsgSeqPatternPasted, "Pattern pasted into {1}")
 STR(MsgShapeCopied, "{1} shape copied")
 STR(MsgNothingCopied, "Copy a shape first")
+STR(MsgShapePasted, "Shape pasted into {1}")
+STR(MsgShapeThinned, "Pasted {1} of its {2} points") // into a curve that holds fewer
+STR(MsgCurveEmpty, "Draw a curve first") // Copy Shape on a sequencer lane without one
+STR(NameOpEnvelope, "Op {1} Envelope") // a drawn shape's name, in the messages copying and pasting it
+STR(NameShaper, "Shaper {1}")
+STR(NameShaperEffect, "Shaper effect")
+STR(NameSeqLane, "{1} lane") // a sequencer lane's curve, by the lane's name
 STR(MsgNoteCurveEnds, "End points can't be deleted")
 STR(MsgCurveEnds, "End points can't be deleted")
 STR(MsgCurveMiddle, "Symmetric curves keep their middle point")

@@ -74,7 +74,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - per-voice host modulation, and a mod-envelope slot driving its target, and running its release out after
     the operators have faded (the voice reporting `NOTE_END` only then); likewise a Curve in Sustain, let go in its
     loop, playing on to its curve's end (`NOTE_END` half a second on, once; at once with nothing to modulate), and
-    looping on under the sustain pedal until it comes up;
+    looping on under the sustain pedal until it comes up; and an operator's drawn envelope, let go, playing on to its
+    shape's end, its voice's `NOTE_END` coming once then (at once on its AHDSR);
   - spectrum checks on an A4: the matrix produces FM sidebands; a Ring route at 100 % leaves only the sum and
     difference and at 50 % is AM, Linear FM keeps the mean pitch (through zero too) where Exp FM lifts it by its
     octaves, and feedback stays Phase whatever its mode param says; every wave sounds; a saw's 2nd harmonic sits at
@@ -437,6 +438,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
     over as long and following its curve after, in mono a new key in its release
     starting it again and legato keys looping on; a loop of no length holding, and one the other way round, outside
     the curve or not a number playing in order or as the whole curve;
+  - an operator's drawn envelope: playing its shape sample for sample, bends and all, and holding its end while held;
+    let go at its end fading out over 5 ms; in Sustain looping its loop while held and, let go, leaving it from the
+    level it was at and sliding onto its shape by its end, a loop ending on a drop going down with it over 5 ms;
+    started again going on from the level it was at; and in the synth, an operator's level and place following its
+    shape, its voice ending once it has faded out, and in Sustain looping while held and playing on to its end;
   - the scope capturing nothing until asked, then an operator's cycles from where they start (a sine's a sine, a
     square's a square), standing still from one span to the next under FM, two cycles differing under a modulator
     at half the ratio, a slow span shown as it fills, nothing again once it isn't asked for, a low note's (an A0's)
@@ -895,6 +901,15 @@ the plain CMake commands and installing into a host are in the [README](README.m
     would cross the other end left out; the widened card's strip along its plot's top, none one-shot; and, let go in
     Sustain, its dot keeping to its curve while a dashed line across moves to the level it puts out (read off the
     rendered pixels);
+  - an operator's ENVELOPE tab's ADSR | Curve switching to its drawn envelope in one undo step, drawn from its AHDSR
+    the first time (its points, loop and Length) and kept as drawn after; One-Shot | Sustain and its sync switch, its
+    Length knob setting its length or, synced, its note value; its loop's end dragged on the tab's display onto the
+    grid, one undo step; the newest voice's dot on it (read off the rendered pixels); and its pencil opening and
+    closing its full-size editor, a view tab and ADSR closing it too;
+  - Copy Shape and Paste Shape: an operator's envelope copied from its menu (Paste Shape offered only once a shape is
+    copied) pasting into a Curve source by Ctrl+V as it is, with its loop region, one undo step; into a symmetric voice
+    shaper's curve its ends at the curve's and a point in its middle; a Curve source of 40 points into velocity's
+    curve thinned to its 16; into the BEND lane across the pattern, and the lane's curve copied back;
   - an LFO's shape list (going with the LFO undone, offering no Random or Custom shape, the wheel stepping along it
     to Square), a Random
     source starting synced and bipolar, its knobs, its dot waiting at the end of a cycle and, at 0 Hz, a line at the value it holds
@@ -1359,6 +1374,7 @@ breakpoints in `src/` then hit.
 | `src/amp.h`, `src/amp.cpp` | The Amp effect's sound: its models (preamp stages, tone stack, power amp), cabinets and mics, its oversampling, and the responses the editor draws (`src/fx/ampfx.h` runs it in a slot) |
 | `src/analyzer.cpp` | The spectrum analyzer (FFT) behind the Param EQ's, filter effect's, phase disperser's and voice filters' displays |
 | `src/envelope.h` | AHDSR used by operators and mod envelopes |
+| `src/drawnenvelope.h` | An operator's drawn envelope: its shape stepped a sample at a time, its loop in Sustain, and its release on to the shape's end |
 | `src/fxlag.h` | How late each path through the effects graph is from the effects that run oversampled, the pads that keep paths meeting in step, and the output's latency |
 | `src/unison.h` | Where an operator's unison copies go: their detune, place and level by its Unison Curve, Pan and Blend, for the voices and the UNISON tab alike |
 | `src/warp.h` | An operator's warps: where along its cycle it reads its wave, how much they squeeze it and where they bend it |
@@ -1380,6 +1396,7 @@ breakpoints in `src/` then hit.
 | `src/gui/fxpanel.h`, `src/gui/fxpanel.cpp` | The FX view, `FxPanel`: the effects' line of effects, splits and joins as it shows it: its two views, the row (each split a container holding its bands) and the graph's slot grid with its +s and inspector, their cards' and nodes' moves (and Ctrl-drag copies), glides and scrolling; a split's controls, which both show; the list of effects, the bin and its questions. What an effect's card holds below its title row is still the `View`'s |
 | `src/gui/fxgraph.h` | The effects graph's look (its bands' colors and the splits'), shared by the editor's files |
 | `src/gui/shapeeditor.h`, `src/gui/shapeeditor.cpp` | The drawn shapes' editors, `ShapeEditor`: Curve sources' shapes, shaper curves and the note source's and velocity's curves, edited in place (a widened source card, an effect's card, a voice shaper's page) or in the full-size editor over the panels' row, and a Custom wave's partial editor; which are open, the points picked, Points \| Steps and Snap, the grid, symmetric curves, and the shared painters of a shaper's curve and a widened card's shape |
+| `src/gui/shapeclip.h` | The drawn shape Copy Shape keeps, shared by the shape editors and the SEQ view's lanes, and how a paste fits it to where it goes |
 | `src/gui/modspanel.h`, `src/gui/modspanel.cpp` | The MODS view, `ModsPanel`: every modulation as a row, its filter, and the cascading menus (the target's with a search) that move it, retarget it and pick its aux |
 | `src/gui/seqpanel.h`, `src/gui/seqpanel.cpp` | The SEQ view, `SeqPanel`: the sequencer's settings card, and the piano roll with its tools, ruler, keys and lane |
 | `src/gui/dialogs.cpp` | The settings and confirm dialogs, the preset bar's actions (Init, Load, Save, Save As, the arrows), and the text fields' editing |
@@ -1436,7 +1453,8 @@ itself.
   under the MIT license (`LICENSE`).
 - Parameter ids are stored in host projects and automation. `src/params.h` derives them per section with spare
   room: globals 0+, operators 100 + 50·op (their filter and shaper sends, then Fixed, Freq, Mult, Phase, Ratio, Pan,
-  Sync, Warp, Warp Amount, Unison Curve, Unison Pan and Unison Blend; the
+  Sync, Warp, Warp Amount, Unison Curve, Unison Pan and Unison Blend, then the drawn envelope's EnvMode, EnvSustain,
+  EnvLoopStart, EnvLoopEnd, EnvLength, EnvSync and EnvDivision, ids 137 to 143 + 50·op; the
   9th field, once Velocity, does nothing and is hidden, kept so the ids after it stay, as are the first two, once
   Coarse and Fine, since Ratio after Phase), matrix
   400 + 10·from + to, filter modulation
@@ -1475,7 +1493,8 @@ itself.
   read when loading a state from before version 9. The sequencer's settings are 40000+, each pattern's length and
   loop 40100 + 10·pattern, each pattern's notes 41000 + 10·(128·pattern + note), and each pattern's curves
   47000 + 200·(2·pattern + curve), the bend's then the mod wheel's, and each macro's 50000 + 200·(8·pattern + macro), a
-  point count and 64 (x, y, curve) points each (see `SeqParam`, `SeqCurveParam`).
+  point count and 64 (x, y, curve) points each (see `SeqParam`, `SeqCurveParam`). The operators' drawn envelopes'
+  shapes are 64000 + 200·op (`opEnvShapeIndex()`), a point count and 64 points each, as a source's shape.
   Once released, new fields go at the end of their section's
   enum and fields are never reordered. The same goes for the wave, filter type, effect type, source type, route
   mode, slot aux field, split field, wire field, port, amp model, cabinet, mic, fixed Mult, operator sync (`OpSync`),
@@ -1511,9 +1530,9 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 2,027 of the 38,104 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 2,027 of the 39,304 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 1,600 of them the slots' depths and Amounts. The editor's alone are those the table marks
-  `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain's retired order, the
+  `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the operators' drawn envelopes' fields, the Custom waves' partials and counts, the chain's retired order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'
   fields, the effects graph (its splits, joins and wires), the source places' own fields (a place's slot
   depths are listed, whatever it holds) and the sequencer's root, scale, patterns' lengths and loops, notes and curves. Nothing hosts

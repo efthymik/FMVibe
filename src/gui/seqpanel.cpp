@@ -6,6 +6,7 @@
 #include "icons.h"
 #include "layout.h"
 #include "modulationmodel.h"
+#include "shapeclip.h"
 #include "theme.h"
 
 #include <algorithm>
@@ -821,6 +822,59 @@ void SeqPanel::setSeqCurve(SeqCurve curve, const std::vector<SeqCurvePoint> &poi
         editMany(changes);
 }
 
+std::string SeqPanel::seqLaneName() const {
+    const SeqCurve curve = seqLaneCurve();
+    const int macro = seqCurveMacro(curve);
+    const std::string lane = macro >= 0                    ? trf(Str::SeqLaneMacro, {std::to_string(macro + 1)})
+                             : curve == SeqCurve::ModWheel ? tr(Str::SeqLaneWheel)
+                                                           : tr(Str::SeqLaneBend);
+    return trf(Str::NameSeqLane, {lane});
+}
+
+// Its points across the pattern (those past its end left out, as it plays), its levels from the bottom of its range to
+// the top; it runs on round the pattern's end, so a point at its start stands where that way passes it.
+void SeqPanel::copySeqCurve() {
+    const SeqCurve curve = seqLaneCurve();
+    const double steps = std::max(static_cast<double>(seqSteps()), 1.0);
+    ShapeClip clip;
+    clip.wraps = true;
+    for (const SeqCurvePoint &q : seqCurvePoints(curve))
+        if (q.x <= steps)
+            clip.points.push_back({q.x / steps, curve == SeqCurve::Bend ? q.y : q.y * 2.0 - 1.0, q.curve});
+    if (clip.points.empty()) {
+        host_.flash(tr(Str::MsgCurveEmpty));
+        return;
+    }
+    if (clip.points.size() == 1) { // a level, all the way round
+        clip.points = {{0.0, clip.points[0].y, 0.0}, {1.0, clip.points[0].y, 0.0}};
+        clip.wraps = false;
+    }
+    clipFromStart(clip.points);
+    shapeClipboard() = clip;
+    host_.flash(trf(Str::MsgShapeCopied, {seqLaneName()}));
+}
+
+void SeqPanel::pasteSeqCurve() {
+    const ShapeClip &clip = shapeClipboard();
+    if (clip.empty()) {
+        host_.flash(tr(Str::MsgNothingCopied));
+        return;
+    }
+    const SeqCurve curve = seqLaneCurve();
+    const double steps = std::max(static_cast<double>(seqSteps()), 1.0);
+    std::vector<SeqCurvePoint> points;
+    for (const ShapeClip::Point &p : thinClip(clip.points, kSeqCurvePoints)) {
+        const double y = std::clamp(p.y, -1.0, 1.0);
+        points.push_back({std::clamp(p.x, 0.0, 1.0) * steps, curve == SeqCurve::Bend ? y : (y + 1.0) * 0.5,
+                          std::clamp(p.curve, -1.0, 1.0)});
+    }
+    seqCurvePick_ = SeqCurvePick{};
+    controller().beginStep();
+    setSeqCurve(curve, points);
+    controller().endStep();
+    host_.flash(trf(Str::MsgShapePasted, {seqLaneName()}));
+}
+
 float SeqPanel::seqCurveY(SeqCurve curve, double v) const {
     const float top = roll().laneArea.y + 6.0f, h = roll().laneArea.h - 12.0f;
     const double share = curve == SeqCurve::Bend ? (v + 1.0) * 0.5 : v;
@@ -1173,7 +1227,7 @@ namespace {
 // The roll's menu's commands, after SeqPanel::kMenuCommands.
 enum SeqMenu {
     kSeqCut, kSeqCopy, kSeqPaste, kSeqDuplicate, kSeqDelete, kSeqSelectAll, kSeqSlide, kSeqMute, kSeqQuantize,
-    kSeqCopyPattern, kSeqPastePattern, kSeqClearPattern
+    kSeqCopyPattern, kSeqPastePattern, kSeqClearPattern, kSeqCopyShape, kSeqPasteShape
 };
 } // namespace
 
@@ -1187,6 +1241,12 @@ bool SeqPanel::contextMenu(const std::optional<Widget> &hit, Point p, std::vecto
             items.push_back({0, ""});
             items.push_back({kMenuCommands + kSeqClearPattern, tr(Str::MenuSeqClearPattern)});
         }
+        return true;
+    }
+    if (hit && wide() && hit->kind == Kind::SeqLane && seqCurveLane()) { // its curve, as a drawn shape
+        items.push_back({kMenuCommands + kSeqCopyShape, tr(Str::MenuCopyShape)});
+        if (!shapeClipboard().empty())
+            items.push_back({kMenuCommands + kSeqPasteShape, tr(Str::MenuPasteShape)});
         return true;
     }
     if (!hit || !wide() || hit->kind != Kind::SeqGrid)
@@ -1244,6 +1304,12 @@ bool SeqPanel::menuCommand(int command) {
     switch (command) {
     case kSeqCopyPattern:
         copySeqPatternToClip(seqMenuTile_);
+        break;
+    case kSeqCopyShape:
+        copySeqCurve();
+        break;
+    case kSeqPasteShape:
+        pasteSeqCurve();
         break;
     case kSeqPastePattern:
         pasteSeqPattern(seqMenuTile_);
@@ -1356,6 +1422,15 @@ bool SeqPanel::key(Key key, bool shift) {
         std::iota(all.begin(), all.end(), 0);
         host_.clearShapePick();
         setSeqCurvePick(std::move(all));
+        return true;
+    }
+    // Over the lane's curve, Ctrl+C copies it as a shape and Ctrl+V pastes the shape copied into it.
+    if (seqCurveLane() && (key == Key::Copy || key == Key::Paste) && host_.hovered() &&
+        host_.hovered()->kind == Kind::SeqLane) {
+        if (key == Key::Copy)
+            copySeqCurve();
+        else
+            pasteSeqCurve();
         return true;
     }
     // Over a pattern's tile, Ctrl+C copies its pattern and Ctrl+V pastes the one copied over it.

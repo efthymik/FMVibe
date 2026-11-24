@@ -155,20 +155,29 @@ double ModulationModel::curveLength(int source) const {
 }
 
 std::string ModulationModel::curvePlace(int source, double x, bool brief) const {
+    const CurveTime time = curveTime(source);
+    const int division = static_cast<int>(std::lround(value(paramIndex(source, SourceParam::Division))));
+    return shapePlaceText(time,
+                          time == CurveTime::Seconds ? curveLength(source)
+                          : time == CurveTime::Beats ? divisionBeats(division)
+                                                     : 1.0,
+                          x, brief);
+}
+
+std::string shapePlaceText(ShapeTime time, double length, double x, bool brief) {
     char text[48];
-    switch (curveTime(source)) {
-    case CurveTime::Seconds: {
-        const double seconds = x * curveLength(source);
+    switch (time) {
+    case ShapeTime::Seconds: {
+        const double seconds = x * length;
         if (brief) // as few figures as tell the ruler's places apart
             std::snprintf(text, sizeof(text), "%.3g s", seconds);
         else
             std::snprintf(text, sizeof(text), "%.2f s", seconds);
         break;
     }
-    case CurveTime::Beats: {
+    case ShapeTime::Beats: {
         // Bars of four beats from 1, as the sequencer counts them; on a ruler, a bar or a beat goes without the rest.
-        const int division = static_cast<int>(std::lround(value(paramIndex(source, SourceParam::Division))));
-        const double beats = x * divisionBeats(division);
+        const double beats = x * length;
         const double sixteenths = std::floor(beats * 4.0 + 1e-6);
         const int bar = static_cast<int>(sixteenths / 16.0) + 1;
         const int beat = static_cast<int>(std::fmod(sixteenths, 16.0) / 4.0) + 1;
@@ -181,7 +190,7 @@ std::string ModulationModel::curvePlace(int source, double x, bool brief) const 
             std::snprintf(text, sizeof(text), "%d.%d.%d", bar, beat, sixteenth);
         break;
     }
-    case CurveTime::Share:
+    case ShapeTime::Share:
         std::snprintf(text, sizeof(text), brief ? "%.0f %%" : "%.1f %%", x * 100.0);
         break;
     }

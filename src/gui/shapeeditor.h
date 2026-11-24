@@ -34,6 +34,12 @@ enum class Curve; // see icons.h
 // the shaper.
 constexpr int kNoteCurve = kMaxSources + kShaperUnits;
 constexpr int kVelocityCurve = kNoteCurve + 1;
+// An operator's drawn envelope (see OpParam::EnvMode): a curve, edited on its ENVELOPE tab or full size over the routing
+// panel (as its Custom wave's partials are).
+constexpr int kOpEnvCurve = kVelocityCurve + 1;
+inline bool isOpEnvCurve(int shape) { return shape >= kOpEnvCurve && shape < kOpEnvCurve + kOps; }
+inline int opEnvCurve(int op) { return kOpEnvCurve + op; }
+inline int opOfEnvCurve(int shape) { return shape - kOpEnvCurve; }
 inline bool isCurve(int shape) { return shape >= kMaxSources; } // a shaper's, the note's or velocity's: no wrap
 inline bool isClipCurve(int shape) { return shape >= kMaxSources && shape < kMaxSources + kFxSlots; } // an effect's
 inline bool isShaperCurve(int shape) { return shape >= kMaxSources + kFxSlots && shape < kNoteCurve; }
@@ -64,6 +70,8 @@ public:
     static constexpr int kMenuDeletePoint = 5;
     static constexpr int kMenuSetLoopStart = 6;
     static constexpr int kMenuSetLoopEnd = 7;
+    static constexpr int kMenuCopyShape = 8; // over any shape: Copy Shape, and Paste Shape while one is copied
+    static constexpr int kMenuPasteShape = 9;
 
     // The big editor shows over the routing panel and the inspector while the LFO's shape is Custom, over the routing
     // panel while the note source's or velocity's curve or a voice shaper's is open, or over the effects for a shaper
@@ -81,6 +89,17 @@ public:
     // open, or closed if it is the one asked for already. Both full-size editors closed (another view shown), the
     // partials of `op` opened in their place, or closed unless they are `op`'s (another node shown).
     void toggleShape(int shape) { shapeEditor_ = shapeEditor_ == shape ? -1 : shape; }
+    // An operator's envelope switched to its drawn one (Curve), in one undo step: the first time, while its shape is
+    // still as a new patch has it, drawn from its AHDSR (the attack, hold and decay, a flat stretch at the sustain
+    // level as Sustain's loop, then the release), its Length their sum.
+    void drawEnvelope(int op);
+    // A shape copied as it is drawn (see shapeclip.h), and the shape copied pasted into one, fitted to it, as one undo
+    // step: as it is into a Curve source or an operator's envelope (with its loop region, if it has one); into a shaper's
+    // curve with its ends at the curve's, a symmetric curve keeping a point in its middle; into the note source's or
+    // velocity's curve thinned to the points they hold. Each says what it did.
+    void copyShape(int shape);
+    void pasteShape(int shape);
+    std::string shapeName(int shape) const; // "LFO 2", "Op A Envelope", "Shaper 1", "Velocity"
     void close();
     void openPartials(int op);
     void closePartialsBut(int op);
@@ -108,6 +127,10 @@ public:
     // its title row's buttons, its tools and modes, its grid's steppers and its plot with its points.
     void drawnWidgets(std::vector<Widget> &list, int unit, Rect display) const;
     void cardWidgets(std::vector<Widget> &list, int lfo, float card) const;
+    // An operator's drawn envelope on its ENVELOPE tab (kOpEnvPlot): its plot, loop strip, bends and points; and its
+    // painting there, with the ruler's times, the loop and where the newest voice is.
+    void opEnvWidgets(std::vector<Widget> &list, int op) const;
+    void paintOpEnvelope(Canvas &c, int op);
     // A shaper's transfer curve, or its drawn curve to edit: an effect slot's or (unit kFxSlots + shaper) a voice
     // shaper's.
     void paintShaperCurve(Canvas &c, Rect r, int unit);
@@ -169,8 +192,18 @@ private:
     // inside it, or else a new loop drawn across; and where the mouse is on the grid's columns, which a loop's ends
     // snap to.
     bool curveShape(int shape) const;
+    bool loopedShape(int shape) const; // a Curve source's or an operator's drawn envelope: a loop and a ruler
     bool loopShown(int shape) const;
     LfoLoop loopOf(int shape) const;
+    std::pair<int, int> loopParams(int shape) const; // its loop's start and end params
+    // How its places read: a Curve source's as its clock has them, an operator's envelope's as times (or beats
+    // synced); and its whole time in seconds or beats.
+    struct ShapeClock {
+        ShapeTime time;
+        double length;
+    };
+    ShapeClock shapeClock(int shape) const;
+    std::string placeText(int shape, double x, bool brief) const;
     Rect loopStrip(int shape) const;
     enum class LoopGrab { New, Move, Start, End };
     LoopGrab loopGrabAt(int shape, float x) const;
@@ -252,6 +285,12 @@ private:
     // Painting the full-size editors and what goes with them.
     void paintShapeEditor(Canvas &c, int shape);
     void paintClipCurveEditor(Canvas &c, int shape);
+    void paintOpEnvEditor(Canvas &c, int shape);
+    // An operator's drawn envelope's outline over `r`, filled from its bottom (no level), and where the newest voice is.
+    void paintOpEnvCurve(Canvas &c, int shape, Rect r);
+    // Its full-size editor's title row: after its name, One-Shot | Sustain, its sync switch and its Length.
+    Rect opEnvTitleSync() const;
+    Rect opEnvTitleKnob() const;
     void paintNoteCurveEditor(Canvas &c);
     void paintVelocityCurveEditor(Canvas &c);
     // The note source's or velocity's curve over the plot `r`, filled under it, and a dot `dot` of the way across it (0..1,
@@ -319,9 +358,10 @@ private:
     std::mt19937 random_{std::random_device{}()}; // the partial editor's dice
     std::pair<int, int> menuPoint_{-1, -1}; // shape and point of the open context menu's Delete Point
     std::pair<int, double> menuLoop_{-1, 0.0}; // shape and place its Set as Loop Start and End take
+    int menuShape_ = -1; // the shape its menu was opened over, for Copy Shape and Paste Shape
     int menuCurve_ = -1;                     // the bend the open context menu straightens, or -1
-    // Where each shape is edited, kept while the host's scope goes on: by shape + 1, to kVelocityCurve.
-    std::array<ScopeCache<Rect>, kMaxSources + kShaperUnits + 3> shapeAreas_{};
+    // Where each shape is edited, kept while the host's scope goes on: by shape + 1, to the last operator's envelope.
+    std::array<ScopeCache<Rect>, kOpEnvCurve + kOps + 1> shapeAreas_{};
 };
 
 } // namespace fmvibe::gui

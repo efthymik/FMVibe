@@ -140,9 +140,9 @@ struct UiLayout {
     // Routes (param indices) that keep their wire at 0 %, so modulation can still be dropped on
     // them. A route joins once it is on, and leaves only when it is disconnected.
     std::vector<int> keptRoutes;
-    // How many lines the shape editor's grid has across and up and down; Ctrl snaps to them.
+    // How many lines the shape editor's grid has across and up and down; Ctrl snaps to them. 8 x 8 to begin with.
     // Like the zoom, it belongs to the editor, not the patch: presets leave it alone.
-    int shapeGridX = 16;
+    int shapeGridX = 8;
     int shapeGridY = 8;
     // The macros' names, empty for "Macro 1" and so on: part of the patch, like the node places. UTF-8, at most
     // kMaxMacroName bytes (whole characters), as the state saves them.

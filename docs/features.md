@@ -35,6 +35,18 @@ What the plugin does and how its editor works, in full. Building and installing 
     The knob's stretch from 0 to 1 ms lies below where it used to stop, so patches saved before it (state version 3
     and earlier) keep their times, and their modulation depths on these times load scaled to swing them as far as
     before);
+  - **Drawn envelopes** (EnvMode, ADSR to begin with): an operator's envelope can be a drawn curve instead of its
+    AHDSR, a shape of up to 64 points (`opEnvShapeIndex()`, ids 64000 + 200·op) whose level goes from 0 at its
+    bottom to full at its top, played over its **Length** (1 ms to 10 s, about a second to begin with), or synced to
+    a note value at the tempo. **One-Shot** plays it once from each note and holds its end while the key is down;
+    **Sustain** (to begin with) loops its loop region, the whole curve to begin with, while the key is down. Let go,
+    it goes on at once from the level it is at to the curve's end, as a Curve source's Sustain does (an offset fading
+    by the next point, or a 5 ms glide where the loop ends on a drop or at the curve's end), and a curve ending above
+    0 fades out over 5 ms there, so the voice can end. It is stepped per sample (`DrawnEnvelope` in
+    `src/drawnenvelope.h`, which `Envelope` follows in a stage of its own, so the voices' loop calls it as before):
+    each segment's bend kept as an exponential multiplied each sample, not worked out again. Its fields and shape are
+    the editor's alone (hidden from hosts); Length can be modulated, at the control rate. An operator on its AHDSR
+    costs what it did;
   - **Fixed** pitch (off by default): the operator plays at **Freq** (1 Hz–2 kHz on a log curve) times **Mult**
     (×0.001, ×0.01, ×0.1, ×1 or ×10), so 1 mHz to 20 kHz, whatever the note. The note, pitch bend, glide, the
     global Pitch and the note's tuning don't move it, nor do its ratio, Pitch and Detune, or modulation on them;
@@ -1741,8 +1753,24 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     second click being another: **Invert** flips it upside down; **Reverse** plays it back to front, the first point
     staying first and each segment bent the other way; **Shift left** and **Shift right** move it a column of the
     grid earlier or later, round the cycle (where the new start falls, a point is put on the curve if there is none
-    there, splitting its segment without changing its course); **Copy** keeps the shape, and **Paste** puts it into
-    another Curve source (faint until a shape is copied; for now Curve sources' shapes only). Under them, **Points | Steps** picks what a
+    there, splitting its segment without changing its course); **Copy** and **Paste** copy the shape and paste the one
+    copied, as Copy Shape and Paste Shape do (Paste faint until a shape is copied). **Copy Shape** and **Paste Shape**
+    are in the right-click menu over every drawn shape (after a point's or a bend's own entries; Paste Shape only once
+    one is copied), and **Ctrl+C** and **Ctrl+V** with the mouse over it do the same: a Curve source's, an operator's
+    drawn envelope, a voice shaper's or a shaper effect's Custom curve, the note source's and velocity's curves, and a
+    sequencer lane's curve (BEND, MOD WHEEL and the macros', over the lane, where Ctrl+C and Ctrl+V over the roll still
+    copy notes). The clipboard (`src/gui/shapeclip.h`) holds the shape as it is drawn, whatever it came from: its points
+    along it, their levels, their bends, whether it runs on round its end (an LFO's, a lane's) and its loop region (a
+    Curve source's, an operator envelope's); a symmetric curve as it sounds, its left half its right half turned round
+    the middle; a lane across its pattern, up its range, a point put at its start where its way round passes it. A
+    paste is one undo step and fits the shape to where it goes: as it is into a Curve source or an operator's envelope,
+    with its loop region if it has one (else the target's stays); into a shaper curve with its first and last points
+    at its ends (a shape that runs round its end getting a point at the end at its first point's level), a symmetric
+    curve staying symmetric with a point in its middle (put on the curve); into the note source's or velocity's curve
+    thinned to its 16 points, keeping its ends (one at a time, the point whose going changes the shape least, the
+    segment left across its place bent as near it as it can be), saying "Pasted 16 of its 41 points"; into a lane
+    across the pattern's length in steps and up the lane's range. Each says where it went ("Shape pasted into Op A
+    Envelope"), Ctrl+V with nothing copied "Copy a shape first". Under them, **Points | Steps** picks what a
     click on the shape does, in the card and in every big editor below, which has them too (left of its GRID, or in
     a shaper effect's narrower editor in its title row, left of the reset button): with Points, as below; with
     Steps, a click draws a step, as Alt+click does with Points, and Alt+click works with points. **Snap** snaps
@@ -1777,7 +1805,7 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     hold 64 points, so every column can hold a step even on the finest grid, 32 across; the note source's curve
     and velocity's hold 16. The small dots halfway along each segment bend it (a jump has none): drag them up or down,
     double-click to straighten. **GRID**, under the
-    editor, sets how many lines run across (2–32, thirds included) and up and down (2–16), with its − and +
+    editor, sets how many lines run across (2–32, thirds included) and up and down (2–16), 8 and 8 to begin with, with its − and +
     buttons or the mouse wheel; hold Ctrl to snap points to them. The grid belongs to the editor: it is saved with
     the project, and presets leave it alone (so do Points | Steps and Snap). The first point always sits at the start of the cycle. A shaper
     effect's Custom curve opens the same editor from the edit button (a pencil) beside its card's curve list, in a panel in the middle of the
@@ -1890,7 +1918,18 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     opens none), so its knobs can take the drop:
     - **Envelope** (to begin with): the operator's envelope, and its knobs. While notes play, a dashed line across
       it shows the newest voice's envelope level, with a dot where it meets the curve, as a mod envelope's card
-      does.
+      does. A row along its top holds **ADSR | Curve**; with Curve, One-Shot | Sustain (the Curve source's icons),
+      its sync switch (the metronome) and, at the right, a pencil. Switched to Curve the first time (its shape still
+      as a new patch has it), the curve is drawn from the AHDSR in the same undo step: the attack, hold and decay, a
+      flat stretch at the sustain level as Sustain's loop (a quarter of the other times, at least 50 ms), then the
+      release, the segments' curves bent alike, Length their sum. The display then shows the drawn curve, edited in
+      place as a voice shaper's curve is on its page (points, bends, Points | Steps and Snap from the grid's
+      settings), with its loop's bar along its top in Sustain and the ruler's times at its foot, and a Length knob
+      (a note value while synced) in place of the five. While notes play, a dashed line across shows the newest
+      voice's level and a dot where it is on the curve. The pencil opens its full-size editor over the routing panel,
+      the inspector staying beside it (the tab's display greyed out meanwhile), with One-Shot | Sustain, sync and
+      Length in its title row, the loop's strip and ruler over the plot as a Curve source's has them, and the point
+      menu's Set as Loop Start and Set as Loop End; the pencil again, Done, a view's tab or ADSR closes it.
     - **Unison**: a display of where the copies sit (left/right by spread, up/down by detune, each drawn as large
       and as strong as Blend leaves it; a Random mode as one note might spread them), with a row of buttons along
       its bottom, each an icon named in its tooltip: the four Unison Curves (five copies' pitches as ticks), then,

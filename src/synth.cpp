@@ -543,6 +543,7 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
     // voice is stolen for it, which may be that one.
     struct Joined {
         std::array<Envelope, kOps> ops;
+        std::array<DrawnEnvelope, kOps> drawn;
         std::array<Envelope, kMaxSources> modEnvs;
         std::array<Lfo, kMaxSources> lfos;
     };
@@ -559,6 +560,7 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
             joined.emplace();
             for (int op = 0; op < kOps; ++op)
                 joined->ops[op] = with->ops[op].env;
+            joined->drawn = with->drawn; // its Envelopes follow these from its first block on
             joined->modEnvs = with->modEnvs;
             joined->lfos = with->lfos;
         }
@@ -590,6 +592,7 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
     if (joined) { // fading in, since its envelopes may start well above nothing
         for (int op = 0; op < kOps; ++op)
             v.ops[op].env = joined->ops[op];
+        v.drawn = joined->drawn;
         v.modEnvs = joined->modEnvs;
         v.lfos = joined->lfos;
         v.keepLfos = true;
@@ -598,6 +601,8 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
     }
     for (Operator &op : v.ops)
         op.env.start();
+    for (DrawnEnvelope &drawn : v.drawn)
+        drawn.start();
     for (Envelope &env : v.modEnvs)
         env.start();
     // The first step and the start phase come in the voice's first block. The places past the first kFirstSources draw
@@ -785,6 +790,8 @@ void Synth::moveVoice(Voice &v, const HeldNote &to, bool retrigger, bool glide) 
         // Envelopes restart from their current level, so there's no click.
         for (Operator &op : v.ops)
             op.env.start();
+        for (DrawnEnvelope &drawn : v.drawn)
+            drawn.start();
         for (Envelope &env : v.modEnvs)
             env.start();
         for (Lfo &lfo : v.lfos) { // Random carries on from the value it holds (standing still, takes a new one)
@@ -809,6 +816,8 @@ void Synth::releaseVoice(Voice &v) {
     v.released = true;
     for (Operator &op : v.ops)
         op.env.release();
+    for (DrawnEnvelope &drawn : v.drawn)
+        drawn.release();
     for (Envelope &env : v.modEnvs)
         env.release();
     for (Lfo &lfo : v.lfos) // a Curve in Sustain leaves its loop in its next block (see leaveLoop())
@@ -1812,6 +1821,7 @@ void Synth::telemetry(Telemetry &out) const {
         out.opLevels[i] = static_cast<float>(newest->ops[i].env.level());
         out.opEnvLevels[i] = static_cast<float>(newest->ops[i].env.level());
         out.opEnvPos[i] = static_cast<float>(newest->ops[i].env.position(newest->ops[i].rates.last()));
+        out.opEnvPhase[i] = newest->ops[i].env.following() ? static_cast<float>(newest->drawn[i].phase()) : -1.0f;
     }
     out.notePitch = static_cast<float>(newest->pitch);
     out.noteVelocity = static_cast<float>(newest->velocity);
@@ -2909,6 +2919,26 @@ FMVIBE_NOINLINE double Synth::voiceLfo(Voice &v, int s, const double *p, const P
     return value;
 }
 
+// Out of renderBlock(), as only some patches play a drawn envelope.
+FMVIBE_NOINLINE void Synth::followDrawn(Voice &v, int op, const double *p, const ParamValues &params) {
+    Envelope &env = v.ops[op].env;
+    DrawnEnvelope &drawn = v.drawn[op];
+    if (p[paramIndex(op, OpParam::EnvMode)] < 0.5) { // switched back to its AHDSR, which goes on from where it is
+        drawn.stop();
+        env.unfollow(drawn.held());
+        return;
+    }
+    const double seconds = p[paramIndex(op, OpParam::EnvSync)] >= 0.5
+                               ? divisionSeconds(p[paramIndex(op, OpParam::EnvDivision)], tempo_)
+                               : timeFromNorm(p[paramIndex(op, OpParam::EnvLength)]);
+    double start = p[paramIndex(op, OpParam::EnvLoopStart)], end = p[paramIndex(op, OpParam::EnvLoopEnd)];
+    start = std::isfinite(start) ? std::clamp(start, 0.0, 1.0) : 0.0;
+    end = std::isfinite(end) ? std::clamp(end, 0.0, 1.0) : 1.0;
+    drawn.prepare(&params[opEnvShapeIndex(op)], seconds * rate_, std::min(start, end), std::max(start, end),
+                  p[paramIndex(op, OpParam::EnvSustain)] >= 0.5, env.level(), rate_);
+    env.follow(drawn);
+}
+
 void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFrames, const ParamValues &params) {
     // This voice's param values before LFOs and envelopes: automation plus host modulation, global and per voice.
     // Freeform shapes are read from `params`; slot modulation of the effects reaches them in render(). What every
@@ -3340,6 +3370,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
 
         const std::array<double, 8> times = opEnvFields(p, i);
         rates[i] = op.rates.get(times, [&] { return envRatesOf(times, rate_); });
+        if (p[paramIndex(i, OpParam::EnvMode)] >= 0.5 || op.env.following()) // its drawn envelope instead
+            followDrawn(v, i, p, params);
         target.out[i] = p[paramIndex(i, OpParam::Out)];
         // Its Pan, equal-power and unity at the center, as the voice's (above): on what it puts out, to the output,
         // the filters and the shapers; what other operators hear of it stays mono.

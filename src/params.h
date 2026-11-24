@@ -109,6 +109,20 @@ enum class OpParam {
     UnisonCurve,                    // one of UniCurve, by number: how the copies spread in pitch (see unison.h)
     UnisonPan,                      // one of UniPan, by number: where the copies sit across the stereo field
     UnisonBlend,                    // 0..1: how far the outer copies are turned down under the middle ones
+    // Its drawn envelope (see drawnenvelope.h), which plays in place of its AHDSR while EnvMode is on (Curve): its
+    // shape's points at opEnvShapeIndex(), a curve from 0 to 1 along its time (no wrap, its first point at the
+    // start and its last at the end), y -1..1 for a level of 0..1. EnvSustain (on to begin with) loops the loop
+    // region, EnvLoopStart to EnvLoopEnd (the whole shape to begin with), while the key is down; off (One-Shot) it
+    // plays the shape once and holds where it ends. Let go, it plays on to its end from the level it is at, and fades
+    // out there. EnvLength is the whole shape's time, a Time, or synced (EnvSync), EnvDivision's note value. Hidden
+    // from hosts, as the drawn shapes are; EnvLength takes modulation.
+    EnvMode,
+    EnvSustain,
+    EnvLoopStart,
+    EnvLoopEnd,
+    EnvLength,
+    EnvSync,
+    EnvDivision,
     Count
 };
 // Slope: 6, 12, 18 or 24 dB per octave, for the types that have one (see hasSlope() and filterSlope()).
@@ -1011,7 +1025,9 @@ constexpr int kSeqPatternBase = kSeqBase + kSeqParamCount;
 constexpr int kSeqNoteBase = kSeqPatternBase + kSeqPatterns * kSeqPatternParamCount;
 constexpr int kSeqCurveBase = kSeqNoteBase + kSeqPatterns * kSeqNotes * kSeqNoteParamCount;
 constexpr int kSeqMacroCurveBase = kSeqCurveBase + kSeqPatterns * kSeqFirstCurves * kSeqCurveParamCount;
-constexpr int kParamCount = kSeqMacroCurveBase + kSeqPatterns * kMacros * kSeqCurveParamCount;
+// The operators' drawn envelopes' shapes (see OpParam::EnvMode), each laid out as a freeform shape (see ShapeParam).
+constexpr int kOpEnvShapeBase = kSeqMacroCurveBase + kSeqPatterns * kMacros * kSeqCurveParamCount;
+constexpr int kParamCount = kOpEnvShapeBase + kOps * kShapeParamCount;
 // The params before the shapes: what LFOs, envelopes and hosts can modulate,
 // and what voices read with modulation applied. Shapes are only ever read as set.
 constexpr int kModulatedCount = kShapeBase;
@@ -1454,6 +1470,8 @@ constexpr int shapeFieldIndex(int base, int point, PointField field) {
     return base + static_cast<int>(ShapeParam::Points) + 3 * point + static_cast<int>(field);
 }
 constexpr int clipCurveCountIndex(int slot) { return kClipCurveBase + slot * kShapeParamCount; }
+// An operator's drawn envelope's shape, by the index of its point count (see OpParam::EnvMode).
+constexpr int opEnvShapeIndex(int op) { return kOpEnvShapeBase + op * kShapeParamCount; }
 // Shapers come as effects and in the voices, alike but for their params' places. A shaper unit is an effect slot
 // (0..kFxSlots - 1), or kFxSlots + a voice shaper; its fields, `curve` being its drawn curve's point count.
 constexpr int kShaperUnits = kFxSlots + kShapers;
@@ -1708,6 +1726,8 @@ constexpr Section kSections[] = {
     {kSeqCurveBase, kSeqPatterns * kSeqFirstCurves, kSeqCurveParamCount, 47000, 200},
     // The macros' curves, pattern by pattern.
     {kSeqMacroCurveBase, kSeqPatterns * kMacros, kSeqCurveParamCount, 50000, 200},
+    // The operators' drawn envelopes' shapes.
+    {kOpEnvShapeBase, kOps, kShapeParamCount, 64000, 200},
     // The operators as sources.
     {kOpSourceBase, kOps, kOpSourceParamCount, 57000, 40},
 };
@@ -1926,7 +1946,9 @@ static_assert(idOfIndex(paramIndex(0, OpParam::RetiredCoarse)) == 100 && idOfInd
                   idOfIndex(paramIndex(0, OpParam::Sync)) == 131 &&
                   idOfIndex(paramIndex(kOps - 1, OpParam::WarpAmount)) == 383 &&
                   idOfIndex(paramIndex(0, OpParam::UnisonCurve)) == 134 &&
-                  idOfIndex(paramIndex(kOps - 1, OpParam::UnisonBlend)) == 386 && kOpParamCount <= 50,
+                  idOfIndex(paramIndex(kOps - 1, OpParam::UnisonBlend)) == 386 && kOpParamCount <= 50 &&
+                  idOfIndex(paramIndex(0, OpParam::EnvMode)) == 137 &&
+                  idOfIndex(paramIndex(kOps - 1, OpParam::EnvDivision)) == 393,
               "operator param ids moved");
 static_assert(idOfIndex(matrixIndex(0, 0)) == 400 && idOfIndex(matrixIndex(kOps - 1, kOps - 1)) == 455,
               "matrix param ids moved");
@@ -2100,6 +2122,9 @@ static_assert(idOfIndex(paramIndex(kFirstSources, SourceParam::Type)) == 58000 &
                   idOfIndex(slotAuxDepthIndex(kFirstSources, 0)) == 49680 &&
                   idOfIndex(slotAuxDepthIndex(kMaxSources - 1, kSlots - 1)) == 49995,
               "the later places' param ids moved");
+static_assert(idOfIndex(opEnvShapeIndex(0)) == 64000 &&
+                  idOfIndex(shapeFieldIndex(opEnvShapeIndex(kOps - 1), kMaxShapePoints - 1, PointField::Curve)) == 65192,
+              "the operators' drawn envelopes' param ids moved");
 static_assert(idOfIndex(routeModeIndex(0, 0)) == 700 && idOfIndex(routeModeIndex(1, 0)) == 710 &&
                   idOfIndex(routeModeIndex(kRouteSources - 1, kOps - 1)) == 795,
               "route mode param ids moved");

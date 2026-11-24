@@ -35,7 +35,7 @@ public:
     static constexpr int kConfirmOverwrite = 10; // a pattern pasted or copied over one that holds notes
     // The roll's right-click menu's commands, numbered from kMenuCommands (as many as kMenuCount; see
     // View::menuCommand(), which numbers the others).
-    static constexpr int kMenuCommands = 50, kMenuCount = 12;
+    static constexpr int kMenuCommands = 50, kMenuCount = 14;
 
     // The SEQ view shows, with no shape editor over it.
     bool wide() const;
@@ -149,6 +149,11 @@ private:
     // The lane on a curve (BEND or MOD WHEEL): which, its points as stored, and those written back (the points past
     // them back to their defaults, so a preset saved sparse leaves them out), in the undo step open.
     bool seqCurveLane() const;
+    // The lane's curve copied as a drawn shape (see shapeclip.h), across the pattern and up its range, and the shape
+    // copied pasted into it as one undo step, across the pattern's length in steps.
+    void copySeqCurve();
+    void pasteSeqCurve();
+    std::string seqLaneName() const; // "Bend lane", "Macro 3 lane"
     SeqCurve seqLaneCurve() const;
     std::vector<SeqCurvePoint> seqCurvePoints(SeqCurve curve) const;
     void setSeqCurve(SeqCurve curve, const std::vector<SeqCurvePoint> &points);

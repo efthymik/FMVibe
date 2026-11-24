@@ -168,6 +168,7 @@ enum class WidgetKind {
     ShapeTool,    // a = lfo, b = ShapeTool: a button in its widened card that changes the whole shape
     ShapeMode,    // a = lfo, b = 0 Points, 1 Steps (what a click on its shape does), 2 Snap (to the grid)
     ShapeLoop,    // a = a Curve's shape: the strip over its plot holding its loop's bar, dragged as the SEQ view's loop
+    OpEnvEdit,    // a = op: its drawn envelope's pencil on its ENVELOPE tab, opening its full-size editor
     UndoButton,   // a = 0 undoes, 1 redoes
     Key,          // a = key of the keyboard (0 = the lowest): drag across keys to play them
     Octave,       // a = -1 or 1: shifts the keyboard down or up an octave

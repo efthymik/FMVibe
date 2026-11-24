@@ -276,6 +276,23 @@ Drag the small dot halfway along a segment up or down to bend it; double-click i
 
 The display zooms to fit the whole envelope. While notes play, a dashed line and a dot show the most recent voice's envelope level and position.
 
+#### Drawn envelopes
+
+**ADSR | Curve**, at the top of the tab, switches the operator to a **drawn envelope**: a curve you draw, which can
+have as many stages as you like. The first time you switch, the curve is drawn from the AHDSR, so the sound stays
+about the same; switching back to ADSR keeps the curve for later.
+
+- Draw it on the display as you would a shaper's curve: double-click to add or delete a point, drag points, and
+  drag the small dots between them to bend a segment.
+- **Length** sets how long the whole curve takes. With the metronome switch on, it is a note value at the tempo.
+- **One-Shot** plays the curve once from each note and holds its last level while the key is down.
+- **Sustain** loops part of the curve while the key is down. Drag the bar along the top of the display to set the
+  loop: its ends size it and its middle moves it. Hold Shift or Ctrl to move it off the grid.
+- When you let go of the key, the envelope goes on from where it is to the end of the curve, so the curve's last
+  part is the release. If the curve doesn't end at the bottom, the note fades out quickly at its end.
+- The pencil opens a large editor for the curve, with the same controls. Click the pencil again, or the check mark,
+  to close it.
+
 ### Unison tab
 
 **Unison** sets how many copies of the operator play (up to 16) and how they spread:
@@ -709,7 +726,8 @@ The **shape tools**, each one undo step:
 - **Invert**: flips the shape upside down.
 - **Reverse**: plays it back to front.
 - **Shift left** / **Shift right**: moves it one grid column, around the cycle.
-- **Copy** and **Paste**: copies the shape into another Curve source.
+- **Copy** and **Paste**: copies the shape, and pastes a copied shape into this one (see
+  [Shape editors](#shape-editors)).
 
 For editing points, see [Shape editors](#shape-editors). Where an LFO has its shape list, a Curve source has its
 **clock mode** as a list; its arrows and the mouse wheel step through the modes. The **Unipolar** switch sits under the
@@ -869,7 +887,8 @@ Right-click any cell of a row for its menu (Edit depth, Bypass, Remove).
 
 ### Shape editors
 
-The same editor is used for Curve source shapes, Custom shaper curves, and the Note and Velocity curves.
+The same editor is used for Curve source shapes, operators' drawn envelopes, Custom shaper curves, and the Note and
+Velocity curves.
 
 **Points and segments**
 
@@ -888,7 +907,8 @@ The same editor is used for Curve source shapes, Custom shaper curves, and the N
 
 **Grid and snapping**
 
-- **GRID** sets the number of vertical (2–32) and horizontal (2–16) grid lines, with its − and + buttons or the wheel.
+- **GRID** sets the number of vertical (2–32) and horizontal (2–16) grid lines, 8 of each to begin with, with its − and +
+  buttons or the wheel.
 - Hold **Ctrl** to snap points and steps to the grid. With **Snap** on, they snap without Ctrl, and Ctrl frees them.
 - Points | Steps, Snap and the grid apply to every shape editor.
 
@@ -904,6 +924,17 @@ it. A point in the middle is added and stays there.
 
 Curve source shapes and shaper curves hold up to 64 points; the Note and Velocity curves up to 16. The full-size
 editors close with the **check mark** or a view tab.
+
+**Copy and paste**: right-click any drawn shape for **Copy Shape** and **Paste Shape**, or press **Ctrl+C** and
+**Ctrl+V** with the mouse over it. This works between every kind of shape: Curve sources, operator envelopes, shaper
+curves, the Note and Velocity curves and the sequencer's curve lanes. A pasted shape is fitted to where it goes:
+
+- A Curve source or an operator envelope takes it as it is, with its loop if it has one.
+- A shaper curve keeps its ends at the left and right edges; a symmetric one stays symmetric.
+- The Note and Velocity curves hold 16 points, so a longer shape keeps the 16 that matter most, and a message says so.
+- A sequencer lane takes it across the whole pattern.
+
+Each paste can be undone in one step.
 
 ## 11. Effects
 
@@ -1747,6 +1778,7 @@ the main CPU costs.
 | Drag from empty space | Select points with a box |
 | Shift+click | Add or remove a point from the selection |
 | Ctrl+A / Delete | Select all / delete selected points |
+| Ctrl+C / Ctrl+V over a shape | Copy the shape / paste the copied one |
 
 ### Sequencer
 

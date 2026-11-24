@@ -886,6 +886,8 @@ Rect View::shapeHome(int shape) const {
         return fxDisplayIn(fxCardOf(shape - kMaxSources).value_or(Rect{}), FxType::Shaper).inset(8.0f);
     if (isShaperCurve(shape)) // on its page in the inspector
         return kShaperDisplay.inset(8.0f);
+    if (isOpEnvCurve(shape)) // on its operator's ENVELOPE tab
+        return kOpEnvPlot;
     return lfoCardPlot(cardOf(shape)); // an LFO's, in its widened card
 }
 
@@ -4274,8 +4276,11 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break;
     case Kind::Choice:
     case Kind::Toggle: {
-        const bool clockMode = isLfoClockChoice(w);
-        const bool on = clockMode                ? static_cast<int>(lfoClockOf(w.a)) == w.b
+        // An operator's drawn envelope's One-Shot | Sustain, as a Curve's clock modes.
+        const bool envClock = w.kind == Kind::Choice && opOfField(w.param, OpParam::EnvSustain) >= 0;
+        const bool clockMode = isLfoClockChoice(w) || envClock;
+        const int clock = envClock ? static_cast<int>(w.b == 1 ? LfoClock::Sustain : LfoClock::OneShot) : w.b;
+        const bool on = isLfoClockChoice(w)                ? static_cast<int>(lfoClockOf(w.a)) == w.b
                         : w.kind == Kind::Choice ? std::lround(value(w.param)) == w.b
                                                  : value(w.param) >= 0.5;
         const Str clipModes[] = {Str::SwitchHard, Str::SwitchSoft, Str::SwitchAsym};
@@ -4292,6 +4297,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                            : isPartialCount(w.param) || field == FxParam::ChorusVoices ? count.c_str()
                            : w.param == paramIndex(GlobalParam::Mono) ? tr(w.b == 0 ? Str::SwitchPoly : Str::SwitchMono)
                            : w.param == paramIndex(GlobalParam::Legato) ? tr(Str::SwitchLegato)
+                           : opOfField(w.param, OpParam::EnvMode) >= 0 ? tr(w.b == 0 ? Str::SwitchAdsr : Str::SwitchCurve)
                            : field == FxParam::ShaperMode               ? tr(clipModes[std::clamp(w.b, 0, 2)])
                            : field == FxParam::AmpMic ? tr(kMicShortNames[std::clamp(w.b, 0, 2)])
                            : field == FxParam::MdRms                                            ? tr(Str::SwitchRms)
@@ -4335,17 +4341,17 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             polaritySign(c, w.rect.center(), w.b == 1, on ? litInk(color) : (hovered ? kText : kDim));
         else if (isFxIconSwitch(field))
             fxSwitchIcon(c, w.rect.center(), field, on ? litInk(color) : (hovered ? kText : kDim));
-        else if (isLfoSync(w.param)) // an LFO's SYNC, the effects' metronome
+        else if (isLfoSync(w.param) || opOfField(w.param, OpParam::EnvSync) >= 0) // SYNC, the effects' metronome
             fxSwitchIcon(c, w.rect.center(), FxParam::DelaySync, on ? litInk(color) : (hovered ? kText : kDim));
         else if (clockMode && w.label) { // a Curve's full-size editor's: its icon, then its name
             const Color ink = on ? litInk(kText) : (hovered ? kText : kDim);
             const float textW = c.textWidth(w.label, kTextLabel, on);
             const float left = w.rect.center().x - (26.0f + textW) * 0.5f;
-            lfoClockIcon(c, {left + 10.0f, w.rect.center().y}, static_cast<LfoClock>(w.b), on ? litInk(color) : ink,
+            lfoClockIcon(c, {left + 10.0f, w.rect.center().y}, static_cast<LfoClock>(clock), on ? litInk(color) : ink,
                          switchIconScale());
             c.text({left + 26.0f, w.rect.y, textW + 2.0f, w.rect.h}, w.label, kTextLabel, ink, Align::Left, on);
         } else if (clockMode)
-            lfoClockIcon(c, w.rect.center(), static_cast<LfoClock>(w.b), on ? litInk(color) : (hovered ? kText : kDim),
+            lfoClockIcon(c, w.rect.center(), static_cast<LfoClock>(clock), on ? litInk(color) : (hovered ? kText : kDim),
                          switchIconScale());
         else if (sourceFieldOf(w.param) == SourceParam::Unipolar) // humps on a baseline, as a MODS row's; a Curve
                                                                    // card's choice either one
@@ -5703,6 +5709,12 @@ void View::paintTooltip(Canvas &c) {
         text = tr(value(param) >= 0.5 ? Str::TipFxOn : Str::TipFxOff);
     else if (isLfoSync(param))
         text = tr(Str::TipLfoSync);
+    else if (opOfField(param, OpParam::EnvMode) >= 0)
+        text = tr(hover_->b == 0 ? Str::TipEnvAdsr : Str::TipEnvCurve);
+    else if (opOfField(param, OpParam::EnvSustain) >= 0)
+        text = tr(hover_->b == 1 ? Str::TipSustain : Str::TipEnvOneShot);
+    else if (opOfField(param, OpParam::EnvSync) >= 0)
+        text = tr(Str::TipEnvSync);
     else if (hover_->kind == Kind::ListStep) {
         const bool next = hover_->b > 0;
         text = tr(isModelList(*hover_)              ? (next ? Str::TipNextModel : Str::TipPrevModel)
@@ -6721,7 +6733,12 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::Choice:
         if (isLfoClockChoice(w))
             setLfoClock(w.a, static_cast<LfoClock>(w.b));
-        else
+        else if (const int op = opOfField(w.param, OpParam::EnvMode); op >= 0 && w.b == 1 && value(w.param) < 0.5)
+            shapes_.drawEnvelope(op);
+        else if (op >= 0 && w.b == 0 && shapeEditing() == opEnvCurve(op)) { // its AHDSR: its drawn one's editor shuts
+            shapes_.close();
+            edit(w.param, w.b);
+        } else
             edit(w.param, w.b);
         break;
     case Kind::Toggle:

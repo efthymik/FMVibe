@@ -45,6 +45,11 @@ constexpr int emptyModOf(int slot) {
     return slot <= -2 ? -2 - slot : -1;
 }
 
+// A place along a drawn shape (0..1) as it reads (see ModulationModel::curvePlace()): `length` its whole time in
+// seconds, or in beats.
+enum class ShapeTime { Share, Seconds, Beats };
+std::string shapePlaceText(ShapeTime time, double length, double x, bool brief);
+
 class ModulationModel : public PatchEdits {
 public:
     using PatchEdits::PatchEdits;
@@ -67,7 +72,7 @@ public:
     // How a place along a Curve source's curve reads, in its readouts and on its ruler: a time while it plays its curve
     // once from each note (One-Shot or Sustain), unsynced and moving, its Rate then reading as the curve's length; in
     // bars and beats while it is synced; else as a share of the cycle (and for any other source).
-    enum class CurveTime { Share, Seconds, Beats };
+    using CurveTime = ShapeTime;
     CurveTime curveTime(int source) const;
     // The curve's length in seconds while its places read as times, else 0.
     double curveLength(int source) const;

@@ -9,6 +9,7 @@
 #include "gui/layout.h"
 #include "gui/lists.h"
 #include "gui/routing.h"
+#include "gui/shapeclip.h"
 #include "gui/theme.h"
 #include "gui/view.h"
 #include "uistrings.h"
@@ -1604,7 +1605,8 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     view.undo();
 
     // The full-size shape editor (from a Curve source's widened card) spans the inspector, which it hides: no
-    // operator tab or knob where they were. Its grid: a step up across is 24 lines, and Ctrl snaps a point to them.
+    // operator tab or knob where they were. Its grid, 8 x 8 to begin with: a step up across is 12 lines, and Ctrl snaps a
+    // point to them.
     model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Curve));
     view.poll();
     click(view, lfoDisplay(0));
@@ -1613,14 +1615,16 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     drag(view, kOpPhaseKnob, {kOpPhaseKnob.x, kOpPhaseKnob.y - 30.0f});
     check(model.value(paramIndex(0, OpParam::Phase)) == fineBefore && model.value(shapeCountIndex(0)) == 2.0,
           "the LFO shape editor hides the inspector");
+    const bool eight = model.layout().shapeGridX == 8 && model.layout().shapeGridY == 8;
     click(view, shapeGrid(0, 2));
     click(view, shapeGrid(1, 0));
-    check(model.layout().shapeGridX == 24 && model.layout().shapeGridY == 6, "the grid's buttons step its lines");
+    check(eight && model.layout().shapeGridX == 12 && model.layout().shapeGridY == 6,
+          "the grid starts 8 x 8, and its buttons step its lines");
     view.mouseDown(shapeAt(0.5, 1.0), {});
     view.mouseMove(shapeAt(0.3, 0.6), {false, true});
     view.mouseUp(shapeAt(0.3, 0.6), {false, true});
     const int point = shapePointIndex(0, 1, PointField::X);
-    check(std::abs(model.value(point) - 7.0 / 24.0) < 1e-9 &&
+    check(std::abs(model.value(point) - 4.0 / 12.0) < 1e-9 &&
               std::abs(model.value(shapePointIndex(0, 1, PointField::Y)) - 2.0 / 3.0) < 1e-9,
           "Ctrl snaps a point to the grid");
     view.mouseMove(shapeAt(0.3, 0.6), {});
@@ -1628,7 +1632,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, kShapeReset);
     const bool reset = model.value(point) == 0.5 && model.value(shapeCountIndex(0)) == 2.0;
     view.undo();
-    check(reset && std::abs(model.value(point) - 7.0 / 24.0) < 1e-9, "the reset button brings the first shape back, and undoes");
+    check(reset && std::abs(model.value(point) - 4.0 / 12.0) < 1e-9, "the reset button brings the first shape back, and undoes");
     click(view, kShapeDone); // back into the widened card, and that back to its size
     click(view, wideButton(0, 0));
 
@@ -3173,10 +3177,10 @@ void testRatioDisplay(const std::filesystem::path &dir, Renderer &renderer) {
 
     // Its depth handles, 10 px apart along its bottom edge and centered on it, hold eight before a pill: the eighth 35 px
     // right of the middle, and with a ninth, six handles and the pill (its middle 29.5 px right of the box's), which
-    // opens their list under it (read off the rendered pixels, inside the envelope's display, clear of the tabs above
-    // it, whose width follows the font).
+    // opens their list under it (read off the rendered pixels, inside the envelope's display, under its ADSR | Curve
+    // row and clear of the tabs above it, whose width follows the font).
     const float middle = detail::kRatioBox.center().x, edge = detail::kRatioBox.bottom() - 1.0f;
-    const Point eighth{middle + 35.0f, edge}, pill{middle + 29.5f, edge}, under{middle + 18.0f, detail::kOpDisplay.y + 6.0f};
+    const Point eighth{middle + 35.0f, edge}, pill{middle + 29.5f, edge}, under{middle + 18.0f, detail::kOpEnvRect.y + 20.0f};
     const uint32_t noEighth = renderer.pixel(eighth);
     for (int place = 1; place < 9; ++place) {
         model.set(paramIndex(place, SourceParam::Type), static_cast<double>(SourceType::Lfo));
@@ -4578,6 +4582,7 @@ void testSeqCurvePick(const std::filesystem::path &dir, Renderer &renderer) {
 // points' Set as Loop Start and Set as Loop End; its places read as times, beats or a share of the cycle.
 void testCurveLoop(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
+    model.layout().shapeGridX = 16; // the loop's columns below
     View view(model);
     model.values[paramIndex(0, SourceParam::Type)] = static_cast<double>(SourceType::Curve);
     model.values[paramIndex(1, SourceParam::Type)] = static_cast<double>(SourceType::Lfo);
@@ -4828,8 +4833,12 @@ void testCurveLoop(const std::filesystem::path &dir, Renderer &renderer) {
     const bool startUndone = loopIs(0.25, pointX);
     const std::vector<std::string> onEnd = labels(shapeAt(pointX, 0.0)); // the loop's end: no Set as Loop Start
     const std::vector<std::string> first = labels(shapeAt(0.0, -1.0));  // left of its start: no Set as Loop End
-    const std::vector<std::string> wanted{tr(Str::MenuSetLoopEnd), "", tr(Str::MenuDeletePoint)};
-    const std::vector<std::string> firstWanted{tr(Str::MenuSetLoopStart)};
+    // Then Copy Shape, and Paste Shape while a shape is copied, as over any shape.
+    std::vector<std::string> wanted{tr(Str::MenuSetLoopEnd), "", tr(Str::MenuDeletePoint), "", tr(Str::MenuCopyShape)};
+    std::vector<std::string> firstWanted{tr(Str::MenuSetLoopStart), "", tr(Str::MenuCopyShape)};
+    if (!shapeClipboard().empty())
+        for (std::vector<std::string> *list : {&wanted, &firstWanted})
+            list->push_back(tr(Str::MenuPasteShape));
     std::printf("      a point's menu: %zu entries at the loop's end, %zu on the first point; loop %.4f to %.4f\n",
                 onEnd.size(), first.size(), model.value(loopStart), model.value(loopEnd));
     check(setEnd && setStart && startUndone && onEnd == wanted && first == firstWanted,
@@ -4884,6 +4893,253 @@ void testCurveLoop(const std::filesystem::path &dir, Renderer &renderer) {
     view.poll();
     check(dotOn == dotOff && rowOn != rowOff,
           "a Curve let go in Sustain keeps its dot on its curve, a line across showing the level it puts out");
+}
+
+// An operator's drawn envelope on its ENVELOPE tab: ADSR | Curve switching to it in one undo step, drawn from its AHDSR
+// the first time (and not again once drawn); One-Shot | Sustain; its sync switch, its Length knob then setting its note
+// value; its loop's bar on the tab's display dragged, one undo step; the newest voice's dot on it (read off the
+// rendered pixels); and the pencil opening its full-size editor, which a view tab closes.
+void testOpEnvCurve(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    model.ui.opTab = InspectorTab::Envelope;
+    const int mode = paramIndex(0, OpParam::EnvMode), sustain = paramIndex(0, OpParam::EnvSustain);
+    const int loopStart = paramIndex(0, OpParam::EnvLoopStart), loopEnd = paramIndex(0, OpParam::EnvLoopEnd);
+    const int length = paramIndex(0, OpParam::EnvLength), sync = paramIndex(0, OpParam::EnvSync);
+    const int division = paramIndex(0, OpParam::EnvDivision), shape = opEnvShapeIndex(0);
+    auto point = [&](int i, PointField field) { return model.value(shapeFieldIndex(shape, i, field)); };
+    model.set(paramIndex(0, OpParam::Attack), normFromTime(0.1));
+    model.set(paramIndex(0, OpParam::Decay), normFromTime(0.3));
+    model.set(paramIndex(0, OpParam::Sustain), 0.5);
+    model.set(paramIndex(0, OpParam::Release), normFromTime(0.4));
+    view.poll();
+    renderer.save(view, dir / "3h-env-adsr.png");
+    click(view, detail::opEnvModeButton(1).center());
+    renderer.save(view, dir / "3h-env-curve.png");
+    const double hold = envTimeFromNorm(model.value(paramIndex(0, OpParam::Hold)));
+    const double column = std::max(0.25 * (0.1 + hold + 0.3 + 0.4), 0.05);
+    const double total = 0.1 + hold + 0.3 + column + 0.4;
+    const int count = static_cast<int>(model.value(shape));
+    const bool filled = model.value(mode) == 1.0 && model.value(sustain) == 1.0 && count == (hold > 0.0 ? 6 : 5) &&
+                        std::abs(timeFromNorm(model.value(length)) - total) < 1e-6 * total &&
+                        std::abs(point(1, PointField::X) - 0.1 / total) < 1e-9 && point(1, PointField::Y) == 1.0 &&
+                        point(count - 3, PointField::X) == model.value(loopStart) &&
+                        point(count - 2, PointField::X) == model.value(loopEnd) &&
+                        point(count - 3, PointField::Y) == 0.0 && point(count - 2, PointField::Y) == 0.0 &&
+                        point(count - 1, PointField::X) == 1.0 && point(count - 1, PointField::Y) == -1.0 &&
+                        point(2, PointField::Curve) < 0.0; // the decay's curve starts fast, as a shape bent down
+    view.undo();
+    const bool undone = model.value(mode) == 0.0 && model.value(shape) == paramTable()[shape].def &&
+                        model.value(length) == paramTable()[length].def;
+    click(view, detail::opEnvModeButton(1).center());
+    model.set(length, normFromTime(2.0)); // drawn now: switching back and again leaves it as it is
+    click(view, detail::opEnvModeButton(0).center());
+    const bool adsr = model.value(mode) == 0.0;
+    click(view, detail::opEnvModeButton(1).center());
+    const bool kept = model.value(mode) == 1.0 && model.value(length) == normFromTime(2.0) &&
+                      static_cast<int>(model.value(shape)) == count;
+    check(filled && undone && adsr && kept,
+          "an operator's ENVELOPE tab's ADSR | Curve switches to its drawn envelope in one undo step, drawn from its "
+          "AHDSR the first time and kept as drawn after");
+
+    click(view, detail::opEnvSustainButton(0).center());
+    const bool oneShot = model.value(sustain) == 0.0;
+    renderer.save(view, dir / "3h-env-oneshot.png");
+    view.undo();
+    const bool sustained = model.value(sustain) == 1.0;
+    const Point knob = detail::kOpEnvLengthKnob;
+    drag(view, knob, {knob.x, knob.y - 40.0f});
+    const bool longer = model.value(length) > normFromTime(2.0);
+    click(view, detail::opEnvSyncButton().center());
+    const double lengthWas = model.value(length), divisionWas = model.value(division);
+    drag(view, knob, {knob.x, knob.y - 40.0f});
+    const bool synced = model.value(sync) == 1.0 && model.value(length) == lengthWas &&
+                        model.value(division) != divisionWas;
+    view.undo();
+    view.undo();
+    const bool unsynced = model.value(sync) == 0.0 && model.value(division) == divisionWas;
+    check(oneShot && sustained && longer && synced && unsynced,
+          "a drawn envelope's One-Shot | Sustain and sync switch set it, its Length knob its length, or synced its note "
+          "value");
+
+    // Its loop's bar, along the top of the tab's display: its end dragged right, onto the grid's columns.
+    const Rect plot = detail::kOpEnvPlot;
+    const double startWas = model.value(loopStart), endWas = model.value(loopEnd);
+    const Point end{plot.x + static_cast<float>(endWas) * plot.w, plot.y - 3.0f};
+    drag(view, end, {end.x + 0.15f * plot.w, end.y});
+    const double endNow = model.value(loopEnd);
+    const bool shortened = endNow > endWas + 0.05 && model.value(loopStart) == startWas &&
+                           std::abs(endNow * 8.0 - std::round(endNow * 8.0)) < 1e-9;
+    view.undo();
+    const bool loopUndone = model.value(loopEnd) == endWas;
+    check(shortened && loopUndone, "a drawn envelope's loop's end, dragged on its ENVELOPE tab, snaps to the grid in one "
+                                   "undo step");
+
+    // The newest voice in its loop: a dot on the shape there (and the line across at its level).
+    const Point dot{plot.x + static_cast<float>(0.5 * (startWas + endWas)) * plot.w, plot.center().y};
+    view.mouseMove({600.0f, 328.0f}, {});
+    renderer.save(view, dir / "3h-env-idle.png");
+    const uint32_t idle = renderer.pixel(dot);
+    model.live.voices = 1;
+    model.live.opEnvPhase[0] = static_cast<float>(0.5 * (startWas + endWas));
+    model.live.opEnvLevels[0] = 0.5f;
+    view.poll();
+    renderer.save(view, dir / "3h-env-playing.png");
+    const uint32_t playing = renderer.pixel(dot);
+    model.live.voices = 0;
+    model.live.opEnvPhase[0] = -1.0f;
+    view.poll();
+    check(playing != idle, "a drawn envelope's ENVELOPE tab shows where the newest voice is on it");
+
+    // The pencil opens the full-size editor over the routing panel, the tab's display greyed out; a view tab closes it.
+    // Open, its title row's One-Shot takes a click (its title, then One-Shot | Sustain, as a Curve's clock modes).
+    const Point titleOneShot{detail::kRouting.x + 176.0f, detail::kRouting.y + 20.0f};
+    auto editorOpen = [&] {
+        const bool was = model.value(sustain) == 1.0;
+        click(view, titleOneShot);
+        const bool open = was && model.value(sustain) == 0.0;
+        if (open)
+            view.undo();
+        return open;
+    };
+    const bool shut = !editorOpen();
+    click(view, detail::opEnvEditButton().center());
+    renderer.save(view, dir / "3h-env-editor.png");
+    const bool open = editorOpen();
+    click(view, detail::kViewTabs[static_cast<int>(RoutingView::Graph)].center());
+    const bool closed = !editorOpen();
+    click(view, detail::opEnvEditButton().center());
+    click(view, detail::opEnvEditButton().center());
+    const bool toggled = !editorOpen();
+    click(view, detail::opEnvEditButton().center());
+    click(view, detail::opEnvModeButton(0).center()); // back to its AHDSR: the editor goes with it
+    click(view, detail::opEnvModeButton(1).center());
+    const bool gone = !editorOpen();
+    check(shut && open && closed && toggled && gone,
+          "a drawn envelope's pencil opens and closes its full-size editor, a view tab and its AHDSR closing it too");
+}
+
+// Copy Shape and Paste Shape between the kinds of drawn shape, from their right-click menus and with Ctrl+C and Ctrl+V
+// over them, each paste one undo step and fitted to where it goes: an operator's envelope into a Curve source as it is,
+// with its loop region; into a symmetric voice shaper's curve, its ends at the curve's and a point in its middle; a
+// Curve source of 40 points into velocity's curve, thinned to its 16, its way round to its start a point at its end;
+// and into a sequencer lane across the pattern, whose curve copied pastes back into the Curve source. Paste Shape is
+// offered only once a shape is copied.
+void testShapeCopyPaste(const std::filesystem::path &dir, Renderer &renderer) {
+    shapeClipboard() = {};
+    FakeController model;
+    View view(model);
+    model.ui.opTab = InspectorTab::Envelope;
+    model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Curve));
+    view.poll();
+    auto entry = [&](Point at, Str label) {
+        for (const MenuItem &item : view.contextMenu(at))
+            if (item.label == tr(label))
+                return item.command;
+        return -1;
+    };
+    auto field = [&](int base, int i, PointField f) { return model.value(shapeFieldIndex(base, i, f)); };
+    auto count = [&](int base) { return static_cast<int>(model.value(base)); };
+    const int env = opEnvShapeIndex(0), lfo = shapeCountIndex(0);
+    const int lfoCount = count(lfo);
+
+    // Operator A's envelope, drawn from its AHDSR, its loop moved; its menu offers Copy Shape alone, then Paste too.
+    click(view, detail::opEnvModeButton(1).center());
+    model.set(paramIndex(0, OpParam::EnvLoopStart), 0.25);
+    model.set(paramIndex(0, OpParam::EnvLoopEnd), 0.5);
+    view.poll();
+    const Point onEnv{detail::kOpEnvPlot.x + 0.95f * detail::kOpEnvPlot.w, detail::kOpEnvPlot.y + 4.0f};
+    const bool copyOnly = entry(onEnv, Str::MenuCopyShape) >= 0 && entry(onEnv, Str::MenuPasteShape) < 0;
+    view.menuCommand(entry(onEnv, Str::MenuCopyShape));
+    const bool pasteOffered = entry(onEnv, Str::MenuPasteShape) >= 0;
+    const int envCount = count(env);
+
+    // Ctrl+V over the Curve source's widened card: as it is, with its loop region; one undo step.
+    click(view, lfoDisplay(0));
+    view.mouseMove(cardShapeAt(0, 0.5, 0.0), {});
+    const bool took = view.seqKey(View::Key::Paste, false);
+    bool same = count(lfo) == envCount;
+    for (int i = 1; same && i < envCount; ++i)
+        same = field(lfo, i, PointField::X) == field(env, i, PointField::X) &&
+               field(lfo, i, PointField::Y) == field(env, i, PointField::Y) &&
+               field(lfo, i, PointField::Curve) == field(env, i, PointField::Curve);
+    const bool looped = model.value(paramIndex(0, SourceParam::LoopStart)) == 0.25 &&
+                        model.value(paramIndex(0, SourceParam::LoopEnd)) == 0.5;
+    renderer.save(view, dir / "10k-shape-pasted.png");
+    view.undo();
+    const bool undone = count(lfo) == lfoCount && model.value(paramIndex(0, SourceParam::LoopEnd)) == 1.0;
+    check(copyOnly && pasteOffered && took && same && looped && undone,
+          "an operator's envelope copied from its menu pastes into a Curve source as it is, with its loop region, by "
+          "Ctrl+V over it, in one undo step; Paste Shape offered once a shape is copied");
+
+    // Into a symmetric voice shaper's Custom curve, from its page's menu: its ends at the curve's, a point in its middle.
+    const ShaperParams s1 = shaperParams(kFxSlots);
+    model.set(s1.mode, static_cast<double>(ClipMode::Custom));
+    model.set(s1.symmetric, 1.0);
+    click(view, nodeTab(kOps + kFilters));
+    const Rect shaperArea = detail::kShaperDisplay.inset(8.0f);
+    const Point onShaper{shaperArea.x + 0.8f * shaperArea.w, shaperArea.y + 6.0f};
+    view.menuCommand(entry(onShaper, Str::MenuPasteShape));
+    const int shaperCount = count(s1.curve);
+    bool middle = false;
+    for (int i = 0; i < shaperCount; ++i)
+        middle = middle || std::abs(field(s1.curve, i, PointField::X) - 0.5) < 1e-9;
+    const bool ends = field(s1.curve, shaperCount - 1, PointField::X) == 1.0 &&
+                      field(s1.curve, shaperCount - 1, PointField::Y) == -1.0 && model.value(s1.symmetric) == 1.0;
+    renderer.save(view, dir / "10k-shape-pasted-shaper.png");
+    view.undo();
+    const bool shaperUndone = count(s1.curve) == static_cast<int>(paramTable()[s1.curve].def);
+    check(middle && ends && shaperCount == envCount + 1 && shaperUndone,
+          "a shape pasted into a symmetric shaper curve keeps its ends at the curve's and gets a point in its middle");
+
+    // A Curve source of 40 points, Ctrl+C over its card, then Ctrl+V into velocity's curve: thinned to its 16.
+    model.set(lfo, 40.0);
+    for (int i = 0; i < 40; ++i) {
+        model.set(shapePointIndex(0, i, PointField::X), i / 40.0);
+        model.set(shapePointIndex(0, i, PointField::Y), std::sin(2.0 * std::numbers::pi * i / 40.0));
+        model.set(shapePointIndex(0, i, PointField::Curve), 0.0);
+    }
+    view.poll();
+    view.mouseMove(cardShapeAt(0, 0.3, 0.0), {});
+    const bool copied = view.seqKey(View::Key::Copy, false);
+    const float y = view.height() - 179.0f;
+    click(view, {1142.0f, y}); // velocity's display opens its curve over the routing panel
+    const Rect routing = detail::kRouting;
+    const Point onVelocity{routing.x + routing.w * 0.5f, routing.y + 60.0f + (routing.h - 96.0f) * 0.5f};
+    view.mouseMove(onVelocity, {});
+    view.seqKey(View::Key::Paste, false);
+    const int velocity = paramIndex(VelocityParam::Curve);
+    const bool thinned = count(velocity) == kMaxNotePoints && field(velocity, kMaxNotePoints - 1, PointField::X) == 1.0 &&
+                         std::abs(field(velocity, kMaxNotePoints - 1, PointField::Y)) < 1e-9;
+    renderer.save(view, dir / "10k-shape-pasted-velocity.png");
+    view.undo();
+    const bool velocityUndone = count(velocity) == static_cast<int>(paramTable()[velocity].def);
+    check(copied && thinned && velocityUndone,
+          "a Curve source of 40 points pastes into velocity's curve thinned to its 16, ending where it started");
+
+    // Into the sequencer's BEND lane, from its menu, across the pattern; the lane's curve copied with Ctrl+C pastes
+    // back into the Curve source.
+    click(view, detail::kViewTabs[static_cast<int>(RoutingView::Seq)].center());
+    model.ui.seqLane = SeqLane::Bend;
+    view.poll();
+    const Point onLane = detail::kSeqLaneArea.center();
+    view.menuCommand(entry(onLane, Str::MenuPasteShape));
+    const double steps = kSeqStepsPerBar * std::lround(model.value(paramIndex(0, SeqPatternParam::Length)));
+    const int bend = seqCurveCountIndex(0, SeqCurve::Bend);
+    const bool lane = count(bend) == 40 && model.value(seqCurveIndex(0, SeqCurve::Bend, 10, PointField::X)) == 0.25 * steps &&
+                      std::abs(model.value(seqCurveIndex(0, SeqCurve::Bend, 10, PointField::Y)) - 1.0) < 1e-9;
+    renderer.save(view, dir / "10k-shape-pasted-lane.png");
+    view.mouseMove(onLane, {});
+    view.seqKey(View::Key::Copy, false);
+    click(view, detail::kViewTabs[static_cast<int>(RoutingView::Graph)].center()); // the source cards again
+    model.set(lfo, 3.0);
+    view.poll();
+    view.mouseMove(cardShapeAt(0, 0.5, 0.0), {});
+    view.seqKey(View::Key::Paste, false);
+    const bool back = count(lfo) == 40 && std::abs(field(lfo, 10, PointField::Y) - 1.0) < 1e-9;
+    std::printf("      pasted: env %d points, shaper %d, velocity %d, lane %d\n", envCount, shaperCount,
+                count(velocity), count(bend));
+    check(lane && back, "a shape pastes into a sequencer lane across its pattern, and the lane's curve copies back");
 }
 
 void testWideLfoCard(const std::filesystem::path &dir, Renderer &renderer) {
@@ -14950,7 +15206,8 @@ void run(const std::filesystem::path &dir, float scale) {
     view.mouseMove(clipAt(0.3, -0.5), {});
     check(renderer.save(view, dir / "8c-clip-curve.png"), "render the shaper's big curve editor");
     {
-        // Snap, in its title row, snaps a dragged point to the grid without Ctrl.
+        // Snap, in its title row, snaps a dragged point to the grid without Ctrl (16 across).
+        model.layout().shapeGridX = 16;
         click(view, {742.0f, 152.0f});
         drag(view, clipAt(0.3, -0.5), clipAt(0.33, -0.45));
         const double x = model.value(shapeFieldIndex(clipCurveCountIndex(0), 1, PointField::X));
@@ -15225,6 +15482,7 @@ void run(const std::filesystem::path &dir, float scale) {
     // starts beside the first one's end, the shape jumping there. Redrawing the first keeps the next one's start,
     // and a quick second Alt+click there (a double-click) leaves it as it is, adding no point.
     {
+        model.layout().shapeGridX = 16; // columns clear of the point at 0.4
         const double column = 1.0 / model.layout().shapeGridX;
         auto roughly = [](double a, double b) { return std::abs(a - b) < 0.01; };
         auto pointIs = [&](int point, double x, double y) {
@@ -15849,6 +16107,8 @@ void run(const std::filesystem::path &dir, float scale) {
     testBrowserPickRescanned(dir, renderer);
     testWideLfoCard(dir, renderer);
     testCurveLoop(dir, renderer);
+    testOpEnvCurve(dir, renderer);
+    testShapeCopyPaste(dir, renderer);
     testFolding(dir, renderer);
     testFxGraph(dir, renderer);
     testFxListAfterUndo(dir, renderer);
