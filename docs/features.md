@@ -1006,7 +1006,9 @@ switching one on and wiring it in is the whole job.
 
 ## Editor
 
-The editor is drawn with Direct2D and scales freely: hosts can resize it, and it keeps its aspect ratio. Collapsing
+The editor is drawn with Direct2D and scales freely: hosts can resize it, and it keeps its aspect ratio. A window dragged by
+its side takes its width and the height follows; dragged by its top or bottom edge, it takes its height and the width
+follows (`Editor::constrain()`: whichever side the host moved further from the editor's size). Collapsing
 the keyboard strip makes it shorter (the plugin asks the host to resize the window). It keeps
 its size as it is scaled on the monitor its window is on: in a host aware of each monitor's scaling, opened on (or
 moved to) one scaled otherwise than the main one, it asks the host for the size at that scaling. A size the plugin opens

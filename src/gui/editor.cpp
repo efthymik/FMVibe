@@ -25,8 +25,6 @@ namespace {
 constexpr wchar_t kClassName[] = L"FMVibeEditor";
 constexpr UINT_PTR kPollTimer = 1;
 constexpr UINT kPollMs = 15; // about 60 frames a second: Windows timers tick every 15.6 ms
-constexpr uint32_t kMinWidth = 600;
-constexpr uint32_t kMaxWidth = 3600;
 constexpr int kScreenMargin = 16; // room around the editor for the host's window frame
 constexpr UINT kPresetMessage = WM_APP + 1; // posted, so the dialog opens after the mouse gesture ends
 
@@ -298,13 +296,8 @@ void Editor::setScale(double scale) {
         controller_.requestEditorSize(width, height);
 }
 
-void Editor::constrain(uint32_t &width, uint32_t &height, float viewHeight) {
-    width = std::clamp(width, kMinWidth, kMaxWidth);
-    height = static_cast<uint32_t>(std::lround(width * viewHeight / View::kWidth));
-}
-
 void Editor::fit(uint32_t &width, uint32_t &height) const {
-    constrain(width, height, view_.height());
+    constrain(width, height, view_.height(), width_, height_);
 }
 
 void Editor::fitLayout() {

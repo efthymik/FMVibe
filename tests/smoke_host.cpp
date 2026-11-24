@@ -4886,11 +4886,28 @@ int main(int argc, char **argv) {
         check(haveWorkArea && width <= workWidth && height <= workHeight,
               "a new editor opens within the screen's work area");
 
-        uint32_t adjustedWidth = 900, adjustedHeight = 100;
+        // A window dragged by its side, its height as it was: the view is 1200 x 1002, so three quarters of that, rounded.
+        uint32_t adjustedWidth = 900, adjustedHeight = height;
         gui->adjust_size(plugin, &adjustedWidth, &adjustedHeight);
-        // The view is 1200 x 1002: three quarters of that, rounded.
         check(adjustedWidth == 900 && adjustedHeight == 752 && gui->set_size(plugin, adjustedWidth, adjustedHeight),
               "resizing keeps the aspect ratio");
+        // Dragged by its top or bottom edge, its width as it was: the width follows the height, up and down.
+        uint32_t tallerWidth = 900, tallerHeight = 1002;
+        gui->adjust_size(plugin, &tallerWidth, &tallerHeight);
+        uint32_t shorterWidth = 900, shorterHeight = 501;
+        gui->adjust_size(plugin, &shorterWidth, &shorterHeight);
+        // Dragged slowly, a pixel at a time.
+        uint32_t pixelUpWidth = 900, pixelUpHeight = 753, pixelDownWidth = 900, pixelDownHeight = 751;
+        gui->adjust_size(plugin, &pixelUpWidth, &pixelUpHeight);
+        gui->adjust_size(plugin, &pixelDownWidth, &pixelDownHeight);
+        std::printf("      height dragged: 900 x 1002 adjusted to %u x %u, 900 x 501 to %u x %u, 900 x 753 to %u x %u, "
+                    "900 x 751 to %u x %u\n",
+                    tallerWidth, tallerHeight, shorterWidth, shorterHeight, pixelUpWidth, pixelUpHeight,
+                    pixelDownWidth, pixelDownHeight);
+        check(tallerWidth == 1200 && tallerHeight == 1002 && shorterWidth == 600 && shorterHeight == 501,
+              "a window dragged by its top or bottom edge resizes, the width following the height");
+        check(pixelUpWidth > 900 && pixelUpHeight == 753 && pixelDownWidth < 900 && pixelDownHeight == 751,
+              "a window's top or bottom edge dragged a pixel resizes it a pixel");
 
         // At 900 px wide the view is drawn at 0.75 scale; the Volume knob sits at (201, 64) in view units.
         HWND editor = GetWindow(parent, GW_CHILD);

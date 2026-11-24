@@ -791,13 +791,8 @@ void Editor::size(uint32_t &width, uint32_t &height) const {
     height = height_;
 }
 
-void Editor::constrain(uint32_t &width, uint32_t &height, float viewHeight) {
-    width = std::clamp(width, 600u, 3600u);
-    height = static_cast<uint32_t>(std::lround(width * viewHeight / View::kWidth));
-}
-
 void Editor::fit(uint32_t &width, uint32_t &height) const {
-    constrain(width, height, view_.height());
+    constrain(width, height, view_.height(), width_, height_);
 }
 
 void Editor::fitLayout() {

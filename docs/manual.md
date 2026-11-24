@@ -127,7 +127,7 @@ From top to bottom, the plugin window has:
 - The **modulation panel**: the source cards.
 - The **keyboard strip**: macros, the note and velocity sources, the pitch and mod wheels and a six-octave keyboard.
 
-The plugin window can be resized and keeps its aspect ratio. It opens and unfolds within the screen's work area: a
+The plugin window can be resized from any edge or corner and keeps its aspect ratio. It opens and unfolds within the screen's work area: a
 saved or last-used size that no longer fits, or the taller layout when the keyboard strip unfolds, is scaled down
 rather than run past the screen. The keyboard strip can be collapsed to its title row, which makes the plugin window
 shorter.

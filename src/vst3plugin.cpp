@@ -705,13 +705,14 @@ public:
         return kResultOk;
     }
     tresult PLUGIN_API canResize() override { return kResultTrue; }
-    // Any width, the height following it, as the view's proportions have it.
+    // The view's proportions: the width the host offers with the height following it, or, for a window dragged by its
+    // top or bottom edge, the height with the width following it (see Editor::constrain()).
     tresult PLUGIN_API checkSizeConstraint(ViewRect *rect) override {
         if (!rect)
             return kInvalidArgument;
         const Plugin::MainLock lock(plugin_);
         auto width = static_cast<uint32_t>(std::max(rect->getWidth(), 1));
-        uint32_t height = 0;
+        auto height = static_cast<uint32_t>(std::max(rect->getHeight(), 0));
         if (gui::Editor *editor = owns() ? plugin_.editor() : nullptr)
             editor->fit(width, height);
         else
