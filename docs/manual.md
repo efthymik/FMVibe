@@ -45,9 +45,6 @@ FMVibe works in the spirit of classic and modern FM synthesizers. Its main featu
 - **Presets** with a browser, categories, favorites and search, and a library of factory presets.
 - MPE support, CLAP per-voice modulation, and a resizable UI with four themes.
 
-An in-browser demo with the factory presets is available at
-[pcdlin.github.io/FMVibe](https://pcdlin.github.io/FMVibe/).
-
 ## 2. Installation
 
 Each release offers two zip files for 64-bit Windows, one per plugin format. Download whichever your DAW supports,
@@ -66,9 +63,8 @@ The CLAP and VST3 versions share the same engine, plugin window, parameters and 
 either. Your DAW treats them as two different plugins, however, so a project made with the CLAP version won't open the
 VST3 version in its place, or the other way round.
 
-For 64-bit Linux, each release also offers two `.tar.gz` files, one per format; both plugins also build from source (`./build.sh`; see the README). 
-Copy `FMVibe.clap` into `~/.clap` and the whole `FMVibe.vst3` folder into `~/.vst3` (`./build.sh --install` does both). 
-Presets live in `~/.local/share/FMVibe/presets` and settings in `~/.config/FMVibe`, or the XDG equivalents where set.
+For 64-bit Linux, each release offers two `.tar.gz` files, one per format. Copy `FMVibe.clap` into `~/.clap` and the
+whole `FMVibe.vst3` folder into `~/.vst3`.
 
 ## 3. How FMVibe makes sound
 
@@ -127,10 +123,9 @@ From top to bottom, the plugin window has:
 - The **modulation panel**: the source cards.
 - The **keyboard strip**: macros, the note and velocity sources, the pitch and mod wheels and a six-octave keyboard.
 
-The plugin window can be resized from any edge or corner and keeps its aspect ratio. It opens and unfolds within the screen's work area: a
-saved or last-used size that no longer fits, or the taller layout when the keyboard strip unfolds, is scaled down
-rather than run past the screen. The keyboard strip can be collapsed to its title row, which makes the plugin window
-shorter.
+The plugin window can be resized from any edge or corner and keeps its aspect ratio. New instances open at the size
+you last used, scaled down if it doesn't fit the screen. Collapsing the keyboard strip to its title row makes the
+window shorter.
 
 Tabs use two small marks in their top-right corner, with the same meaning everywhere:
 
@@ -145,7 +140,7 @@ Tabs use two small marks in their top-right corner, with the same meaning everyw
 
 From left to right:
 
-- **Tempo** (only in hosts that let the plugin set the tempo, such as the browser demo): see [Tempo](#tempo).
+- **Tempo**, with its **H** button: see [Tempo](#tempo).
 - **Play** (a triangle), right of the tempo, only while the sequencer is on: plays the sequencer's pattern from the
   start of its loop, from any view. It is the SEQ card's Play button: while the pattern plays it shows a lit square,
   and a click stops it. With the SEQ view showing, it starts at the earliest selected note, as the card's button
@@ -162,17 +157,16 @@ The tempo field in the title bar shows the tempo that synced LFOs, delays, sweep
 BPM. The **H** button at its left syncs to the host tempo:
 
 - **H on** (the default): FMVibe plays at the host's tempo. The field shows it dimmed; change the tempo in the host.
-- **H off**: FMVibe plays at its own tempo (140 BPM to begin with), whatever the host's. Set it in the field:
+- **H off**: FMVibe plays at its own tempo (140 BPM by default), regardless of the host's. Set it in the field:
   - Drag up or down to change the tempo (in 0.1 BPM increments when holding Shift).
   - Use the mouse wheel to step it by 1 BPM (in 0.1 BPM increments when holding Shift).
   - Double-click or Ctrl+click to type a value, from 20 to 999.
 
-The H and FMVibe's own tempo are saved with your project, not with presets, and undo leaves them alone.
+If the host sends no tempo, 120 BPM is used. The H setting and FMVibe's own tempo are saved with your project, not
+with presets, and are not undo steps.
 
 Every preset remembers the tempo it was saved at. Loading it sets FMVibe's own tempo to it, so with H off a sequencer
 pattern plays as it was made. In a DAW, loading a preset never changes the host's tempo.
-
-The browser demo has no H button: it always plays at its own tempo, which you set in the field.
 
 ### Global strip
 
@@ -287,8 +281,7 @@ and a **drawn envelope** (the lower one).
 
 - Double-click to add or delete a point, drag points, and drag the small dots between them to bend a segment.
 - **Length** sets how long the whole curve takes. With the metronome switch on, it is a note value at the tempo.
-- **Slew** smooths the envelope. Turn it up a little when a jump in the curve, or the loop coming round from one level
-  to another, clicks. It is off to begin with.
+- **Slew** smooths the envelope, removing clicks from jumps in the curve or at the loop point. Off by default.
 - **One-Shot** plays the curve once from each note and holds its last level while the key is down.
 - **Sustain** loops part of the curve while the key is down. Drag the bar along the top of the display to set the
   loop: its ends size it and its middle moves it. Hold Shift or Ctrl to move it off the grid.
@@ -343,8 +336,7 @@ The **warp** buttons choose how the operator's waveform is reshaped, and **Amoun
 | Steps | Quantizes the cycle into 8 steps (4 below 0). |
 | Sync | Plays the wave up to 16 times per cycle, cut off at the cycle's end: the formant rises with the amount while the pitch stays. |
 
-Amount can be modulated, for example an LFO on Squeeze for PWM. Changing
-warps never clicks.
+Amount can be modulated, for example an LFO on Squeeze for PWM.
 
 The **note** button (an eighth note) switches on **Note Sync** (hard sync to the note). Each cycle of the note's pitch restarts the operator's
 wave, so the operator's ratio sets the timbre while the pitch stays on the note. Sweep the ratio with an envelope or
@@ -363,8 +355,8 @@ The summary line names the warp and says "note sync" while either is active.
 
 The operator's feedback comes last and is always Phase.
 
-A tab whose controls are being modulated shows a ring in its corner. While you drag a modulation source's handle, holding it
-over a tab for half a second opens that tab, so you can drop the handle on its controls.
+While you drag a modulation source's handle, hold it over one of these tabs for half a second to open it and drop
+the handle on its controls.
 
 ### Noise operators
 
@@ -547,17 +539,13 @@ high-pass.
 
 ### Filter controls
 
-- **Cutoff**: starts in the middle of its range.
-- **Resonance**.
+- **Cutoff** and **Resonance**.
 - **Key Track**: how far the cutoff follows the note from C4; at 100 % the cutoff moves an octave for every octave the
   note moves (0 by default).
-- **Drive**: saturation before the filter. It changes the tone, not the volume: a sound comes out about as loud as it
-  went in, however far Drive is turned. On the Ladder and Diode models, a loud sound driven hard also pulls the
-  resonance down, as on an analog ladder. Projects made with earlier versions play their driven Ladder and Diode
-  filters this way too, so they can sound a little louder, with less resonance.
+- **Drive**: saturation before the filter. It changes the tone, not the level. On the Ladder and Diode models, a loud
+  sound driven hard also pulls the resonance down, as on an analog ladder.
 - **Mix**: blends the filter's input with its output (100 % = fully filtered).
-- **Model**: a list under the response display, for a low-pass, high-pass or band-pass.
-- **Slope**: a list under the response display.
+- **Model** and **Slope**: lists under the response display.
 - **Vowel** (Formant) or **Morph** and the notch switch (Morph).
 
 The **response display** shows the filter's curve with its Mix applied. Drag its handle sideways for cutoff and up or
@@ -565,7 +553,7 @@ down for resonance. Faint curves show the reach of any modulation on cutoff or r
 curve follows the most recent voice. Behind the curve, a spectrum analyzer shows what the filter puts out. Under the
 display, knobs set the send levels of everything that feeds the filter.
 
-**Tracking the note exactly**: to make a filter (a comb, say) follow the note's pitch exactly, set its Cutoff to 0
+**Tracking the note exactly**: to make a filter (for example a comb) follow the note's pitch exactly, set its Cutoff to 0
 and assign the **Note** source to it at 100 %, leaving Key Track at 0.
 
 **Filter FM**: assign an operator's output to Cutoff to move it at audio rate (see
@@ -602,7 +590,7 @@ filters that feed the shaper.
 
 ### Concepts
 
-- **Sources**: LFOs, envelopes, Curve, Random and MIDI sources (up to 16 in total, added in the modulation panel),
+- **Sources**: LFOs, envelopes, Curve, Random and MIDI sources (up to 32 in total, added in the modulation panel),
   plus eight **macros**, the **Mod Wheel**, **Pitch Bend**, **Note**, **Velocity** and the six operators' outputs
   (**Op A** to **Op F**), which are always there.
 - **Slots**: each source has 16 slots. A slot connects the source to one target with a depth.
@@ -613,7 +601,7 @@ filters that feed the shaper.
   swings them both ways around their setting, half the depth each way). Change it from the source's right-click menu
   or its switch in the Mods view; it applies to all of the source's modulations.
 - **Curve**: each modulation can bend its source's output, from −100 % (slow start) to +100 % (fast start), before
-  the depth is applied. One source can thus open a cutoff linearly and swell a level slowly at the same time.
+  the depth is applied. One source can then open a cutoff linearly and swell a level slowly at the same time.
 - **Amount**: scales the modulation's depth from 0 to 100 % (100 % by default).
 - **Aux**: an auxiliary source that scales a modulation, for example a macro fading in an LFO's vibrato, or velocity
   widening an envelope's sweep. The aux's own **depth** sets how far it can turn the modulation down: at 100 % an aux
@@ -664,12 +652,9 @@ recent note. With no notes playing, it shows where the macros and mod wheel take
 
 ### The modulation panel
 
-The panel's title row has:
-
-- **+ Source**, which opens the list of source types (Envelope, LFO, Curve, Random, MIDI), and a count of sources
-  used (for example 4/32).
-
-Source cards show four at a time. After the last card, a dashed **Add Source** card opens the same list.
+**+ Source** in the panel's title row opens the list of source types (Envelope, LFO, Curve, Random, MIDI); beside it,
+a count shows how many sources are used (for example 4/32). The dashed **Add Source** card after the last card opens
+the same list. Four cards show at a time.
 
 Sources are numbered by type in the order they appear ("LFO 2", "Env 1", "Curve 1", "Random 1", "MIDI 1").
 
@@ -693,7 +678,7 @@ An LFO produces a repeating shape.
 - **Rate**: 0.02–100 Hz. At the knob's bottom, 0 Hz, the LFO stands still at its Phase.
 - **Sync** (the metronome button, on by default): turns Rate into a note value of the host tempo, from 8/1 (one
   cycle every eight bars) through 4/1 down to 1/64, straight, dotted or triplet. New LFOs start at a quarter note.
-  Modulating a synced rate steps it through the note values. Without a host tempo, 120 BPM is assumed.
+  Modulating a synced rate steps it through the note values.
 - **Phase**: where each note starts the LFO in its cycle (25 % starts a sine at its peak).
 - **Unipolar**: swings 0 to 1 instead of −1 to 1.
 - **Clock mode**, picked from the list under the shape list, one of four:
@@ -722,7 +707,8 @@ point, so the cycle loops seamlessly.
 
 A new Curve source opens **widened**, with the shape editor in the card. To widen it later, click its display or the
 expand button in its title row. Only one card is widened at a time. Its title row adds **collapse** and **full size**,
-which opens a large editor for the shape.
+which opens a large editor for the shape. While the large editor is open, the card's shape is dimmed; click it to
+close the editor.
 
 The **shape tools**, in a row beside the shape:
 
@@ -763,8 +749,6 @@ In One-Shot and Sustain, with Sync off, the **Rate** knob shows the curve's **le
 You can type a length too, such as "1.5 s" or "800 ms". With Sync off, the point readout and the ruler show times in
 every clock mode (one cycle's worth when the curve loops). With Sync on they show bars and beats.
 
-While it is open, the card's shape is dimmed; click it to close the full-size editor.
-
 ### Random
 
 A Random source is a random LFO: it takes a new value every cycle.
@@ -790,7 +774,7 @@ A MIDI source follows incoming MIDI. Its **Input** list chooses:
 - **Slide**: each note's slide (an MPE controller's vertical finger movement, or CLAP brightness expression). It
   rests in the middle, so as a bipolar source it moves nothing at rest.
 
-**Slew** (1 ms–10 s) smooths the input. The display shows the current value. The browser demo has no MIDI input.
+**Slew** (1 ms–10 s) smooths the input. The display shows the current value.
 
 ### Macros
 
@@ -848,7 +832,7 @@ the operator's letter at the top of its page in the inspector, which is its hand
   and the global Pitch, FM Amount and Pan), a fast operator gives sidebands the way FM does. An operator can
   modulate its own pitch, level or phase too.
 - On everything else (an effect's knobs, another source's settings, a macro's knob, a modulation's depth), a slow
-  operator (a fixed one at a few Hz, say) moves it along its wave and envelope; a fast one averages out.
+  operator (for example a fixed one at a few Hz) moves it along its wave and envelope; a fast one averages out.
 - **Bipolar** (the default) swings its targets both ways around their setting. **Unipolar** pushes them one way, as
   far as the operator's envelope has risen, so a silent operator moves nothing.
 
@@ -909,7 +893,7 @@ Velocity curves.
 
 **Grid and snapping**
 
-- **GRID** sets the number of vertical (2–32) and horizontal (2–16) grid lines, 8 of each to begin with, with its − and +
+- **GRID** sets the number of vertical (2–32) and horizontal (2–16) grid lines (8 of each by default) with its − and +
   buttons or the wheel.
 - Hold **Ctrl** to snap points and steps to the grid. With **Snap** on, they snap without Ctrl, and Ctrl frees them.
 - Points | Steps, Snap and the grid apply to every shape editor.
@@ -1062,8 +1046,7 @@ A guitar amp followed by a speaker cabinet and a microphone.
   cost more CPU.
 
 The card has two displays: the tone's frequency response with a drive meter, and the cabinet with a draggable mic
-(up and down for Position, sideways for Distance). Each model is level-matched at its middle settings. Changing the
-model, cabinet, mic or oversampling crossfades smoothly.
+(up and down for Position, sideways for Distance). Each model is level-matched at its middle settings.
 
 #### Delay
 
@@ -1166,9 +1149,6 @@ The display sketches the tail's shape.
   tape-style jet sweep. Best with Mix at 100 %. It delays the flanger's sound by 6.5 ms (see
   [Seamless editing and latency](#seamless-editing-and-latency)).
 
-When Delay or Depth jumps, for example from a Random source that gives each note its own value, the flanger crossfades
-to the new sweep instead of clicking.
-
 #### Chorus
 
 - **Voices**: 2, 3 (default), 4 or 6.
@@ -1176,8 +1156,6 @@ to the new sweep instead of clicking.
 - **Spread**: pans the voices across the stereo field.
 
 The bass below about 200 Hz bypasses the voices, staying steady and centered. The display shows each voice's sweep.
-When Delay or Depth jumps, for example from a Random source that gives each note its own value, the chorus
-crossfades to the new delays instead of clicking.
 
 #### Phase Disp
 
@@ -1249,10 +1227,9 @@ Each pattern has a **loop** (the whole pattern by default), which is what plays.
 ### The settings card
 
 - **Power** switch.
-- **Pattern A–D**: the pattern you edit and play. To copy one, use the patterns overview below the card. You can
-  modulate it too: drag a source's handle onto the buttons. Modulation moves it in whole patterns, and the pattern it
-  picks gets a ring (with nothing playing, the one the macros and mod wheel pick). Under the buttons, a line shows how far each modulation reaches, with depth handles
-  you can drag, as under a knob. A pattern picked this way takes over at the end of the loop, as a click does.
+- **Pattern A–D**: the pattern you edit and play. To copy one, use the patterns overview below the card. The pattern
+  can be modulated: drop a source's handle onto the buttons. The pattern the modulation picks gets a ring, and takes
+  over at the end of the loop, as a click does. Depth handles appear under the buttons, as under a knob.
 - **Play** button, at the right of the Pattern row: plays the pattern from the start of its loop, whatever the Play
   mode below is set to. If notes are selected in the roll, it starts at the earliest selected note in the loop
   instead. While it plays, the keyboard plays notes as usual, and the button shows **Stop**: click it to stop.
@@ -1260,8 +1237,7 @@ Each pattern has a **loop** (the whole pattern by default), which is what plays.
   [Title bar](#title-bar)).
 - **Play**:
   - **Host**: plays with the host's transport, locked to its bars. You can still play the synth from the keyboard
-    on top. The browser demo has no transport of its own, so there loading a preset set to Host presses **Play**
-    for you and the pattern starts at once. Click **Stop** to stop it.
+    on top.
   - **Key** (the default): plays while a key is held, from the pattern's start, transposed by the newest key relative to C4: C4
     plays the pattern as written, D4 two semitones higher. The scale's **Root** doesn't move it.
   - **Latch**: starts with a key and keeps playing after release; a new key transposes it. All Notes Off or All
@@ -1360,8 +1336,6 @@ where it is. If the playhead ends up outside the new loop, it continues inside i
 - Drag with the middle button to pan.
 - Dragging a note, a box or a bend point past the edge scrolls the roll.
 
-**Grid**: lines at every snap length, beats and bars stronger.
-
 ### The lane
 
 Under the roll, the **lane** shows a stem for each note. Its tabs select what it edits:
@@ -1441,9 +1415,8 @@ host; patterns, notes and curves are edited in the plugin only.
 ### Voices
 
 **Voices** sets the polyphony limit. When voices run out, the quietest or oldest voice is stolen, fading out quickly
-so it doesn't click. Lowering the limit takes effect at once; raising it restarts the plugin briefly (see
-[Latency and restarts](#latency-and-restarts)), once you let go of the knob and leave it for half a second, so
-dragging or stepping it restarts only once. Voices can't be automated.
+so it doesn't click. Lowering the limit takes effect at once; raising it briefly restarts the plugin once you stop
+adjusting it (see [Latency and restarts](#latency-and-restarts)). Voices can't be automated.
 
 ### Sustain pedal and MIDI panic
 
@@ -1463,11 +1436,6 @@ pitch bend, controllers and pressure affect every note, and channels 2–16 each
 Slide to route these to the sound. With MPE off, every channel's messages affect every note.
 
 MPE is saved with your project but not with presets, so browsing presets leaves it as it is.
-
-### Computer keyboard
-
-In the browser demo, the computer keyboard plays notes: A W S E D … from middle C, **Z** and **X** shift the octave,
-and **C** and **V** step the velocity.
 
 ## 14. Presets
 
@@ -1608,7 +1576,7 @@ your web browser.
   filters at the cost of CPU. Changing it restarts the plugin briefly.
 - **MPE**: Off or On, and the **Bend** range for MPE member channels (12, 24, 48 or 96 semitones).
 
-**Personal settings**, kept in `%APPDATA%\FMVibe\settings.txt` and shared by every FMVibe instance:
+**Personal settings**, shared by every FMVibe instance (see [What is saved where](#what-is-saved-where)):
 
 - **Theme**: **Spectrum** (deep indigo, default), **Porcelain** (Spectrum's light counterpart), **Midnight** or
   **Light**.
@@ -1620,9 +1588,7 @@ your web browser.
 - **Cards**: **Plain** (default) or **Tinted**. Tinted gives each effect and source card a faint wash of its own
   color in Spectrum and Porcelain. Midnight and Light outline their cards in color instead, so it is greyed out there.
 
-Double-click a slider to reset it. The plugin window's size is also remembered, shrunk to fit the screen if it is
-larger, and so is whether the keyboard strip is collapsed: new instances open at the size you last resized a plugin
-window to, and with the strip as you last left it. Enter or Escape closes the dialog.
+Double-click a slider to reset it. Enter or Escape closes the dialog.
 
 ## 16. Working with the plugin
 
@@ -1652,12 +1618,7 @@ List buttons (filter types, shaper curves, amp models and cabinets, reverb algor
 
 - **Middle-button drag** pans any area that scrolls.
 - A touchpad's two-finger scrolling acts as the wheel, sideways too.
-- On a touchscreen, two fingers pan. In the browser demo, one finger works as the mouse: it drags controls, pans
-  scrolling areas, taps to click and long-presses for the right-click menu. Two fingers scroll and zoom the web page
-  there, so you can always scroll past the editor.
-- The browser demo's **Full screen** button, under the editor, shows the editor alone on the whole screen. The
-  button in the top right corner, or the browser's own way out (Esc, or Back on a phone), leaves full screen. An
-  iPhone's Safari can't show a page in full screen, so the button isn't there.
+- On a touchscreen, one finger works as the mouse and two fingers pan.
 
 ### Undo and redo
 
@@ -1677,10 +1638,9 @@ click outside).
 An open list or menu, such as a filter's type list, the list of effects or the list of sources, closes when you press
 **Escape**, without picking anything.
 
-On Linux, the file dialogs (Load, Save to File…) and the warning dialogs are the desktop's own — `zenity`, else
-`kdialog` — opened as separate windows. While one is open the plugin window dims and says "A dialog is open":
-**Alt+Tab** shows the dialog, **Escape** closes it. With neither program installed, the window says so for a moment
-and no dialog opens; the preset browser's own Save dialog still works.
+On Linux, the file dialogs (Load, Save to File…) and warnings open in separate windows through `zenity` or
+`kdialog`; install one of them to use these. While one is open, the plugin window is dimmed: **Alt+Tab** shows the
+dialog, **Escape** closes it. The preset browser's own Save dialog works without either.
 
 ## 17. FMVibe in your DAW
 
@@ -1726,9 +1686,9 @@ In hosts that show CLAP remote control pages (such as Bitwig Studio), FMVibe off
 FMVibe reports its latency to the host. Raising the voice limit, changing the oversampling, or editing the effects
 in a way that changes the latency has the host restart the plugin briefly. Most hosts do this automatically.
 
-When an edit changes the effects' latency while you hold notes, the restart waits until you let go of every key
-(and the sustain pedal), so held notes aren't cut off. The notes then ring out through it. Raising the voice limit or
-changing the oversampling stops them.
+When an effects edit changes the latency while notes are held, the restart waits until every key and the sustain
+pedal are released, so held notes aren't cut off. A restart for the voice limit or the oversampling doesn't wait, and
+stops held notes.
 
 ### What is saved where
 
