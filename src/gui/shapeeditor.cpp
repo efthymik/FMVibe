@@ -1353,7 +1353,7 @@ void ShapeEditor::paintNoteCurveEditor(Canvas &c) {
     for (int octave = 0; octave * 12.0 <= kMaxNotePitch; ++octave) {
         const double x = high == low ? -1.0 : (octave * 12.0 - low) / (high - low);
         if (x > 0.03 && x < 0.97)
-            c.text({shapeAt(x, -1.0).x - 20.0f, r.bottom() - 16.0f, 40.0f, 14.0f}, noteName(octave * 12), kTextLabel, kFaint);
+            c.text({shapeAt(x, -1.0).x - 20.0f, r.bottom() - 7.0f, 40.0f, 14.0f}, noteName(octave * 12), kTextLabel, kFaint);
     }
     c.text({r.x + 6.0f, r.y + 4.0f, 80.0f, 14.0f}, tr(Str::AxisOut), kTextLabel, kFaint, Align::Left);
 
@@ -1390,9 +1390,9 @@ void ShapeEditor::paintVelocityCurveEditor(Canvas &c) {
     paintShapeGridControls(c);
     c.line(shapeAt(0.0, -1.0), shapeAt(1.0, 1.0), kFaint.alpha(0.6f), 1.0f, true);
     for (int velocity = 32; velocity < 127; velocity += 32)
-        c.text({shapeAt(velocity / 127.0, -1.0).x - 20.0f, r.bottom() - 16.0f, 40.0f, 14.0f}, std::to_string(velocity),
+        c.text({shapeAt(velocity / 127.0, -1.0).x - 20.0f, r.bottom() - 7.0f, 40.0f, 14.0f}, std::to_string(velocity),
                kTextLabel, kFaint);
-    c.text({r.right() - 120.0f, r.bottom() - 18.0f, 116.0f, 14.0f}, tr(Str::AxisVelocity), kTextLabel, kFaint, Align::Right);
+    c.text({r.right() - 120.0f, r.bottom() - 9.0f, 116.0f, 14.0f}, tr(Str::AxisVelocity), kTextLabel, kFaint, Align::Right);
     c.text({r.x + 6.0f, r.y + 4.0f, 80.0f, 14.0f}, tr(Str::AxisOut), kTextLabel, kFaint, Align::Left);
 
     paintSourceCurve(c, shape, Curve::VelocityEditor, r, color,
