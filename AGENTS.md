@@ -643,7 +643,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     its controller and its input's list pressure or slide instead, its CC knob going, and the list button's tooltip
     following its input; a Random card's Unipolar | Bipolar, where an LFO's shape list is, bipolar to begin
     with, setting its polarity (read off the rendered pixels), undoably; a Curve source added second from the list,
-    unipolar and widened, its Unipolar switch under the sync button, as an LFO's, undoably, and folded showing
+    unipolar and widened, its Unipolar switch under its clock list, undoably, and folded showing
     CRV and its number (read off the rendered pixels);
   - with an LFO in each of the 32 places, a MODS row's source menu listing them in two columns of 16 inside the
     editor, the last place's at the second's foot taking the row's modulation;
@@ -772,9 +772,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     alone shows (read off the rendered pixels);
   - the play switches and the glide knob;
   - an LFO starting synced in quarter notes, and its sync switch freeing it; its Phase knob, marked on its display
-    and faint while the LFO is free, and lit while it is anchored (read off the rendered pixels); its clock modes
-    going one at a time, undoably, a click on the one lit leaving it and the wheel stepping along them, and its
-    Unipolar switch standing apart; a Random source's only Retrigger and Free;
+    and faint while the LFO is free, and lit while it is anchored (read off the rendered pixels); its clock modes a
+    list under its shape list, a pick undoable, the mode in force picked again leaving it, the wheel over it stepping
+    along them and held at One-Shot, and its Unipolar switch standing apart; a Random source's list Retrigger and Free
+    alone;
   - the three-band dynamics' card: a band's row picking the band its knobs set, its threshold lines dragged
     across (Above stopping at Below) undoably, Alt-dragged for the ratio and double-clicked back, a line on another
     band picking that band, its zones dragged for their ratios (the upward one up for more, the downward one down, undoably, picking their
@@ -889,9 +890,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     card back to its size by its collapse button;
   - a Curve source's loop and Sustain: its card's clock modes a list where an LFO's shape list is, a pick, its
     arrows (round its ends) and the wheel (held at its ends) setting the mode, each one undo step, no tooltip under
-    it (read off the rendered pixels), the LFO's Unipolar switch under its sync button, undoably, and the row
-    under the list holding its Slew, Off to begin with and dragged up undoably, an LFO card beside it keeping
-    its four clock buttons and its Unipolar switch where they were; its Rate, unsynced, shown and typed as the
+    it (read off the rendered pixels), its sync and Unipolar switches under the list, undoably, and its Length,
+    Phase and Slew knobs alike beside it, Slew Off to begin with and dragged up undoably, an LFO card beside it
+    picking its clock mode from a list of its own, its Unipolar switch beside it; its Rate, unsynced, shown and typed as the
     curve's length in One-Shot and Sustain (a length in s or ms, or a rate in Hz) and as a rate retriggered; its
     places reading as times there, in bars and beats synced, else as a share; its full-size editor's title row
     setting its clock mode and sync; its loop's strip over the full-size plot, on the grid's columns: an end dragged

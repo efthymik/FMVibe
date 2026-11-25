@@ -1627,7 +1627,7 @@ void ShapeEditor::paintClipCurveCard(Canvas &c, Rect r, int unit) {
 
 // A widened LFO card's shape: the grid and the shape in the plot's frame, filled toward its zero line, and where
 // the newest voice is; its points and bends are widgets, but for while the full-size editor has the shape, which the
-// plot then only shows. Under it the point under the mouse in numbers, and an arrow by each of the grid's steppers.
+// plot then only shows. Under it an arrow by each of the grid's steppers.
 void ShapeEditor::paintLfoCard(Canvas &c, float card, int lfo) {
     const Color color = kSourceColors[lfo];
     const Rect r = lfoCardPlot(card);
@@ -1660,34 +1660,10 @@ void ShapeEditor::paintLfoCard(Canvas &c, float card, int lfo) {
         c.fillCircle(dot, 3.5f, kText);
     }
 
-    const Rect readout = lfoCardReadout(card);
-    c.fillRect(readout, kDisplayColor, kRadiusControl);
-    const Rect text{readout.x + 8.0f, readout.y, readout.w - 16.0f, readout.h};
-    const Widget *focus = focused(DragKind::ShapePoint);
-    if (focus && focus->kind == Kind::ShapePoint && focus->a == lfo && shapeEditing() != lfo) {
-        // What the LFO puts out there: a unipolar one maps -1..1 onto 0..1.
-        const double y = value(shapePointIndex(lfo, focus->b, PointField::Y));
-        const std::string level = zero < 0.0 ? number("%.2f", 0.5 * (y + 1.0)) : number("%+.2f", y);
-        c.text(text, trf(Str::CaptionCardPointNumber, {std::to_string(focus->b + 1)}), kTextLabel, kText, Align::Left,
-               true);
-        const double x = shapePointX(lfo, focus->b);
-        c.text(text,
-               mods_.curveTime(lfo) == ModulationModel::CurveTime::Share
-                   ? trf(Str::CaptionCardPoint, {number("%.1f", x * 100.0), level})
-                   : trf(Str::CaptionCardPointAt, {mods_.curvePlace(lfo, x, false), level}),
-               kTextLabel, kDim, Align::Right);
-    } else {
-        c.text(text, tr(Str::HintCardPoint), kTextLabel, kFaint, Align::Left);
-    }
     for (int axis = 0; axis < 2; ++axis) {
         const Rect down = lfoCardGridButton(card, axis, 0);
-        axisIcon(c, {down.x - 8.0f, down.center().y}, axis, kFaint);
+        axisIcon(c, {down.x - 8.0f, down.center().y}, axis, shapeEditing() == lfo ? kFaint.alpha(kDimOpacity) : kFaint);
     }
-    // While the full-size editor has the shape, this row is greyed out like the rest of the card's editor (whose
-    // widgets are dimmed as disabled ones are).
-    if (shapeEditing() == lfo)
-        c.fillRect({readout.x, readout.y, r.w + 16.0f, readout.h},
-                   cardFace(kSourceColors[lfo], mods_.sourceOn(lfo)).alpha(1.0f - kDimOpacity), kRadiusMark);
 }
 
 // --- Its widgets.
@@ -1907,18 +1883,19 @@ void ShapeEditor::cardWidgets(std::vector<Widget> &list, int lfo, float card) co
     const WidgetAdder add{list};
     auto merge = [&list](size_t from) { mergeButtons(list, from); };
     const int s = lfo;
-    // Its shape in the card: the title row's buttons, the tools and modes where a normal card's display is,
-    // the grid's steppers under the plot, and the plot with its points; greyed out, taking no input and
+    // Its shape in the card: the title row's buttons, the reset and tools where a normal card's display is, Points |
+    // Steps, Snap and the grid's steppers under the plot, and the plot with its points; greyed out, taking no input and
     // without its points, while the full-size editor has the shape.
     const bool elsewhere = shapeEditing() == s;
     const size_t editorStart = list.size();
     add(Kind::ShapeCollapse, lfoCardButton(card, 0), -1, s);
-    add(Kind::ShapeReset, lfoCardButton(card, 1), -1, s);
     add(Kind::ShapeExpand, lfoCardButton(card, 2), -1, s);
+    add(Kind::ShapeReset, lfoResetButton(card), -1, s);
     for (int tool = 0; tool < kShapeTools; ++tool)
         add(Kind::ShapeTool, lfoToolButton(card, tool), -1, s, tool);
     for (int mode = 0; mode < 3; ++mode) {
         add(Kind::ShapeMode, lfoModeButton(card, mode), -1, s, mode);
+        list.back().compact = true; // their icons alone, named in their tooltips
         if (mode == 1) // Points | Steps in one pill
             merge(list.size() - 2);
     }
@@ -2071,7 +2048,7 @@ bool ShapeEditor::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         const Color ink = on ? litInk(kText) : (hovered ? kText : kDim);
         const Str names[] = {Str::SwitchPoints, Str::SwitchSteps, Str::SwitchSnap};
         const char *name = tr(names[w.b]);
-        const float textW = c.textWidth(name, kTextLabel, on);
+        const float textW = w.compact ? -16.0f : c.textWidth(name, kTextLabel, on); // a widened card's: the icon alone
         const float left = w.rect.center().x - (16.0f + textW) * 0.5f;
         const Point icon{left + 6.0f, w.rect.center().y};
         if (w.b == 0)
@@ -2080,7 +2057,8 @@ bool ShapeEditor::paintWidget(Canvas &c, const Widget &w, bool hovered) {
             stepsIcon(c, icon, on ? litInk(color) : ink);
         else
             gridIcon(c, icon, on ? litInk(color) : ink);
-        c.text({left + 16.0f, w.rect.y, textW + 2.0f, w.rect.h}, name, kTextLabel, ink, Align::Left, on);
+        if (!w.compact)
+            c.text({left + 16.0f, w.rect.y, textW + 2.0f, w.rect.h}, name, kTextLabel, ink, Align::Left, on);
         break;
     }
     default:

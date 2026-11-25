@@ -434,7 +434,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     all the voices together, follows the newest voice's operator, as the effects' other modulation does, and takes
     over from one note to the next over about 5 ms, so a new note doesn't click; an operator at a fixed frequency
     moves it alike whichever note is newest. The filter effect's Formant type's cutoff stays with the 32-sample blocks.
-  - An LFO runs in one of four clock modes, picked one at a time: **Retrigger** (the default), **Free**, **Anchor** or
+  - An LFO runs in one of four clock modes, picked from a list: **Retrigger** (the default), **Free**, **Anchor** or
     **One-Shot**. Retrigger restarts the LFO from its Phase with every note. Each of the other three is a switch
     hosts see; the editor turns the other two off as it picks one. Should a host turn on more than one, One-Shot
     wins, then Anchor. A Random source has only Retrigger and Free (see Random above). A Curve source has a fifth,
@@ -1725,12 +1725,11 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     edit button, a pencil, in its corner), or the expand button in its title row, left of its power switch, widens its card to two card places, the cards after it moving along and the row scrolling to show it
     whole, to edit the shape right there while the panels above stay in use: the inspector's knobs, the routes and
     the other views can be turned and switched as the shape changes. The widened card keeps the source's own controls where a normal card has them,
-    with the shape tools and drawing modes where its display was (see below), and the shape's plot beside them,
-    264 px across; under the plot, the point under the mouse in numbers (its number, its place in the cycle, as a time
-    or in beats where a Curve's places read so, and its level) and the grid's steppers, and over it, as its tooltip,
-    how to edit it. Its title row has, before the
-    fold, power and remove buttons, the reset button (a circular arrow), which puts back the shape it started with,
-    the collapse button (two arrows pointing in), which takes the card back to its size, and right of it the
+    with the reset button (a circular arrow, which puts back the shape it started with) and the shape tools in a row
+    where its display was, level with the plot's foot (see below), and the shape's plot beside them, 264 px across;
+    under the plot, Points | Steps and Snap as their icons alone (named in their tooltips), then the grid's
+    steppers, and over it, as its tooltip, how to edit it. Its title row has, before the fold, power and remove
+    buttons, the collapse button (two arrows pointing in), which takes the card back to its size, and right of it the
     full-size button (two arrows pointing apart); another shape, folding the card and removing it take it back to
     its size too. Every edit applies as it is
     made, so there is no done button. One card is widened at a time: widening another takes the first one back.
@@ -1775,8 +1774,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     thinned to its 16 points, keeping its ends (one at a time, the point whose going changes the shape least, the
     segment left across its place bent as near it as it can be), saying "Pasted 16 of its 41 points"; into a lane
     across the pattern's length in steps and up the lane's range. Each says where it went ("Shape pasted into Op A
-    Envelope"), Ctrl+V with nothing copied "Copy a shape first". Under them, **Points | Steps** picks what a
-    click on the shape does, in the card and in every big editor below, which has them too (left of its GRID, or in
+    Envelope"), Ctrl+V with nothing copied "Copy a shape first". **Points | Steps** picks what a
+    click on the shape does, in the card (under its plot) and in every big editor below, which has them too (left of its GRID, or in
     a shaper effect's narrower editor in its title row, left of the reset button): with Points, as below; with
     Steps, a click draws a step, as Alt+click does with Points, and Alt+click works with points. **Snap** snaps
     points and steps to the grid without Ctrl, which then lets them go (a shaper's curve drawn right in its card or on
@@ -2022,7 +2021,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   place taken it is dimmed, and a click says so). Random and Curve cards are laid out as an LFO's (see below). A
   Random card has **Unipolar** | **Bipolar** (as icons) where an LFO's shape list is, one of them lit, which sets which
   way its depths swing, as the polarity in its title's menu does, no Unipolar switch and no Phase knob. A Curve card
-  has its clock modes as a list there instead (see below), and an LFO's Unipolar switch. A MIDI card has its input's list (CC,
+  has its clock modes' list there instead (see below), its sync and Unipolar switches under it and three knobs beside
+  it. A MIDI card has its input's list (CC,
   Pressure or Slide, where an LFO's shape is; its tooltip says what the input follows), and right of it its CC stepper
   (while its input is a controller) and Slew; under them, both cards'
   display is a bar of what the newest voice gets now (from the middle while the source is bipolar), with its value.
@@ -2084,23 +2084,20 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     is open with one switched on, the CLAP plugin keeps processing with nothing sounding, where a host would let it
     sleep and the clock would stand still. An LFO picks its shape from a list, like a
     shaper's curve, its button and each entry showing the shape's icon before its name (the wheel over it steps
-    along them). Under the shape list, as
-    wide as it, are its clock modes side by side, as Poly | Mono are, the one it runs in lit, each drawn as an icon
-    (named on hover): a rise that starts again at each dot for **Retrigger**, an infinity sign for **Free**, an
-    anchor for **Anchor** and a single cycle that ends in a dot for **One-Shot** (a Random card's two, Retrigger and
-    Free, each twice as wide). A click picks one (a click on the
-    one lit leaves it), and the wheel over them steps to the next one. A Curve card has its five, with **Sustain**
-    last (a rise, a level between two ticks and a fall), as a list where an LFO's shape list is: its button shows the
-    mode it runs in, its icon and name, with arrows that step along the list, round its ends, and the wheel over it
-    steps along it too; its list shows the five with their icons, the one in force checked (the button shows no
-    tooltip, as an LFO's shape list doesn't). Each pick, step or wheel notch is one undo step. The row under it, where an LFO's clock buttons are,
-    holds its **Slew**, a small knob with its name and value beside it, and the Unipolar switch. Right of those two rows, centered
-    on them, are the Rate and Phase knobs (a Random card's Rate alone; a Curve's Rate labeled Length while it reads as
-    one),
-    over a Random card's Smooth and Chaos, with the sync switch between the shape list and Rate, level with the list: a small square button
-    with the metronome the effects' SYNC has, which turns the Rate knob into a note-value knob (as it starts, on).
-    Under it, level with the clock modes, is the **Unipolar** switch, a hump on a baseline as a Mods row's
-    polarity switch has.
+    along them). Under the shape list (a Random card's polarity), as wide as it, is its clock modes' list: its
+    button shows the mode it runs in, its icon and name, with arrows that step along the list, round its ends, and the
+    wheel over it steps along it too; its list shows the modes with their icons, the one in force checked (the button
+    shows no tooltip, as the shape list doesn't). Its icons: a rise that starts again at each dot for **Retrigger**,
+    an infinity sign for **Free**, an anchor for **Anchor** and a single cycle that ends in a dot for **One-Shot**. An
+    LFO has those four, a Random source the first two. A Curve card has five, with **Sustain** last (a rise, a level
+    between two ticks and a fall), in its list where an LFO's shape list is. Each pick, step or wheel notch is one
+    undo step. Right of the two rows, centered on them, are the Rate and Phase knobs (a Random card's Rate alone),
+    over a Random card's Smooth and Chaos, with the sync switch between the shape list and Rate, level with the list:
+    a small square button with the metronome the effects' SYNC has, which turns the Rate knob into a note-value knob
+    (as it starts, on). Under it, level with the clock list, is the **Unipolar** switch, a hump on a baseline as a
+    Mods row's polarity switch has. A Curve card has its sync and Unipolar switches under its clock list instead, and
+    right of the list three knobs alike, side by side: Rate (labeled Length while it reads as one), Phase and
+    **Slew**.
     The Phase knob is faint while it does nothing (on a free LFO that isn't anchored), and otherwise
     a thin line on the display marks where notes start the LFO (or where the song starts an anchored one). A Curve's
     dot keeps to its curve, as an envelope's does, and a dashed line across, while it runs, shows the level it puts

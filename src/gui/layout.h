@@ -675,24 +675,18 @@ inline Rect lfoCardPlot(float card) {
     const Rect p = sourceCard(card, kWideSource);
     return {p.x + 281.0f, p.y + 44.0f, 264.0f, 102.0f};
 }
-// Under the plot's frame, at its left: the point under the mouse in numbers.
-inline Rect lfoCardReadout(float card) {
-    const Rect plot = lfoCardPlot(card);
-    return {plot.x - 8.0f, plot.bottom() + 16.0f, 120.0f, 22.0f};
-}
-// Right of it, the grid's steppers, across (axis 0) then up and down: each an arrow, then a step down (part 0), its
-// count (1) and a step up (2).
+// Under the plot, along its left: Points | Steps and Snap (see lfoModeButton()), then the grid's steppers, across
+// (axis 0) then up and down: each an arrow, then a step down (part 0), its count (1) and a step up (2).
 inline Rect lfoCardGridButton(float card, int axis, int part) {
     constexpr float kX[] = {14.0f, 32.0f, 54.0f}, kW[] = {18.0f, 22.0f, 18.0f};
-    const Rect readout = lfoCardReadout(card);
-    return {readout.x + 128.0f + axis * 76.0f + kX[part], readout.y + 2.0f, kW[part], 18.0f};
+    const Rect plot = lfoCardPlot(card);
+    return {plot.x + 98.0f + axis * 88.0f + kX[part], plot.bottom() + 18.0f, kW[part], 18.0f};
 }
-// Its title row's buttons, by what they do: back to a normal card (0), the shape's reset (1) and the full-size editor
-// (2). Left to right, beside the power switch (cardTool()): the reset, back to a normal card, the full-size editor.
-constexpr int kWideSourceTools = 3;
+// Its title row's buttons, by what they do: back to a normal card (0) and the full-size editor (2), beside the power
+// switch (cardTool()), left to right. The shape's reset (1) is the first of its tools (see lfoToolButton()).
+constexpr int kWideSourceTools = 2;
 inline Rect lfoCardButton(float card, int button) {
-    constexpr int kFromRight[] = {1, 2, 0};
-    return cardTool(sourceCard(card, kWideSource), kFromRight[button]);
+    return cardTool(sourceCard(card, kWideSource), button == 0 ? 1 : 0);
 }
 // The dashed card after the sources, as tall as a card and narrower: it opens the list of source types.
 constexpr float kSourceShadowGap = 10.0f;
@@ -842,18 +836,20 @@ inline Rect sourceModsButton(float card) {
     return {p.x + 16.0f, p.y + 160.0f, p.w - 32.0f, 24.0f};
 }
 
-// A widened LFO card's column of controls has the shape tools where a normal card's display is (see ShapeTool), in
-// a row, and under them Points | Steps and Snap (see ShapeMode).
+// A widened LFO card's column of controls has the shape's reset and tools (see ShapeTool) in a row where a normal
+// card's display is, level with the plot's foot; Points | Steps and Snap (see ShapeMode) go under the plot, as icons,
+// with the grid's steppers.
 constexpr int kShapeTools = 6;
-inline Rect lfoToolButton(float card, int tool) {
+inline Rect lfoToolSlot(float card, int slot) { // 0 the reset, then the tools
     const Rect d = sourceDisplay(card);
-    const float w = (d.w - (kShapeTools - 1) * 4.0f) / kShapeTools;
-    return {d.x + tool * (w + 4.0f), d.y, w, 22.0f};
+    const float w = (d.w - kShapeTools * 4.0f) / (kShapeTools + 1);
+    return {d.x + slot * (w + 4.0f), lfoCardPlot(card).bottom() - 22.0f, w, 22.0f};
 }
-inline Rect lfoModeButton(float card, int mode) {
-    const Rect d = sourceDisplay(card);
-    return mode < 2 ? Rect{d.x + mode * 75.0f, d.y + 28.0f, 75.0f, 22.0f}
-                    : Rect{d.x + 156.0f, d.y + 28.0f, d.w - 156.0f, 22.0f};
+inline Rect lfoToolButton(float card, int tool) { return lfoToolSlot(card, tool + 1); }
+inline Rect lfoResetButton(float card) { return lfoToolSlot(card, 0); }
+inline Rect lfoModeButton(float card, int mode) { // Points and Steps in one pill, then Snap
+    const Rect plot = lfoCardPlot(card);
+    return {plot.x + mode * 26.0f + (mode == 2 ? 6.0f : 0.0f), plot.bottom() + 16.0f, 26.0f, 22.0f};
 }
 
 // A source card's title row, as every card's is (cardClose()): handle and name (the row drags the card), then the fold
@@ -870,24 +866,18 @@ inline Rect lfoWidenButton(float card) {
     return cardTool(sourceCard(card), 0);
 }
 
-// An LFO's shape list (a button with the shape's icon and name, and the list it opens under it) over its clock modes
-// (retrigger, free, anchor and one-shot, as icons), side by side as Poly | Mono are, the two rows as wide. A random
-// one has only the first `modes` (retrigger and free), each as much wider. A Curve's Sustain, after them, isn't among
-// an LFO's.
+// An LFO's shape list (a button with the shape's icon and name, and the list it opens under it) over its clock modes'
+// list (see lfoClockButton()): retrigger, free, anchor and one-shot, a random one's only the first two. A Curve's
+// Sustain, after them, isn't among an LFO's: a Curve's five are its list where an LFO's shape list is (see
+// detail::isCurveClock()), and its full-size editor's title row has them as buttons.
 constexpr int kLfoModes = static_cast<int>(LfoClock::OneShot) + 1;
 static_assert(static_cast<int>(LfoClock::Sustain) == kLfoModes, "an LFO card's clock modes are those before Sustain");
-// A Curve's five are a list instead, where an LFO's shape list is (see detail::isCurveClock()), that row left clear but
-// for its Unipolar switch; its full-size editor's title row has them as buttons.
 constexpr int kCurveModes = static_cast<int>(LfoClock::Count);
-inline Rect lfoModeSwitch(float card, int mode, int modes = kLfoModes) {
-    const Rect p = sourceCard(card);
-    const float w = 30.5f * kLfoModes / modes;
-    return {p.x + 16.0f + mode * w, p.y + 72.0f, w, 16.0f};
-}
+constexpr float kLfoListW = 122.0f; // the shape list's and the clock list's width
 
 inline Rect lfoShapeButton(float card) {
     const Rect p = sourceCard(card);
-    return {p.x + 16.0f, p.y + 42.0f, lfoModeSwitch(card, kLfoModes - 1).right() - p.x - 16.0f, 22.0f};
+    return {p.x + 16.0f, p.y + 42.0f, kLfoListW, 22.0f};
 }
 
 // The shapes an LFO's list offers, in its order: every one but the retired Random and Custom, which the Random and
@@ -902,37 +892,50 @@ constexpr ClipMode kClipModesOffered[] = {ClipMode::Hard,   ClipMode::Soft,     
 static_assert(std::size(kClipModesOffered) == static_cast<size_t>(ClipMode::Count), "the list offers every curve");
 
 // A Random card's polarity, Unipolar (0) | Bipolar (1), where an LFO's shape list is, each half of it, over its clock
-// modes as an LFO's. (A Curve card has its clock modes' list there, and an LFO's Unipolar switch.)
+// list as an LFO's. (A Curve card has its clock list there.)
 inline Rect randomPolaritySwitch(float card, int bipolar) {
     const Rect list = lfoShapeButton(card);
     return {list.x + bipolar * list.w * 0.5f, list.y, list.w * 0.5f, list.h};
 }
 
-// Right of those two rows, the Rate (0) and Phase (1) knobs with their labels, centered on them, each over a random
-// LFO's Smooth and Chaos; Rate's sync switch, a small square, sits between the shape list and the knob, level with
-// the list.
+// Right of those two rows, the Rate (0) and Phase (1) knobs with their labels, each over a random LFO's Smooth and
+// Chaos; Rate's sync switch, a small square, sits between the shape list and the knob, level with the list.
 inline Point lfoKnob(float card, int knob) {
-    const Rect top = lfoShapeButton(card), bottom = lfoModeSwitch(card, kLfoModes - 1);
-    return {randomKnob(card, knob).x, (top.y + bottom.bottom()) * 0.5f - 9.0f}; // the label takes 18 px under the knob
+    return {randomKnob(card, knob).x, lfoShapeButton(card).y + 14.0f}; // the label takes 18 px under the knob
 }
 
 inline Rect sourceSync(float card) {
     const Point rate = lfoKnob(card, 0);
-    const float x = (lfoModeSwitch(card, kLfoModes - 1).right() + rate.x - 15.0f) * 0.5f;
+    const float x = (lfoShapeButton(card).right() + rate.x - 15.0f) * 0.5f;
     return {x - 10.0f, lfoShapeButton(card).center().y - 10.0f, 20.0f, 20.0f};
 }
 
-// A Curve card's Slew, a small knob with its name and value beside it, in the row under its clock modes' list (where
-// an LFO's clock buttons are), between the list and the display.
-inline Rect curveSlewKnob(float card) {
+// An LFO's and a Random source's clock modes, a list under the shape's (or the polarity's), as wide; a Curve's are its
+// list where the shape's is (see detail::isCurveClock()).
+inline Rect lfoClockButton(float card) {
     const Rect list = lfoShapeButton(card);
-    return {list.x, list.bottom() + 1.0f, list.w, sourceDisplay(card).y - list.bottom() - 2.0f};
+    return {list.x, list.bottom() + 6.0f, list.w, list.h};
 }
 
-// Under it, level with the clock modes, the Unipolar switch.
+// Under the sync switch, level with the clock list, an LFO's Unipolar switch.
 inline Rect lfoUnipolarSwitch(float card) {
     const Rect sync = sourceSync(card);
-    return {sync.x, lfoModeSwitch(card, 0).y, sync.w, lfoModeSwitch(card, 0).h};
+    return {sync.x, lfoClockButton(card).center().y - sync.h * 0.5f, sync.w, sync.h};
+}
+
+// A Curve card: under its clock list, its sync and Unipolar switches; right of the list its Rate (or Length), Phase and
+// Slew knobs (0 to 2), alike and side by side, their labels under them.
+inline Rect curveSyncButton(float card) {
+    const Rect clocks = lfoClockButton(card);
+    return {clocks.x, clocks.center().y - 10.0f, 20.0f, 20.0f};
+}
+inline Rect curveUnipolarSwitch(float card) {
+    const Rect sync = curveSyncButton(card);
+    return {sync.right() + 6.0f, sync.y, sync.w, sync.h};
+}
+inline Point curveKnob(float card, int knob) {
+    const Rect p = sourceCard(card);
+    return {p.x + 163.0f + knob * 40.0f, lfoKnob(card, 0).y};
 }
 
 // ADD EFFECT at the top left, and the list it opens under it: one row per type,

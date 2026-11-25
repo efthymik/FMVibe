@@ -42,9 +42,11 @@ inline bool isLfoShape(int param) {
     return sourceFieldOf(param) == SourceParam::Shape;
 }
 
-// A Curve card's list of clock modes, which its button keys on the source's Free switch, as the clock buttons do (see
-// View::isLfoClockChoice()): its entries are the five modes (LfoClock), each its icon and name, and what it picks it
-// sets through View::setLfoClock(), the switches together, never by editing that param.
+// A source card's list of clock modes (an LFO's, a Random's and a Curve's), which its button keys on the source's
+// Free switch, as the Curve's full-size editor's clock buttons do (see View::isLfoClockChoice()): its entries are the
+// modes (LfoClock) the source has, each its icon and name (a Curve's five, an LFO's first four, a Random's first two,
+// see View::lfoClockCount()), and what it picks it sets through View::setLfoClock(), the switches together, never by
+// editing that param.
 inline bool isCurveClock(int param) {
     return sourceFieldOf(param) == SourceParam::Free;
 }

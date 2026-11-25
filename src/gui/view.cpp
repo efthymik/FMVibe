@@ -508,7 +508,7 @@ void View::stepList(int param, int dir, bool model) {
     // round its ends, as a pick from the list would: one undo step, the list closed. A filter's type steps along its
     // families, keeping the model where the family has it, and its Model list along the family's models.
     const int shown = listShown(param);
-    const int items = listCount(param, shown, model);
+    const int items = listItems(param, shown, model);
     int at = dir > 0 ? -1 : items;
     for (int item = 0; item < items; ++item)
         if (listItemValue(param, item, shown, model) == shown)
@@ -932,6 +932,10 @@ double View::lfoPhaseNow(int lfo) const {
 
 LfoClock View::lfoClockOf(int lfo) const {
     return lfoClock([this](int i) { return value(i); }, lfo);
+}
+
+int View::listItems(int param, int shown, bool model) const {
+    return isCurveClock(param) ? lfoClockCount(sourceOf(param)) : listCount(param, shown, model);
 }
 
 int View::lfoClockCount(int lfo) const {
@@ -1599,30 +1603,32 @@ std::vector<View::Widget> View::widgets() const {
         if (widened)
             shapes_.cardWidgets(list, s, card);
         if (lfo) {
-            // An LFO's shape list, or a Random or Curve card's Unipolar | Bipolar in its place, one of them lit, as the
-            // clock modes are: a Random card's sets its Bipolar, a Curve card's its Unipolar (on in the first).
+            // An LFO's shape list, a Random card's Unipolar | Bipolar in its place (its Bipolar, one of them lit, as
+            // the clock modes were), or a Curve's clock modes; and under it an LFO's and a Random's clock modes, a list
+            // too. Every one keys on the source's Free switch (see isCurveClock()) and sets the clock switches
+            // together (see setLfoClock()).
             const bool random = mods_.sourceTypeOf(s) == SourceType::Random;
             const bool curve = mods_.sourceTypeOf(s) == SourceType::Curve;
+            const int clock = paramIndex(s, SourceParam::Free);
             if (random) {
                 const size_t polarity = list.size();
                 for (int bipolar = 0; bipolar < 2; ++bipolar)
                     add(Kind::Choice, randomPolaritySwitch(card, bipolar), paramIndex(s, SourceParam::Bipolar), s,
                         bipolar);
                 merge(polarity);
-            } else if (curve) { // its clock modes as a list, keyed on its Free switch (see isCurveClock())
-                const int clock = paramIndex(s, SourceParam::Free);
+            } else if (curve) {
                 add(Kind::ListButton, lfoShapeButton(card), clock);
                 if (listMenu_ == clock)
                     lfoList = lfoShapeButton(card);
-                // Its Slew in the row under the list, small, its name and value beside it.
-                add(Kind::Knob, curveSlewKnob(card), paramIndex(s, SourceParam::CurveSlew));
-                list.back().label = tr(Str::LabelSlew);
-                list.back().compact = true;
-                list.back().shrunk = true;
             } else {
                 add(Kind::ListButton, lfoShapeButton(card), paramIndex(s, SourceParam::Shape));
                 if (listMenu_ == paramIndex(s, SourceParam::Shape))
                     lfoList = lfoShapeButton(card);
+            }
+            if (!curve) {
+                add(Kind::ListButton, lfoClockButton(card), clock);
+                if (listMenu_ == clock)
+                    lfoList = lfoClockButton(card);
             }
             if (!widened)
                 add(Kind::LfoDisplay, sourceDisplay(card, random), -1, s);
@@ -1630,28 +1636,24 @@ std::vector<View::Widget> View::widgets() const {
                 knob(paramIndex(s, SourceParam::RandomSmooth), randomKnob(card, 0), 30.0f, tr(Str::LabelSmooth));
                 knob(paramIndex(s, SourceParam::RandomChaos), randomKnob(card, 1), 30.0f, tr(Str::LabelChaos));
             }
-            // Synced, the knob picks a note value instead of a rate and shows it as its label.
-            add(Kind::Toggle, sourceSync(card), paramIndex(s, SourceParam::Sync));
-            // Its clock modes under the shape list, one of them lit, as Poly | Mono; each sets Free, Anchor and
-            // One-Shot for it (see setLfoClock()), and stands for them all (a Curve's are its list, its Slew in that
-            // row). Unipolar under the sync switch. A Random card has no Unipolar switch, which its polarity stands
-            // for, and no Phase, which it takes none of.
-            if (!curve) {
-                const size_t modes = list.size();
-                const int clocks = lfoClockCount(s);
-                for (int i = 0; i < clocks; ++i)
-                    add(Kind::Choice, lfoModeSwitch(card, i, clocks), paramIndex(s, SourceParam::Free), s, i);
-                merge(modes);
-            }
+            // Synced, the knob picks a note value instead of a rate and shows it as its label. The sync switch between
+            // the list and the knobs, Unipolar under it; a Curve's two under its list, its three knobs alike beside it.
+            // A Random card has no Unipolar switch, which its polarity stands for, and no Phase, which it takes none of.
+            add(Kind::Toggle, curve ? curveSyncButton(card) : sourceSync(card), paramIndex(s, SourceParam::Sync));
             if (!random)
-                add(Kind::Toggle, lfoUnipolarSwitch(card), paramIndex(s, SourceParam::Unipolar));
+                add(Kind::Toggle, curve ? curveUnipolarSwitch(card) : lfoUnipolarSwitch(card),
+                    paramIndex(s, SourceParam::Unipolar));
             // A Curve playing its curve once from each note takes and shows a length (see shownValue()).
             const bool synced = value(paramIndex(s, SourceParam::Sync)) >= 0.5;
             const bool length = mods_.curveTime(s) == ModulationModel::CurveTime::Seconds;
             knob(synced ? paramIndex(s, SourceParam::Division) : paramIndex(s, SourceParam::Rate),
-                 lfoKnob(card, 0), 30.0f, synced ? nullptr : tr(length ? Str::LabelLength : Str::LabelRate));
+                 curve ? curveKnob(card, 0) : lfoKnob(card, 0), 30.0f,
+                 synced ? nullptr : tr(length ? Str::LabelLength : Str::LabelRate));
             if (!random)
-                knob(paramIndex(s, SourceParam::Phase), lfoKnob(card, 1), 30.0f, tr(Str::LabelPhase));
+                knob(paramIndex(s, SourceParam::Phase), curve ? curveKnob(card, 1) : lfoKnob(card, 1), 30.0f,
+                     tr(Str::LabelPhase));
+            if (curve)
+                knob(paramIndex(s, SourceParam::CurveSlew), curveKnob(card, 2), 30.0f, tr(Str::LabelSlew));
         } else if (mods_.sourceTypeOf(s) == SourceType::Env) {
             const EnvIndices e = envIndices(kOps + s);
             const int params[] = {e.attack, e.hold, e.decay, e.sustain, e.release};
@@ -1959,7 +1961,7 @@ std::vector<View::Widget> View::widgets() const {
     // An LFO's list of shapes, under its button on its card, cut off at the row's ends like the card, though
     // reaching past its bottom.
     if (lfoList.w > 0.0f) {
-        const int items = listCount(listMenu_);
+        const int items = listItems(listMenu_);
         add(Kind::ListMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
         add(Kind::ListMenu, listMenu(lfoList, items), -1, 1);
         list.back().clip = sourceListClip();
@@ -7727,7 +7729,7 @@ void View::wheel(Point p, float steps, Modifiers mods) {
     if (isFilterTypeList(hit->param)) { // to the next family along its list, or over its Model list the next model,
         const bool model = isModelList(*hit); // held at the list's ends, a run of notches one undo step
         const int shown = listShown(hit->param);
-        const int items = listCount(hit->param, shown, model);
+        const int items = listItems(hit->param, shown, model);
         int at = 0;
         for (int item = 0; item < items; ++item)
             if (listItemValue(hit->param, item, shown, model) == shown)

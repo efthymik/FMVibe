@@ -680,34 +680,27 @@ Point clockArrow(float card, int dir) {
 }
 void pickClock(View &view, float card, LfoClock clock);
 
-// An LFO card's clock modes under its shape list, and its Unipolar switch under the sync switch.
-Point retriggerToggle(float card) {
-    return {cardX(card) + 31.25f, 644.0f};
+// An LFO card's clock modes, a list under its shape list (a Random card's under its polarity), and a pick from it: an
+// LFO's four modes, a Random's two.
+Point lfoClockPoint(float card) {
+    return detail::lfoClockButton(card).center();
 }
+void pickLfoClock(View &view, float card, LfoClock clock, int modes = 4);
 
-Point freeToggle(float card) {
-    return {cardX(card) + 61.75f, 644.0f};
-}
-
-Point anchorToggle(float card) {
-    return {cardX(card) + 92.25f, 644.0f};
-}
-
-Point oneShotToggle(float card) {
-    return {cardX(card) + 122.75f, 644.0f};
-}
-
-// A Random card's two clock modes, Retrigger and Free, each as wide as two of an LFO's.
-Point randomRetriggerToggle(float card) {
-    return {cardX(card) + 46.5f, 644.0f};
-}
-
-Point randomFreeToggle(float card) {
-    return {cardX(card) + 107.5f, 644.0f};
-}
-
+// The Unipolar switch under an LFO's sync switch.
 Point unipolarToggle(float card) {
-    return {cardX(card) + 155.0f, 644.0f};
+    return detail::lfoUnipolarSwitch(card).center();
+}
+
+// A Curve card's sync and Unipolar switches, under its clock list, and its Rate (or Length), Phase and Slew knobs.
+Point curveSyncToggle(float card) {
+    return detail::curveSyncButton(card).center();
+}
+Point curveUnipolarToggle(float card) {
+    return detail::curveUnipolarSwitch(card).center();
+}
+Point curveKnob(float card, int knob) {
+    return detail::curveKnob(card, knob);
 }
 
 // Its Rate and Phase knobs, over a random LFO's Smooth and Chaos.
@@ -1091,6 +1084,12 @@ void pickClock(View &view, float card, LfoClock clock) {
     click(view, clockItem(card, clock));
 }
 
+void pickLfoClock(View &view, float card, LfoClock clock, int modes) {
+    const Rect button = detail::lfoClockButton(card);
+    click(view, button.center());
+    click(view, detail::listMenuItem(button, modes, static_cast<int>(clock)).center());
+}
+
 // + SOURCE, after the modulation panel's toggle, then a type in the list it opens under it.
 Point sourceMenuEntry(SourceType type) {
     const Rect button = detail::sourceMenuButton();
@@ -1150,10 +1149,10 @@ Point wideButton(float card, int button) {
     return detail::lfoCardButton(card, button).center();
 }
 Point lfoTool(float card, int tool) {
-    return {cardX(card) + 16.0f + tool * 41.5f + 18.75f, 673.0f};
+    return detail::lfoToolButton(card, tool).center();
 }
 Point lfoMode(float card, int mode) {
-    return {cardX(card) + 16.0f + (mode < 2 ? mode * 75.0f + 37.5f : 156.0f + 44.5f), 701.0f};
+    return detail::lfoModeButton(card, mode).center();
 }
 Point cardShapeAt(float card, double x, double y) {
     return {cardX(card) + 281.0f + static_cast<float>(x) * 264.0f, 659.0f - static_cast<float>(y) * 44.88f};
@@ -1321,8 +1320,8 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     check(randomSynced && std::abs(model.value(paramIndex(1, SourceParam::RandomSmooth)) - 0.6) < 1e-6 &&
               std::abs(model.value(paramIndex(1, SourceParam::RandomChaos)) - 0.3) < 1e-6,
           "a Random source starts synced and bipolar, and its Smooth and Chaos knobs set them");
-    // Its clock modes are Retrigger and Free alone: the wheel stops at Free, and a click where an LFO's One-Shot
-    // would be picks Free, Anchor and One-Shot left off.
+    // Its clock modes are Retrigger and Free alone: the wheel over its list stops at Free, and the list holds the two
+    // (a click where a third would be picks nothing), each picked with Anchor and One-Shot left off.
     {
         auto clocks = [&] {
             return std::array{model.value(paramIndex(1, SourceParam::Free)),
@@ -1330,16 +1329,16 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
                               model.value(paramIndex(1, SourceParam::OneShot))};
         };
         using Clocks = std::array<double, 3>;
-        view.wheel(randomRetriggerToggle(1), 3.0f, {});
+        view.wheel(lfoClockPoint(1), 3.0f, {});
         const bool wheeled = clocks() == Clocks{1.0, 0.0, 0.0};
-        click(view, randomRetriggerToggle(1));
+        pickLfoClock(view, 1, LfoClock::Retrigger, 2);
         const bool retriggered = clocks() == Clocks{};
-        click(view, oneShotToggle(1));
+        pickLfoClock(view, 1, LfoClock::Free, 2);
         const bool freed = clocks() == Clocks{1.0, 0.0, 0.0};
-        click(view, randomRetriggerToggle(1));
-        click(view, randomFreeToggle(1));
+        click(view, lfoClockPoint(1));
+        click(view, detail::listMenuItem(detail::lfoClockButton(1.0f), 2, 2).center());
         const bool freeAgain = clocks() == Clocks{1.0, 0.0, 0.0};
-        click(view, randomRetriggerToggle(1));
+        pickLfoClock(view, 1, LfoClock::Retrigger, 2);
         check(wheeled && retriggered && freed && freeAgain && clocks() == Clocks{},
               "a Random source's clock modes are Retrigger and Free alone");
     }
@@ -4617,24 +4616,25 @@ void testCurveLoop(const std::filesystem::path &dir, Renderer &renderer) {
     const bool held = model.value(sustain) == 1.0;
     pickClock(view, 0, LfoClock::Retrigger);
     const bool retriggered = model.value(sustain) == 0.0 && model.value(oneShot) == 0.0;
-    click(view, unipolarToggle(0));
+    click(view, curveUnipolarToggle(0));
     const bool unipolar = model.value(paramIndex(0, SourceParam::Unipolar)) == 1.0;
     view.undo();
     const bool polarUndone = model.value(paramIndex(0, SourceParam::Unipolar)) == 0.0;
-    // Its Slew, a small knob in the row under the list (where an LFO's clock buttons are), Off to begin with: dragged
-    // up, a lag, one undo step.
+    const int sync = paramIndex(0, SourceParam::Sync);
+    const double syncWas = model.value(sync);
+    click(view, curveSyncToggle(0));
+    const bool syncFlipped = model.value(sync) != syncWas;
+    view.undo();
+    const bool clear = model.value(sync) == syncWas && model.value(sustain) == 0.0 && model.value(oneShot) == 0.0;
+    // Its Slew, a knob as its Length and Phase are, beside them, Off to begin with: dragged up, a lag, one undo step.
     const int slew = paramIndex(0, SourceParam::CurveSlew);
-    const Rect slewRect = detail::curveSlewKnob(0.0f);
-    const Point slewKnob{slewRect.x + 16.0f, slewRect.y + 16.0f};
+    const Point slewKnob = curveKnob(0, 2);
     const bool slewOff = model.value(slew) == 0.0;
     drag(view, slewKnob, {slewKnob.x, slewKnob.y - 30.0f});
     const bool slewed = model.value(slew) > 0.0;
     view.undo();
     const bool slewUndone = model.value(slew) == 0.0;
-    click(view, retriggerToggle(0)); // where an LFO's first clock button is: no clock mode on a Curve card
-    const bool clear = model.value(sustain) == 0.0 && model.value(oneShot) == 0.0 &&
-                       model.value(paramIndex(0, SourceParam::Free)) == 0.0;
-    click(view, oneShotToggle(1));
+    pickLfoClock(view, 1, LfoClock::OneShot);
     click(view, unipolarToggle(1));
     const bool lfoKept = model.value(paramIndex(1, SourceParam::OneShot)) == 1.0 &&
                          model.value(paramIndex(1, SourceParam::Unipolar)) == 1.0 &&
@@ -4654,9 +4654,11 @@ void testCurveLoop(const std::filesystem::path &dir, Renderer &renderer) {
     pickClock(view, 0, LfoClock::Retrigger);
     check(picked && sustained && undone && stepped && round && wheeled && held && retriggered,
           "a Curve card's clock modes are a list: a pick, its arrows and the wheel set the mode, each one undo step");
-    check(unipolar && polarUndone && clear && slewOff && slewed && slewUndone && lfoKept && noTip && listShot,
-          "a Curve card has an LFO's Unipolar switch under its sync button and its Slew in the row under its list, its "
-          "list showing no tooltip; an LFO card keeps its clock buttons and Unipolar switch");
+    check(unipolar && polarUndone && syncFlipped && clear && slewOff && slewed && slewUndone && lfoKept && noTip &&
+              listShot,
+          "a Curve card has its sync and Unipolar switches under its clock list and its Length, Phase and Slew knobs "
+          "alike beside it, its list showing no tooltip; an LFO card picks its clock mode from its own list, its "
+          "Unipolar switch beside it");
 
     // Its Rate, unsynced, reads as the curve's length while it plays it once from each note, and takes one typed (a rate
     // in Hz too); retriggered, a rate.
@@ -4670,7 +4672,7 @@ void testCurveLoop(const std::filesystem::path &dir, Renderer &renderer) {
         return -1;
     };
     auto shown = [&] { // the Rate as typing it starts
-        view.menuCommand(menuEntry(rateKnob(0), tr(Str::MenuEditValue)));
+        view.menuCommand(menuEntry(curveKnob(0, 0), tr(Str::MenuEditValue)));
         const std::string text = view.copyText(false);
         view.endTyping(false);
         return text;
@@ -4679,7 +4681,7 @@ void testCurveLoop(const std::filesystem::path &dir, Renderer &renderer) {
     pickClock(view, 0, LfoClock::Sustain);
     const std::string asLength = shown();
     auto typeRate = [&](const char *text) {
-        view.menuCommand(menuEntry(rateKnob(0), tr(Str::MenuEditValue)));
+        view.menuCommand(menuEntry(curveKnob(0, 0), tr(Str::MenuEditValue)));
         type(view, text);
         view.typeKey(View::Key::Enter);
         return sweepRateHz(model.value(paramIndex(0, SourceParam::Rate)));
@@ -11492,7 +11494,7 @@ void testNewSources(const std::filesystem::path &dir, Renderer &renderer) {
         click(curveView, widePower);
         curveView.mouseMove({600.0f, 328.0f}, {});
         const bool curveShot = renderer.save(curveView, dir / "11l-curve-source.png");
-        click(curveView, unipolarToggle(0)); // off: bipolar
+        click(curveView, curveUnipolarToggle(0)); // off: bipolar
         const bool bipolar = fresh.value(unipolarParam) == 0.0;
         curveView.undo();
         check(curveListShot && curveAdded && wide && curveShot && bipolar && fresh.value(unipolarParam) == 1.0,
@@ -13315,8 +13317,9 @@ void run(const std::filesystem::path &dir, float scale) {
     check(model.value(paramIndex(0, OpParam::Transpose)) == 4.0, "the pitch knob transposes in whole semitones");
     model.set(paramIndex(0, OpParam::Transpose), 0.0);
     check(isModTarget(paramIndex(0, OpParam::Transpose)), "an operator's pitch can be modulated");
-    // An LFO's clock modes: one at a time, as Poly | Mono, each setting Free, Anchor and One-Shot for it in one undo
-    // step; a click on the one lit leaves it, and the wheel steps along them. Unipolar is a switch of its own.
+    // An LFO's clock modes, a list under its shape list: a pick sets Free, Anchor and One-Shot for it in one undo step,
+    // the mode in force picked again leaves it, the wheel over the list steps along them, held at One-Shot (an LFO has
+    // no Sustain). Unipolar is a switch of its own.
     {
         const int free = paramIndex(0, SourceParam::Free), anchor = paramIndex(0, SourceParam::Anchor),
                   oneShot = paramIndex(0, SourceParam::OneShot);
@@ -13324,27 +13327,33 @@ void run(const std::filesystem::path &dir, float scale) {
             return std::array{model.value(free), model.value(anchor), model.value(oneShot)};
         };
         using Modes = std::array<double, 3>;
-        click(view, oneShotToggle(0));
+        pickLfoClock(view, 0, LfoClock::OneShot);
         click(view, unipolarToggle(0));
         const bool oneShotOn =
             modes() == Modes{0.0, 0.0, 1.0} && model.value(paramIndex(0, SourceParam::Unipolar)) == 1.0;
-        click(view, anchorToggle(0));
+        pickLfoClock(view, 0, LfoClock::Anchor);
         const bool anchored = modes() == Modes{0.0, 1.0, 0.0};
-        click(view, anchorToggle(0));
+        pickLfoClock(view, 0, LfoClock::Anchor);
         const bool stays = modes() == Modes{0.0, 1.0, 0.0};
-        click(view, freeToggle(0));
+        pickLfoClock(view, 0, LfoClock::Free);
         const bool freed = modes() == Modes{1.0, 0.0, 0.0};
         view.undo();
         const bool undone = modes() == Modes{0.0, 1.0, 0.0};
-        click(view, retriggerToggle(0));
+        pickLfoClock(view, 0, LfoClock::Retrigger);
         const bool retriggered = modes() == Modes{0.0, 0.0, 0.0};
-        view.wheel(retriggerToggle(0), 1.0f, {});
+        view.wheel(lfoClockPoint(0), 1.0f, {});
         const bool wheeled = modes() == Modes{1.0, 0.0, 0.0};
-        click(view, retriggerToggle(0));
+        view.wheel(lfoClockPoint(0), 5.0f, {});
+        const bool held = modes() == Modes{0.0, 0.0, 1.0};
+        view.mouseMove(lfoClockPoint(0), {});
+        click(view, lfoClockPoint(0));
+        const bool listShot = renderer.save(view, dir / "4b-lfo-clock-list.png");
+        click(view, {600.0f, 328.0f}); // closes it
+        pickLfoClock(view, 0, LfoClock::Retrigger);
         click(view, unipolarToggle(0));
-        check(oneShotOn && anchored && stays && freed && undone && retriggered && wheeled && modes() == Modes{} &&
-                  model.value(paramIndex(0, SourceParam::Unipolar)) == 0.0,
-              "an LFO's clock modes go one at a time, undoably, and its Unipolar switch stands apart");
+        check(oneShotOn && anchored && stays && freed && undone && retriggered && wheeled && held && listShot &&
+                  modes() == Modes{} && model.value(paramIndex(0, SourceParam::Unipolar)) == 0.0,
+              "an LFO's clock modes are a list, a pick setting the mode undoably, and its Unipolar switch stands apart");
         click(view, unipolarToggle(0)); // left unipolar, for the title menu's polarity check further on
     }
 
@@ -14895,26 +14904,26 @@ void run(const std::filesystem::path &dir, float scale) {
     };
     const bool phaseShot = renderer.save(view, dir / "4c-lfo-phase.png");
     const uint32_t tickThen = brightness(tick), arcThen = brightness(arc);
-    click(view, freeToggle(0));
+    pickLfoClock(view, 0, LfoClock::Free);
     view.mouseMove({400.0f, 328.0f}, {});
     const bool freeShot = renderer.save(view, dir / "4d-lfo-phase-free.png");
     const bool faint = brightness(tick) < tickThen && brightness(arc) < arcThen;
-    click(view, retriggerToggle(0));
+    pickLfoClock(view, 0, LfoClock::Retrigger);
     check(std::abs(model.value(phase) - 0.25) < 1e-6 && phaseShot && freeShot && faint &&
               model.value(paramIndex(0, SourceParam::Free)) == 0.0,
           "an LFO's Phase knob sets its start, marked on its display, and goes faint while the LFO is free");
     // Anchored to the host's transport, its Phase is where it stood at the song's start: the knob and the tick stay
     // as they were (read off the rendered pixels).
     const int anchor = paramIndex(0, SourceParam::Anchor);
-    click(view, anchorToggle(0));
+    pickLfoClock(view, 0, LfoClock::Anchor);
     view.mouseMove({400.0f, 328.0f}, {});
     const bool anchorShot = renderer.save(view, dir / "4e-lfo-anchor.png");
     const uint32_t tickNow = brightness(tick), arcNow = brightness(arc);
     std::printf("      anchored: Phase tick %u (was %u), arc %u (was %u)\n", tickNow, tickThen, arcNow, arcThen);
-    view.mouseMove(anchorToggle(0), {});
+    view.mouseMove(lfoClockPoint(0), {});
     const bool tipShot = renderer.save(view, dir / "4f-lfo-anchor-tip.png");
     const bool anchored = model.value(anchor) == 1.0;
-    click(view, retriggerToggle(0));
+    pickLfoClock(view, 0, LfoClock::Retrigger);
     check(anchorShot && tipShot && anchored && tickNow == tickThen && arcNow == arcThen && model.value(anchor) == 0.0,
           "an anchored LFO keeps its Phase in use");
     model.set(phase, 0.0);

@@ -443,6 +443,8 @@ private:
     LfoClock lfoClockOf(int lfo) const;
     // How many clock modes its card offers: a random one only Retrigger and Free.
     int lfoClockCount(int lfo) const;
+    // How many entries a list offers: a clock list as many as its source's clock modes (see lfoClockCount()).
+    int listItems(int param, int shown = 0, bool model = false) const;
     void setLfoClock(int lfo, LfoClock clock);
     // What a list's entry (or its arrows, or the wheel) picks: its param's value, or a Curve's clock mode through
     // setLfoClock() (see detail::isCurveClock()).

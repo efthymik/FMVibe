@@ -1019,13 +1019,8 @@ STR(ButtonSplitDelete, "Delete") // the split goes with its bands' effects
 
 // Readouts in the displays, with the numbers filled in.
 STR(CaptionShapePoint, "point {1}  ·  {2} % of the cycle  ·  {3}")
-// In a widened LFO card, under its shape: the point under the mouse, its place in the cycle and its level.
-STR(CaptionCardPointNumber, "#{1}")
-STR(CaptionCardPoint, "{1} %  ·  {2}")
-STR(HintCardPoint, "Hover a point")
-// The same where a Curve's place reads as a time or in bars and beats (its readouts, as its ruler's), not a share.
+// Where a Curve's place reads as a time or in bars and beats (its readouts, as its ruler's), not a share.
 STR(CaptionShapePointAt, "point {1}  ·  {2}  ·  {3}")
-STR(CaptionCardPointAt, "{1}  ·  {2}")
 STR(CaptionCurvePoint, "point {1}  ·  in {2}  ·  out {3}")
 STR(CaptionNotePoint, "point {1}  ·  {2}  ·  out {3} %")
 STR(CaptionVelocityPoint, "point {1}  ·  velocity {2}  ·  out {3} %")

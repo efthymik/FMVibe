@@ -695,7 +695,8 @@ An LFO produces a repeating shape.
   Modulating a synced rate steps it through the note values. Without a host tempo, 120 BPM is assumed.
 - **Phase**: where each note starts the LFO in its cycle (25 % starts a sine at its peak).
 - **Unipolar**: swings 0 to 1 instead of −1 to 1.
-- **Clock mode**, one of four:
+- **Clock mode**, picked from the list under the shape list (its arrows and the mouse wheel step through the
+  modes), one of four:
   - **Retrigger** (default): restarts from Phase with every note.
   - **Free**: runs continuously, all voices sharing one clock.
   - **Anchor**: locked to the host's song position, so it is at the same point of its cycle at the same place in
@@ -721,10 +722,12 @@ point, so the cycle loops seamlessly.
 
 A new Curve source opens **widened** to twice a card's width, with the shape editor in the card. To widen it later,
 click its display or the expand button in its title row. Only one card is widened at a time. Its title row adds
-**reset** (back to the starting shape), **collapse** and **full size**, which opens the shape over the routing panel.
+**collapse** and **full size**, which opens the shape over the routing panel. Under the shape are **Points | Steps**,
+**Snap** and the grid's settings (see [Shape editors](#shape-editors)).
 
-The **shape tools**, each one undo step:
+The **shape tools**, in a row beside the shape, each one undo step:
 
+- **Reset**: back to the starting shape.
 - **Invert**: flips the shape upside down.
 - **Reverse**: plays it back to front.
 - **Shift left** / **Shift right**: moves it one grid column, around the cycle.
@@ -732,9 +735,9 @@ The **shape tools**, each one undo step:
   [Shape editors](#shape-editors)).
 
 For editing points, see [Shape editors](#shape-editors). Where an LFO has its shape list, a Curve source has its
-**clock mode** as a list; its arrows and the mouse wheel step through the modes. The **Unipolar** switch sits under the
-sync button, as on an LFO. Under the list, **Slew** smooths what the curve puts out, so its jumps glide instead of
-stepping; it is off to begin with.
+**clock mode** list; its arrows and the mouse wheel step through the modes. Under it are the sync and **Unipolar**
+switches, and beside it three knobs: Rate (Length), Phase and **Slew**, which smooths what the curve puts out, so its
+jumps glide instead of stepping. Slew is off to begin with.
 
 A Curve source has a fifth clock mode, **Sustain**, after One-Shot. It works like an envelope with a sustain loop:
 
@@ -899,7 +902,7 @@ Velocity curves.
   jump.
 - Double-click empty space to add a point; double-click a point (or right-click it) to delete it.
 - Drag the small dot halfway along a segment up or down to bend it; double-click it to straighten it.
-- The point under the mouse is shown in numbers.
+- In the full-size editors, the point under the mouse is shown in numbers.
 
 **Steps**
 
