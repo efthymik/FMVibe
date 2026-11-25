@@ -823,9 +823,9 @@ inline Rect modListAuxDepth(Rect row) {
 }
 
 // Under a source's display, at the card's foot, the button that shows its modulations in the MODS view.
-inline Rect sourceModsButton(float card) {
+inline Rect sourceModsButton(float card) { // as wide as its words, about
     const Rect p = sourceCard(card);
-    return {p.x + 16.0f, p.y + 160.0f, p.w - 32.0f, 24.0f};
+    return {p.x + 16.0f, p.y + 160.0f, 110.0f, 24.0f};
 }
 
 // A widened LFO card's column of controls has the shape's reset and tools (see ShapeTool) in a row where a normal

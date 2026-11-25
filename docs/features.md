@@ -2073,8 +2073,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     A source that is another modulation's aux (see below) also gets a dotted line, in its color and bowed the
     other way, to that modulation's depth handle on screen, which is ringed with dots.
   - A card doesn't list its modulations, and ends with a link under its display, words without a button's face:
-    it counts them in dim text, with **Mods ›** at its right in the accent (both lit under the mouse, the whole row
-    taking the click), and shows them in the Mods view, scrolled to the source's first row. While the source
+    it counts them in dim text ("1 modulation", "3 modulations"), the words themselves the link, lit under the mouse,
+    and shows them in the Mods view, scrolled to the source's first row. While the source
     modulates nothing, it reads **No modulations** alone and adds an empty modulation from the source there (see the
     Mods view), with its target's menu open.
     A Random

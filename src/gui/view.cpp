@@ -4511,21 +4511,14 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break;
     }
     case Kind::SourceMods: {
-        // A link, without a face: how many modulations the source has, dim, and MODS with a chevron at the right in
-        // the accent; with none, No modulations alone. Both light up under the mouse, the whole row taking the click.
+        // A link, without a face: how many modulations the source has (No modulations with none), dim, lit under
+        // the mouse.
         const size_t count = usedSlots(w.a).size();
-        const Color ink = hovered ? kText : kDim;
-        if (count == 0) {
-            c.text(w.rect, tr(Str::CardNoModulations), kTextLabel, ink, Align::Left);
-            break;
-        }
-        const Color link = hovered ? kText : kAccent;
-        paintChevron(c, {w.rect.right() - 4.0f, w.rect.center().y}, link, ChevronWay::Right);
-        c.text({w.rect.x, w.rect.y, w.rect.w - 80.0f, w.rect.h},
-               count == 1 ? tr(Str::ModsCountOne) : trf(Str::ModsCount, {std::to_string(count)}), kTextLabel, ink,
-               Align::Left);
-        c.text({w.rect.right() - 80.0f, w.rect.y, 68.0f, w.rect.h}, tr(Str::ViewMods), kTextLabel, link, Align::Right,
-               true);
+        c.text(w.rect,
+               count == 0   ? tr(Str::CardNoModulations)
+               : count == 1 ? tr(Str::ModsCountOne)
+                            : trf(Str::ModsCount, {std::to_string(count)}),
+               kTextLabel, hovered ? kText : kDim, Align::Left);
         break;
     }
     case Kind::ValueText:

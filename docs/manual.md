@@ -680,8 +680,8 @@ right. The fold chevron shows while the mouse is over the card (on a touchscreen
 - **Right-click** the title or handle to duplicate the source (without its targets), clear its targets, set
   Unipolar or Bipolar, or remove it.
 
-A card ends with a link that counts its modulations and opens them in the Mods view (**Mods ›**). With none, it
-reads **No modulations**; clicking it adds an empty modulation from the source.
+A card ends with a link that counts its modulations ("3 modulations"); click it to see them in the Mods view. With
+none, it reads **No modulations**; clicking it adds an empty modulation from the source.
 
 ### LFO
 
