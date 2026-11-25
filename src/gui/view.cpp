@@ -4261,10 +4261,13 @@ void View::paintSource(Canvas &c, float card, int s) {
 }
 
 // A switch's face: lit, a tint of `color` (`tint` strong) outlined in it; hot (under the mouse, say), the track's; else
-// raised. In a flat theme, a well without an outline, lit filled solid with `color`, hot a little darker or lighter.
+// raised. In a flat theme, a well without an outline, lit filled solid with `color`, hot a little darker or lighter;
+// on a dark flat theme's header, whose bottom is about the wells' color, lifted off it instead (raised, hot the track's),
+// as the browser's footer buttons are.
 void View::paintButtonFace(Canvas &c, const Widget &w, bool lit, bool hot, Color color, float tint, float radius) {
     if (look.flat) {
-        const Color face = lit ? color : hot ? wellHover() : wellColor();
+        const bool lifted = !lightTheme() && w.rect.bottom() <= kHeaderH;
+        const Color face = lit ? color : lifted ? (hot ? kTrack : kRaised) : hot ? wellHover() : wellColor();
         if (w.group.w <= 0.0f) {
             c.fillRect(w.rect, face, radius);
             return;

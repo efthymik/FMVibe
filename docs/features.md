@@ -2647,7 +2647,8 @@ what it started goes on.
   source's color is like the arc's is drawn lighter (in Spectrum) or darker (in Porcelain), keeping its hue, so it
   stands apart from the arc, while the others keep their sources' colors; and its pointer a dot; an LFO's shape filled on
   its card; a lit switch filled solid with its color, rows of them set in a well (the LFO's clock and polarity icons
-  a little smaller there), and so the split's 2 | 3, the scope's cycle counts, the Param EQ's band chips (the picked
+  a little smaller there; in Spectrum's header, whose dark bottom the well would melt into, on a raised face
+  instead), and so the split's 2 | 3, the scope's cycle counts, the Param EQ's band chips (the picked
   one tinted with its band's color), the octave buttons and the dialogs' buttons; list buttons, the lists and menus
   they open, tooltips, the name tags and the messages (on a soft shadow, white in
   Porcelain and a step lighter than the rows in Spectrum, their rows shaded under the mouse), the title bar's
