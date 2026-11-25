@@ -731,7 +731,7 @@ The **shape tools**, in a row beside the shape:
 
 For editing points, see [Shape editors](#shape-editors). A Curve source has a **clock mode** list. Under its right
 end are the **Unipolar** and sync switches, and beside it three knobs: Rate (Length), Phase and **Slew**, which
-smoothes what the curve puts out, so its jumps glide instead of stepping.
+smooths what the curve puts out, so its jumps glide instead of stepping.
 
 A Curve source has a fifth clock mode, **Sustain**, after One-Shot. It works like an envelope with a sustain loop:
 
