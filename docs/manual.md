@@ -345,6 +345,20 @@ combined.
 
 The summary line names the warp and says "note sync" while either is active.
 
+### Keys tab
+
+The **KEYS** tab sets keyboard level scaling: how the operator's level changes across the keyboard. On a modulator,
+that changes how bright the sound is, so you can keep high notes from getting harsh.
+
+- **Break** is the note where scaling starts. Drag the dot on the line, or turn the knob.
+- **L Depth** and **R Depth** set how far the level moves one octave below and above Break, from −24 to +24 dB.
+  Drag their handles up or down.
+- **Exp** in each top corner makes that side curve away faster: past the first octave, the change doubles every
+  octave. Off, it changes by the same amount every octave.
+- Double-click a handle to reset it.
+
+While a note plays, a dot shows where its key sits on the curve.
+
 ### Inputs tab
 
 **Inputs** lists every node routed into the operator, one row each:
@@ -1495,11 +1509,35 @@ are shared by all FMVibe instances.
     anywhere via the standard file dialog.
 - **Edit Info…** on the info card opens the same dialog to change a preset's author, category and description
   without changing its sound. Choose another **Folder** there to move the preset.
-- **Load** opens a `.fmv` file through the standard file dialog.
+- **Load** opens a `.fmv` file through the standard file dialog. It also imports DX7 voices (see below).
 - **Init** resets the patch to its defaults.
 
 A preset file contains the whole patch, including the plugin window's layout, macro names and sequencer patterns. It
 does not contain the instance settings (oversampling and MPE).
+
+### Importing DX7 voices
+
+FMVibe can play voices made for the Yamaha DX7.
+
+1. Click **Load** and pick a DX7 sysex file (`.syx`): a bank of 32 voices or a single voice.
+2. FMVibe saves each voice as a preset in the **DX7** folder of your preset folder, in a folder named after the
+   file. The presets are numbered in the bank's order and named after their voices, such as "07 E.PIANO 1".
+3. The first voice loads. Use the preset bar's arrows to step through the others, or find them in the browser.
+
+Importing the same file again saves over the presets it made before.
+
+An imported voice uses the DX7's algorithm, with operators A to F standing for its operators 1 to 6. Each operator
+plays its DX7 envelope as a drawn envelope. The DX7's LFO, pitch envelope, velocity sensitivity and rate scaling
+become modulation sources, which you can see and change like any other. FM Amount is set to 200 %, the depth a DX7
+modulator reaches at full level.
+
+Some parts of a DX7 voice don't come across:
+
+- **Keyboard level scaling** comes across on each operator's KEYS tab. Where the DX7 lifts the level of keys away
+  from the break point, the lift is kept smaller so it never goes past what the DX7 could reach.
+- **Envelopes longer than 10 seconds** are shortened to fit.
+- **Controller settings** (what the mod wheel, aftertouch, breath and foot controller do) aren't stored in DX7
+  voices. Assign the Mod Wheel yourself if a voice needs it.
 
 ### Factory presets
 

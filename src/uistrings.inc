@@ -159,6 +159,8 @@ STR(RoutePhase, "Phase")
 STR(RouteLinearFm, "Linear FM")
 STR(RouteExpFm, "Exp FM")
 STR(RouteRing, "Ring")
+STR(KeyCurveLinear, "Linear") // a keyboard scaling side's curve
+STR(KeyCurveExp, "Exp")
 
 // The effects, in the list that adds them and on the host's pages.
 STR(FxEmpty, "Empty")
@@ -228,6 +230,11 @@ STR(ParamFmAmount, "FM Amount")
 STR(ParamBendRange, "Bend Range")
 STR(ParamPitch, "Pitch")
 STR(ParamPan, "Pan")
+STR(ParamKeyBreak, "Key Break") // keyboard scaling's breakpoint
+STR(ParamKeyLeftDepth, "Key L Depth")
+STR(ParamKeyRightDepth, "Key R Depth")
+STR(ParamKeyLeftCurve, "Key L Curve")
+STR(ParamKeyRightCurve, "Key R Curve")
 STR(ParamVoices, "Voices")
 STR(ParamMono, "Mono")
 STR(ParamLegato, "Legato")
@@ -585,6 +592,8 @@ STR(SourceNameBend, "Pitch Bend")
 STR(SourceNameOp, "Op {1}") // an operator's output as a modulation source
 STR(MacroDefaultName, "Macro {1}") // until it is given a name of its own
 STR(PresetInit, "- Init -") // the preset bar, with no preset loaded
+STR(PresetDx7Voice, "DX7 voice {1} from {2}") // an imported voice's description: its place in the file, the file
+STR(PresetsDx7Folder, "DX7") // the folder of the preset folder imported DX7 files go into
 
 STR(ThemeMidnight, "Midnight")
 STR(ThemeLight, "Light")
@@ -652,6 +661,7 @@ STR(TabEnvelope, "Envelope")
 STR(TabScope, "Scope")
 STR(TabInputs, "Inputs") // the routes into the operator, each with its mode
 STR(TabWarp, "Warp") // its scope, warp and hard sync
+STR(TabKeys, "Keys") // keyboard level scaling: its level across the keys
 STR(HeadingModulation, "MODULATION")
 STR(HeadingKeyboard, "KEYBOARD")
 STR(BusOut, "OUT") // the output, in the graph and the matrix
@@ -701,6 +711,9 @@ STR(LabelVolume, "Volume")
 STR(LabelFmAmount, "FM Amount")
 STR(LabelPitch, "Pitch")
 STR(LabelPan, "Pan")
+STR(LabelBreak, "Break") // keyboard scaling's breakpoint
+STR(LabelLeftDepth, "L Depth")
+STR(LabelRightDepth, "R Depth")
 STR(LabelGlide, "Glide")
 STR(LabelBend, "Bend")
 STR(LabelVoices, "Voices")
@@ -795,6 +808,7 @@ STR(SwitchPoly, "Poly")
 STR(SwitchMono, "Mono")
 STR(SwitchLegato, "Legato")
 STR(SwitchAlways, "Always") // the glide's
+STR(SwitchExp, "Exp") // a keyboard scaling side's curve: lit exponential, dark linear
 STR(CaptionNoteSync, "NOTE SYNC") // on the WARP display, while the operator is synced to the note
 STR(SwitchPoints, "Points") // what a click on an LFO's shape does
 STR(SwitchSteps, "Steps")
@@ -1043,6 +1057,10 @@ STR(CaptionUtility, "{1}  ·  {2}") // the utility's gain and pan
 STR(CaptionUtilityMonoBass, "mono < {1}") // on the utility's Mono Bass line: below it, the sound is mono
 STR(CaptionShiftOf, "{1}  ·  of {2}")
 STR(CaptionHold, "hold {1}")
+STR(CaptionKeyBreak, "break {1}") // keyboard scaling's handles, over its display
+STR(CaptionKeyDepth, "{1} an octave {2}") // a depth, then below or above
+STR(CaptionKeyBelow, "below")
+STR(CaptionKeyAbove, "above")
 STR(CaptionResonance, "{1}  ·  res {2}")
 STR(CaptionEnvCurve, "{1} curve  ·  {2}") // an envelope segment's knob label, then its curve
 STR(CaptionFeedback, "fb {1}") // an operator's feedback on its wire label
@@ -1052,6 +1070,7 @@ STR(NoisePinkCaption, "pink")
 STR(NoiseBrownCaption, "brown")
 STR(TipMoreWaves, "More waves")
 STR(TipFixedOff, "Fixed pitch at Freq × Mult") // the keyboard switch, tracking the keys
+STR(TipKeyExp, "Exp: past an octave from the break, twice as far every octave") // a keyboard scaling side's switch
 STR(TipHardSync, "Note sync: restart the wave with each cycle of the note") // an operator's NOTE switch
 STR(TipWarpOff, "Off") // an operator's warps, its WARP tab's buttons
 STR(TipWarpBend, "Bend")
@@ -1390,9 +1409,12 @@ STR(MsgBadValue, "Invalid value for {2}: \"{1}\"")
 STR(DialogSavePreset, "Save preset")
 STR(DialogLoadPreset, "Load preset")
 STR(DialogPresetFiles, "FMVibe preset (*.fmv)")
+STR(DialogLoadFiles, "FMVibe preset or DX7 sysex (*.fmv, *.syx)") // Load's file types
+STR(DialogDx7Files, "DX7 sysex (*.syx)")
 STR(DialogAllFiles, "All files (*.*)")
 STR(DialogWriteFailed, "Could not save the preset.")
 STR(DialogNotPreset, "Not an FMVibe preset.")
+STR(DialogNotDx7, "No DX7 voices in this file, or they could not be saved into the preset folder.")
 
 // --- The editor on Linux, where the dialogs are the desktop's (zenity, else kdialog)
 
@@ -1456,6 +1478,7 @@ STR(CascadeLevel, "LEVEL")
 STR(CascadePhase, "PHASE")
 STR(CascadeEnvelope, "ENVELOPE")
 STR(CascadeUnison, "UNISON")
+STR(CascadeKeys, "KEYS") // keyboard scaling
 STR(CascadeNoise, "NOISE")
 STR(CascadeFields, "SETTINGS") // a source's own knobs, before the depths of its modulations
 STR(CascadeDepths, "DEPTHS")

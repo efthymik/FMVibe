@@ -279,6 +279,21 @@ void InspectorPanel::widgets(std::vector<Widget> &list) const {
             knob(paramIndex(op, OpParam::WarpAmount), kWarpAmountKnob, kOpKnobD, tr(Str::LabelAmount));
             add(Kind::Toggle, kSyncButton, paramIndex(op, OpParam::Sync));
         }
+        if (tab == InspectorTab::Keys) {
+            // Keyboard level scaling: the breakpoint and each side's depth as knobs under the well, each side's curve
+            // switch in the display's top corners, and the breakpoint and the depths as handles on the display.
+            const int params[] = {paramIndex(op, OpParam::KeyBreak), paramIndex(op, OpParam::KeyLeftDepth),
+                                  paramIndex(op, OpParam::KeyRightDepth)};
+            const Str labels[] = {Str::LabelBreak, Str::LabelLeftDepth, Str::LabelRightDepth};
+            for (int i = 0; i < 3; ++i)
+                knob(params[i], keyScaleKnob(i), kOpKnobD, tr(labels[i]));
+            add(Kind::Toggle, keyCurveButton(0), paramIndex(op, OpParam::KeyLeftCurve));
+            add(Kind::Toggle, keyCurveButton(1), paramIndex(op, OpParam::KeyRightCurve));
+            for (int b : {1, 2, 0}) { // the breakpoint last, so it wins where they meet
+                const Point at = keyPoint(op, b);
+                add(Kind::KeyPoint, {at.x - 7.0f, at.y - 7.0f, 14.0f, 14.0f}, params[b], op, b);
+            }
+        }
         if (tab == InspectorTab::Envelope) {
             // ADSR over Curve; for a drawn envelope, One-Shot | Sustain, its sync switch, its Length and its pencil,
             // else the AHDSR's knobs: along the row under the well.
@@ -519,6 +534,9 @@ void InspectorPanel::paintBack(Canvas &c) {
         case InspectorTab::Warp:
             paintScope(c, kScopeRect, op);
             break;
+        case InspectorTab::Keys:
+            paintKeyScale(c, op);
+            break;
         case InspectorTab::Inputs:
         case InspectorTab::Count:
             paintInputs(c, op);
@@ -723,6 +741,69 @@ void InspectorPanel::paintInputs(Canvas &c, int op) {
     c.popClip();
 }
 
+Point InspectorPanel::keyPoint(int op, int handle) const {
+    const double breakpoint = value(paramIndex(op, OpParam::KeyBreak));
+    if (handle == 0)
+        return {keyScaleX(breakpoint), keyScaleY(0.0)};
+    const Rect plot = keyScalePlot();
+    const float x = keyScaleX(breakpoint + (handle == 1 ? -12.0 : 12.0));
+    // Held inside the display, a little in from its ends, so a breakpoint near one keeps its handle in reach.
+    return {std::clamp(x, plot.x + 4.0f, plot.right() - 4.0f),
+            keyScaleY(value(paramIndex(op, handle == 1 ? OpParam::KeyLeftDepth : OpParam::KeyRightDepth)))};
+}
+
+// The operator's level across the keys, in dB from kKeyScaleTopDb down to kKeyScaleBottomDb: a line at 0 dB, faint
+// lines at each C (C4 marked), the breakpoint's dashed line, the curve with the area under it filled, and, while notes
+// play, the newest voice's key on it.
+void InspectorPanel::paintKeyScale(Canvas &c, int op) {
+    const Rect plot = keyScalePlot();
+    for (int key = 12; key <= 120; key += 12) {
+        const float x = keyScaleX(key);
+        c.line({x, plot.y}, {x, plot.bottom()}, kBorder.alpha(key == 60 ? 0.9f : 0.45f), 1.0f);
+    }
+    c.text({keyScaleX(60.0) - 20.0f, plot.bottom() + 1.0f, 40.0f, 11.0f}, "C4", kTextSmall, kFaint, Align::Center);
+    c.line({plot.x, keyScaleY(0.0)}, {plot.right(), keyScaleY(0.0)}, kBorder, 1.0f);
+    auto get = [&](OpParam f) { return value(paramIndex(op, f)); };
+    const double breakpoint = get(OpParam::KeyBreak), left = get(OpParam::KeyLeftDepth),
+                 right = get(OpParam::KeyRightDepth), leftCurve = get(OpParam::KeyLeftCurve),
+                 rightCurve = get(OpParam::KeyRightCurve);
+    auto dbAt = [&](double key) { return keyScaleDb(key, breakpoint, left, right, leftCurve, rightCurve); };
+    const float breakX = keyScaleX(breakpoint);
+    c.line({breakX, plot.y}, {breakX, plot.bottom()}, kAccent.alpha(0.45f), 1.0f, true);
+    std::vector<Point> points;
+    for (int k = 0; k <= 254; ++k) // every half note, the breakpoint's own place among them
+        points.push_back({keyScaleX(k * 0.5), keyScaleY(dbAt(k * 0.5))});
+    std::vector<Point> area = points;
+    area.push_back({plot.right(), plot.bottom()});
+    area.push_back({plot.x, plot.bottom()});
+    c.fillPolygon(area.data(), area.size(), kAccent.alpha(0.12f));
+    plotLine(c, points.data(), points.size(), kAccent, 2.0f);
+    // While notes play, the newest voice's note: a line down through it and a dot where it meets the curve.
+    const Telemetry &t = host_.telemetry();
+    if (t.voices > 0 && routing_.nodeOn(op)) {
+        const double note = t.notePitch;
+        const float x = keyScaleX(note);
+        c.line({x, plot.y}, {x, plot.bottom()}, kAccent.alpha(0.35f), 1.0f, true);
+        const Point dot{x, keyScaleY(dbAt(note))};
+        c.fillCircle(dot, 7.0f, kAccent.alpha(0.25f));
+        c.fillCircle(dot, 3.5f, kText);
+    }
+}
+
+void InspectorPanel::paintKeyReadout(Canvas &c, const Widget &w) {
+    char a[32];
+    formatParam(w.param, value(w.param), a, sizeof(a));
+    const std::string text = w.b == 0 ? trf(Str::CaptionKeyBreak, {a})
+                                      : trf(Str::CaptionKeyDepth, {a, tr(w.b == 1 ? Str::CaptionKeyBelow
+                                                                                   : Str::CaptionKeyAbove)});
+    // Over the display's top middle, between the curve switches, on a backdrop of its color.
+    const Rect r = kKeyScaleRect;
+    const float width = c.textWidth(text, kTextLabel);
+    const float x = r.center().x - width * 0.5f;
+    c.fillRect({x - 5.0f, r.y + 5.0f, width + 10.0f, 15.0f}, kDisplayColor.alpha(0.85f), kRadiusMark);
+    c.text({x, r.y + 5.0f, width, 15.0f}, text, kTextLabel, kText, Align::Center);
+}
+
 bool InspectorPanel::opEnvDrawn(int op) const {
     return value(paramIndex(op, OpParam::EnvMode)) >= 0.5;
 }
@@ -751,6 +832,9 @@ bool InspectorPanel::opTabModulated(int op, InspectorTab tab) const {
                                                    paramIndex(op, OpParam::Release)};
     if (tab == InspectorTab::Warp && !isNoise(op))
         params = {paramIndex(op, OpParam::WarpAmount)};
+    if (tab == InspectorTab::Keys)
+        params = {paramIndex(op, OpParam::KeyBreak), paramIndex(op, OpParam::KeyLeftDepth),
+                  paramIndex(op, OpParam::KeyRightDepth)};
     for (const Assignment &m : assignments())
         if (std::find(params.begin(), params.end(), m.target) != params.end())
             return true;
@@ -938,7 +1022,7 @@ bool InspectorPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         const auto tab = static_cast<InspectorTab>(w.a);
         const bool selected = opTabShown(op) == tab;
         const Str names[] = {isNoise(op) ? Str::TabSpectrum : Str::TabUnison, Str::TabEnvelope, Str::TabScope,
-                             Str::TabInputs, Str::TabWarp};
+                             Str::TabInputs, Str::TabWarp, Str::TabKeys};
         static_assert(std::size(names) == static_cast<size_t>(InspectorTab::Count));
         c.text(w.rect, tr(names[w.a]), kTextLabel, selected || hovered ? kText : kDim, Align::Center, true);
         if (selected)
@@ -1032,6 +1116,15 @@ bool InspectorPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         c.fillRect(inputsThumb(controller().layout().selectedNode), lit ? kDim : kFaint, kRadiusMark);
         break;
     }
+    case Kind::KeyPoint: { // as an envelope's points are; the breakpoint's a ring with a dot in it
+        const Point center = w.rect.center();
+        const bool focused = hovered || active;
+        c.fillCircle(center, focused ? 5.5f : 4.0f, focused ? kAccent : kPanel);
+        c.strokeCircle(center, focused ? 5.5f : 4.0f, kAccent, 1.8f);
+        if (w.b == 0 && !focused)
+            c.fillCircle(center, 1.6f, kAccent);
+        break; // its readout goes over the other handles (paintKeyReadout())
+    }
     case Kind::FilterPoint: // a voice filter's; the filter effect's (b = 1) is the View's
         if (w.b == 1)
             return false;
@@ -1046,6 +1139,14 @@ bool InspectorPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
 
 // The name tag of a hovered wave button, painted after every widget so the ones below don't cover it.
 void InspectorPanel::paintOverWidgets(Canvas &c) {
+    // A keyboard scaling handle's readout, over the other handles, while it is under the mouse or held.
+    if (!covered()) {
+        std::vector<Widget> own;
+        widgets(own);
+        for (const Widget &k : own)
+            if (k.kind == Kind::KeyPoint && (host_.isHovered(k) || host_.isActive(k)))
+                paintKeyReadout(c, k);
+    }
     const std::optional<Widget> &w = host_.hovered();
     if (!w || (w->kind != Kind::WaveButton && w->kind != Kind::WaveMore) || waveMenu_ >= 0 || !host_.isHovered(*w) ||
         covered())
@@ -1097,6 +1198,8 @@ std::string InspectorPanel::tooltip(const Widget &w) const {
         static_assert(std::size(tips) == static_cast<size_t>(UniCurve::Count));
         return tr(tips[std::clamp(w.b, 0, static_cast<int>(UniCurve::Count) - 1)]);
     }
+    if (w.kind == Kind::Toggle && isKeyCurveParam(param))
+        return tr(Str::TipKeyExp);
     if (opOfField(param, OpParam::UnisonPan) >= 0) {
         const Str tips[] = {Str::TipUniPanRamp, Str::TipUniPanAlternate, Str::TipUniPanRandom};
         static_assert(std::size(tips) == static_cast<size_t>(UniPan::Count));
@@ -1108,6 +1211,8 @@ std::string InspectorPanel::tooltip(const Widget &w) const {
 std::optional<CursorKind> InspectorPanel::cursor(const Widget &w) const {
     if (w.kind == Kind::WaveMenu) // the open list's own panel and what is around it, where a click picks nothing
         return CursorKind::Arrow;
+    if (w.kind == Kind::KeyPoint) // the breakpoint across, a depth up and down
+        return w.b == 0 ? CursorKind::Horizontal : CursorKind::Vertical;
     return std::nullopt;
 }
 
@@ -1123,6 +1228,8 @@ void InspectorPanel::poll(const Telemetry &t, std::vector<Rect> &repaint) {
             t.opEnvPhase != was.opEnvPhase)
             repaint.push_back(kInspector);
         if (t.scope != was.scope || t.scopeBins != was.scopeBins || t.scopeCursor != was.scopeCursor)
+            repaint.push_back(kInspector);
+        if (t.notePitch != was.notePitch || t.voices != was.voices) // the KEYS tab's dot on the newest voice's key
             repaint.push_back(kInspector);
     }
     float opPeak = 0.0f;
@@ -1200,6 +1307,11 @@ bool InspectorPanel::press(const Widget &w, Point p, Modifiers) {
         }
         break;
     }
+    case Kind::KeyPoint:
+        drag_ = {DragKind::KeyPoint, w, 0.0f};
+        controller().beginEdit(w.param);
+        host_.startDrag(*this, w, p, false);
+        break;
     case Kind::FilterPoint:
         if (w.b == 1)
             return false; // the filter effect's, the View's
@@ -1234,6 +1346,14 @@ void InspectorPanel::drag(const DragState &d) {
         set(f.resonance, resonance);
         break;
     }
+    case DragKind::KeyPoint: { // the breakpoint across, onto whole notes; a depth up and down, an octave out
+        const int index = drag_.widget.param;
+        const double v = std::clamp(drag_.widget.b == 0 ? std::round(keyScaleKey(p.x)) : keyScaleDbAt(p.y),
+                                    table_[index].min, table_[index].max);
+        if (v != value(index))
+            controller().setValue(index, v);
+        break;
+    }
     case DragKind::InputsScroll: { // the INPUTS tab's rows follow its thumb
         const int op = controller().layout().selectedNode;
         const float room = inputsScrollTrack().h - inputsThumb(op).h;
@@ -1253,11 +1373,20 @@ void InspectorPanel::release() {
         for (int index : {f.cutoff, f.resonance})
             controller().endEdit(index);
     }
+    if (drag_.kind == DragKind::KeyPoint)
+        controller().endEdit(drag_.widget.param);
     drag_ = Drag{};
 }
 
 bool InspectorPanel::dragsOnTouch(const Widget &w) const {
-    return w.kind == Kind::InputsScroll;
+    return w.kind == Kind::InputsScroll || w.kind == Kind::KeyPoint;
+}
+
+bool InspectorPanel::doubleClick(const Widget &w, Point, Modifiers) {
+    if (w.kind != Kind::KeyPoint)
+        return false;
+    edit(w.param, table_[w.param].def); // the breakpoint back to C4, a depth to none
+    return true;
 }
 
 // The Fixed switch as a click on it: on upward, off downward, with its Freq and Mult.

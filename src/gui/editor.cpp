@@ -1006,8 +1006,15 @@ std::optional<std::wstring> shellFileDialog(HWND owner, bool save, const std::ws
     if (FAILED(CoCreateInstance(save ? CLSID_FileSaveDialog : CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
                                 IID_PPV_ARGS(&dialog))))
         return std::nullopt;
-    const COMDLG_FILTERSPEC types[] = {{presets.c_str(), L"*.fmv"}, {all.c_str(), L"*.*"}};
-    dialog->SetFileTypes(2, types);
+    // Load takes a DX7 sysex file too (see PluginCore::importDx7()), listed with the presets to begin with.
+    const std::wstring both = widen(tr(Str::DialogLoadFiles)), dx7 = widen(tr(Str::DialogDx7Files));
+    const COMDLG_FILTERSPEC saveTypes[] = {{presets.c_str(), L"*.fmv"}, {all.c_str(), L"*.*"}};
+    const COMDLG_FILTERSPEC loadTypes[] = {
+        {both.c_str(), L"*.fmv;*.syx"}, {presets.c_str(), L"*.fmv"}, {dx7.c_str(), L"*.syx"}, {all.c_str(), L"*.*"}};
+    if (save)
+        dialog->SetFileTypes(2, saveTypes);
+    else
+        dialog->SetFileTypes(4, loadTypes);
     dialog->SetDefaultExtension(L"fmv");
     dialog->SetTitle(title.c_str());
     FILEOPENDIALOGOPTIONS options = 0;
@@ -1056,7 +1063,11 @@ void Editor::browsePreset(bool save) {
         return;
     if (!picked) { // the older dialog, which starts there unless the host's last dialog was left elsewhere
         // Filter pairs are NUL-separated, and the list ends with a double NUL (the last one the string's own).
-        const std::wstring filter = presets + L'\0' + L"*.fmv" + L'\0' + all + L'\0' + L"*.*" + L'\0';
+        const std::wstring both = widen(tr(Str::DialogLoadFiles)), dx7 = widen(tr(Str::DialogDx7Files));
+        const std::wstring filter =
+            save ? presets + L'\0' + L"*.fmv" + L'\0' + all + L'\0' + L"*.*" + L'\0'
+                 : both + L'\0' + L"*.fmv;*.syx" + L'\0' + presets + L'\0' + L"*.fmv" + L'\0' + dx7 + L'\0' +
+                       L"*.syx" + L'\0' + all + L'\0' + L"*.*" + L'\0';
         wchar_t path[MAX_PATH] = L"";
         wcsncpy_s(path, name.c_str(), _TRUNCATE);
         OPENFILENAMEW dialog{};
@@ -1080,7 +1091,9 @@ void Editor::browsePreset(bool save) {
         if (!store.savePreset(*picked))
             MessageBoxW(hwnd_, widen(tr(Str::DialogWriteFailed)).c_str(), L"FMVibe", MB_ICONWARNING);
     } else if (!store.loadPreset(*picked)) {
-        MessageBoxW(hwnd_, widen(tr(Str::DialogNotPreset)).c_str(), L"FMVibe", MB_ICONWARNING);
+        const bool syx = picked->size() >= 4 && _wcsicmp(picked->c_str() + picked->size() - 4, L".syx") == 0;
+        MessageBoxW(hwnd_, widen(tr(syx ? Str::DialogNotDx7 : Str::DialogNotPreset)).c_str(), L"FMVibe",
+                    MB_ICONWARNING);
     }
     if (guard.alive())
         invalidate();

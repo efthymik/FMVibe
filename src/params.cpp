@@ -41,7 +41,7 @@ constexpr bool idsRoundTrip(int from, int to) {
     return true;
 }
 // (MSVC allows an expression 1,048,576 steps, fewer than GCC, so the parts are small.)
-static_assert(kParamCount == 52142 && kParamCount <= 35 * 1500);
+static_assert(kParamCount == 52172 && kParamCount <= 35 * 1500);
 static_assert(idsRoundTrip(0, 1500), "param id layout overlaps");
 static_assert(idsRoundTrip(1500, 3000), "param id layout overlaps");
 static_assert(idsRoundTrip(3000, 4500), "param id layout overlaps");
@@ -153,6 +153,8 @@ constexpr Str kAmpMicNames[] = {Str::MicDynamic, Str::MicCondenser, Str::MicRibb
 static_assert(std::size(kAmpMicNames) == static_cast<size_t>(AmpMic::Count));
 constexpr Str kRouteModeNames[] = {Str::RoutePhase, Str::RouteLinearFm, Str::RouteExpFm, Str::RouteRing};
 static_assert(std::size(kRouteModeNames) == static_cast<size_t>(RouteMode::Count));
+constexpr Str kKeyCurveNames[] = {Str::KeyCurveLinear, Str::KeyCurveExp};
+static_assert(std::size(kKeyCurveNames) == static_cast<size_t>(KeyCurve::Count));
 constexpr Str kFxNames[] = {Str::FxEmpty,     Str::FxShaper,      Str::FxDelay,      Str::FxDjEq,
                             Str::FxParamEq,   Str::FxFilter,      Str::FxCompressor, Str::FxMultiComp,
                             Str::FxReverb,    Str::FxPhaser,      Str::FxFlanger,    Str::FxFreqShifter,
@@ -265,7 +267,7 @@ void buildTable(ParamTable &t) {
             kind == ParamKind::AmpMic || kind == ParamKind::AmpOversampling || kind == ParamKind::OpWarp ||
             kind == ParamKind::UniCurve || kind == ParamKind::UniPan || kind == ParamKind::MorphMode ||
             kind == ParamKind::SeqPattern || kind == ParamKind::SeqPlay || kind == ParamKind::SeqRate ||
-            kind == ParamKind::SeqOrder)
+            kind == ParamKind::SeqOrder || kind == ParamKind::KeyCurve)
             flags |= CLAP_PARAM_IS_ENUM;
         t[index] = {idOfIndex(index), std::move(name), std::move(module), kind, min, max, def, flags};
     };
@@ -456,6 +458,18 @@ void buildTable(ParamTable &t) {
         hidden(OpParam::EnvDivision, Str::ParamEnvDivision, ParamKind::SyncDivision, kSlowestDivision,
                kDivisions - 1.0, kQuarter);
         hidden(OpParam::EnvSlew, Str::ParamEnvSlew, ParamKind::TimeOrOff, 0.0, kMaxSlewNorm, 0.0);
+        // Keyboard level scaling, off to begin with: no depth either side, so the operator plays every key as set (see
+        // keyScaleDb()).
+        add(paramIndex(op, OpParam::KeyBreak), name + " " + tr(Str::ParamKeyBreak), module, ParamKind::NotePitch, 0.0,
+            127.0, kDefaultKeyBreak);
+        add(paramIndex(op, OpParam::KeyLeftDepth), name + " " + tr(Str::ParamKeyLeftDepth), module,
+            ParamKind::KeyDepth, -kMaxKeyDepthDb, kMaxKeyDepthDb, 0.0);
+        add(paramIndex(op, OpParam::KeyRightDepth), name + " " + tr(Str::ParamKeyRightDepth), module,
+            ParamKind::KeyDepth, -kMaxKeyDepthDb, kMaxKeyDepthDb, 0.0);
+        add(paramIndex(op, OpParam::KeyLeftCurve), name + " " + tr(Str::ParamKeyLeftCurve), module,
+            ParamKind::KeyCurve, 0.0, static_cast<double>(KeyCurve::Count) - 1.0, 0.0);
+        add(paramIndex(op, OpParam::KeyRightCurve), name + " " + tr(Str::ParamKeyRightCurve), module,
+            ParamKind::KeyCurve, 0.0, static_cast<double>(KeyCurve::Count) - 1.0, 0.0);
         // Its shape, as a freeform shape is laid out: up from nothing to full in a tenth of its time, then down to
         // nothing again by its end.
         {
@@ -1418,12 +1432,14 @@ bool isStepped(ParamKind kind) {
            kind == ParamKind::AmpCab || kind == ParamKind::AmpMic || kind == ParamKind::AmpOversampling ||
            kind == ParamKind::OpWarp || kind == ParamKind::UniCurve || kind == ParamKind::UniPan ||
            kind == ParamKind::MorphMode || kind == ParamKind::SeqPattern || kind == ParamKind::SeqPlay ||
-           kind == ParamKind::SeqRate || kind == ParamKind::SeqOrder || kind == ParamKind::SeqBars;
+           kind == ParamKind::SeqRate || kind == ParamKind::SeqOrder || kind == ParamKind::SeqBars ||
+           kind == ParamKind::KeyCurve;
 }
 
 bool isBipolar(ParamKind kind) {
     return kind == ParamKind::BipolarPercent || kind == ParamKind::Cents || kind == ParamKind::SemitoneOffset ||
-           kind == ParamKind::Transpose || kind == ParamKind::Pan || kind == ParamKind::EqGain || kind == ParamKind::DelayTone;
+           kind == ParamKind::Transpose || kind == ParamKind::Pan || kind == ParamKind::EqGain || kind == ParamKind::DelayTone ||
+           kind == ParamKind::KeyDepth;
 }
 
 bool formatParam(int index, double value, char *out, uint32_t capacity) {
@@ -1562,6 +1578,12 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
         break;
     case ParamKind::UniPan:
         std::snprintf(out, capacity, "%s", nameAt(kUniPanNames, value));
+        break;
+    case ParamKind::KeyCurve:
+        std::snprintf(out, capacity, "%s", nameAt(kKeyCurveNames, value));
+        break;
+    case ParamKind::KeyDepth: // never "-0.0"
+        std::snprintf(out, capacity, "%+.1f dB", std::abs(value) < 0.05 ? 0.0 : value);
         break;
     case ParamKind::SeqPattern:
         std::snprintf(out, capacity, "%s", seqPatternName(static_cast<int>(std::lround(value))));
@@ -1722,6 +1744,7 @@ bool parseParam(int index, const char *text, double *out) {
                       : def.kind == ParamKind::OpWarp       ? findName(kWarpNames, text)
                       : def.kind == ParamKind::UniCurve     ? findName(kUniCurveNames, text)
                       : def.kind == ParamKind::UniPan       ? findName(kUniPanNames, text)
+                      : def.kind == ParamKind::KeyCurve     ? findName(kKeyCurveNames, text)
                       : def.kind == ParamKind::SeqPattern   ? findName(kSeqPatternNames, text)
                       : def.kind == ParamKind::SeqPlay      ? findName(kSeqPlayNames, text)
                       : def.kind == ParamKind::SeqRate      ? findName(kSeqRateNames, text)
@@ -1962,6 +1985,7 @@ bool parseParam(int index, const char *text, double *out) {
     case ParamKind::OpWarp:
     case ParamKind::UniCurve:
     case ParamKind::UniPan:
+    case ParamKind::KeyCurve:
     case ParamKind::MorphMode:
     case ParamKind::SeqPattern:
     case ParamKind::SeqPlay:
@@ -2055,6 +2079,7 @@ bool parseParam(int index, const char *text, double *out) {
     case ParamKind::Transpose:
     case ParamKind::NotePitch: // a bare number is a MIDI note
     case ParamKind::Decibel:
+    case ParamKind::KeyDepth:
     case ParamKind::Cents:
     case ParamKind::CentsAmount:
     case ParamKind::SemitoneOffset:

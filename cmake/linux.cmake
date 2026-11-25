@@ -51,6 +51,8 @@ add_library(fmvibe-core STATIC
     src/gui/controller.cpp
     src/gui/controller.h
     src/gui/dialogs.cpp
+    src/gui/dx7.cpp
+    src/gui/dx7.h
     src/gui/filterdisplay.cpp
     src/gui/filterdisplay.h
     src/gui/fxgraph.h

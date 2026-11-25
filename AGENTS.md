@@ -176,7 +176,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     NOTE_END for a note of its own; and in Key, a key held playing the pattern and its NOTE_END coming as it is let
     go;
   - an operator's Pan placing it, equal-power, through a filter too, and a modulator's leaving what it modulates
-    alone;
+    alone; and keyboard scaling set by the host halving an A4's level an octave over its breakpoint, linear and
+    exponential, the breakpoint moved with no depth changing nothing;
   - mono: a new key takes the voice over, letting go returns to the held key, and every note reports `NOTE_END`
     exactly once;
   - the sustain pedal (CC 64) holding a note let go until it comes up; a key struck again under it letting its held
@@ -515,6 +516,19 @@ the plain CMake commands and installing into a host are in the [README](README.m
     the flanger through zero, held at its sweep's middle and negative, cancelling noise to nothing; the phaser's
     Spread moving its notches; and the Lo-Fi holding Bits' levels at Rate, Smooth taking the steps' edges off and Mix
     at 0 dry;
+  - keyboard level scaling: an operator's level moving by its depth an octave from the breakpoint either side, evenly
+    on the way, a linear side adding it every octave and an exponential one doubling all it moved every octave past the
+    first (within 0.1 dB), held at its -96 dB floor; on a modulator taking its index down; off (no depth) leaving the
+    sound bit for bit as it was wherever its breakpoint is, in host blocks and single frames; and its params' text
+    reading back as written;
+  - DX7 voices (`src/gui/dx7.h`): a bank dump, a single voice, both in one file and a bank without its header read
+    back as written and packed as the DX7 packs them, junk giving none; and a voice played: INIT VOICE a sine at the
+    note and an octave up transposed, a modulator at output levels 60 and 75 putting its first sidebands as far under
+    the carrier as J1 against J0 at the DX7's index (within 1 dB), feedback 5's 2nd harmonic where feedback FM puts it,
+    a decay at rate 50 falling 40 dB in the DX7's 0.62 s, velocity sensitivity 7 taking a note at 64 16 dB under one at
+    127, keyboard level scaling at depth 99 (-LIN an octave out, -EXP two and three) within 1 dB of the DX7's and +LIN
+    on an operator at full level lifting nothing, the pitch envelope at 74 playing 9 semitones up, the LFO at speed 35 at 5.6 Hz, and a bank's presets named
+    for their voices in order and reading back as made;
   - the CPU cost of each factor.
 - **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`, in Midnight,
   the theme its pixel checks were written in, but for the checks and examples that pick another (the README's
@@ -778,6 +792,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     handle (read off the rendered pixels);
   - switching operators and filters on and off with their tabs, the matrix's names and their ghosts in the graph,
     and off from a node's right-click menu, a switched-off one's page dimmed (read off the rendered pixels);
+  - the KEYS tab: its breakpoint dragged across onto whole notes and its depths up and down, each drag closing its
+    gesture, a curve switch making its side exponential (read off the rendered pixels), the edits undone one at a time,
+    a double-click putting the breakpoint back on C4, the newest voice's key as a dot on the curve and a hidden KEYS tab
+    ringed while one of its knobs is modulated (read off the rendered pixels);
   - the UNISON tab starting on Alternate, its buttons picking the copies' curve (Supersaw) and pan (Ramp) and its
     Blend knob, each an undo step, the display's lowest copy moving from the right to the left (read off the rendered
     pixels), and a pan button's tooltip;
@@ -1455,6 +1473,7 @@ breakpoints in `src/` then hit.
 | `src/gui/modspanel.h`, `src/gui/modspanel.cpp` | The MODS view, `ModsPanel`: every modulation as a row, its filter, and the cascading menus (the target's with a search) that move it, retarget it and pick its aux |
 | `src/gui/seqpanel.h`, `src/gui/seqpanel.cpp` | The SEQ view, `SeqPanel`: the sequencer's settings card, and the piano roll with its tools, ruler, keys and lane |
 | `src/gui/dialogs.cpp` | The settings and confirm dialogs, the preset bar's actions (Init, Load, Save, Save As, the arrows), and the text fields' editing |
+| `src/gui/dx7.h`, `src/gui/dx7.cpp` | DX7 import: sysex banks and single voices read (and written, for the tests), and a voice turned into a patch through the editor's models, its envelopes traced as the DX7 runs them; the plugin's Load and `fmvibe-presettool --dx7` import through it |
 | `src/gui/presetbrowser.h`, `src/gui/presetbrowser.cpp` | The presets panel, `PresetBrowser`: the preset bar's info and its card, the preset browser (its sidebar, list and search, its folders' menus) and the Save dialog (which also edits and moves a preset) with its list of folders, and the New Category, New Folder and Rename forms |
 | `src/gui/canvas.cpp` | Small Direct2D/DirectWrite drawing layer |
 | `src/gui/canvas_web.cpp` | The same drawing layer over the browser's 2D context, for the demo |
@@ -1465,7 +1484,7 @@ breakpoints in `src/` then hit.
 | `src/gui/controller.cpp` | The undo history, which each `Controller` keeps for the editor |
 | `src/factory.cpp` | The factory presets' loading; the presets themselves are `presets/Factory/*.fmv`, built in by `cmake/embed_presets.cmake` (see [Factory presets](#factory-presets)) |
 | `presets/` | The factory presets' files, and `factory.txt`, the order they came in |
-| `tools/presettool.cpp` | `fmvibe-presettool`: makes preset files sparse, as the factory ones are stored, lays their routing graphs out (`--arrange`) and sets their info (`--author`, `--category`, `--description`) |
+| `tools/presettool.cpp` | `fmvibe-presettool`: makes preset files sparse, as the factory ones are stored, lays their routing graphs out (`--arrange`) and sets their info (`--author`, `--category`, `--description`); with `--dx7=<folder>`, imports DX7 sysex files into presets there |
 | `src/gui/arrange.h` | Laying a routing graph out: its clashes (nodes, wires, lines to OUT, loops and labels over each other, wires on each other or meeting a node together) and a search for a layout without them |
 | `tests/smoke_host.cpp` | Headless CLAP test host |
 | `tests/vst3_host.cpp` | Headless VST3 test host |
@@ -1509,7 +1528,9 @@ itself.
 - Parameter ids are stored in host projects and automation. `src/params.h` derives them per section with spare
   room: globals 0+, operators 100 + 50·op (their filter and shaper sends, then Fixed, Freq, Mult, Phase, Ratio, Pan,
   Sync, Warp, Warp Amount, Unison Curve, Unison Pan and Unison Blend, then the drawn envelope's EnvMode, EnvSustain,
-  EnvLoopStart, EnvLoopEnd, EnvLength, EnvSync, EnvDivision and EnvSlew, ids 137 to 144 + 50·op; the
+  EnvLoopStart, EnvLoopEnd, EnvLength, EnvSync, EnvDivision and EnvSlew, ids 137 to 144 + 50·op, then keyboard level
+  scaling's KeyBreak, KeyLeftDepth, KeyRightDepth, KeyLeftCurve and KeyRightCurve, ids 145 to 149 + 50·op, which fill
+  the operators' room; the
   9th field, once Velocity, does nothing and is hidden, kept so the ids after it stay, as are the first two, once
   Coarse and Fine, since Ratio after Phase), matrix
   400 + 10·from + to, filter modulation
@@ -1556,7 +1577,8 @@ itself.
   enum and fields are never reordered. The same goes for the wave, filter type, effect type, source type, route
   mode, slot aux field, split field, wire field, port, amp model, cabinet, mic, fixed Mult, operator sync (`OpSync`),
   warp (`OpWarp`), unison curve (`UniCurve`), unison pan (`UniPan`), morph mode (`MorphMode`) and the sequencer's play
-  mode, rate, order and scale (`SeqPlay`, `SeqRate`, `SeqOrder`, `SeqScale`) and curve (`SeqCurve`) lists, the routing views and the operator page's tabs,
+  mode, rate, order and scale (`SeqPlay`, `SeqRate`, `SeqOrder`, `SeqScale`) and curve (`SeqCurve`) lists, keyboard
+  scaling's curve (`KeyCurve`), the routing views and the operator page's tabs,
   which are stored by number. `src/params.h` pins each section's first and last ids, the counts they come from and
   the stored lists' members with static_asserts, so a change that renumbers them doesn't compile (and
   `src/params.cpp` checks that every param's id leads back to it: a check that costs MSVC seconds goes in a `.cpp`,
@@ -1588,7 +1610,7 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 2,027 of the 52,142 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 2,057 of the 52,172 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 1,600 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the operators' drawn envelopes' fields, the Custom waves' partials and counts, the chain's retired order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'
@@ -1743,7 +1765,7 @@ see.
 ## Next steps
 
 - Presets: the `clap.preset-load` extension and preset discovery, so hosts can browse FMVibe's presets too.
-- Sound: fixed-frequency operators, key scaling, oversampling for high-index patches.
+- Sound: oversampling for high-index patches.
 - AU and standalone builds: [clap-wrapper](https://github.com/free-audio/clap-wrapper) builds these from the
   CLAP plugin. The plugins' editor runs on Windows and Linux (X11), not yet on macOS (the browser demo has its own
   drawing backend).

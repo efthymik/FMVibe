@@ -65,6 +65,19 @@ What the plugin does and how its editor works, in full. Building and installing 
     decay and release sit at +50 %, an exponential fall of 60 dB over the segment's time.
   - Out (level straight to the audio output) and sends into the two filters and the two shapers, set in the
     routing graph and the matrix;
+  - **Keyboard scaling** (off to begin with), as the classic FM synths have it, so a modulator's index can fall away up
+    the keyboard, or a carrier be louder low down: a **Key Break** (a note, C4 to begin with) and, for each side of it,
+    a **Depth** (−24 to +24 dB, 0 to begin with) and a **Curve** (Linear, to begin with, or Exp). The operator's level
+    moves by a side's depth an octave from the breakpoint, evenly in dB on the way (down for a negative depth, up for
+    a positive one); past that, a Linear side adds its depth again every octave (a straight line in dB), an Exp one
+    doubles all it has moved every octave (at −6 dB: 12, 24 and 48 dB down two, three and four octaves out), as the
+    DX7's exponential curves do. It is held between −96 dB and +24 dB. It scales all the operator puts out (to the
+    output, the filters and shapers, and the operators it modulates, so on a modulator it is the index), by the key the
+    voice plays, gliding with it (the pitch bend leaves it alone), and moves smoothly when it changes. The depths and
+    the breakpoint can be modulated and automated; the curves are switches. Off (no depth), wherever its breakpoint is,
+    the operator plays exactly as it did, so projects and presets from before it sound as they did (ids 145 to 149 +
+    50·op, `OpParam::KeyBreak` to `KeyRightCurve`; the curves' list, `KeyCurve`, is stored by number). The KEYS tab
+    edits it (see the operator page, under Editor);
   - **Pan**: where the operator sits in the stereo field, L100 to R100 (centered by default), equal-power and at
     full level in the middle, as the global Pan. It places all the operator puts out, to the output and into the
     filters and shapers (which are stereo, so a panned operator stays where it is through them), and its unison
@@ -2068,6 +2081,15 @@ what it started goes on.
       (Note Sync, named in its tooltip). The audio thread captures only while the tab is shown. The summary line names the warp and says "note
       sync" while either is on. (The scope and the warp had a tab each before; a layout saved on the scope's opens
       this one.)
+    - **Keys**: keyboard level scaling (see Keyboard scaling, under the operators), after Inputs, the tabs a fifth of
+      the well each (a noise operator's four, a quarter each): the operator's level across the keys (MIDI 0 to 127,
+      +24 dB at the display's top to -48 at its bottom), a line at 0 dB, faint lines at each C (C4 marked), the
+      breakpoint's dashed line and the curve with the area under it filled; handles on it, the breakpoint's on its 0 dB
+      line, dragged across onto whole notes, and each side's depth an octave out, dragged up and down, each drag one
+      gesture and a double-click putting it back (C4, or no depth), its value over the display's middle while the mouse
+      is on it or holds it; an **Exp** switch in each top corner, a side's curve; while notes play, the newest voice's
+      key as a dot on the curve; and **Break**, **L Depth** and **R Depth** as knobs under the well. The MODS view's
+      target menu lists the three under KEYS;
     - **Inputs**: a row per node routed into the operator (the nodes that are on, in the graph's order): its name,
       which shows it in the inspector as a tab does; four buttons with the modes' glyphs, the one in force lit, each
       naming its mode on hover; the mode's name; and the route's depth as a label, dragged, typed and modulated as a
@@ -2623,6 +2645,54 @@ what it started goes on.
     too. **Load**, and Save to File in the Save dialog, read and write a `.fmv` file through the standard file dialog,
     which always starts in the preset folder, wherever the host's last file dialog was left; Save to File suggests the
     current preset's name. The file holds the same data as the host's saved state, apart from the settings.
+    Load also takes a DX7 sysex file (`.syx`), its file types listing both to begin with (see DX7 import, below).
+  - **DX7 import** (`src/gui/dx7.cpp`, `PluginCore::importDx7()`): Load given a `.syx` file reads every 32-voice bank
+    dump and single-voice dump in it (or a bank's 4096 bytes without their header; checksums aren't required, as many
+    banks in circulation have wrong ones), saves each voice as a sparse preset into the preset folder's **DX7**
+    folder, in a folder named as the file (over the presets an earlier import of it saved), named by its place in the
+    file and its name ("07 E.PIANO 1"), its description "DX7 voice 07 from <file>", and loads the first, so the preset
+    bar's arrows step through the rest. A file without voices, or none saved, says so. `fmvibe-presettool
+    --dx7=<folder> <file.syx>...` imports the same way into a folder. A voice plays, from Init, as the DX7 plays it,
+    as near as the engine takes it: its level scale, envelope speeds, rate scaling, LFO delay, fixed frequencies and
+    keyboard scaling as the DX7's chip was found to run them (Raph Levien's reverse engineering, published with msfa),
+    the rest fits of our own to the DX7's measured behaviour, no code taken from msfa or Dexed:
+    - its **algorithm** set as ALGORITHM sets it (operators A to F the DX7's 1 to 6), every route Phase, with **FM
+      Amount** at 200 % so that a modulator at the DX7's full level, two cycles (4 pi) of phase into its carrier, fits
+      a route's 8 radians; a route's amount is then the square root of its share, from the operator's output level on
+      the DX7's level curve (0.75 dB a step from 20 up, steeper below). **Feedback** 1-7 moves an operator's phase by
+      2^(feedback - 8) of its last two samples' average, as the DX7's does (the feedback up a stack in algorithms 4 and
+      6 a route from D into F); a carrier's Out is its gain at full envelope, and Volume comes down by as much as its
+      carriers add up past one at full level;
+    - each operator's **pitch**: its coarse (0 for 0.5) and fine ratio, or a fixed Freq of 10^(coarse mod 4 + fine /
+      100) Hz (on Mult x10 above 2 kHz), its detune at 1.2 cents a step (the DX7's steps near C4) and Transpose on
+      Pitch (24 in tune); with oscillator key sync off, Rnd Phase at 100 %;
+    - each operator's **envelope** as a drawn envelope in Sustain, traced step by step as the DX7 runs it (from
+      silence to L1, L2 and L3, held there by a loop of no length, then on to L4 once let go): a decay falling evenly
+      in dB at its rate's speed (doubling every four of its 64 speeds), cut off 80 dB down; an attack jumping up and
+      then rising as the DX7's does, fast and slowing toward full level; a segment that stays at its level waiting as
+      long as its rate says. Each segment is drawn as up to four pieces whose bends follow the trace (a decay's exact,
+      an exponential in dB). One longer than 10 s, the Length's top, is shortened to fit;
+    - **velocity sensitivity** as a slot of the velocity source on each of the operator's levels (its Out, or the
+      amounts of its routes), the level at velocity 0, the slot's depth and curve fitted to the DX7's velocity curve
+      at that sensitivity (about 16 dB from 127 down to 64 at 7);
+    - **rate scaling** as slots of the note source, set to run from A0 to the note 114 in a straight line, on each
+      scaled operator's envelope Length, shortening it by 2^(-scaling x 31/32) at the top as the DX7 speeds its
+      rates;
+    - the **LFO** as an LFO (or, for sample and hold, a Random source) at the DX7's speed (0.06 Hz at 0, 5.6 Hz at 35,
+      49 Hz at 99), free unless its key sync is on: one, bipolar, on Pitch by the pitch mod depth and sensitivity (up
+      to an octave), and one, unipolar, turning each operator with amp mod sensitivity down at the LFO's trough by a
+      model of ours (at full depth 4 and 8 dB at sensitivities 1 and 2, down to silence at 3); its delay a one-shot Curve source, silent and then fading in, as the aux of
+      both;
+    - the **pitch envelope** as a Curve source in Sustain on Pitch (bipolar), its levels on the DX7's curve (3/8 of a
+      semitone a step about 50, out to four octaves either way) and its segments straight at its rates' speeds.
+
+    - each operator's **keyboard level scaling** as its own (see Keyboard scaling, under the operators): its Key Break
+      17 keys over the DX7's break point, less the voice's transpose (the DX7 scales the key it plays transposed), its
+      depths at the DX7's 0.241 dB an octave a unit (linear) or 0.030 (exponential, doubling past the first octave, as
+      FMVibe's Exp does), the DX7's -LIN, -EXP, +EXP and +LIN by their signs and curves; a side that lifts the level is
+      held so it goes no higher at the end of the keys (A0 or C8) than the DX7's top level, which it can't pass.
+
+    What a DX7's controllers do isn't taken over, since its voices don't hold it.
   - **Save** (the disk) writes the patch over the file of the preset it is, after asking ("Overwrite …?"), and
     tells in a message only if it couldn't (the Save dialog and Edit Info likewise). It is on only for a preset loaded (or saved) that has
     changed since; otherwise, and always for Init, it is greyed out and does nothing. On a factory preset, which is
@@ -2742,7 +2812,7 @@ switched off and on again, say) allocates the voices again and ends the notes pl
 next block. A VST3 host stopping processing ends them too, unless a restart was asked for: then they end only if
 processing starts again without it.
 
-Hosts are given 2,027 of FMVibe's 52,142 parameters: the globals, the operators, the matrix and the routes' modes,
+Hosts are given 2,057 of FMVibe's 52,172 parameters: the globals, the operators, the matrix and the routes' modes,
 the filters, the shapers, the macros' knobs, the note source's, the mod wheel's, velocity's, the pitch bend's and the
 operators' own as sources, and every modulation's depth and Amount (16 slots for each of the 50 sources, used or not). The rest are set in the editor only:
 the effects, the LFOs', envelopes' and other sources' own knobs, what each modulation targets and its aux, curve and

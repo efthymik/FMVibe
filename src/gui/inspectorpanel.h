@@ -4,8 +4,8 @@
 // picked (an operator, a filter or a shaper) on a page of its own: the nodes' tabs along its top, its title (the node's
 // letter, what it is and what it is routed to) beside its on/off switch, and its page. An operator's: its waves (the
 // common ones as buttons, the rest in a list), its Ratio readout or, fixed, its Freq and Mult, its knobs, and its tabs:
-// UNISON (where the copies sit; a noise operator's spectrum), ENVELOPE, WARP (its warps over its scope) and INPUTS (a
-// row per route into it). A filter's: its type's and slope's lists, its response with its handle, and its knobs. A
+// UNISON (where the copies sit; a noise operator's spectrum), ENVELOPE, WARP (its warps over its scope), INPUTS (a
+// row per route into it) and KEYS (its keyboard level scaling, its level across the keys with handles on it). A filter's: its type's and slope's lists, its response with its handle, and its knobs. A
 // shaper's: its curve's list and switches, its curve (drawn in place, see ShapeEditor), and its knobs. A filter's and a
 // shaper's page end with knobs for what feeds them. The View lists its widgets in the panels' row while it shows (see
 // covered()), and its popups (the list of more waves, its pages' lists) with the others'.
@@ -53,6 +53,7 @@ public:
     void forgetScoped() override;
     void poll(const Telemetry &now, std::vector<Rect> &repaint) override;
     bool press(const Widget &w, Point p, Modifiers mods) override;
+    bool doubleClick(const Widget &w, Point p, Modifiers mods) override;
     void drag(const DragState &d) override;
     void release() override;
     bool dragsOnTouch(const Widget &w) const override;
@@ -69,9 +70,10 @@ private:
     double value(int index) const { return mods_.value(index); }
     void edit(int index, double v) { mods_.edit(index, v); }
 
-    // Its drags: the filter's handle (its cutoff across, its resonance up and down, one gesture), and the INPUTS tab's
-    // scrollbar's thumb. What each holds and where the thumb's rows were when it was grabbed.
-    enum class DragKind { None, FilterPoint, InputsScroll };
+    // Its drags: the filter's handle (its cutoff across, its resonance up and down, one gesture), a keyboard scaling
+    // handle on the KEYS tab, and the INPUTS tab's scrollbar's thumb. What each holds and where the thumb's rows were
+    // when it was grabbed.
+    enum class DragKind { None, FilterPoint, KeyPoint, InputsScroll };
     struct Drag {
         DragKind kind = DragKind::None;
         Widget widget;
@@ -122,6 +124,11 @@ private:
     void paintScope(Canvas &c, Rect r, int op);
     void paintNoiseSlope(Canvas &c, Rect r, int op);
     void paintInputs(Canvas &c, int op);
+    // The KEYS tab: where a handle sits (0 the breakpoint, 1 and 2 the left and right depth, an octave out), the
+    // operator's level across the keys, and a handle's readout over the display while it is under the mouse or held.
+    Point keyPoint(int op, int handle) const;
+    void paintKeyScale(Canvas &c, int op);
+    void paintKeyReadout(Canvas &c, const Widget &w);
 
     PanelHost &host_;
     ShapeEditor &shapes_;

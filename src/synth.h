@@ -444,6 +444,7 @@ private:
     // What renderBlock() ramps sample by sample toward each block's values.
     struct Levels {
         std::array<double, kOps> out{};
+        std::array<double, kOps> keyLevel{}; // an operator's keyboard scaling, a gain on all it puts out (see keyScaleDb())
         std::array<double, kOps> panL{}; // an operator's Pan as left and right gains, on all it puts out but its FM
         std::array<double, kOps> panR{};
         std::array<std::array<double, kFilters>, kOps> send{};

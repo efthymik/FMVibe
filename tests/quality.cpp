@@ -5,9 +5,11 @@
 
 #include "factory.h"
 #include "gui/controller.h"
+#include "gui/dx7.h"
 #include "state.h"
 #include "synth.h"
 #include "unison.h"
+#include "uistrings.h"
 #include "warp.h"
 
 #include <algorithm>
@@ -6422,6 +6424,347 @@ void savedTempoChecks() {
           "a preset's saved tempo reads back as written, and as none below 20 BPM or from before it was kept");
 }
 
+// --- Keyboard level scaling: an operator's level across the keys by its breakpoint, depths and curves (the Exp
+// curve's as the DX7's), a modulator's index with it, and nothing changed while it is off.
+void keyScaleChecks() {
+    std::printf("keyboard scaling:\n");
+    // The output's RMS level (dB) of a held note, once settled.
+    auto levelDb = [](int key, const auto &setup) {
+        Engine e(2);
+        setup(e.p);
+        e.noteOn(key);
+        e.render(4800);
+        const std::vector<float> out = e.render(kFftSize);
+        double sum = 0.0;
+        for (float x : out)
+            sum += static_cast<double>(x) * x;
+        return 10.0 * std::log10(sum / out.size() + 1e-30);
+    };
+    auto near = [](double a, double b) { return std::abs(a - b) < 0.1; };
+    {
+        // Breakpoint at C4; the right side down 6 dB an octave, the left up 3: each note against itself unscaled.
+        // Linear, three octaves up is 18 dB down; exponential, 6 dB the first octave, then doubling: 12 at two, 24 at
+        // three, and 12 up three octaves down.
+        auto scaled = [&](int key, double curve) {
+            return levelDb(key, [&](ParamValues &p) {
+                       p[paramIndex(0, OpParam::KeyBreak)] = 60.0;
+                       p[paramIndex(0, OpParam::KeyRightDepth)] = -6.0;
+                       p[paramIndex(0, OpParam::KeyLeftDepth)] = 3.0;
+                       p[paramIndex(0, OpParam::KeyRightCurve)] = curve;
+                       p[paramIndex(0, OpParam::KeyLeftCurve)] = curve;
+                   }) -
+                   levelDb(key, [](ParamValues &) {});
+        };
+        const double at60 = scaled(60, 0.0), up1 = scaled(72, 0.0), up3 = scaled(96, 0.0), down1 = scaled(48, 0.0),
+                     down2 = scaled(36, 0.0), half = scaled(66, 0.0);
+        const double expHalf = scaled(66, 1.0), expUp1 = scaled(72, 1.0), expUp2 = scaled(84, 1.0),
+                     expUp3 = scaled(96, 1.0), expDown3 = scaled(24, 1.0);
+        std::printf("      linear: C4 %+.2f, F#4 %+.2f, C5 %+.2f, C7 %+.2f, C3 %+.2f, C2 %+.2f dB; "
+                    "exponential: F#4 %+.2f, C5 %+.2f, C6 %+.2f, C7 %+.2f, C1 %+.2f dB\n",
+                    at60, half, up1, up3, down1, down2, expHalf, expUp1, expUp2, expUp3, expDown3);
+        check(near(at60, 0.0) && near(up1, -6.0) && near(up3, -18.0) && near(half, -3.0) && near(down1, 3.0) &&
+                  near(down2, 6.0),
+              "level scaling moves an operator's level by its depth an octave from the breakpoint, either side");
+        check(near(expHalf, -3.0) && near(expUp1, -6.0) && near(expUp2, -12.0) && near(expUp3, -24.0) &&
+                  near(expDown3, 12.0),
+              "an exponential side moves evenly to its depth an octave out, then doubles all it moved each octave");
+        const double deep = levelDb(108, [](ParamValues &p) {
+                                p[paramIndex(0, OpParam::KeyRightDepth)] = -kMaxKeyDepthDb;
+                                p[paramIndex(0, OpParam::KeyRightCurve)] = 1.0;
+                            }) -
+                            levelDb(108, [](ParamValues &) {});
+        std::printf("      C8 at -24 dB an octave exponential: %+.1f dB\n", deep);
+        check(std::abs(deep - kKeyScaleFloorDb) < 1.0, "level scaling stops at its floor");
+    }
+    {
+        // On a modulator, it takes the index down with the level: B modulating A at the same ratio, its right side at
+        // -24 dB an octave from A2, leaves an A4 (two octaves up, 48 dB down) all but a sine, where unscaled it has a
+        // strong 2nd harmonic.
+        auto second = [&](double depth) {
+            const std::vector<float> tone = steadyTone(2, 69, [&](ParamValues &p) {
+                p[paramIndex(1, OpParam::Enabled)] = 1.0;
+                p[matrixIndex(1, 0)] = 0.5;
+                p[paramIndex(1, OpParam::KeyBreak)] = 45.0;
+                p[paramIndex(1, OpParam::KeyRightDepth)] = depth;
+            });
+            const std::vector<double> power = powerSpectrum(tone);
+            auto at = [&](double hz) {
+                const long center = std::lround(hz / (kSampleRate / kFftSize));
+                double most = 1e-30;
+                for (long b = center - 3; b <= center + 3; ++b)
+                    most = std::max(most, power[static_cast<size_t>(b)]);
+                return 10.0 * std::log10(most);
+            };
+            return at(880.0) - at(440.0);
+        };
+        const double unscaled = second(0.0), scaled = second(-24.0);
+        std::printf("      a modulator's 2nd harmonic under the fundamental: %.1f dB unscaled, %.1f dB scaled\n",
+                    unscaled, scaled);
+        check(unscaled > -20.0 && scaled < unscaled - 40.0, "level scaling on a modulator takes its index down");
+    }
+    {
+        // Off, it changes nothing: a breakpoint moved with no depth plays the default patch's notes sample for sample,
+        // a chord in single frames among them.
+        auto play = [](double breakpoint, uint32_t piece) {
+            Engine e(2);
+            e.p[paramIndex(0, OpParam::KeyBreak)] = breakpoint;
+            e.p[paramIndex(0, OpParam::Decay)] = normFromTime(0.3);
+            e.p[paramIndex(0, OpParam::Sustain)] = 0.4;
+            for (int key : {36, 60, 67, 96})
+                e.noteOn(key);
+            std::vector<float> out = e.render(9600, piece);
+            for (int key : {36, 60, 67, 96})
+                e.noteOff(key);
+            const std::vector<float> tail = e.render(4800, piece);
+            out.insert(out.end(), tail.begin(), tail.end());
+            return out;
+        };
+        check(play(60.0, kBlock) == play(100.0, kBlock) && play(60.0, 1) == play(20.0, 1),
+              "keyboard scaling off leaves the sound exactly as it was, wherever its breakpoint is");
+    }
+    {
+        // Its params' text reads back as written, at their ends and between.
+        bool ok = true;
+        for (OpParam f : {OpParam::KeyBreak, OpParam::KeyLeftDepth, OpParam::KeyRightDepth, OpParam::KeyLeftCurve,
+                          OpParam::KeyRightCurve}) {
+            const int index = paramIndex(2, f);
+            const ParamDef &def = paramTable()[index];
+            for (double v : {def.min, def.def, 0.5 * (def.min + def.max), def.max - (def.max - def.min) * 1e-4, def.max}) {
+                char text[64], again[64];
+                double parsed = 0.0;
+                ok = ok && formatParam(index, v, text, sizeof(text)) && parseParam(index, text, &parsed) &&
+                     formatParam(index, parsed, again, sizeof(again)) && std::strcmp(text, again) == 0;
+            }
+        }
+        char text[64];
+        formatParam(paramIndex(0, OpParam::KeyRightDepth), -6.0, text, sizeof(text));
+        const std::string depth = text;
+        formatParam(paramIndex(0, OpParam::KeyRightCurve), 1.0, text, sizeof(text));
+        std::printf("      a depth reads \"%s\", a curve \"%s\"\n", depth.c_str(), text);
+        check(ok && depth == "-6.0 dB" && std::strcmp(text, tr(Str::KeyCurveExp)) == 0,
+              "keyboard scaling's params read back as written");
+    }
+}
+
+// --- DX7 voices (see gui/dx7.h): sysex read back as written, a bank and a single voice alike, and a voice played as
+// the DX7 plays it: its pitch, transposed; a modulator's index from its output level, against the Bessel functions'
+// sidebands; feedback's harmonics; a decay's time from its rate; velocity; the pitch envelope; and the LFO's rate.
+void dx7Checks() {
+    namespace dx7 = gui::dx7;
+    std::printf("DX7 import:\n");
+    // A voice with a little of everything, to read back as written.
+    dx7::Voice voice = dx7::initVoice();
+    for (int i = 0; i < dx7::kVoiceFields; ++i)
+        voice.data[i] = static_cast<uint8_t>((i * 37 + 11) % 100);
+    const char *name = "E.PIANO 1 ";
+    for (int i = 0; i < dx7::kNameBytes; ++i)
+        voice.data[dx7::kVoiceFields + dx7::Name + i] = static_cast<uint8_t>(name[i]);
+    voice.data[dx7::kVoiceFields + dx7::AlgorithmNumber] = 4;
+    voice.data[dx7::kVoiceFields + dx7::LfoWave] = 5;
+    voice = dx7::clamped(voice);
+    const std::vector<uint8_t> bank = dx7::bankSysex({voice});
+    const std::vector<uint8_t> single = dx7::voiceSysex(voice);
+    std::vector<uint8_t> both = bank;
+    both.insert(both.end(), single.begin(), single.end());
+    const std::vector<dx7::Voice> fromBank = dx7::parseSysex(bank.data(), bank.size());
+    const std::vector<dx7::Voice> fromBoth = dx7::parseSysex(both.data(), both.size());
+    const std::vector<dx7::Voice> fromRaw = dx7::parseSysex(bank.data() + 6, 32 * dx7::kPackedBytes);
+    const std::vector<uint8_t> junk(500, 0x41);
+    const auto init = dx7::packVoice(dx7::initVoice());
+    std::printf("      bank %zu voices, bank and voice %zu, headerless %zu, junk %zu; first \"%s\"\n", fromBank.size(),
+                fromBoth.size(), fromRaw.size(), dx7::parseSysex(junk.data(), junk.size()).size(),
+                fromBank.empty() ? "" : fromBank[0].name().c_str());
+    check(bank.size() == 4104 && single.size() == 163 && fromBank.size() == 32 && fromBoth.size() == 33 &&
+              fromRaw.size() == 32 && dx7::parseSysex(junk.data(), junk.size()).empty() &&
+              fromBank[0].data == voice.data && fromBank[1].data == dx7::initVoice().data &&
+              fromBoth[32].data == voice.data && fromRaw[0].data == voice.data && fromBank[0].name() == "E.PIANO 1" &&
+              init[15] == 2 && init[12] == 7 << 3 && init[116] == (1 | 3 << 4) && init[117] == 24,
+          "a DX7 bank and a single voice read back as written, packed as the DX7 packs them");
+
+    // A voice of a few operators on algorithm 32 (all of them out) or 1 (B into A), played on an A4 once settled.
+    auto patch = [](int algorithm, auto setup) {
+        dx7::Voice v = dx7::initVoice();
+        v.data[dx7::kVoiceFields + dx7::AlgorithmNumber] = static_cast<uint8_t>(algorithm - 1);
+        setup(v);
+        return v;
+    };
+    auto set = [](dx7::Voice &v, int op, int field, int value) {
+        v.data[(6 - op) * dx7::kOpBytes + field] = static_cast<uint8_t>(value);
+    };
+    auto play = [](const dx7::Voice &v, double velocity = 1.0, size_t settle = 9600) {
+        Engine e(2);
+        gui::UiLayout layout;
+        dx7::toPatch(v, e.p, layout);
+        e.synth().noteOn({-1, 0, 0, 69}, velocity);
+        e.render(settle);
+        return e.render(kFftSize);
+    };
+    auto at = [](const std::vector<float> &signal, double hz) { // the loudest bin near it, in dB
+        const std::vector<double> power = powerSpectrum(signal);
+        const long center = std::lround(hz / (kSampleRate / kFftSize));
+        double most = 1e-30;
+        for (long b = center - 3; b <= center + 3; ++b)
+            most = std::max(most, power[static_cast<size_t>(b)]);
+        return 10.0 * std::log10(most);
+    };
+
+    // INIT VOICE: a sine at the note; transposed an octave up, at the octave.
+    const std::vector<float> sine = play(dx7::initVoice());
+    const double sineOff = unexpectedDb(sine, {440.0});
+    const std::vector<float> octave = play(patch(1, [](dx7::Voice &v) { v.data[dx7::kVoiceFields + dx7::Transpose] = 36; }));
+    std::printf("      INIT VOICE: %.0f dB off 440 Hz; transposed +12: 880 Hz %.1f dB over 440\n", sineOff,
+                at(octave, 880.0) - at(octave, 440.0));
+    check(sineOff < -60.0 && at(octave, 880.0) - at(octave, 440.0) > 60.0,
+          "a DX7 voice plays its operators at their ratios, transposed");
+
+    // A modulator at 3 times the carrier, at output levels 60 and 75: its first sidebands (4 and 2 times the note)
+    // against the carrier as J1 against J0 at the index the DX7 gives it, 4 pi times 2^(level's units / 256 - 15).
+    for (int level : {60, 75}) {
+        const std::vector<float> fm = play(patch(1, [&](dx7::Voice &v) {
+            set(v, 2, dx7::OutputLevel, level);
+            set(v, 2, dx7::Coarse, 3);
+        }));
+        const double index = 4.0 * std::numbers::pi * std::exp2(((28 + level) * 32.0 - 4064.0) / 256.0);
+        const double want = 20.0 * std::log10(std::abs(std::cyl_bessel_j(1.0, index) / std::cyl_bessel_j(0.0, index)));
+        const double got = at(fm, 1760.0) - at(fm, 440.0), lower = at(fm, 880.0) - at(fm, 440.0);
+        std::printf("      modulator at level %d (index %.2f): sidebands %.1f and %.1f dB, J1/J0 %.1f dB\n", level,
+                    index, got, lower, want);
+        check(std::abs(got - want) < 1.0 && std::abs(lower - want) < 1.0,
+              "a DX7 modulator's output level gives the index the DX7 gives it");
+    }
+
+    // Feedback 5 on a lone operator: its phase moved by its own output, pi / 2 at the peak, so its 2nd harmonic stands
+    // J2(2b) / 2 J1(b) under its 1st, b = pi / 2.
+    {
+        const std::vector<float> fb = play(patch(32, [&](dx7::Voice &v) {
+            set(v, 1, dx7::OutputLevel, 0);
+            set(v, 6, dx7::OutputLevel, 99);
+            v.data[dx7::kVoiceFields + dx7::Feedback] = 5;
+        }));
+        const double b = std::numbers::pi / 2.0;
+        const double want = 20.0 * std::log10(std::cyl_bessel_j(2.0, 2.0 * b) / (2.0 * std::cyl_bessel_j(1.0, b)));
+        const double got = at(fb, 880.0) - at(fb, 440.0);
+        std::printf("      feedback 5: 2nd harmonic %.1f dB under the 1st, %.1f wanted\n", got, want);
+        check(std::abs(got - want) < 1.5, "DX7 feedback moves an operator's phase as far as the DX7's does");
+    }
+
+    // A decay at rate 50 falls 0.75 dB a step... 2756 units, 64.8 dB a second: 40 dB down in 0.62 s.
+    {
+        const dx7::Voice v = patch(32, [&](dx7::Voice &voice) {
+            set(voice, 1, dx7::Rate1 + 1, 50);
+            set(voice, 1, dx7::Level1 + 1, 0);
+            set(voice, 1, dx7::Level1 + 2, 0);
+        });
+        Engine e(2);
+        gui::UiLayout layout;
+        dx7::toPatch(v, e.p, layout);
+        e.noteOn(69);
+        const std::vector<float> out = e.render(96000);
+        auto rmsDb = [&](size_t from) {
+            double sum = 0.0;
+            for (size_t i = from; i < from + 480; ++i)
+                sum += out[i] * out[i];
+            return 10.0 * std::log10(sum / 480.0 + 1e-30);
+        };
+        const double peak = rmsDb(0);
+        size_t down = 0;
+        while (down + 960 < out.size() && rmsDb(down) > peak - 40.0)
+            down += 48;
+        const double seconds = down / kSampleRate, want = 40.0 / (4.0 / (64.0 / 44100.0) * 6.0206 / 256.0);
+        std::printf("      rate 50: 40 dB down in %.3f s, %.3f wanted\n", seconds, want);
+        check(std::abs(seconds / want - 1.0) < 0.08, "a DX7 envelope's rate sets its decay's time as on the DX7");
+    }
+
+    // Velocity sensitivity 7: a note at 64 some 16 dB under one at 127, as the DX7's velocity curve has it.
+    {
+        const dx7::Voice v = patch(32, [&](dx7::Voice &voice) {
+            set(voice, 1, dx7::VelocitySens, 7);
+            set(voice, 1, dx7::OutputLevel, 80);
+        });
+        const double loud = at(play(v, 1.0), 440.0), soft = at(play(v, 64.0 / 127.0), 440.0);
+        const double want = 7.0 * 261.0 * (1.0 - std::pow(64.0 / 126.0, 0.3)) / 128.0 * 6.0206;
+        std::printf("      velocity 64 against 127 at sensitivity 7: %.1f dB, %.1f wanted\n", soft - loud, -want);
+        check(std::abs(soft - loud + want) < 1.5, "DX7 velocity sensitivity turns an operator down as the DX7 does");
+    }
+
+    // Keyboard level scaling, depth 99 to the right of break point 39 (17 keys over it, MIDI 56): -LIN a note's level
+    // 23.25 dB down an octave out (4 steps of 3 keys at 31 levels of 0.75 dB, as the DX7 truncates them), -EXP 5.25 dB
+    // two octaves out and 11.25 three; each note against itself at the break point's note. And +LIN on an operator at
+    // full level lifting nothing, as on the DX7, which holds it at its top level.
+    {
+        auto levelAt = [&](int curve, int key, int level) {
+            dx7::Voice v = patch(32, [&](dx7::Voice &voice) {
+                set(voice, 1, dx7::RightDepth, 99);
+                set(voice, 1, dx7::RightCurve, curve);
+                set(voice, 1, dx7::OutputLevel, level);
+            });
+            Engine e(2);
+            gui::UiLayout layout;
+            dx7::toPatch(v, e.p, layout);
+            e.noteOn(key);
+            e.render(9600);
+            const std::vector<float> out = e.render(kFftSize);
+            double sum = 0.0;
+            for (float x : out)
+                sum += static_cast<double>(x) * x;
+            return 10.0 * std::log10(sum / out.size() + 1e-30);
+        };
+        const double lin = levelAt(0, 68, 99) - levelAt(0, 56, 99);
+        const double exp2Oct = levelAt(1, 80, 99) - levelAt(1, 56, 99), exp3Oct = levelAt(1, 92, 99) - levelAt(1, 56, 99);
+        const double lifted = levelAt(3, 80, 99) - levelAt(3, 56, 99), liftedLower = levelAt(3, 68, 80) - levelAt(3, 56, 80);
+        std::printf("      key scaling: -LIN %.2f dB an octave out (-23.25); -EXP %.2f two (-5.25), %.2f three (-11.25); "
+                    "+LIN at level 99 %+.2f, at 80 %+.2f an octave out\n",
+                    lin, exp2Oct, exp3Oct, lifted, liftedLower);
+        check(std::abs(lin + 23.25) < 1.0 && std::abs(exp2Oct + 5.25) < 1.0 && std::abs(exp3Oct + 11.25) < 1.0 &&
+                  std::abs(lifted) < 0.1 && liftedLower > 1.0 && liftedLower < 23.86 + 0.1,
+              "a DX7 voice's keyboard level scaling moves its operators' levels as the DX7's does");
+    }
+
+    // The pitch envelope held at level 74, 24 steps of 3/8 semitone up: 9 semitones, an A4 at F#5.
+    {
+        const std::vector<float> bent = play(patch(1, [](dx7::Voice &v) {
+            for (int i = 0; i < 3; ++i)
+                v.data[dx7::kVoiceFields + dx7::PitchLevel1 + i] = 74;
+        }));
+        const double hz = 440.0 * std::exp2(9.0 / 12.0);
+        std::printf("      pitch envelope at 74: %.0f dB at %.1f Hz over 440\n", at(bent, hz) - at(bent, 440.0), hz);
+        check(at(bent, hz) - at(bent, 440.0) > 40.0, "a DX7 voice's pitch envelope bends its pitch");
+    }
+
+    // The LFO at speed 35 runs at about 5.6 Hz (5.62 on the DX7), its pitch depth on Pitch; and the presets made of a
+    // bank are named for their voices, in order, and read back as made.
+    {
+        dx7::Voice v = dx7::initVoice();
+        v.data[dx7::kVoiceFields + dx7::LfoPitchDepth] = 50;
+        v.data[dx7::kVoiceFields + dx7::LfoWave] = 4;
+        const auto values = std::make_unique<ParamValues>();
+        gui::UiLayout layout;
+        dx7::toPatch(v, *values, layout);
+        double hz = 0.0;
+        for (int s = 0; s < kMaxSources; ++s)
+            if ((*values)[paramIndex(s, SourceParam::Type)] == static_cast<double>(SourceType::Lfo))
+                hz = rateFromNorm((*values)[paramIndex(s, SourceParam::Rate)]);
+        const std::vector<uint8_t> two = dx7::bankSysex({voice, v});
+        const std::vector<dx7::Preset> presets = dx7::presetsOf(two.data(), two.size(), "Rom 1A");
+        bool same = presets.size() == 32;
+        if (same) {
+            dx7::toPatch(voice, *values, layout);
+            MemoryReader reader{presets[0].bytes.data(), presets[0].bytes.size(), 0};
+            const clap_istream_t in = memoryIn(reader);
+            const auto loaded = std::make_unique<ParamValues>();
+            same = readParams(&in, *loaded) && readLayout(&in).presetInfo.description == "DX7 voice 01 from Rom 1A";
+            for (int i = 0; i < kParamCount && same; ++i)
+                same = std::abs((*loaded)[i] - (*values)[i]) <= 1e-6 * std::max(1.0, std::abs((*values)[i]));
+        }
+        std::printf("      LFO speed 35: %.2f Hz; presets \"%s\", \"%s\", \"%s\"\n", hz,
+                    presets.empty() ? "" : presets[0].name.c_str(), presets.size() < 2 ? "" : presets[1].name.c_str(),
+                    presets.size() < 32 ? "" : presets[31].name.c_str());
+        check(std::abs(hz - 5.62) < 0.1 && same && presets[0].name == "01 E.PIANO 1" &&
+                  presets[1].name == "02 INIT VOICE" && presets[31].name == "32 INIT VOICE",
+              "a DX7 voice's LFO runs at its rate, and a bank's presets are named for its voices and read back as made");
+    }
+}
+
 // --- DC: the voices' sum going into the effects has its DC taken out. A square squeezed to a narrow pulse comes
 // out with none; a Ring route at unison (a sine squared: DC and the octave) goes into a hard shaper as the octave
 // alone, clipped evenly (no 4th harmonic of the note), not lifted onto one side of the curve; and the output falls
@@ -7106,6 +7449,8 @@ int main() {
     sequencerChecks();
     savedTempoChecks();
     presetInfoChecks();
+    keyScaleChecks();
+    dx7Checks();
     // --- The decimator: flat up to 20 kHz, and what would fold into the audible band gone.
     std::printf("decimator (dB):\n");
     for (int factor : {2, 4, 8}) {

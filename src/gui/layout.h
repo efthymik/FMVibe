@@ -167,12 +167,12 @@ constexpr Rect kOpWell{kOpDisplay.x, kOpTabsY, kOpDisplay.w, kOpDisplay.y + kOpD
 constexpr Rect kOpWellTall{kOpDisplay.x, kOpTabsY, kOpDisplay.w, kInspector.y + kInspector.h - 10.0f - kOpTabsY};
 constexpr float kOpControlsY = kOpDisplay.y + kOpDisplay.h + 25.0f; // the controls' knobs' centers
 inline Rect opTab(int tab, bool noise = false) {
-    // UNISON, ENVELOPE, SCOPE, INPUTS, WARP by InspectorTab; along the line ENVELOPE, UNISON, WARP, INPUTS, a quarter
-    // of the well each. SCOPE is no longer a tab of its own (the WARP tab shows the scope; a layout saved on it opens
-    // WARP): it sits where WARP does. A noise operator's are ENVELOPE, SPECTRUM (in UNISON's place) and INPUTS, a third
-    // each.
-    constexpr int kPlace[] = {1, 0, 2, 3, 2}, kNoisePlace[] = {1, 0, 2, 2, 2};
-    const float w = (kOpWell.w - 8.0f) / (noise ? 3.0f : 4.0f);
+    // UNISON, ENVELOPE, SCOPE, INPUTS, WARP, KEYS by InspectorTab; along the line ENVELOPE, UNISON, WARP, INPUTS, KEYS,
+    // a fifth of the well each. SCOPE is no longer a tab of its own (the WARP tab shows the scope; a layout saved on it
+    // opens WARP): it sits where WARP does. A noise operator's are ENVELOPE, SPECTRUM (in UNISON's place), INPUTS and
+    // KEYS, a quarter each.
+    constexpr int kPlace[] = {1, 0, 2, 3, 2, 4}, kNoisePlace[] = {1, 0, 2, 2, 2, 3};
+    const float w = (kOpWell.w - 8.0f) / (noise ? 4.0f : 5.0f);
     return {kOpWell.x + 4.0f + (noise ? kNoisePlace : kPlace)[tab] * w, kOpTabsY, w, kOpTabH};
 }
 // The ring in an operator page tab's upper right while one of its controls is modulated (kTabRingRadius).
@@ -190,6 +190,40 @@ inline Rect warpButton(int warp) {
 }
 constexpr Point kWarpAmountKnob{kInspector.x + 210.0f, kOpControlsY};
 constexpr Rect kSyncButton{kInspector.x + kInspector.w - 16.0f - 32.0f, kOpControlsY - 11.0f, 32.0f, 22.0f};
+// Keys: keyboard level scaling's display, the keys across (MIDI 0 to 127) and the level up and down (kKeyScaleTopDb at
+// its top, kKeyScaleBottomDb at its bottom), each side's curve switch in its top corners; the breakpoint's and the
+// depths' knobs in the row under the well.
+constexpr Rect kKeyScaleRect = kOpDisplay;
+constexpr float kKeyScaleTopDb = 24.0f, kKeyScaleBottomDb = -48.0f;
+inline Rect keyScalePlot() {
+    return {kKeyScaleRect.x + 10.0f, kKeyScaleRect.y + 25.0f, kKeyScaleRect.w - 20.0f, kKeyScaleRect.h - 37.0f};
+}
+inline float keyScaleX(double key) {
+    const Rect r = keyScalePlot();
+    return r.x + static_cast<float>(std::clamp(key, 0.0, 127.0) / 127.0) * r.w;
+}
+inline double keyScaleKey(float x) { // the key at x, held to the keys
+    const Rect r = keyScalePlot();
+    return std::clamp(static_cast<double>((x - r.x) / r.w) * 127.0, 0.0, 127.0);
+}
+inline float keyScaleY(double db) {
+    const Rect r = keyScalePlot();
+    const double held = std::clamp(db, static_cast<double>(kKeyScaleBottomDb), static_cast<double>(kKeyScaleTopDb));
+    return r.y + static_cast<float>((kKeyScaleTopDb - held) / (kKeyScaleTopDb - kKeyScaleBottomDb)) * r.h;
+}
+inline double keyScaleDbAt(float y) {
+    const Rect r = keyScalePlot();
+    return kKeyScaleTopDb - static_cast<double>((y - r.y) / r.h) * (kKeyScaleTopDb - kKeyScaleBottomDb);
+}
+// A side's curve switch (0 the left side's, 1 the right's): EXP, lit while it is exponential.
+inline Rect keyCurveButton(int side) {
+    return {side == 0 ? kKeyScaleRect.x + 6.0f : kKeyScaleRect.right() - 6.0f - 34.0f, kKeyScaleRect.y + 5.0f, 34.0f,
+            16.0f};
+}
+// Break, L Depth and R Depth, a third of the row each.
+inline Point keyScaleKnob(int knob) {
+    return {kOpDisplay.x + kOpDisplay.w * (knob + 0.5f) / 3.0f, kOpControlsY};
+}
 // Inputs: a row per route into the operator, its source's name, its mode's buttons, the mode's name and its depth,
 // with room under the depth for its modulations' handles, inside the tall well. Past the rows the tab holds, they
 // scroll, with a bar at their right; drawn and hit within kInputsList, which leaves room for the ranges on the first

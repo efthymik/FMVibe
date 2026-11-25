@@ -917,8 +917,8 @@ Point waveMenuItem(int item) {
     return detail::waveMenuItem(item).center();
 }
 const Point kNoiseButton = waveButton(4);
-// An operator page's tabs, ENVELOPE, UNISON, INPUTS and SCOPE (by InspectorTab), and the scope's buttons for 1, 2
-// and 4 cycles in its display's top right corner.
+// An operator page's tabs (by InspectorTab), and the scope's buttons for 1, 2 and 4 cycles in its display's top right
+// corner.
 Point opTabPoint(InspectorTab tab) {
     return detail::opTab(static_cast<int>(tab)).center();
 }
@@ -14890,6 +14890,106 @@ void run(const std::filesystem::path &dir, float scale) {
               "a hidden tab with a modulated knob shows a ring, hollow, not a dot");
         check(shownShot && layout.opTab == InspectorTab::Warp && litShown > plainShown + 60 && hollowShown < litShown - 60,
               "the tab shown keeps its ring while one of its knobs is modulated");
+
+        // The KEYS tab: keyboard level scaling's display, its breakpoint dragged across onto whole notes and its
+        // depths up and down (each an undo step, closing its gesture), a double-click putting one back; a curve switch
+        // making its side exponential, read off the rendered pixels (three and a half octaves above the breakpoint the
+        // linear curve sits at 3.5 times its depth, the exponential one at 5.7 times, far under it); while a note
+        // plays, a dot on the curve at its key; and a hidden KEYS tab with a modulated knob showing its ring.
+        {
+            const Telemetry liveBefore = model.live;
+            const int brk = paramIndex(0, OpParam::KeyBreak), left = paramIndex(0, OpParam::KeyLeftDepth),
+                      right = paramIndex(0, OpParam::KeyRightDepth), rightCurve = paramIndex(0, OpParam::KeyRightCurve);
+            click(view, opTabPoint(InspectorTab::Keys));
+            view.poll();
+            view.mouseMove({600.0f, 328.0f}, {});
+            const bool keysShot = layout.opTab == InspectorTab::Keys && renderer.save(view, dir / "3g-keys.png");
+            // The breakpoint from C4 to C5, let go of a little past it and below its line: onto the note, across only.
+            drag(view, {detail::keyScaleX(60.0), detail::keyScaleY(0.0)},
+                 {detail::keyScaleX(72.3), detail::keyScaleY(0.0) + 6.0f});
+            const bool moved = model.value(brk) == 72.0 && model.openEdits == 0;
+            // Its right depth's handle, an octave above it, down to -6 dB; the left one's up to +6.
+            drag(view, {detail::keyScaleX(84.0), detail::keyScaleY(0.0)},
+                 {detail::keyScaleX(84.0), detail::keyScaleY(-6.0)});
+            drag(view, {detail::keyScaleX(60.0), detail::keyScaleY(0.0)},
+                 {detail::keyScaleX(60.0), detail::keyScaleY(6.0)});
+            const bool depths = std::abs(model.value(right) + 6.0) < 0.5 && std::abs(model.value(left) - 6.0) < 0.5 &&
+                                model.openEdits == 0;
+            std::printf("      keyboard scaling dragged: break %.2f, left %.2f dB, right %.2f dB\n", model.value(brk),
+                        model.value(left), model.value(right));
+            check(keysShot && moved && depths,
+                  "the KEYS tab's breakpoint drags across onto whole notes and its depths up and down");
+            const Point upper{detail::keyScaleX(114.0), detail::keyScaleY(-21.0) - 4.0f};
+            view.mouseMove({600.0f, 328.0f}, {});
+            renderer.save(view, dir / "3g-keys-dragged.png");
+            const int linear = ringLevel(renderer, upper, 8.0f);
+            click(view, detail::keyCurveButton(1).center());
+            view.mouseMove({600.0f, 328.0f}, {});
+            renderer.save(view, dir / "3g-keys-exp.png");
+            const int exp = ringLevel(renderer, upper, 8.0f);
+            std::printf("      the curve 3.5 octaves up: %d linear, %d exponential\n", linear, exp);
+            check(model.value(rightCurve) == static_cast<double>(KeyCurve::Exp) && linear > exp + 60,
+                  "the KEYS tab's curve switch makes its side exponential");
+            // Undone step by step: the switch, then each drag.
+            view.undo();
+            const bool curveBack = model.value(rightCurve) == 0.0;
+            view.undo();
+            const bool leftBack = model.value(left) == 0.0 && std::abs(model.value(right) + 6.0) < 0.5;
+            view.undo();
+            view.undo();
+            check(curveBack && leftBack && model.value(right) == 0.0 && model.value(brk) == 60.0,
+                  "the KEYS tab's edits are undone one at a time");
+            view.redo();
+            // A double-click puts the breakpoint back on C4.
+            doubleClick(view, {detail::keyScaleX(72.0), detail::keyScaleY(0.0)});
+            check(model.value(brk) == 60.0, "a double-click puts the breakpoint back on C4");
+            // While a note plays, a dot on the curve at its key: at C6, two octaves above, at -12 dB, the depth at
+            // -6 dB an octave. Read off the rendered pixels: whiter there than with no note.
+            model.set(right, -6.0);
+            auto whiteAt = [&](Point p) {
+                int most = 0;
+                for (float dy = -2.0f; dy <= 2.0f; dy += 1.0f) {
+                    const uint32_t color = renderer.pixel({p.x, p.y + dy});
+                    most = std::max(most, std::min({static_cast<int>(color >> 16 & 255),
+                                                    static_cast<int>(color >> 8 & 255), static_cast<int>(color & 255)}));
+                }
+                return most;
+            };
+            const Point dot{detail::keyScaleX(84.0), detail::keyScaleY(-12.0)};
+            model.live.voices = 0;
+            view.poll();
+            view.mouseMove({600.0f, 328.0f}, {});
+            renderer.save(view, dir / "3g-keys-idle.png");
+            const int noNote = whiteAt(dot);
+            model.live.voices = 1;
+            model.live.notePitch = 84.0f;
+            view.poll();
+            view.mouseMove({600.0f, 328.0f}, {});
+            renderer.save(view, dir / "3g-keys-note.png");
+            const int playing = whiteAt(dot);
+            std::printf("      the note's dot on the curve: %d with no note, %d at C6\n", noNote, playing);
+            check(playing > noNote + 60, "the KEYS tab shows the newest voice's key on the curve");
+            model.live = liveBefore;
+            model.set(right, 0.0);
+            // A hidden KEYS tab with a modulated knob has its ring: LFO 1 on A's right depth.
+            click(view, opTabPoint(InspectorTab::Envelope));
+            view.poll();
+            view.mouseMove({600.0f, 328.0f}, {});
+            renderer.save(view, dir / "3g-keys-tab-ring.png");
+            const int unringed = edge(InspectorTab::Keys);
+            model.set(slotTargetIndex(0, 7), slotTargetValue(right));
+            model.set(slotAmountIndex(0, 7), 0.3);
+            view.poll();
+            renderer.save(view, dir / "3g-keys-tab-ring.png");
+            const int ringed = edge(InspectorTab::Keys);
+            model.set(slotTargetIndex(0, 7), 0.0);
+            model.set(slotAmountIndex(0, 7), 0.0);
+            view.poll();
+            std::printf("      KEYS tab's corner: %d, %d with its right depth modulated\n", unringed, ringed);
+            check(ringed > unringed + 60, "a hidden KEYS tab with a modulated knob shows its ring");
+            click(view, opTabPoint(InspectorTab::Warp));
+            view.poll();
+        }
         // A source's handle held over a tab half a second opens it (passed over one, not); let go of in empty space, it
         // assigns nothing. The editor's clock is the test's, moved on by hand.
         static double now = 0.0;

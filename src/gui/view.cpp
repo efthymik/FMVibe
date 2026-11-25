@@ -4366,6 +4366,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                            : field == FxParam::MdRms                                            ? tr(Str::SwitchRms)
                            : field == FxParam::FlangerThroughZero ? tr(Str::SwitchThroughZero)
                            : isJoinSolo(w.param)                                                ? tr(Str::SwitchSolo)
+                           : isKeyCurveParam(w.param)                                           ? tr(Str::SwitchExp)
                                                                                                : tr(Str::SwitchAlways);
         // LFO switches take their LFO's color, effect switches the effects' color.
         Color color = kAccent;

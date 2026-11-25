@@ -1880,7 +1880,8 @@ void Synth::telemetry(Telemetry &out) const {
         out.envPos[s] = static_cast<float>(newest->modEnvs[s].position(newest->modEnvRates[s].last()));
     }
     for (int i = 0; i < kOps; ++i) {
-        out.opLevels[i] = static_cast<float>(newest->ops[i].env.level());
+        // Keyboard scaling's level on it too, as it is heard (held to full level, as the envelope is).
+        out.opLevels[i] = static_cast<float>(std::min(newest->ops[i].env.level() * newest->levels.keyLevel[i], 1.0));
         out.opEnvLevels[i] = static_cast<float>(newest->ops[i].env.level());
         out.opEnvPos[i] = static_cast<float>(newest->ops[i].env.position(newest->ops[i].rates.last()));
         out.opEnvPhase[i] = newest->ops[i].env.following() ? static_cast<float>(newest->drawn[i].phase()) : -1.0f;
@@ -3457,6 +3458,12 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         rates[i] = op.rates.get(times, [&] { return envRatesOf(times, rate_); });
         if (p[paramIndex(i, OpParam::EnvMode)] >= 0.5 || op.env.following()) // its drawn envelope instead
             followDrawn(v, i, p, params);
+        // Keyboard level scaling, by the key the voice plays (gliding with it): what it puts out (to the output, the
+        // filters, the shapers and the operators it modulates) up or down. Exactly 1 while it is off.
+        target.keyLevel[i] = keyScaleGain(keyScaleDb(
+            v.glide, p[paramIndex(i, OpParam::KeyBreak)], p[paramIndex(i, OpParam::KeyLeftDepth)],
+            p[paramIndex(i, OpParam::KeyRightDepth)], p[paramIndex(i, OpParam::KeyLeftCurve)],
+            p[paramIndex(i, OpParam::KeyRightCurve)]));
         target.out[i] = p[paramIndex(i, OpParam::Out)];
         // Its Pan, equal-power and unity at the center, as the voice's (above): on what it puts out, to the output,
         // the filters and the shapers; what other operators hear of it stays mono.
@@ -4032,7 +4039,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
 
             // Its envelope a sample at a time, here: run a block ahead into a buffer of its own (Envelope::run()), the
             // same levels made the voices a sixth slower with one copy in the plugins' MSVC build.
-            const double envLevel = op.env.next(rates[i]);
+            // Keyboard scaling's level on it: exactly 1 while it is off, so it changes nothing then.
+            const double envLevel = op.env.next(rates[i]) * level.keyLevel[i];
             // A synced operator's scope follows the note's cycles, which its own restart with.
             const double scopePhase = i != scopeOp ? 0.0 : op.syncOn ? op.syncPhases[0] : op.phases[0];
             double mono = 0.0, l = 0.0, r = 0.0;

@@ -2,6 +2,7 @@
 
 #include "factory.h"
 #include "fxlag.h"
+#include "gui/dx7.h"
 #include "oversampler.h"
 #include "params.h"
 #include "uistrings.h"
@@ -11,6 +12,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <new>
 #include <random>
@@ -708,6 +710,11 @@ void PluginCore::resetPreset() {
 
 // A preset file holds the same bytes as the host's state; a factory preset's are built in.
 bool PluginCore::loadPreset(const std::wstring &chosen) {
+    std::wstring extension = wideOf(pathOf(chosen).extension());
+    for (wchar_t &c : extension)
+        c = c >= L'A' && c <= L'Z' ? static_cast<wchar_t>(c - L'A' + L'a') : c;
+    if (extension == L".syx")
+        return importDx7(chosen);
     const std::wstring path = PresetLibrary::resolve(chosen);
     if (const FactoryPreset *preset = PresetLibrary::factoryPreset(path)) {
         MemoryReader reader{preset->data.data(), preset->data.size()};
@@ -723,6 +730,55 @@ bool PluginCore::loadPreset(const std::wstring &chosen) {
     const bool loaded = loadPresetFrom(&stream, path);
     std::fclose(file);
     return loaded;
+}
+
+bool PluginCore::importDx7(const std::wstring &path) {
+    namespace fs = std::filesystem;
+    FILE *file = openPath(path, "rb");
+    if (!file)
+        return false;
+    std::vector<unsigned char> bytes;
+    unsigned char chunk[4096];
+    for (size_t got; (got = std::fread(chunk, 1, sizeof(chunk), file)) > 0 && bytes.size() < (16u << 20);)
+        bytes.insert(bytes.end(), chunk, chunk + got);
+    std::fclose(file);
+    // The folder its presets go into, named as the file, what a folder's name can't hold replaced.
+    std::string bank = utf8(pathOf(path).stem());
+    for (char &c : bank)
+        if (static_cast<unsigned char>(c) < 0x20 || std::strchr("\\/:*?\"<>|", c))
+            c = '-';
+    while (!bank.empty() && (bank.back() == '.' || bank.back() == ' '))
+        bank.pop_back();
+    while (!bank.empty() && bank.front() == ' ')
+        bank.erase(bank.begin());
+    if (!PresetLibrary::validName(bank))
+        bank = "Import";
+    const std::vector<gui::dx7::Preset> presets = gui::dx7::presetsOf(bytes.data(), bytes.size(), bank);
+    const std::string folder = std::string(tr(Str::PresetsDx7Folder)) + "/" + bank;
+    std::wstring first;
+    for (const gui::dx7::Preset &preset : presets) {
+        const std::wstring target = PresetLibrary::presetFile(folder, preset.name);
+        if (target.empty())
+            continue;
+        std::error_code error;
+        fs::create_directories(pathOf(target).parent_path(), error);
+        // Written beside its file first and put in its place once whole, as Save writes a preset.
+        const std::wstring part = target + L".part";
+        FILE *out = openPath(part, "wb");
+        if (!out)
+            continue;
+        const bool written = std::fwrite(preset.bytes.data(), 1, preset.bytes.size(), out) == preset.bytes.size();
+        if (std::fclose(out) != 0 || !written || !replaceFile(part, target)) {
+            fs::remove(pathOf(part), error);
+            continue;
+        }
+        if (first.empty())
+            first = target;
+    }
+    if (first.empty())
+        return false;
+    rescanPresets(); // so the library lists them
+    return loadPreset(first);
 }
 
 bool PluginCore::loadPresetFrom(const clap_istream_t *stream, const std::wstring &path) {

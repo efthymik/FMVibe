@@ -103,6 +103,7 @@ enum class WidgetKind {
     SourceMods,   // a = source: the button on its card that shows its modulations in the MODS view
     ValueText,    // param, a = source, b = slot: a slot's depth in numbers; double-click types one
     EnvPoint,     // a = envelope (ops, then kOps + source), b = point
+    KeyPoint,     // param, a = op, b = 0 the keyboard scaling's breakpoint (across), 1 and 2 its left and right depth
     EnvCurve,     // param = curve, a = envelope, b = segment (attack, decay, release): bends it
     FilterPoint,  // a = filter (b = 1: the filter effect in slot a): cutoff and resonance handle
     ModDot,       // param = slot amount, a = source, b = slot: depth handle on a knob
