@@ -1739,8 +1739,9 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     input there meanwhile); the done button (a check mark, top right) closes it, as a view tab does, and the card's
     editor is back in use; so does a click on the card's plot, which is dimmed while the full-size editor has its
     shape. A Curve's full-size editor has, in its title row after its name, its clock modes' list, its Unipolar and
-    sync switches and its Rate (Length, or the note value synced) as a small knob, as the card has them and working
-    as the card's do (the list opening under its own button there); the hint goes after them.
+    sync switches and its Rate (Length, or the note value synced), Phase and Slew as small knobs, as the card has them
+    and working as the card's do (the list opening under its own button there); the hint goes after them. An
+    operator's drawn envelope's full-size editor is laid out the same (see the inspector's Envelope tab).
     A Curve source's **loop** (see the modulation above) shows as a bar in its color on a strip over the shape: in
     the full-size editor over the plot, with the ruler's labels under the bar (times, beats or shares, as its places
     read, on round values), and in the widened card along the top of the plot, with the ruler's labels at the plot's
@@ -1934,10 +1935,13 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
       place as a voice shaper's curve is on its page (points, bends, Points | Steps and Snap from the grid's
       settings), with its loop's bar along its top in Sustain and the ruler's times under it, clear of the curve's
       foot; Length is a note value while synced. While notes play, a dashed line across shows the newest
-      voice's level and a dot where it is on the curve. The pencil opens its full-size editor over the routing panel,
-      the inspector staying beside it (the tab's display greyed out meanwhile), with One-Shot | Sustain, sync, Length
-      and Slew in its title row, the loop's strip and ruler over the plot as a Curve source's has them, and the point
-      menu's Set as Loop Start and Set as Loop End; the pencil again, Done, a view's tab or ADSR closes it.
+      voice's level and a dot where it is on the curve. The pencil opens its full-size editor, laid out as a Curve
+      source's: over the routing panel and the inspector, with its name, One-Shot | Sustain as a list (as a Curve's
+      clock modes, with their icons, opening under its button; the wheel and its arrows step it), sync, Length and
+      Slew in its title row where a Curve's has its clock list, sync, Rate and Slew (it has no Unipolar switch and no
+      Phase), the loop's strip and ruler over the plot, Points | Steps, Snap and the grid under it, the point under
+      the mouse in numbers, and the point menu's Set as Loop Start and Set as Loop End; Done or a view's tab closes
+      it.
     - **Unison**: a display of where the copies sit (left/right by spread, up/down by detune, each drawn as large
       and as strong as Blend leaves it; a Random mode as one note might spread them), with a row of buttons along
       its bottom, each an icon named in its tooltip: the four Unison Curves (five copies' pitches as ticks), then,

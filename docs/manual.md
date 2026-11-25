@@ -292,8 +292,8 @@ about the same; switching back to ADSR keeps the curve for later.
   loop: its ends size it and its middle moves it. Hold Shift or Ctrl to move it off the grid.
 - When you let go of the key, the envelope goes on from where it is to the end of the curve, so the curve's last
   part is the release. If the curve doesn't end at the bottom, the note fades out quickly at its end.
-- The pencil opens a large editor for the curve, with the same controls. Click the pencil again, or the check mark,
-  to close it.
+- The pencil opens a large editor for the curve, laid out like a Curve source's, with the same controls; One-Shot
+  and Sustain are a list there. Click the check mark, or a view tab, to close it.
 
 ### Unison tab
 
@@ -767,7 +767,8 @@ In One-Shot and Sustain, with Sync off, the **Rate** knob shows the curve's **le
 You can type a length too, such as "1.5 s" or "800 ms". The point readout and the ruler then show times. With Sync on
 they show bars and beats, otherwise a percentage of the cycle.
 
-The full-size editor's title row has the clock mode list, the Unipolar and sync switches and Rate, as on the card.
+The full-size editor's title row has the clock mode list, the Unipolar and sync switches, and Rate, Phase and Slew,
+as on the card.
 While it is open, the card's shape is dimmed; click it to close the full-size editor.
 
 ### Random

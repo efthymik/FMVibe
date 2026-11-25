@@ -471,6 +471,8 @@ Color View::listColor(int param) const {
         return kSourceColors[sourceOf(param)];
     if (isSplitSlope(param))
         return splitColor();
+    if (isEnvClock(param)) // an operator's, as its drawn envelope is
+        return kAccent;
     return shaperOf(param) >= 0 ? kShaperColor : fxSlotOf(param) >= 0 ? fxColor(fxSlotOf(param)) : kFilterColor;
 }
 
@@ -4718,14 +4720,17 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // Model list its model's (but on the filter effect's card, where it shows the model's short name alone).
         const bool model = isModelList(w), plain = w.a == kModelListPlain;
         const bool filterType = isFilterTypeList(w.param) && !plain;
-        const float indent = isLfoShape(w.param) || isCurveClock(w.param) ? 24.0f : filterType ? 30.0f : 0.0f;
+        const bool clockList = isCurveClock(w.param) || isEnvClock(w.param);
+        const float indent = isLfoShape(w.param) || clockList ? 24.0f : filterType ? 30.0f : 0.0f;
         // A list with arrows has them at its ends (see the ListStep widgets), and no chevron.
         const bool steps = isSteppableList(w.param) && !plain;
         const float left = w.rect.x + (steps ? kListStepW + 2.0f : 10.0f);
         if (isLfoShape(w.param))
             lfoShapeIcon(c, {left, w.rect.center().y - 5.0f, 16.0f, 10.0f}, static_cast<LfoShape>(shown), color);
-        if (isCurveClock(w.param)) // a Curve's clock mode, by its icon, as its buttons have it
-            lfoClockIcon(c, {left + 9.0f, w.rect.center().y}, static_cast<LfoClock>(shown), color, switchIconScale());
+        if (clockList) // a Curve's clock mode (an envelope's One-Shot or Sustain), by its icon, as its buttons have it
+            lfoClockIcon(c, {left + 9.0f, w.rect.center().y},
+                         isEnvClock(w.param) ? envClockOf(shown) : static_cast<LfoClock>(shown), color,
+                         switchIconScale());
         if (filterType) {
             const Rect icon = filterTypeIconRect(w.rect);
             const FilterType type = filterTypeAt(shown);
@@ -4818,13 +4823,15 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         paintMenuRow(c, w.rect, hovered && fits, selected);
         const bool modeChoice = routeModeFrom(w.param) >= 0;
         const bool filterType = isFilterTypeList(w.param);
-        const bool iconed = isLfoShape(w.param) || isCurveClock(w.param) || modeChoice;
+        const bool clockList = isCurveClock(w.param) || isEnvClock(w.param);
+        const bool iconed = isLfoShape(w.param) || clockList || modeChoice;
         const float indent = iconed ? 24.0f : filterType ? 30.0f : 0.0f;
         if (isLfoShape(w.param))
             lfoShapeIcon(c, {w.rect.x + 10.0f, w.rect.center().y - 5.0f, 16.0f, 10.0f}, static_cast<LfoShape>(w.b),
                          selected ? listColor(w.param) : kDim);
-        if (isCurveClock(w.param))
-            lfoClockIcon(c, {w.rect.x + 19.0f, w.rect.center().y}, static_cast<LfoClock>(w.b),
+        if (clockList)
+            lfoClockIcon(c, {w.rect.x + 19.0f, w.rect.center().y},
+                         isEnvClock(w.param) ? envClockOf(w.b) : static_cast<LfoClock>(w.b),
                          selected ? listColor(w.param) : kDim, switchIconScale());
         if (filterType) // a family's icon, or on a Model list the model's
             filterIcon(c, filterTypeIconRect(w.rect),
@@ -5725,7 +5732,7 @@ void View::paintTooltip(Canvas &c) {
         text = tr(Str::TipLfoSync);
     else if (opOfField(param, OpParam::EnvMode) >= 0)
         text = tr(hover_->b == 0 ? Str::TipEnvAdsr : Str::TipEnvCurve);
-    else if (opOfField(param, OpParam::EnvSustain) >= 0)
+    else if (hover_->kind == Kind::Choice && opOfField(param, OpParam::EnvSustain) >= 0)
         text = tr(hover_->b == 1 ? Str::TipSustain : Str::TipEnvOneShot);
     else if (opOfField(param, OpParam::EnvSync) >= 0)
         text = tr(Str::TipEnvSync);
@@ -5734,7 +5741,7 @@ void View::paintTooltip(Canvas &c) {
         text = tr(isModelList(*hover_)              ? (next ? Str::TipNextModel : Str::TipPrevModel)
                   : isClipMode(param)               ? (next ? Str::TipNextCurve : Str::TipPrevCurve)
                   : isLfoShape(param)               ? (next ? Str::TipNextShape : Str::TipPrevShape)
-                  : isCurveClock(param)             ? (next ? Str::TipNextClock : Str::TipPrevClock)
+                  : isCurveClock(param) || isEnvClock(param) ? (next ? Str::TipNextClock : Str::TipPrevClock)
                   : field == FxParam::ReverbType    ? (next ? Str::TipNextAlgorithm : Str::TipPrevAlgorithm)
                   : field == FxParam::AmpModel      ? (next ? Str::TipNextModel : Str::TipPrevModel)
                   : field == FxParam::AmpCab        ? (next ? Str::TipNextCabinet : Str::TipPrevCabinet)
@@ -7702,6 +7709,12 @@ void View::wheel(Point p, float steps, Modifiers mods) {
     if (hit->kind == Kind::Toggle) {
         if (whole != 0 && (whole > 0) != (value(hit->param) >= 0.5))
             flipSwitch(hit->param);
+        return;
+    }
+    if (hit->kind == Kind::ListButton && isEnvClock(hit->param)) { // One-Shot, then Sustain, held at either
+        const int to = std::clamp(static_cast<int>(std::lround(value(hit->param))) + whole, 0, 1);
+        if (whole != 0 && to != std::lround(value(hit->param)))
+            edit(hit->param, to);
         return;
     }
     if (isLfoClockChoice(*hit) || (hit->kind == Kind::ListButton && isCurveClock(hit->param))) {

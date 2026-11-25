@@ -896,7 +896,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     picking its clock mode from a list of its own, its Unipolar switch beside it; its Rate, unsynced, shown and typed as the
     curve's length in One-Shot and Sustain (a length in s or ms, or a rate in Hz) and as a rate retriggered; its
     places reading as times there, in bars and beats synced, else as a share; its full-size editor's title row
-    setting its clock mode from a list of its own (opening under its button, not the card's), its Unipolar and its sync;
+    setting its clock mode from a list of its own (opening under its button, not the card's), its Unipolar and its sync,
+    and its Phase and Slew knobs taking the wheel;
     its Phase knob held drawing a line where notes would start it, there and in the widened card, and not once let go
     (read off the rendered pixels);
     its loop's strip over the full-size plot, on the grid's columns: an end dragged
@@ -911,8 +912,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - an operator's ENVELOPE tab's ADSR | Curve switching to its drawn envelope in one undo step, drawn from its AHDSR
     the first time (its points, loop and Length) and kept as drawn after; One-Shot | Sustain and its sync switch, its
     Length knob setting its length or, synced, its note value, and its Slew knob its slew, Off to begin with; its loop's end dragged on the tab's display onto the
-    grid, one undo step; the newest voice's dot on it (read off the rendered pixels); and its pencil opening and
-    closing its full-size editor, a view tab and ADSR closing it too;
+    grid, one undo step; the newest voice's dot on it (read off the rendered pixels); and its pencil opening its
+    full-size editor over the routing panel and the inspector, laid out as a Curve's, its One-Shot | Sustain a list
+    there, picked from undoably, its done button and a view tab closing it;
   - Copy Shape and Paste Shape: an operator's envelope copied from its menu (Paste Shape offered only once a shape is
     copied) pasting into a Curve source by Ctrl+V as it is, with its loop region, one undo step; into a symmetric voice
     shaper's curve its ends at the curve's and a point in its middle; a Curve source of 40 points into velocity's

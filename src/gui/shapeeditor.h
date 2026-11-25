@@ -217,15 +217,15 @@ private:
     void paintPhaseDragged(Canvas &c, int lfo, Rect r) const;
     // The ruler's labels along a plot `width` wide, at least `gap` apart: where each is (0..1) and what it reads.
     std::vector<std::pair<double, std::string>> rulerMarks(int shape, float width, float gap) const;
-    // A Curve's big editor's title row: its name, then its clock list, its Unipolar and sync switches and its Rate (or
-    // note value), before the hint, as its card has them; an operator's envelope's has One-Shot | Sustain, named beside
-    // their icons, where the list is (shapeClockButton()).
+    // A Curve's big editor's title row and an operator's envelope's, alike: the name, then the mode list (a Curve's
+    // clock modes, as on its card, or an envelope's One-Shot | Sustain), a Curve's Unipolar switch, the sync switch and
+    // the knobs side by side (`knob` 0 its Rate, or Length, or the note value it is synced to; 1 a Curve's Phase; 2
+    // Slew, an envelope's after its Length), before the hint.
     Rect shapeTitle() const;
     Rect shapeClockList() const;
-    Rect shapeClockButton(int mode) const;
     Rect shapeUnipolarSwitch() const;
-    Rect shapeSyncButton() const;
-    Rect shapeRateKnob() const;
+    Rect shapeSyncButton(int shape) const;
+    Rect shapeTitleKnob(int shape, int knob) const;
     // Whether a widened card's Copy has kept a shape for Paste.
     static bool shapeCopied();
     // Its geometry: its buttons, and where a shape is edited (the big editor's plot, or where it shows in place while
@@ -295,10 +295,6 @@ private:
     void paintOpEnvEditor(Canvas &c, int shape);
     // An operator's drawn envelope's outline over `r`, filled from its bottom (no level), and where the newest voice is.
     void paintOpEnvCurve(Canvas &c, int shape, Rect r);
-    // Its full-size editor's title row: after its name, One-Shot | Sustain, its sync switch, its Length and its Slew.
-    Rect opEnvTitleSync() const;
-    Rect opEnvTitleKnob() const;
-    Rect opEnvTitleSlew() const;
     void paintNoteCurveEditor(Canvas &c);
     void paintVelocityCurveEditor(Canvas &c);
     // The note source's or velocity's curve over the plot `r`, filled under it, and a dot `dot` of the way across it (0..1,

@@ -47,13 +47,12 @@ ShapeEditor::ShapeEditor(PanelHost &host)
 // inspector still covered; the note source's curve and velocity's fill the routing panel.
 constexpr float kClipEditorW = 520.0f;
 constexpr float kShapeRulerRoom = 12.0f; // what an LFO's plot gives up for its loop's strip
-constexpr float kTitleClockW = 88.0f;    // One-Shot's and Sustain's buttons in an envelope's title row
 constexpr double kLoopApart = 1.0 / 256.0; // how near a loop's ends come, dragged off the grid's columns
 Rect ShapeEditor::shapePanel() const {
     const int shape = shapeEditing();
     if (shape >= 0 && isClipCurve(shape))
         return {kFxPanel.x + std::round((kFxPanel.w - kClipEditorW) * 0.5f), kFxPanel.y, kClipEditorW, kFxPanel.h};
-    return shape >= 0 && !isCurve(shape) ? kFxPanel : kRouting;
+    return shape >= 0 && (!isCurve(shape) || isOpEnvCurve(shape)) ? kFxPanel : kRouting; // an envelope's as a Curve's
 }
 
 Rect ShapeEditor::shapeArea(int shape) const {
@@ -89,8 +88,8 @@ Rect ShapeEditor::shapeReset() const {
     return {done.x - 6.0f - 28.0f, done.y, 28.0f, 22.0f};
 }
 
-// A Curve's (an LFO's) big editor's title row, from the left: its name, its clock list, its Unipolar and sync switches
-// and its Rate.
+// A Curve's (an LFO's) big editor's title row and an operator's envelope's, from the left: the name, the mode list, a
+// Curve's Unipolar switch, the sync switch and the knobs, an envelope's Slew where a Curve's Phase is.
 Rect ShapeEditor::shapeTitle() const {
     const Rect panel = shapePanel();
     return {panel.x + 16.0f, panel.y + 9.0f, 104.0f, 22.0f};
@@ -101,23 +100,21 @@ Rect ShapeEditor::shapeClockList() const {
     return {title.right() + 12.0f, title.y, kLfoListW, title.h};
 }
 
-Rect ShapeEditor::shapeClockButton(int mode) const {
-    const Rect title = shapeTitle();
-    return {title.right() + 12.0f + mode * kTitleClockW, title.y, kTitleClockW, title.h};
-}
-
 Rect ShapeEditor::shapeUnipolarSwitch() const {
     const Rect list = shapeClockList();
     return {list.right() + 8.0f, list.y, 22.0f, 22.0f};
 }
 
-Rect ShapeEditor::shapeSyncButton() const {
+Rect ShapeEditor::shapeSyncButton(int shape) const {
+    if (isOpEnvCurve(shape)) // no Unipolar switch: right after the list
+        return shapeUnipolarSwitch();
     const Rect unipolar = shapeUnipolarSwitch();
     return {unipolar.right() + 6.0f, unipolar.y, 22.0f, 22.0f};
 }
 
-Rect ShapeEditor::shapeRateKnob() const {
-    return {shapeSyncButton().right() + 8.0f, shapePanel().y, 92.0f, 40.0f};
+Rect ShapeEditor::shapeTitleKnob(int shape, int knob) const {
+    const int place = isOpEnvCurve(shape) ? std::min(knob, 1) : knob; // an envelope has no Phase
+    return {shapeSyncButton(shape).right() + 8.0f + place * 96.0f, shapePanel().y, 92.0f, 40.0f};
 }
 
 Rect ShapeEditor::partialRandom() const {
@@ -1055,7 +1052,7 @@ void ShapeEditor::paintShapeEditor(Canvas &c, int shape) {
     const Rect title = shapeTitle();
     c.fillRect(title, color.alpha(0.18f), kRadiusControl);
     c.text(title, trf(Str::TitleShape, {mods_.sourceName(lfo)}), kTextBody, color, Align::Center, true);
-    const float hint = curveShape(lfo) ? shapeRateKnob().right() : title.right(); // after a Curve's clock and Rate
+    const float hint = curveShape(lfo) ? shapeTitleKnob(lfo, 2).right() : title.right(); // after a Curve's knobs
     c.text({hint + 12.0f, title.y + 1.0f, shapeReset().x - hint - 24.0f, 22.0f}, shapeHint(), kTextLabel, kFaint,
            Align::Right);
 
@@ -1110,20 +1107,6 @@ void ShapeEditor::paintShapeEditor(Canvas &c, int shape) {
                    : trf(Str::CaptionShapePointAt, {point, mods_.curvePlace(lfo, x, false), level}),
                kTextLabel, kDim, Align::Left);
     }
-}
-
-Rect ShapeEditor::opEnvTitleSync() const {
-    const Rect sustain = shapeClockButton(1);
-    return {sustain.right() + 8.0f, sustain.y, 22.0f, 22.0f};
-}
-
-Rect ShapeEditor::opEnvTitleKnob() const {
-    return {opEnvTitleSync().right() + 8.0f, shapePanel().y, 92.0f, 40.0f};
-}
-
-Rect ShapeEditor::opEnvTitleSlew() const {
-    const Rect length = opEnvTitleKnob();
-    return {length.right() + 4.0f, length.y, length.w, length.h};
 }
 
 // An operator's drawn envelope: its level up from the bottom, its time across, filled from the bottom as a unipolar
@@ -1186,7 +1169,7 @@ void ShapeEditor::paintOpEnvEditor(Canvas &c, int shape) {
     c.fillRect(title, color.alpha(0.18f), kRadiusControl);
     c.text(title, trf(Str::TitleOpEnvelope, {std::string(1, static_cast<char>('A' + op))}), kTextBody, color,
            Align::Center, true);
-    const float hint = opEnvTitleSlew().right();
+    const float hint = shapeTitleKnob(shape, 2).right();
     c.text({hint + 12.0f, title.y + 1.0f, shapeReset().x - hint - 24.0f, 22.0f}, shapeHint(), kTextLabel, kFaint,
            Align::Right);
     const Rect r = shapeArea();
@@ -1723,18 +1706,35 @@ void ShapeEditor::widgets(std::vector<Widget> &list) const {
             for (int part = 0; part < 3; ++part)
                 add(Kind::ShapeGrid, shapeGridButton(axis, part), -1, axis, part - 1);
         add(Kind::ShapeArea, shapeArea().inset(-8.0f), -1, editing);
-        if (curveShape(editing)) {
-            // Its clock list, as on its card (see View::setLfoClock()), opening under this button (see popups()); its
-            // Unipolar and sync switches and its Rate, or the note value it is synced to, as a compact knob.
-            add(Kind::ListButton, shapeClockList(), paramIndex(editing, SourceParam::Free), kEditorList);
-            add(Kind::Toggle, shapeUnipolarSwitch(), paramIndex(editing, SourceParam::Unipolar));
-            add(Kind::Toggle, shapeSyncButton(), paramIndex(editing, SourceParam::Sync));
-            const bool synced = value(paramIndex(editing, SourceParam::Sync)) >= 0.5;
-            const bool length = mods_.curveTime(editing) == ModulationModel::CurveTime::Seconds;
-            add(Kind::Knob, shapeRateKnob(),
-                paramIndex(editing, synced ? SourceParam::Division : SourceParam::Rate));
-            list.back().label = tr(length ? Str::LabelLength : Str::LabelRate);
-            list.back().compact = true;
+        if (curveShape(editing) || isOpEnvCurve(editing)) {
+            // The title row, a Curve's and an envelope's alike: the mode list, opening under this button (see popups();
+            // a Curve's clock list sets its modes as its card's does, see View::setLfoClock()), a Curve's Unipolar
+            // switch, the sync switch, and compact knobs: Rate (an envelope's Length), or the note value it is synced
+            // to, a Curve's Phase, and Slew.
+            const bool env = isOpEnvCurve(editing);
+            const int op = env ? opOfEnvCurve(editing) : -1;
+            auto knob = [&](int place, int param, Str label) {
+                add(Kind::Knob, shapeTitleKnob(editing, place), param);
+                list.back().label = tr(label);
+                list.back().compact = true;
+            };
+            add(Kind::ListButton, shapeClockList(),
+                env ? paramIndex(op, OpParam::EnvSustain) : paramIndex(editing, SourceParam::Free), kEditorList);
+            if (!env)
+                add(Kind::Toggle, shapeUnipolarSwitch(), paramIndex(editing, SourceParam::Unipolar));
+            const int sync = env ? paramIndex(op, OpParam::EnvSync) : paramIndex(editing, SourceParam::Sync);
+            add(Kind::Toggle, shapeSyncButton(editing), sync);
+            const bool synced = value(sync) >= 0.5;
+            if (env) {
+                knob(0, paramIndex(op, synced ? OpParam::EnvDivision : OpParam::EnvLength), Str::LabelLength);
+                knob(2, paramIndex(op, OpParam::EnvSlew), Str::LabelSlew);
+            } else {
+                const bool length = mods_.curveTime(editing) == ModulationModel::CurveTime::Seconds;
+                knob(0, paramIndex(editing, synced ? SourceParam::Division : SourceParam::Rate),
+                     length ? Str::LabelLength : Str::LabelRate);
+                knob(1, paramIndex(editing, SourceParam::Phase), Str::LabelPhase);
+                knob(2, paramIndex(editing, SourceParam::CurveSlew), Str::LabelSlew);
+            }
             if (loopShown(editing)) // over the plot, under the points
                 add(Kind::ShapeLoop, loopStrip(editing), -1, editing);
         }
@@ -1742,27 +1742,6 @@ void ShapeEditor::widgets(std::vector<Widget> &list) const {
             add(Kind::ShapeMode, shapeModeButton(mode), -1, editing, mode);
             if (mode == 1)
                 merge(list.size() - 2);
-        }
-        if (isOpEnvCurve(editing)) {
-            // One-Shot | Sustain, named, its sync switch and its Length (or note value), as on its ENVELOPE tab.
-            const int op = opOfEnvCurve(editing);
-            const size_t modes = list.size();
-            const Str names[] = {Str::SwitchOneShot, Str::SwitchSustain};
-            for (int sustain = 0; sustain < 2; ++sustain) {
-                add(Kind::Choice, shapeClockButton(sustain), paramIndex(op, OpParam::EnvSustain), op, sustain);
-                list.back().label = tr(names[sustain]);
-            }
-            merge(modes);
-            add(Kind::Toggle, opEnvTitleSync(), paramIndex(op, OpParam::EnvSync));
-            const bool synced = value(paramIndex(op, OpParam::EnvSync)) >= 0.5;
-            add(Kind::Knob, opEnvTitleKnob(), paramIndex(op, synced ? OpParam::EnvDivision : OpParam::EnvLength));
-            list.back().label = tr(Str::LabelLength);
-            list.back().compact = true;
-            add(Kind::Knob, opEnvTitleSlew(), paramIndex(op, OpParam::EnvSlew));
-            list.back().label = tr(Str::LabelSlew);
-            list.back().compact = true;
-            if (loopShown(editing))
-                add(Kind::ShapeLoop, loopStrip(editing), -1, editing);
         }
         if (isClipCurve(editing) || isShaperCurve(editing)) // a Custom curve's symmetric switch, as on its card or page
             add(Kind::Toggle, shapeSymButton(), shaperParams(editing - kMaxSources).symmetric);
@@ -1903,18 +1882,23 @@ void ShapeEditor::opEnvWidgets(std::vector<Widget> &list, int op) const {
 }
 
 void ShapeEditor::popups(std::vector<Widget> &list) const {
-    // A Curve's clock list, opened from its title row's button: under it, a click anywhere else closing it, its entries
-    // picked as its card's are (see View::pickListValue()).
+    // The mode list, opened from its title row's button (a Curve's clock modes, an envelope's One-Shot | Sustain): under
+    // it, a click anywhere else closing it, its entries picked as a card's are (see View::pickListValue()).
     const int editing = shapeEditing();
-    if (editing < 0 || !curveShape(editing) || !host_.openListInEditor() ||
-        host_.openList() != paramIndex(editing, SourceParam::Free))
+    const bool env = editing >= 0 && isOpEnvCurve(editing);
+    if (editing < 0 || !(curveShape(editing) || env) || !host_.openListInEditor())
+        return;
+    const int param = env ? paramIndex(opOfEnvCurve(editing), OpParam::EnvSustain)
+                          : paramIndex(editing, SourceParam::Free);
+    if (host_.openList() != param)
         return;
     const WidgetAdder add{list};
     const Rect button = shapeClockList();
+    const int items = env ? 2 : kCurveModes;
     add(Kind::ListMenu, {0.0f, 0.0f, View::kWidth, host_.height()}, -1, 0);
-    add(Kind::ListMenu, listMenu(button, kCurveModes), -1, 1);
-    for (int item = 0; item < kCurveModes; ++item)
-        add(Kind::ListItem, listMenuItem(button, kCurveModes, item), host_.openList(), -1, item);
+    add(Kind::ListMenu, listMenu(button, items), -1, 1);
+    for (int item = 0; item < items; ++item)
+        add(Kind::ListItem, listMenuItem(button, items, item), param, -1, item);
 }
 
 void ShapeEditor::cardWidgets(std::vector<Widget> &list, int lfo, float card) const {
@@ -2268,8 +2252,8 @@ bool ShapeEditor::press(const Widget &w, Point p, Modifiers mods) {
     case Kind::ClipDisplay:
         shapeEditor_ = kMaxSources + w.a;
         return true;
-    case Kind::OpEnvEdit: // a second click closes it; it takes the routing panel, as the partial editor does
-        shapeEditor_ = shapeEditing() == opEnvCurve(w.a) ? -1 : opEnvCurve(w.a);
+    case Kind::OpEnvEdit: // over the routing panel and the inspector, as a Curve's, the pencil under it
+        shapeEditor_ = opEnvCurve(w.a);
         partialEditor_ = -1;
         host_.resetHover();
         return true;

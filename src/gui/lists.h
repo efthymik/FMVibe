@@ -54,6 +54,15 @@ constexpr Str kCurveClockNames[] = {Str::SwitchRetrigger, Str::SwitchFree, Str::
                                     Str::SwitchSustain};
 static_assert(std::size(kCurveClockNames) == static_cast<size_t>(kCurveModes));
 
+// An operator's drawn envelope's One-Shot | Sustain as a list, in its full-size editor's title row where a Curve's
+// clock list is: its two entries (0 One-Shot, 1 Sustain) named and drawn as those clock modes are.
+inline bool isEnvClock(int param) {
+    return opOfField(param, OpParam::EnvSustain) >= 0;
+}
+inline LfoClock envClockOf(int value) {
+    return value == 1 ? LfoClock::Sustain : LfoClock::OneShot;
+}
+
 inline bool isClipMode(int param) {
     return fxFieldOf(param) == FxParam::ShaperMode || shaperFieldOf(param) == ShaperParam::Mode;
 }
@@ -195,7 +204,7 @@ inline bool isModelList(const Widget &w) {
 inline bool isSteppableList(int param) {
     const FxParam field = fxFieldOf(param);
     return isFilterTypeList(param) || isClipMode(param) || field == FxParam::AmpModel || field == FxParam::AmpCab ||
-           field == FxParam::ReverbType || isLfoShape(param) || isCurveClock(param);
+           field == FxParam::ReverbType || isLfoShape(param) || isCurveClock(param) || isEnvClock(param);
 }
 
 // Adds widgets to a list: `add(kind, rect, param, a, b)`. A list button whose list has arrows gets them, over it.
@@ -250,6 +259,7 @@ inline int listCount(int param, int shown = 0, bool model = false) {
                                                                : kFilterFamilies)
            : isLfoShape(param)                        ? kLfoShapeItems
            : isCurveClock(param)                      ? kCurveModes
+           : isEnvClock(param)                        ? 2
            : isMidiInput(param)                       ? static_cast<int>(MidiInput::Count)
            : fxFieldOf(param) == FxParam::ReverbType ? static_cast<int>(ReverbType::Count)
            : fxFieldOf(param) == FxParam::AmpModel   ? static_cast<int>(AmpModel::Count)
@@ -269,6 +279,8 @@ inline std::string listItemName(int param, int value, bool model = false) {
         return lfoShapeName(static_cast<LfoShape>(value));
     if (isCurveClock(param))
         return tr(kCurveClockNames[std::clamp(value, 0, kCurveModes - 1)]);
+    if (isEnvClock(param))
+        return tr(kCurveClockNames[static_cast<int>(envClockOf(value))]);
     if (isMidiInput(param))
         return midiInputName(static_cast<MidiInput>(value));
     if (fxFieldOf(param) == FxParam::AmpModel)

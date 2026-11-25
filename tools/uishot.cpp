@@ -4753,10 +4753,21 @@ void testCurveLoop(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, {317.0f, 152.0f}); // its sync switch
     const bool titleSync = model.value(paramIndex(0, SourceParam::Sync)) == 1.0;
     view.undo();
-    std::printf("      title row: %d %d %d %d %d\n", titleSustain, titleRetrigger, titleOwn, titleUnipolar, titleSync);
-    check(titleSustain && titleRetrigger && titleOwn && titleUnipolar && titleSync,
-          "a Curve's full-size editor's title row sets its clock from its list, opening under it, and its Unipolar "
-          "and sync");
+    // Its knobs after Rate, as on its card: Phase and Slew, each taking the wheel.
+    auto wheelTakes = [&](Point at, int param) {
+        const double was = model.value(param);
+        view.wheel(at, 1.0f, {});
+        const bool moved = model.value(param) != was;
+        view.undo();
+        return moved && model.value(param) == was;
+    };
+    const bool titlePhase = wheelTakes({478.0f, 152.0f}, paramIndex(0, SourceParam::Phase));
+    const bool titleSlew = wheelTakes({574.0f, 152.0f}, paramIndex(0, SourceParam::CurveSlew));
+    std::printf("      title row: %d %d %d %d %d %d %d\n", titleSustain, titleRetrigger, titleOwn, titleUnipolar,
+                titleSync, titlePhase, titleSlew);
+    check(titleSustain && titleRetrigger && titleOwn && titleUnipolar && titleSync && titlePhase && titleSlew,
+          "a Curve's full-size editor's title row sets its clock from its list, opening under it, its Unipolar and "
+          "sync, and its Phase and Slew");
 
     // While the card's Phase knob is held, a line across the plot where notes would start the curve (at 30 %), in the
     // full-size editor and, that closed, in the widened card (read off the rendered pixels, low on the plot, clear of
@@ -5065,32 +5076,43 @@ void testOpEnvCurve(const std::filesystem::path &dir, Renderer &renderer) {
     view.poll();
     check(playing != idle, "a drawn envelope's ENVELOPE tab shows where the newest voice is on it");
 
-    // The pencil opens the full-size editor over the routing panel, the tab's display greyed out; a view tab closes it.
-    // Open, its title row's One-Shot takes a click (its title, then One-Shot | Sustain, as a Curve's clock modes).
-    const Point titleOneShot{detail::kRouting.x + 176.0f, detail::kRouting.y + 20.0f};
+    // The pencil opens the full-size editor over the routing panel and the inspector, as a Curve's, the pencil under
+    // it; its done button and a view tab close it. Open, its title row's Slew knob takes the wheel (its name, then the
+    // mode list, sync, Length and Slew, as a Curve's title row has them).
+    const Point titleSlew{450.0f, 152.0f};
     auto editorOpen = [&] {
-        const bool was = model.value(sustain) == 1.0;
-        click(view, titleOneShot);
-        const bool open = was && model.value(sustain) == 0.0;
+        const double was = model.value(envSlew);
+        view.wheel(titleSlew, 1.0f, {});
+        const bool open = model.value(envSlew) != was;
         if (open)
             view.undo();
-        return open;
+        return open && model.value(envSlew) == was;
     };
     const bool shut = !editorOpen();
     click(view, detail::opEnvEditButton().center());
     renderer.save(view, dir / "3h-env-editor.png");
     const bool open = editorOpen();
+    click(view, detail::opEnvEditButton().center()); // on its plot now, the inspector under it
+    const bool covering = editorOpen();
+    // Its mode list, where a Curve's clock list is: One-Shot picked from it, under its button, one undo step.
+    const Rect modeList{148.0f, 141.0f, 122.0f, 22.0f};
+    click(view, modeList.center());
+    view.mouseMove(detail::listMenuItem(modeList, 2, 0).center(), {});
+    renderer.save(view, dir / "3h-env-editor-list.png");
+    click(view, detail::listMenuItem(modeList, 2, 0).center());
+    const bool listOneShot = model.value(sustain) == 0.0;
+    view.undo();
+    const bool listUndone = model.value(sustain) == 1.0;
+    click(view, kShapeDone);
+    const bool done = !editorOpen();
+    click(view, detail::opEnvEditButton().center());
     click(view, detail::kViewTabs[static_cast<int>(RoutingView::Graph)].center());
     const bool closed = !editorOpen();
-    click(view, detail::opEnvEditButton().center());
-    click(view, detail::opEnvEditButton().center());
-    const bool toggled = !editorOpen();
-    click(view, detail::opEnvEditButton().center());
-    click(view, detail::opEnvModeButton(0).center()); // back to its AHDSR: the editor goes with it
-    click(view, detail::opEnvModeButton(1).center());
-    const bool gone = !editorOpen();
-    check(shut && open && closed && toggled && gone,
-          "a drawn envelope's pencil opens and closes its full-size editor, a view tab and its AHDSR closing it too");
+    std::printf("      the envelope's editor: %d %d %d %d %d %d %d\n", shut, open, covering, listOneShot, listUndone,
+                done, closed);
+    check(shut && open && covering && listOneShot && listUndone && done && closed,
+          "a drawn envelope's pencil opens its full-size editor over the routing panel and the inspector, its mode "
+          "list picking One-Shot or Sustain, its done button and a view tab closing it");
 }
 
 // Copy Shape and Paste Shape between the kinds of drawn shape, from their right-click menus and with Ctrl+C and Ctrl+V
