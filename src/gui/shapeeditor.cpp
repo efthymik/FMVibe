@@ -1708,19 +1708,6 @@ void ShapeEditor::paintLfoCard(Canvas &c, float card, int lfo) {
 
 // --- Its widgets.
 
-namespace {
-// Adds a widget to `list`.
-void addTo(std::vector<Widget> &list, WidgetKind kind, Rect rect, int param = -1, int a = -1, int b = -1) {
-    Widget w;
-    w.kind = kind;
-    w.rect = rect;
-    w.param = param;
-    w.a = a;
-    w.b = b;
-    list.push_back(w);
-}
-} // namespace
-
 void ShapeEditor::widgets(std::vector<Widget> &list) const {
     const WidgetAdder add{list};
     auto merge = [&list](size_t from) { mergeButtons(list, from); };

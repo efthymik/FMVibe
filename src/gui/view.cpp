@@ -1794,19 +1794,24 @@ std::vector<View::Widget> View::widgets() const {
             // ranges on its outline's top, so its depth stays readable. A matrix cell has them centered along its
             // foot, its ranges along its top; a depth bar in its top right corner, its ranges along its bottom. A
             // cell's sit low enough that a large handle's aux ring clears its number, and no lower than keeps the ring
-            // (5.55 px out, its stroke 1.3) inside the 4 px gap above the next cell.
+            // (5.55 px out, its stroke 1.3) inside the 4 px gap above the next cell. A label in the routing graph,
+            // larger (see kWireLabelH), has them, and their pill, in a knob's size, as far apart as under a knob.
             const bool cell = kind == Kind::GridCell || kind == Kind::SlotBar;
-            const float margin = std::max(cell ? 4.0f : 3.0f, sizes.dotCompact + 1.0f), step = cell ? 7.0f : 8.0f,
+            const bool large = !cell && kRouting.contains(r.center());
+            const float dot = large ? sizes.dot : sizes.dotCompact, gap = large ? 5.0f : 4.25f;
+            const float pillH = large ? sizes.pillH : sizes.pillCompactH;
+            const float margin = std::max(cell ? 4.0f : 3.0f, dot + 1.0f), step = cell ? 7.0f : large ? 10.0f : 8.0f,
                         y = kind == Kind::GridCell ? r.bottom() - 2.5f
                             : cell                 ? r.y + 4.0f
-                                                   : r.bottom() + 0.75f + sizes.dotCompact;
+                                                   : r.bottom() + (large ? 1.25f : 0.75f) + dot;
             const int fit = static_cast<int>((r.w - 2.0f * margin) / step) + 1;
             int shown = n;
             float pillW = 0.0f;
             if (n > fit) {
-                // The pill's left edge stays 1 px inside: 4.25 px left of the last handle shown, or at the corner.
-                pillW = n - std::max(fit - 2, 0) >= 10 ? sizes.pillWideCompact : sizes.pillCompact;
-                const float room = r.w - margin - 4.25f - pillW - 1.0f;
+                // The pill's left edge stays 1 px inside: `gap` left of the last handle shown, or at the corner.
+                const bool wide = n - std::max(fit - 2, 0) >= 10;
+                pillW = large ? (wide ? sizes.pillWide : sizes.pill) : (wide ? sizes.pillWideCompact : sizes.pillCompact);
+                const float room = r.w - margin - gap - pillW - 1.0f;
                 shown = room < 0.0f ? 0 : std::min(static_cast<int>(std::floor(room / step)) + 1, n - 1);
             }
             // The first handle's center; under a label and along a matrix cell's foot, the handles and pill as a
@@ -1814,21 +1819,21 @@ std::vector<View::Widget> View::widgets() const {
             float first = r.right() - margin;
             if (kind != Kind::SlotBar) {
                 const float span = static_cast<float>(std::max(shown - 1, 0)) * step;
-                const float right = shown > 0 ? sizes.dotCompact : 0.0f;
-                const float left = n > fit ? -(shown > 0 ? span + 4.25f : 0.0f) - pillW : -span - sizes.dotCompact;
+                const float right = shown > 0 ? dot : 0.0f;
+                const float left = n > fit ? -(shown > 0 ? span + gap : 0.0f) - pillW : -span - dot;
                 first = r.center().x - 0.5f * (left + right);
             }
+            const float hit = large ? 10.0f : 7.0f; // as wide as a knob's handle takes the mouse, or a compact one's
             for (int k = 0; k < shown; ++k) {
                 const Point c{first - static_cast<float>(k) * step, y};
-                add(Kind::ModDot, {c.x - 3.5f, c.y - 3.5f, 7.0f, 7.0f},
+                add(Kind::ModDot, {c.x - 0.5f * hit, c.y - 0.5f * hit, hit, hit},
                     slotAmountIndex(here[k].source, here[k].slot), here[k].source, here[k].slot);
-                list.back().compact = true;
+                list.back().compact = !large;
                 list.back().clip = list[i].clip; // a depth bar's is cut off with its card
             }
             if (n > fit) {
-                const float edge =
-                    first - static_cast<float>(std::max(shown - 1, 0)) * step - (shown > 0 ? 4.25f : 0.0f);
-                pill({edge - pillW, y - 0.5f * sizes.pillCompactH, pillW, sizes.pillCompactH}, shown, true);
+                const float edge = first - static_cast<float>(std::max(shown - 1, 0)) * step - (shown > 0 ? gap : 0.0f);
+                pill({edge - pillW, y - 0.5f * pillH, pillW, pillH}, shown, !large);
             }
             continue;
         }

@@ -85,6 +85,9 @@ constexpr size_t kMaxPresetChunk = 65536;
 // 17: In Key and Latch the keys transpose the sequencer's pattern from C4 (kSeqTransposeFrom), the scale's Root setting
 //    the scale alone; they transposed it from Root. An earlier state playing from a key with Root off C4 loads that
 //    difference into Octave and Transpose, playing as it played (see transposeFromRoot()).
+//    And a sequencer note may bend (see SeqNoteBendParam): an earlier state has no bends and loads as it was saved,
+//    and the version's rise has an earlier build refuse a state whose bends it would leave out.
+//    And the sequencer's Play is Key to begin with rather than Host: an earlier state without one loads Host.
 // One version a release at most: what changes between two tagged releases goes into a single step, so the version
 // rises once from one release to the next (see AGENTS.md, Plugin facts).
 constexpr uint32_t kStateVersion = 17;
@@ -395,6 +398,8 @@ void layoutFields(Io &io, Layout &ui) {
     io.numbers(ui.sourceOrder, kFirstSources, kMaxSources, 0.0f, kMaxSources - 1.0f, rounded<int>);
     io.check(ui.sourceOrder, gui::identitySourceOrder(), everyPlaceOnce);
     io.bits(ui.sourcesFolded, kFirstSources);
+    // Whether the SEQ view's roll bends notes (its Bend tool).
+    io.number(ui.seqBend, 0.0f, 1.0f, [](float value) { return value >= 0.5f; });
 }
 
 } // namespace
@@ -666,6 +671,10 @@ bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
     if (header[1] < 13)
         for (int op = 0; op < kOps; ++op)
             loaded[paramIndex(op, OpParam::UnisonPan)] = static_cast<double>(UniPan::Ramp);
+    // Before version 17 the sequencer played with the host's transport to begin with, which a state without its Play
+    // loads (one that has it, as saved).
+    if (header[1] < 17)
+        loaded[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Host);
     const int volume = paramIndex(GlobalParam::Volume);
     // Whether the state wires the effects graph's output: before version 9, only one saved with them as a graph does.
     bool outWired = false;

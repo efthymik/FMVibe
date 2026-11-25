@@ -2663,6 +2663,7 @@ int main(int argc, char **argv) {
         };
         out.noteEnds.clear();
         setParams({{paramIndex(SeqParam::Enabled), 1.0},
+                   {paramIndex(SeqParam::Play), static_cast<double>(SeqPlay::Host)},
                    {seqNoteIndex(0, 0, SeqNoteParam::Start), 0.0},
                    {seqNoteIndex(0, 0, SeqNoteParam::Length), 2.0},
                    {seqNoteIndex(0, 0, SeqNoteParam::Pitch), 69.0}});
@@ -2689,7 +2690,7 @@ int main(int argc, char **argv) {
         check(idle == 0.0f && keyed > 0.05f && heldNoEnd && keyEnded && after == 0.0f,
               "in Key, a key held plays the pattern, and its end is reported as it is let go");
         setParams({{paramIndex(SeqParam::Enabled), 0.0},
-                   {paramIndex(SeqParam::Play), 0.0},
+                   {paramIndex(SeqParam::Play), static_cast<double>(SeqPlay::Key)},
                    {seqNoteIndex(0, 0, SeqNoteParam::Length), 0.0},
                    {seqNoteIndex(0, 0, SeqNoteParam::Pitch), 60.0}});
         out.noteEnds.clear();
@@ -4998,11 +4999,28 @@ int main(int argc, char **argv) {
         check(haveWorkArea && width <= workWidth && height <= workHeight,
               "a new editor opens within the screen's work area");
 
-        uint32_t adjustedWidth = 900, adjustedHeight = 100;
+        // A window dragged by its side, its height as it was: the view is 1200 x 1002, so three quarters of that, rounded.
+        uint32_t adjustedWidth = 900, adjustedHeight = height;
         gui->adjust_size(plugin, &adjustedWidth, &adjustedHeight);
-        // The view is 1200 x 1002: three quarters of that, rounded.
         check(adjustedWidth == 900 && adjustedHeight == 752 && gui->set_size(plugin, adjustedWidth, adjustedHeight),
               "resizing keeps the aspect ratio");
+        // Dragged by its top or bottom edge, its width as it was: the width follows the height, up and down.
+        uint32_t tallerWidth = 900, tallerHeight = 1002;
+        gui->adjust_size(plugin, &tallerWidth, &tallerHeight);
+        uint32_t shorterWidth = 900, shorterHeight = 501;
+        gui->adjust_size(plugin, &shorterWidth, &shorterHeight);
+        // Dragged slowly, a pixel at a time.
+        uint32_t pixelUpWidth = 900, pixelUpHeight = 753, pixelDownWidth = 900, pixelDownHeight = 751;
+        gui->adjust_size(plugin, &pixelUpWidth, &pixelUpHeight);
+        gui->adjust_size(plugin, &pixelDownWidth, &pixelDownHeight);
+        std::printf("      height dragged: 900 x 1002 adjusted to %u x %u, 900 x 501 to %u x %u, 900 x 753 to %u x %u, "
+                    "900 x 751 to %u x %u\n",
+                    tallerWidth, tallerHeight, shorterWidth, shorterHeight, pixelUpWidth, pixelUpHeight,
+                    pixelDownWidth, pixelDownHeight);
+        check(tallerWidth == 1200 && tallerHeight == 1002 && shorterWidth == 600 && shorterHeight == 501,
+              "a window dragged by its top or bottom edge resizes, the width following the height");
+        check(pixelUpWidth > 900 && pixelUpHeight == 753 && pixelDownWidth < 900 && pixelDownHeight == 751,
+              "a window's top or bottom edge dragged a pixel resizes it a pixel");
 
         // At 900 px wide the view is drawn at 0.75 scale; the Volume knob sits at (201, 64) in view units.
         HWND editor = GetWindow(parent, GW_CHILD);
@@ -5065,6 +5083,10 @@ int main(int argc, char **argv) {
         check(volumeKept == volumeAfter, "a value from the host just after the plugin told it one is not taken");
         in.events.clear();
 
+        // Once that moment has passed, the host's values are taken again: those of the params the patch loaded back
+        // above changed too, which the SEQ tab's check switches the sequencer on by (and the checks below).
+        Sleep(600);
+
         // The SEQ tab: the wheel with Ctrl in its message's keys (and this thread's own idea of Ctrl up, as while the
         // host has the keyboard) zooms the roll in about its middle, so a double-click at its left edge puts a note
         // further on than step 0, where it put one before. (Coordinates in view units, scaled by 0.75.)
@@ -5082,6 +5104,12 @@ int main(int argc, char **argv) {
                 params->get_value(plugin, idOfIndex(index), &v);
                 return v;
             };
+            // The view takes no input while the sequencer is off, as it is in a new instance: the host switches it on.
+            const int seqEnabled = paramIndex(SeqParam::Enabled);
+            const clap_event_param_value_t seqOn = paramEvent(seqEnabled, 1.0);
+            in.events = {&seqOn.header};
+            params->flush(plugin, &in.list, &out.list);
+            in.events.clear();
             SendMessageW(editor, WM_LBUTTONDOWN, MK_LBUTTON, at(308.0f, 116.0f)); // the SEQ tab
             SendMessageW(editor, WM_LBUTTONUP, 0, at(308.0f, 116.0f));
             const LPARAM edge = at(382.0f, 290.0f); // the grid's left edge, on C4's row
@@ -5098,12 +5126,15 @@ int main(int argc, char **argv) {
             doubleClick(edge);
             SendMessageW(editor, WM_LBUTTONDOWN, MK_LBUTTON, at(64.0f, 116.0f)); // back to ROUTING
             SendMessageW(editor, WM_LBUTTONUP, 0, at(64.0f, 116.0f));
+            const clap_event_param_value_t seqOff = paramEvent(seqEnabled, 0.0);
+            in.events = {&seqOff.header};
+            params->flush(plugin, &in.list, &out.list);
+            in.events.clear();
             std::printf("      a note at the roll's left edge: step %.2f, zoomed in by Ctrl+wheel step %.2f\n", unzoomed,
                         zoomed);
             check(put && ctrlUp && unzoomed == 0.0 && zoomed >= 2.0 && read(length) == 0.0,
                   "Ctrl in a wheel message's keys zooms the SEQ view's roll, whatever this thread thinks of Ctrl");
         }
-        Sleep(600); // and once that moment has passed, the host's values are taken again (checked below)
 
         // A shaper effect dragged along the line leaves it for a moment as its wires change one by one: no restart is
         // asked for, since the latency ends as it was. One taken out of the line does ask for one, once the edit is
@@ -5262,10 +5293,6 @@ int main(int argc, char **argv) {
         // The keyboard strip's toggle asks for a shorter or taller window. The host here applies what it asks for,
         // so the fold can be clicked again, and neither size may run past the screen's work area.
         if (editor) {
-            RECT work{};
-            const bool haveWork = SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0) != FALSE;
-            const uint32_t workWidth = static_cast<uint32_t>(work.right - work.left);
-            const uint32_t workHeight = static_cast<uint32_t>(work.bottom - work.top);
             auto toggleKeys = [&] {
                 uint32_t width = 0, height = 0;
                 gui->get_size(plugin, &width, &height);
@@ -5287,7 +5314,7 @@ int main(int argc, char **argv) {
             });
             for (const auto &[w, h] : resizeRequests)
                 std::printf("      keyboard fold resize: %u x %u\n", w, h);
-            check(haveWork && resizeRequests.size() == 2 && within,
+            check(haveWorkArea && resizeRequests.size() == 2 && within,
                   "folding the keyboard asks for sizes within the screen's work area");
         }
 
@@ -5303,25 +5330,21 @@ int main(int argc, char **argv) {
             userSettings.zoom = 3.0;
             writeUserSettings();
             const clap_plugin_t *zoomed = factory->create_plugin(factory, &kHost, desc->id);
-            uint32_t width = 0, height = 0;
+            uint32_t zoomedWidth = 0, zoomedHeight = 0;
             bool got = false;
             if (zoomed) {
                 zoomed->init(zoomed);
                 const auto *zoomGui =
                     static_cast<const clap_plugin_gui_t *>(zoomed->get_extension(zoomed, CLAP_EXT_GUI));
                 const bool created = zoomGui && zoomGui->create(zoomed, CLAP_WINDOW_API_WIN32, false);
-                got = created && zoomGui->get_size(zoomed, &width, &height);
+                got = created && zoomGui->get_size(zoomed, &zoomedWidth, &zoomedHeight);
                 if (created)
                     zoomGui->destroy(zoomed);
                 zoomed->destroy(zoomed);
             }
-            RECT work{};
-            const bool haveWork = SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0) != FALSE;
-            const uint32_t workWidth = static_cast<uint32_t>(work.right - work.left);
-            const uint32_t workHeight = static_cast<uint32_t>(work.bottom - work.top);
-            std::printf("      a new plugin saved at zoom 3 opens %u x %u in a %u x %u work area\n", width, height,
-                        workWidth, workHeight);
-            check(got && haveWork && width <= workWidth && height <= workHeight,
+            std::printf("      a new plugin saved at zoom 3 opens %u x %u in a %u x %u work area\n", zoomedWidth,
+                        zoomedHeight, workWidth, workHeight);
+            check(got && haveWorkArea && zoomedWidth <= workWidth && zoomedHeight <= workHeight,
                   "a new plugin's saved size opens within the screen's work area");
             userSettings.zoom = zoomWas;
             writeUserSettings();
@@ -5907,7 +5930,7 @@ int main(int argc, char **argv) {
                            value(slotAuxIndex(kMaxSources, 0)) == slotAuxValue(0) &&
                            value(slotAuxIndex(0, 2)) == slotAuxValue(kFirstSources);
         MemoryStream again;
-        const bool saved = state->save(plugin, &again.out);
+        const bool savedAgain = state->save(plugin, &again.out);
         auto savedValue = [&](int index) { // the full state's pair for the param
             const uint32_t id = idOfIndex(index);
             for (size_t at = 12; at + 12 <= 12 + static_cast<size_t>(kParamCount) * 12 && at + 12 <= again.data.size();
@@ -5929,7 +5952,7 @@ int main(int argc, char **argv) {
         std::printf("      auxes stored as %.0f, %.0f, %.0f and %.0f load as %.0f, %.0f, %.0f and %.0f\n", stored[0].second,
                     stored[1].second, stored[2].second, stored[3].second, value(slotAuxIndex(0, 0)),
                     value(slotAuxIndex(0, 1)), value(slotAuxIndex(kMaxSources, 0)), value(slotAuxIndex(0, 2)));
-        check(loaded && named && saved && kept,
+        check(loaded && named && savedAgain && kept,
               "a slot's aux keeps its source by the number it is stored by, a version 15 state's and a later place's");
         const uint32_t initHeader[] = {0x38454C43, 15, 0};
         MemoryStream init;
@@ -6020,6 +6043,7 @@ int main(int argc, char **argv) {
         for (int source = kMaxSources - kFirstSources; source-- > 0;) // the rest of the sources' places
             layout.push_back(static_cast<float>(source));
         layout.push_back(9.0f); // the places past the first kFirstSources folded
+        layout.push_back(1.0f); // the SEQ view's roll bending notes (its Bend tool)
 
         MemoryStream big;
         auto put = [&](const void *data, size_t size) {

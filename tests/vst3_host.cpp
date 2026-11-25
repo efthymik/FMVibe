@@ -1061,10 +1061,24 @@ int main(int argc, char **argv) {
         check(view->getSize(&size) == kResultOk && size.getWidth() > 0 && size.getHeight() > 0 &&
                   view->attached(parent, kPlatformTypeHWND) == kResultOk,
               "the editor opens inside a host window");
-        ViewRect wanted(0, 0, 900, 100);
+        // A window dragged by its side, its height as it was.
+        ViewRect wanted(0, 0, 900, size.getHeight());
         check(view->canResize() == kResultTrue && view->checkSizeConstraint(&wanted) == kResultTrue &&
                   wanted.getWidth() == 900 && wanted.getHeight() == 752 && view->onSize(&wanted) == kResultOk,
               "resizing keeps the aspect ratio");
+        // Dragged by its top or bottom edge, its width as it was: the width follows the height, up and down.
+        ViewRect taller(0, 0, 900, 1002), shorter(0, 0, 900, 501);
+        view->checkSizeConstraint(&taller);
+        view->checkSizeConstraint(&shorter);
+        check(taller.getWidth() == 1200 && taller.getHeight() == 1002 && shorter.getWidth() == 600 &&
+                  shorter.getHeight() == 501,
+              "a window dragged by its top or bottom edge resizes, the width following the height");
+        ViewRect pixelUp(0, 0, 900, 753), pixelDown(0, 0, 900, 751); // dragged slowly, a pixel at a time
+        view->checkSizeConstraint(&pixelUp);
+        view->checkSizeConstraint(&pixelDown);
+        check(pixelUp.getWidth() > 900 && pixelUp.getHeight() == 753 && pixelDown.getWidth() < 900 &&
+                  pixelDown.getHeight() == 751,
+              "a window's top or bottom edge dragged a pixel resizes it a pixel");
 
         // At 900 px wide the view is drawn at 0.75 scale; the Volume knob sits at (201, 64) in view units.
         HWND editor = GetWindow(parent, GW_CHILD);
@@ -1141,7 +1155,7 @@ int main(int argc, char **argv) {
             const bool loaded = plugin.component->setState(&collapsed) == kResultOk;
             // The editor keeps its width, unless the shorter window still doesn't fit the screen's work area (less
             // 16 px around it for the host's frame): then it is held down to fit.
-            ViewRect fitted(0, 0, before.getWidth(), 100);
+            ViewRect fitted(0, 0, before.getWidth(), 0); // no height: the width's
             view->checkSizeConstraint(&fitted);
             MONITORINFO monitor{};
             monitor.cbSize = sizeof(monitor);

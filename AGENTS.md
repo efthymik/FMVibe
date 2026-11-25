@@ -291,7 +291,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     points that hold their ends as they played, a version 14 state's as saved, wrapping around; and a version 14
     state's Sync warp's amount and the depth on it loading 7/15 as large, as its reach grew from 8 times a cycle to
     16, a Squeeze's as saved, a version 15 state's as saved; and a version 16 state in Key with its Root off C4 loading
-    that difference into Transpose (and Octave past its reach), one in Host as saved, a version 17 state's as saved;
+    that difference into Transpose (and Octave past its reach), one in Host as saved, a version 17 state's as saved, and one without the sequencer's Play loading Host, a version 17 one Key;
   - the phase disperser's Key Track and Stretch against the chain they make, from the same coefficients: an impulse
     through Key Track with a C4, a C5 and (at 50 %) a C6 coming out as through the chain at Freq and an octave up, and
     through Stretch 4, 37 and 4 at 96 kHz (eight samples) as the plain chain's impulse response spread that far apart,
@@ -359,7 +359,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     counting, and a point at the cycle's end holding a one-shot there), a Curve source playing sample for sample as
     an LFO with the retired Custom shape did, the phaser's and flanger's sweeps synced to the host tempo, the parametric
     EQ's, the phase disperser's and the voice filters' analyzers (falling away as fast at 96 kHz as at 48), and that each example preset holds valid values
-    and sounds at a sane level;
+    and sounds at a sane level, its triads at full velocity (a drum's single hits) peaking under 0 dBFS;
   - each factory preset's file being sparse, as the preset tool writes it, and each saying it is FMVibe's, in a
     built-in category, with a line of 80 characters at most; and a name from up to 0.11 ("LD Screamer") naming the
     preset as it is named now;
@@ -482,7 +482,21 @@ the plain CMake commands and installing into a host are in the [README](README.m
     bending what it plays by Bend Range and a mod wheel curve moving the mod wheel's slot, the telemetry telling the
     wheels what both add as they play and nothing once the key is let go or the sequencer is switched off; and a macro's
     curve taking the place of its knob wherever the knob is set, moving what the macro modulates and no other macro, the
-    telemetry saying how far it moves the knob from where it is set and nothing once it stops;
+    telemetry saying how far it moves the knob from where it is set and nothing once it stops; the Play button playing
+    the pattern from its loop's start whatever Play says, as written but for Transpose, the keys left to play notes
+    beside it (through the synth too, the telemetry saying it plays), nothing while the sequencer is off, and in Host
+    from the loop's start, the transport taking it back once it stops; and from a step, its note at once and the one
+    before it only as the loop comes round, reversed the way Reverse goes, swung its note at once too, and from a step
+    outside the loop from the loop's start; Random picking among the steps notes start in, quarter notes playing one
+    on every beat (several of them, alike each time), the playhead steady within a beat, and with notes at steps 0, 3
+    and 8 each time round the loop starting on a note; and the loop shortened a step at a time under the
+    playhead in its second time round (in Key, in Host and by the Play button) playing on from where it is, each note
+    once, the transport jumping then locking it to the bars again; and a note's own bend
+    planned from where the note starts, stretch after stretch, a note chased in its middle starting bent as far as it
+    is there and one Gate shortens holding what it reached, and through the synth an A4 bending along its points, a
+    sweep of two octaves in a step following its line within 0.3 semitones (not in stairs a stretch long), a chord's
+    bent note bending its own voice alone, a mono glide starting where the note before was bent to, and a patch's
+    bends loading back as saved;
   - the effects' latency, on an impulse through effects that run oversampled or wait and leave the sound as it is (a
     filter, an amp and a flanger at Mix 0): the input straight out beside a filter, the filter on and off, a split with
     an amp at 4x on one band and a filter on the other, two filters beside an amp at 8x, and nine filters in a row
@@ -995,6 +1009,12 @@ the plain CMake commands and installing into a host are in the [README](README.m
     taken, text that isn't a tempo and Escape leaving it), none of it touching the patch, its undo history or the
     host's tempo;
   - the SEQ view covering the modulation panel, as tall as the editor was, its source cards and title taking no clicks;
+  - the SEQ card's Play button: with the sequencer off doing nothing, and the whole view dimmed but the power switch
+    and the size button (read off the rendered pixels) and taking no input (a double-click on the roll, a drag, a
+    pattern button, Ctrl+A, the roll's menu), the size button and the power switch still working; on, a click playing the pattern and a second stopping it (also before the telemetry has caught up), lit
+    while the telemetry says it plays (read off the rendered pixels), editing no param and leaving nothing to undo,
+    starting at the first note picked within the loop (none, the loop's start; two, the earlier); and
+    a note's end dragged past the pattern's end, the note dragged right and moved by the Right arrow stopping at it;
   - the SEQ card's size button and a double-click on its tab (while the view shows) switching the view to its half size,
     the modulation panel back under it (read off the rendered pixels) and the overview gone, and back, kept in the user's
     settings with no param edited and nothing to undo, and a double-click whose first click shows the view leaving it;
@@ -1003,6 +1023,21 @@ the plain CMake commands and installing into a host are in the [README](README.m
     undoably, and on Octave's nothing, and on PATTERN's buttons modulating the pattern picked, undoably, its reach and
     depth handle showing under the row, above PLAY (read off the rendered pixels), and the button it picks ringed, with
     nothing playing where the macro takes it and as the telemetry tells while it plays (read off the rendered pixels);
+  - the notes' own bends: the Bend tool after Select and Draw putting a point down on a note by rows (from a point at
+    its start), heard at the pitch it bends to (`Controller::auditionBend()`), its line drawn over the rows (read off
+    the rendered pixels), with Alt off the grid, a point dragged stopping at its neighbor, a segment's middle bent and
+    straightened by a double-click and a point double-clicked going, Shift+drag drawing the bend a point a grid line;
+    the field's Bend scaling and clearing the picked notes' bends (dragged down past nothing taking them away and back
+    up in the same drag bringing them back); a bend copied, pasted, stretched by x2 and removed
+    with its note; folded to a scale, a row up a degree of it; and the mouse over a bend's line showing a faint point
+    there and following it along the line, the editor told to paint again as it moves (read off the rendered pixels),
+    on the snap's nearest line, as a press there puts it (with Alt at the mouse),
+    and the arrow, a press there putting a point down on the line, a note without a bend showing its line flat along
+    its pitch (read off the rendered pixels), which takes the mouse and a press as a bend's line does, the notes faint with
+    Bend and the bend of the note under the mouse lit (read off the rendered pixels), a bar its bend has left taking no
+    press and showing the arrow; and bend points picked by a box (ringed, read off the rendered pixels), moved
+    together, Shift+click letting one go, Ctrl+A and Delete removing them, each an undo step, and a point dragged past
+    the roll's top scrolling the rows, the point going along;
   - the SEQ view's PATTERNS: a pattern's notes drawn in its tile where an empty one's has none (read off the rendered
     pixels), what the roll shows a rectangle in the shown pattern's tile, narrowing as the roll zooms in, and no other
     tile changing (read off the rendered pixels), a click on a tile picking its pattern, undoably, a tile carried onto another ringing it (read off the
@@ -1028,7 +1063,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     each step dragged across; the card's switches showing tooltips of their own (read off the rendered pixels); the
     roll zoomed in across by its +, Ctrl+A picking every note and the arrows moving them a step, a semitone and with
     Shift an octave (the rows following only as far as shows every note moved; with none picked, going on to the
-    host), each undoably; a picked note's dot
+    host), each undoably, a note moved up or down heard at its new pitch for 300 ms (the editor's clock moved
+    on), Left and Right hearing nothing; a picked note's dot
     ringed in the lane (read off the rendered pixels) and, with Draw, the picked notes' velocities dragged together
     there (where notes start together, the picked one's alone), the
     lane's cursor a pen and up and down over a dot and while one is dragged; with Select, a box from the lane's empty
@@ -1225,10 +1261,14 @@ a factory preset for the built-in one, so a project naming it loads the built-in
 
 Their Volume levels them to about -14 LUFS (integrated, K-weighted and gated as BS.1770 has it): three single
 notes, an octave apart and a fifth, held 2 s (0.75 s for a Pluck, Drum or Keys preset), a Bass an octave lower, a
-riser by where it ends up. One whose note would then peak past -1 dBFS stays that far under, so the presets with
-sharp attacks (Razor Pluck, Neon Pluck, Laser Zap) come out quieter. The level was set by ear on Clubbing,
-Randomizer, Kick 1 and Snare 1, which sit at it or up to a few dB over it. A new preset comes in at about that
-level, and is tried by ear.
+riser by where it ends up. None peaks past -1 dBFS at full velocity: not a single note anywhere from C2 to C6, held
+and let go, nor, but for a Drum preset (played a hit at a time), a major triad at C3, C4 or C5 struck together, as a
+host's quantized chord is (with the transport playing). One that would stays that far under, so the presets with
+sharp attacks and the polyphonic Keys, Pads and Plucks, whose chords add up, come out quieter: Comb String, Pluck
+Delay, Koto Pluck, Mallet Steps and Razor Pluck 7 to 13 dB under it. A chord of four notes can still go past
+-1 dBFS. The level was set by ear on Clubbing, Randomizer, Kick 1 and Snare 1, which sit within a couple of dB of
+it. A new preset comes in at about that level, and is tried by ear; the quality test fails on one whose triads peak
+past 0 dBFS.
 
 Factory presets are not pinned by checksum, so changing or adding one needs no test edit. Don't add a checksum test
 for them: a preset is meant to change as its sound is tuned, and a pinned hash only forces an edit to the test on
@@ -1502,8 +1542,10 @@ itself.
   read when loading a state from before version 9. The sequencer's settings are 40000+, each pattern's length and
   loop 40100 + 10·pattern, each pattern's notes 41000 + 10·(128·pattern + note), and each pattern's curves
   47000 + 200·(2·pattern + curve), the bend's then the mod wheel's, and each macro's 50000 + 200·(8·pattern + macro), a
-  point count and 64 (x, y, curve) points each (see `SeqParam`, `SeqCurveParam`). The operators' drawn envelopes'
-  shapes are 64000 + 200·op (`opEnvShapeIndex()`), a point count and 64 points each, as a source's shape.
+  point count and 64 (x, y, curve) points each (see `SeqParam`, `SeqCurveParam`), and each note's bend
+  64000 + 32·(128·pattern + note), a point count and 8 (x, y, curve) points (see `SeqNoteBendParam`). The
+  operators' drawn envelopes' shapes are 81000 + 200·op (`opEnvShapeIndex()`), a point count and 64 points each, as
+  a source's shape.
   Once released, new fields go at the end of their section's
   enum and fields are never reordered. The same goes for the wave, filter type, effect type, source type, route
   mode, slot aux field, split field, wire field, port, amp model, cabinet, mic, fixed Mult, operator sync (`OpSync`),
@@ -1540,12 +1582,12 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 2,027 of the 39,342 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 2,027 of the 52,142 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 1,600 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the operators' drawn envelopes' fields, the Custom waves' partials and counts, the chain's retired order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'
   fields, the effects graph (its splits, joins and wires), the source places' own fields (a place's slot
-  depths are listed, whatever it holds) and the sequencer's root, scale, patterns' lengths and loops, notes and curves. Nothing hosts
+  depths are listed, whatever it holds) and the sequencer's root, scale, patterns' lengths and loops, notes, their bends and curves. Nothing hosts
   see changes with an effect's or a source's type: the CLAP and VST3 plugins hide none of their params. The remote
   pages follow the sources and the operators switched fixed. CLAP's `count()`/`get_info()` and VST3's
   `getParameterCount()`/`getParameterInfo()` index that list; a value sent for any known id is still taken. The
@@ -1616,7 +1658,9 @@ itself.
   they had, the version rising so that an earlier build refuses a state whose later places it would leave out; before
   version 17, a sequencer playing from a key (Key or Latch) with its Root off C4 loads that difference into Transpose,
   and Octave what Transpose can't hold (`transposeFromRoot()`), since the keys now transpose a pattern from C4
-  (`kSeqTransposeFrom`) and Root sets the scale alone),
+  (`kSeqTransposeFrom`) and Root sets the scale alone;
+  version 17's sequencer notes may also bend, an earlier state loading with none, and its Play is Key to begin with, an
+  earlier state without one loading Host, its default then),
   followed by the editor layout:
   node, filter and shaper positions, selected node, zoom, the routing view, a retired field (once whether the modulation panel was collapsed, which it no longer is),
   the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names, which
@@ -1629,7 +1673,8 @@ itself.
   saved as a preset at (0 for none), which the synth's own tempo and a host that lets the editor set the tempo
   (`Controller::hasTempo()`) take up as the preset loads, then what the preset says about itself (`gui::PresetInfo`: its author, its category by
   name and its one-line description, each as its length and its bytes in UTF-8), which the library's scan reads past
-  the params (`readPresetInfo()`) and an older plugin, reading a longer layout than it knows, skips.
+  the params (`readPresetInfo()`) and an older plugin, reading a longer layout than it knows, skips, then the
+  source places past the first 16 (their order and folds) and whether the SEQ view's roll bends notes (its Bend tool).
   The host's state goes on with
   the settings chunk (the oversampling, MPE, MPE's bend range, whether the synth follows the host's tempo and its
   own tempo, `Settings` in `src/state.h`) and a preset chunk (whether the patch changed since its preset, then the preset file's path

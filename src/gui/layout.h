@@ -403,6 +403,31 @@ constexpr float kSeqKeysW = 44.0f, kSeqRulerH = 20.0f, kSeqLaneH = 52.0f, kSeqLa
 constexpr float kSeqScrollW = 12.0f;     // the rows' scroll bar, at the grid's right
 constexpr float kSeqLaneTabStep = 76.0f; // a lane's tab and the gap after it
 constexpr float kSeqMacroRowH = 22.0f;
+// The tools over the roll, left to right: Select | Draw | Bend, SNAP and its list's button, x2 and /2; then from the
+// right the bin, MUTE and SLIDE, and left of them the field of the notes picked (NOTE, VEL, CHANCE, LEN, OFFSET, BEND).
+constexpr float kSeqToolW = 28.0f;
+constexpr int kSeqToolCount = 3;
+constexpr Rect seqToolButton(int b) { return {kSeqTools.x + static_cast<float>(b) * kSeqToolW, kSeqTools.y, kSeqToolW, kSeqTools.h}; }
+constexpr Rect seqSnapButton() { return {kSeqTools.x + 126.0f, kSeqTools.y, 76.0f, kSeqTools.h}; }
+// SNAP's label, between the tools and its list's button, against the button (right-aligned, 6 px before it).
+constexpr Rect kSeqSnapLabel{kSeqTools.x + kSeqToolCount * kSeqToolW + 4.0f, kSeqTools.y + 1.0f,
+                             seqSnapButton().x - 6.0f - (kSeqTools.x + kSeqToolCount * kSeqToolW + 4.0f), 22.0f};
+constexpr Rect seqStretchButton(int b) { return {kSeqTools.x + 208.0f + (b > 0 ? 0.0f : 30.0f), kSeqTools.y, 28.0f, kSeqTools.h}; }
+constexpr Rect seqClearButton() { return {kSeqTools.x + kSeqTools.w - 26.0f, kSeqTools.y, 26.0f, kSeqTools.h}; }
+constexpr Rect seqFlagButton(int flag) { // Slide, then Mute, left of the bin
+    return {seqClearButton().x - 8.0f - (flag == 0 ? 104.0f : 50.0f), kSeqTools.y, flag == 0 ? 52.0f : 50.0f, kSeqTools.h};
+}
+constexpr int kSeqFieldCount = 6;
+constexpr float kSeqFieldWidths[kSeqFieldCount] = {66.0f, 58.0f, 86.0f, 58.0f, 80.0f, 66.0f};
+constexpr Rect seqFieldRect(int field) { // left of Slide, the note first
+    float x = seqFlagButton(0).x - 8.0f;
+    for (int f = kSeqFieldCount - 1; f >= field; --f)
+        x -= kSeqFieldWidths[f];
+    return {x, kSeqTools.y, kSeqFieldWidths[field], kSeqTools.h};
+}
+static_assert(seqFieldRect(0).x >= seqStretchButton(-2).x + seqStretchButton(-2).w + 8.0f, "the field reaches the tools");
+// The lane's tabs: Velocity, Chance, Bend, Mod Wheel, then the macros' (see SeqRoll::macroTab).
+constexpr int kSeqLaneTabCount = 4;
 // The roll's places, down to the panel's bottom less 10 px (`bottom`): its box, the keys, the grid and the rows' scroll
 // bar, the ruler over them, the lane and its tabs under them, and after the lane's tabs the macros' curves: one more
 // tab, wider for its macro's number and its arrow, and over it the list of macros it opens.
@@ -419,7 +444,7 @@ constexpr SeqRoll seqRollTo(float bottom) {
     r.ruler = {r.grid.x, r.box.y, r.grid.w, kSeqRulerH};
     r.laneArea = {r.grid.x, r.grid.y + r.grid.h, r.grid.w, kSeqLaneH};
     r.laneTabs = {r.box.x, r.laneArea.y + r.laneArea.h, r.box.w, kSeqLaneTabsH};
-    r.macroTab = {r.grid.x + 4.0f * kSeqLaneTabStep, r.laneTabs.y + 3.0f, 92.0f, r.laneTabs.h - 6.0f};
+    r.macroTab = {r.grid.x + kSeqLaneTabCount * kSeqLaneTabStep, r.laneTabs.y + 3.0f, 92.0f, r.laneTabs.h - 6.0f};
     r.macroList = {r.macroTab.x, r.macroTab.y - 4.0f - (8.0f + 8.0f * kSeqMacroRowH), 180.0f, 8.0f + 8.0f * kSeqMacroRowH};
     return r;
 }
@@ -460,6 +485,8 @@ inline Rect seqPatternReach() {
     return {row.x + 14.0f, row.bottom() + 3.0f, 90.0f, 1.5f};
 }
 constexpr float kSeqPatternHandlesY = kSeqPatternY + 22.0f + 11.0f; // the depth handles' centers
+// The Play button, at the Pattern row's right end, clear of the buttons and their modulation's reach.
+constexpr Rect kSeqPreviewButton{kSeqCard.x + kSeqCard.w - 12.0f - 64.0f, kSeqPatternY, 64.0f, 22.0f};
 // The card's switch between the view's full and half size, left of its power switch: the Curve card's expand and
 // collapse button.
 constexpr Rect kSeqSizeButton{kSeqCard.x + kSeqCard.w - 12.0f - 26.0f - 4.0f - 26.0f, kSeqTitleY, 26.0f, 22.0f};
@@ -1495,8 +1522,18 @@ inline Rect knobRect(Point center, float diameter) {
     return {center.x - diameter * 0.5f, center.y - diameter * 0.5f, diameter, diameter + 18.0f};
 }
 
-inline Rect chip(Point center, float width = 38.0f) {
-    return {center.x - width * 0.5f, center.y - 9.0f, width, 18.0f};
+// A depth label in the routing graph, a chip centered on its wire: kWireLabelH tall, as wide as a wire's (a line to
+// OUT's a little wider, a loop's wider still, for its "fb"), its depth in kTextBody. A mode other than Phase widens it
+// by kLabelGlyphW. Open into a pill, its mode's part goes on its left and its x on its right. Its depth handles go
+// under it in a knob's size, as far apart as under a knob (see View::widgets()).
+constexpr float kWireLabelH = 19.0f;
+constexpr float kWireLabelW = 46.0f, kOutLabelW = 48.0f, kLoopLabelW = 54.0f;
+constexpr float kLabelGlyphW = 20.0f;
+constexpr float kLabelModeW = 32.0f, kLabelRemoveW = 22.0f;
+// A loop's label beside it on its right, its left edge 10 px right of the loop's center.
+constexpr float kLoopLabelX = 10.0f + 0.5f * kLoopLabelW;
+inline Rect chip(Point center, float width = kWireLabelW) {
+    return {center.x - width * 0.5f, center.y - 0.5f * kWireLabelH, width, kWireLabelH};
 }
 
 inline Point normalize(Point v) {

@@ -670,6 +670,8 @@ const clap_plugin_gui_t Plugin::kGui = {
             editor->setScale(scale);
         return true;
 #else
+        (void)p;
+        (void)scale;
         return false; // the editor asks Windows for the DPI
 #endif
     },
@@ -691,7 +693,7 @@ const clap_plugin_gui_t Plugin::kGui = {
     [](const clap_plugin_t *p, uint32_t *width, uint32_t *height) {
         if (self(p).editor())
             self(p).editor()->fit(*width, *height);
-        else
+        else // no size to go from: the width's
             gui::Editor::constrain(*width, *height, gui::View::heightFor(self(p).uiLayout()));
         return true;
     },

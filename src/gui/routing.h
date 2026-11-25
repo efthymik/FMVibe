@@ -240,8 +240,9 @@ inline Wire bentWire(int fromNode, Point a, int toNode, Point b, float bend) {
 // furthest along each axis at its ends or where its slope along that axis is 0.
 inline bool wireInside(const Wire &w) {
     const Rect frame = kRouting.inset(6.0f);
-    if (w.label.x < kRouting.x + 26.0f || w.label.x > kRouting.right() - 26.0f || w.label.y < kRouting.y + 12.0f ||
-        w.label.y > kRouting.bottom() - 12.0f) // half a label chip in from the edge
+    constexpr float kInX = 0.5f * kWireLabelW + 7.0f, kInY = 0.5f * kWireLabelH + 3.0f; // half a label chip in
+    if (w.label.x < kRouting.x + kInX || w.label.x > kRouting.right() - kInX || w.label.y < kRouting.y + kInY ||
+        w.label.y > kRouting.bottom() - kInY)
         return false;
     auto within = [](float p0, float p1, float p2, float lo, float hi) {
         float low = std::min(p0, p2), high = std::max(p0, p2);
@@ -386,8 +387,9 @@ struct OutWire {
 inline OutWire outWireOf(int node, Point center, float bend = 0.0f) {
     const Wire w = wireBetween(node, center, kNodes, kOutCore, bend);
     OutWire out{w.start, w.control, w.end, w.label, w.tangent, false};
-    if (bend == 0.0f && std::hypot(w.end.x - w.start.x, w.end.y - w.start.y) < 44.0f) {
-        out.label = {out.label.x + out.dir.y * 22.0f, out.label.y - out.dir.x * 22.0f};
+    if (bend == 0.0f && std::hypot(w.end.x - w.start.x, w.end.y - w.start.y) < kOutLabelW + 4.0f) {
+        constexpr float kBeside = 0.5f * kOutLabelW + 2.0f;
+        out.label = {out.label.x + out.dir.y * kBeside, out.label.y - out.dir.x * kBeside};
         out.beside = true;
     }
     return out;

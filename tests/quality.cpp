@@ -38,6 +38,10 @@ void asBeforeUnisonPan(ParamValues &p) {
         p[paramIndex(op, OpParam::UnisonPan)] = static_cast<double>(UniPan::Ramp);
 }
 
+// The sequencer playing with the host's transport, its Play to begin with before version 17 made it Key: a patch saved
+// so, relabeled as an older version, loads as saved.
+void asBeforeKeyPlay(ParamValues &p) { p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Host); }
+
 // The effects in `slots` one after another from the input to the output: a chain, as the effects graph wires it.
 void chain(ParamValues &p, const std::vector<int> &slots) {
     for (const auto &[index, value] : fxChainWires(slots))
@@ -2079,6 +2083,7 @@ void effectsChainChecks() {
         p[slotTargetIndex(0, 0)] = static_cast<double>(idOfIndex(mcThresholdIndex(3, 1))) + 1.0;
         p[slotAmountIndex(0, 0)] = 0.25;
         asBeforeUnisonPan(p);
+        asBeforeKeyPlay(p);
         std::vector<unsigned char> bytes;
         const clap_ostream_t out = memoryOut(bytes);
         writePatch(&out, p, gui::UiLayout{}, true);
@@ -2238,6 +2243,7 @@ void effectsChainChecks() {
         set(4, SourceParam::Sync, 0.0);
         set(4, SourceParam::Rate, 0.0);
         asBeforeUnisonPan(p);
+        asBeforeKeyPlay(p);
         std::vector<unsigned char> bytes;
         const clap_ostream_t out = memoryOut(bytes);
         writePatch(&out, p, gui::UiLayout{}, true);
@@ -2294,6 +2300,7 @@ void effectsChainChecks() {
         set(2, SourceParam::Type, static_cast<double>(SourceType::Lfo));
         set(2, SourceParam::Shape, static_cast<double>(LfoShape::Triangle));
         asBeforeUnisonPan(p);
+        asBeforeKeyPlay(p);
         std::vector<unsigned char> bytes;
         const clap_ostream_t out = memoryOut(bytes);
         writePatch(&out, p, gui::UiLayout{}, true);
@@ -2335,6 +2342,7 @@ void effectsChainChecks() {
         };
         put(0, SeqCurve::Bend, {{4.0, 0.5}, {12.0, -0.5}});
         put(1, SeqCurve::ModWheel, {{8.0, 0.25}, {24.0, 0.75}});
+        asBeforeKeyPlay(p);
         std::vector<unsigned char> bytes;
         const clap_ostream_t out = memoryOut(bytes);
         writePatch(&out, p, gui::UiLayout{}, true);
@@ -2380,6 +2388,7 @@ void effectsChainChecks() {
         p[slotAmountIndex(0, 0)] = 0.3;
         p[slotTargetIndex(0, 1)] = slotTargetValue(squeeze);
         p[slotAmountIndex(0, 1)] = 0.3;
+        asBeforeKeyPlay(p);
         std::vector<unsigned char> bytes;
         const clap_ostream_t out = memoryOut(bytes);
         writePatch(&out, p, gui::UiLayout{}, true);
@@ -2405,13 +2414,15 @@ void effectsChainChecks() {
         // Before version 17, the keys transposed a pattern from Root rather than C4: a version 16 state in Key with
         // Root on D4 loads 2 semitones down in Transpose, and one on G1 with Transpose at +7 29 semitones up (Transpose at
         // +24, Octave an octave up), each key playing what it played; one with the host's transport, which Root
-        // never moved, as saved, and a version 17 state as saved.
+        // never moved, as saved, and a version 17 state as saved. (Each state holds every param, as the plugin saves
+        // one: Key is Play's default now, which a sparse one leaves out.) And Play to begin with was Host before version
+        // 17: a sparse version 16 state, holding no Play, loads Host, a version 17 one Key.
         const int play = paramIndex(SeqParam::Play), root = paramIndex(SeqParam::Root);
         const int octave = paramIndex(SeqParam::Octave), transpose = paramIndex(SeqParam::Transpose);
-        auto load = [](const ParamValues &p, uint32_t version) {
+        auto load = [](const ParamValues &p, uint32_t version, bool sparse = false) {
             std::vector<unsigned char> bytes;
             const clap_ostream_t out = memoryOut(bytes);
-            writePatch(&out, p, gui::UiLayout{}, true);
+            writePatch(&out, p, gui::UiLayout{}, sparse);
             std::memcpy(bytes.data() + sizeof(uint32_t), &version, sizeof(version)); // after the magic
             MemoryReader reader{bytes.data(), bytes.size(), 0};
             const clap_istream_t in = memoryIn(reader);
@@ -2434,6 +2445,9 @@ void effectsChainChecks() {
                   g[octave] == 1.0 && shift(g) == 7.0 + 29.0 && host[transpose] == 7.0 && host[octave] == 0.0,
               "a state before version 17 playing from a key loads the Root it transposed from into Transpose");
         check(std::equal(now.begin(), now.end(), p.begin()), "a version 17 state loads its sequencer as saved");
+        const ParamValues unsaid = load(defaults(), 16, true), keyed = load(defaults(), 17, true);
+        check(unsaid[play] == static_cast<double>(SeqPlay::Host) && keyed[play] == static_cast<double>(SeqPlay::Key),
+              "a state before version 17 without the sequencer's Play loads Host, its default then, and a later one Key");
     }
     {
         // The places past the first 16: a patch with an LFO in the last place on operator A's level, the 17th place's
@@ -5024,6 +5038,201 @@ void stackChecks() {
 }
 
 // The sequencer: where its notes start and end, against the host's transport and from keys.
+// A note's own bend (see SeqNoteBendParam): in the sequencer's plans, and through the synth.
+void noteBendChecks() {
+    constexpr double kStep = kSampleRate * 60.0 / 120.0 / 4.0; // a 1/16 step at 120 bpm: 6000 samples
+    auto defaults = [] {
+        ParamValues p{};
+        for (int i = 0; i < kParamCount; ++i)
+            p[i] = paramTable()[i].def;
+        return p;
+    };
+    auto note = [](ParamValues &p, int slot, double start, double length, int pitch) {
+        p[seqNoteIndex(0, slot, SeqNoteParam::Start)] = start;
+        p[seqNoteIndex(0, slot, SeqNoteParam::Length)] = length;
+        p[seqNoteIndex(0, slot, SeqNoteParam::Pitch)] = pitch;
+    };
+    auto bend = [](ParamValues &p, int slot, std::vector<SeqCurvePoint> points, int pattern = 0) {
+        p[seqNoteBendCountIndex(pattern, slot)] = static_cast<double>(points.size());
+        for (size_t i = 0; i < points.size(); ++i) {
+            const int at = static_cast<int>(i);
+            p[seqNoteBendIndex(pattern, slot, at, PointField::X)] = points[i].x;
+            p[seqNoteBendIndex(pattern, slot, at, PointField::Y)] = points[i].y;
+            p[seqNoteBendIndex(pattern, slot, at, PointField::Curve)] = points[i].curve;
+        }
+    };
+
+    // The plans: a note 8 steps long bending a semitone a step. From the song's start, its event starting it unbent and
+    // each stretch taking it on to where it is at the stretch's end; chased from step 4, starting bent by 4; with Gate
+    // at 50 %, ending at step 4 holding the 4 it reached there.
+    {
+        ParamValues p = defaults();
+        p[paramIndex(SeqParam::Enabled)] = 1.0;
+        p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Host);
+        note(p, 0, 0.0, 8.0, 60);
+        bend(p, 0, {{0.0, 0.0, 0.0}, {8.0, 8.0, 0.0}});
+        struct Planned {
+            double onBend = std::numeric_limits<double>::quiet_NaN();
+            double worst = 0.0;    // the furthest a stretch's bend ends from where it should
+            double gap = 0.0;      // and starts from where the stretch before took it
+            double highest = -1.0; // the highest it went
+            double lastEnd = 0.0;  // where the last stretch with a bend ended, in steps
+        };
+        auto run = [&](const ParamValues &q, double beats, double steps, double lasts) {
+            Sequencer seq;
+            seq.prepare(kSampleRate);
+            seq.configure(q);
+            std::array<SeqEvent, Sequencer::kMaxEvents> out;
+            Planned r;
+            double before = std::numeric_limits<double>::quiet_NaN();
+            for (double done = 0.0; done < steps * kStep;) {
+                uint32_t covered = 0;
+                const int n = seq.plan(512, 120.0, true, beats + done / kSampleRate * 2.0, out, covered);
+                for (int i = 0; i < n; ++i)
+                    if (out[i].on && std::isnan(r.onBend))
+                        r.onBend = out[i].bend;
+                done += covered;
+                const double end = beats * 4.0 + done / kStep;
+                for (const SeqBend &b : seq.bends()) {
+                    r.worst = std::max(r.worst, std::abs(b.to - std::min(end, lasts)));
+                    if (b.frame == 0 && std::isfinite(before))
+                        r.gap = std::max(r.gap, std::abs(b.from - before));
+                    r.highest = std::max(r.highest, b.to);
+                    r.lastEnd = end;
+                    before = b.to;
+                }
+            }
+            return r;
+        };
+        const Planned plain = run(p, 0.0, 12.0, 8.0), chased = run(p, 1.0, 4.0, 8.0);
+        ParamValues gated = p;
+        gated[paramIndex(SeqParam::Gate)] = 0.5;
+        const Planned half = run(gated, 0.0, 12.0, 4.0);
+        std::printf("      a note's bend: starting at %.3f, off by %.2g at most (%.2g between stretches); chased from step "
+                    "4, at %.3f; gated to 4 steps, reaching %.3f, its last stretch ending at step %.2f\n",
+                    plain.onBend, plain.worst, plain.gap, chased.onBend, half.highest, half.lastEnd);
+        check(plain.onBend == 0.0 && plain.worst < 1e-6 && plain.gap < 1e-6 && std::abs(plain.highest - 8.0) < 1e-9,
+              "the sequencer plans a note's bend from where the note starts, stretch after stretch");
+        check(std::abs(chased.onBend - 4.0) < 1e-6, "a note chased in its middle starts where its bend is there");
+        check(half.worst < 1e-6 && std::abs(half.highest - 4.0) < 1e-9 && half.lastEnd < 4.0 + 512.0 / kStep + 1e-9,
+              "a note Gate shortens holds the bend it reached at its end");
+    }
+
+    // Through the synth, in Key. The rising zero crossings of what it plays, and its pitch between two times (samples).
+    auto crossings = [](const std::vector<float> &x) {
+        std::vector<double> at;
+        for (size_t i = 1; i < x.size(); ++i)
+            if (x[i - 1] < 0.0f && x[i] >= 0.0f)
+                at.push_back(static_cast<double>(i - 1) + x[i - 1] / (x[i - 1] - x[i]));
+        return at;
+    };
+    auto hzBetween = [&](const std::vector<float> &x, double from, double to) {
+        std::vector<double> in;
+        for (double t : crossings(x))
+            if (t >= from && t <= to)
+                in.push_back(t);
+        return in.size() < 2 ? 0.0 : (in.size() - 1) * kSampleRate / (in.back() - in.front());
+    };
+    auto power = [](const std::vector<float> &x, size_t from, double hz) {
+        std::complex<double> sum = 0.0;
+        for (size_t i = from; i < from + kFftSize && i < x.size(); ++i)
+            sum += static_cast<double>(x[i]) *
+                   std::polar(1.0, -2.0 * std::numbers::pi * hz * static_cast<double>(i) / kSampleRate);
+        return std::norm(sum);
+    };
+    // Plays the pattern `setup` writes from a key, the first sample its first; `mono` in mono legato with a glide.
+    auto play = [&](const auto &setup, double steps, bool mono = false) {
+        Engine e(1);
+        e.p[paramIndex(SeqParam::Enabled)] = 1.0;
+        e.p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Key);
+        setup(e.p);
+        if (mono) {
+            e.synth().setPlayMode(true, true, false);
+            e.p[paramIndex(GlobalParam::Glide)] = normFromTime(0.3);
+        }
+        e.synth().setTempo(120.0);
+        e.render(256); // the sequencer on, taking keys
+        e.synth().noteOn({1, 0, 0, 60}, 1.0);
+        return e.render(static_cast<size_t>(steps * kStep));
+    };
+    auto semitones = [](double hz, double from) { return 12.0 * std::log2(hz / from); };
+
+    // An A4 held 2 steps, bent up 2 semitones over the next 2 and held there: A4, then a semitone up halfway, then B4.
+    {
+        const std::vector<float> x = play([&](ParamValues &p) {
+            note(p, 0, 0.0, 16.0, 69);
+            bend(p, 0, {{0.0, 0.0, 0.0}, {2.0, 0.0, 0.0}, {4.0, 2.0, 0.0}});
+        }, 6.0);
+        const double before = hzBetween(x, 0.5 * kStep, 1.5 * kStep), halfway = hzBetween(x, 2.9 * kStep, 3.1 * kStep),
+                     after = hzBetween(x, 4.5 * kStep, 5.5 * kStep);
+        std::printf("      through the synth: %.2f Hz, then %.2f halfway along the bend and %.2f after it\n", before,
+                    halfway, after);
+        check(std::abs(semitones(before, 440.0)) < 0.02 && std::abs(semitones(halfway, 440.0) - 1.0) < 0.05 &&
+                  std::abs(semitones(after, 440.0) - 2.0) < 0.02,
+              "a sequencer note's bend bends it, along its points");
+    }
+    // A sweep of two octaves in a step, which a bend stepped once a stretch would take in stairs of a semitone: the pitch
+    // following it smoothly.
+    {
+        const std::vector<float> x = play([&](ParamValues &p) {
+            note(p, 0, 0.0, 4.0, 57);
+            bend(p, 0, {{0.0, 0.0, 0.0}, {1.0, 24.0, 0.0}});
+        }, 1.2);
+        const std::vector<double> at = crossings(x);
+        double worst = 0.0;
+        for (size_t i = 1; i < at.size(); ++i) {
+            const double mid = 0.5 * (at[i] + at[i - 1]);
+            if (mid < 300.0 || mid > kStep - 300.0)
+                continue;
+            const double heard = semitones(kSampleRate / (at[i] - at[i - 1]), 220.0);
+            worst = std::max(worst, std::abs(heard - 24.0 * mid / kStep));
+        }
+        std::printf("      a sweep of 24 semitones in a step following its line within %.3f semitones\n", worst);
+        check(worst < 0.3, "a sequencer note's bend moves its pitch smoothly, not stretch by stretch");
+    }
+    // A chord of E4 and A4, the A4 bent up 2: the E4 playing on as it was, the A4 gone up to B4.
+    {
+        const std::vector<float> x = play([&](ParamValues &p) {
+            note(p, 0, 0.0, 8.0, 64);
+            note(p, 1, 0.0, 8.0, 69);
+            bend(p, 1, {{0.0, 0.0, 0.0}, {1.0, 2.0, 0.0}});
+        }, 6.0);
+        const size_t from = static_cast<size_t>(2.0 * kStep);
+        const double e4 = power(x, from, 329.63), a4 = power(x, from, 440.0), b4 = power(x, from, 493.88);
+        std::printf("      a chord: E4 %.1f dB and A4 %.1f dB from B4\n", 10.0 * std::log10(e4 / b4),
+                    10.0 * std::log10(a4 / b4));
+        check(e4 > 0.25 * b4 && a4 < 0.01 * b4, "a sequencer note's bend bends its own voice alone");
+    }
+    // Mono legato, gliding: an A4 bent up 2 sliding into a B4 starts the glide from where it was bent to, so the pitch
+    // stays at B4 with no dip back toward A4.
+    {
+        const std::vector<float> x = play([&](ParamValues &p) {
+            note(p, 0, 0.0, 4.0, 69);
+            p[seqNoteIndex(0, 0, SeqNoteParam::Slide)] = 1.0;
+            bend(p, 0, {{0.0, 0.0, 0.0}, {1.0, 2.0, 0.0}});
+            note(p, 1, 4.0, 4.0, 71);
+        }, 6.0, true);
+        const double before = hzBetween(x, 3.0 * kStep, 3.9 * kStep), joined = hzBetween(x, 4.05 * kStep, 4.4 * kStep);
+        std::printf("      sliding on from a bend: %.2f Hz, then %.2f into the next note\n", before, joined);
+        check(std::abs(semitones(before, 493.88)) < 0.03 && std::abs(semitones(joined, 493.88)) < 0.05,
+              "a mono glide starts where the sequencer bent the note before");
+    }
+    // A patch with bends, the last note of the last pattern among them, loading back as saved.
+    {
+        ParamValues p = defaults();
+        bend(p, kSeqNotes - 1, {{0.0, -3.0, 0.5}, {1.25, 0.0, 0.0}, {6.0, 24.0, -1.0}}, kSeqPatterns - 1);
+        bend(p, 0, {{2.0, -24.0, 0.0}});
+        std::vector<unsigned char> bytes;
+        const clap_ostream_t out = memoryOut(bytes);
+        writePatch(&out, p, gui::UiLayout{}, true);
+        MemoryReader reader{bytes.data(), bytes.size(), 0};
+        const clap_istream_t in = memoryIn(reader);
+        ParamValues loaded;
+        readParams(&in, loaded);
+        check(std::equal(loaded.begin(), loaded.end(), p.begin()), "a patch's note bends load back as saved");
+    }
+}
+
 void sequencerChecks() {
     std::printf("sequencer:\n");
     constexpr double kStep = kSampleRate * 60.0 / 120.0 / 4.0; // a 1/16 step at 120 bpm: 6000 samples
@@ -5032,6 +5241,7 @@ void sequencerChecks() {
         for (int i = 0; i < kParamCount; ++i)
             p[i] = paramTable()[i].def;
         p[paramIndex(SeqParam::Enabled)] = 1.0;
+        p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Host);
         return p;
     };
     auto note = [](ParamValues &p, int slot, double start, double length, int pitch, int pattern = 0) {
@@ -5464,6 +5674,7 @@ void sequencerChecks() {
                   rms(quiet) < 0.01 * rms(plain),
               "the bend curve bends what the sequencer plays, and the mod wheel curve moves the mod wheel");
     }
+    noteBendChecks();
     // The telemetry tells the wheels where the curves take them as they play: the bend curve on top of the Pitch Bend
     // param as set, and what the mod wheel curve adds. Nothing before they play, or once they stop, by the key let go or
     // the sequencer switched off.
@@ -5778,6 +5989,7 @@ void sequencerChecks() {
     {
         Engine e(1);
         e.p[paramIndex(SeqParam::Enabled)] = 1.0;
+        e.p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Host);
         note(e.p, 0, 0.0, 4.0, 69);
         e.synth().setTempo(120.0);
         e.synth().setTransport(true, 0.0, 0.0);
@@ -5795,6 +6007,7 @@ void sequencerChecks() {
     {
         Engine e(1);
         e.p[paramIndex(SeqParam::Enabled)] = 1.0;
+        e.p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Host);
         note(e.p, 0, 1.0, 1.0, 69);
         e.synth().setTempo(120.0);
         e.synth().setTransport(true, 0.0, 0.0);
@@ -5807,10 +6020,267 @@ void sequencerChecks() {
         check(first >= static_cast<size_t>(kStep) && first < static_cast<size_t>(kStep) + 64,
               "the sequencer's note sounds from its sample, however the blocks are split");
     }
+    // Plans `steps` more from `seq`, the transport playing from `fromStep` (Host's clock; the others ignore it), in
+    // stretches of `piece`; `each` called before each stretch with the step it starts at, `positions` taking where it
+    // plays after each.
+    auto planOn = [&](Sequencer &seq, double fromStep, double steps, uint32_t piece = 512,
+                      const std::function<void(double)> &each = {}, std::vector<float> *positions = nullptr) {
+        std::vector<Event> events;
+        std::array<SeqEvent, Sequencer::kMaxEvents> out;
+        for (double done = 0.0; done < steps * kStep;) {
+            if (each)
+                each(fromStep + done / kStep);
+            uint32_t covered = 0;
+            const int n = seq.plan(piece, 120.0, true, (fromStep + done / kStep) / 4.0, out, covered);
+            for (int i = 0; i < n; ++i)
+                events.push_back({done + out[i].frame, out[i].on, out[i].key});
+            if (positions)
+                positions->push_back(seq.position());
+            done += covered;
+        }
+        return events;
+    };
+    // The Play button (Sequencer::preview()): whatever Play says, the pattern from its loop's start on a clock of its
+    // own, as written but for Octave and Transpose, the keys left to play notes; off, back to Play's way. In Key with no
+    // key held and the loop from step 4: the note there at once, with Transpose's 2 semitones and no key's, the next two
+    // steps on; turned off in that one, it ends, and the keys go to the sequencer again. Nothing while the sequencer is
+    // off, and switched off, it stops. In Host, from the loop's start though the transport stands at step 37.5, and once
+    // off, with the transport again, its next note where the bar comes round.
+    {
+        ParamValues p = blank();
+        p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Key);
+        p[paramIndex(SeqParam::Transpose)] = 2.0;
+        p[paramIndex(0, SeqPatternParam::LoopStart)] = 4.0;
+        note(p, 0, 4.0, 1.0, 60);
+        note(p, 1, 6.0, 1.0, 64);
+        Sequencer seq;
+        seq.prepare(kSampleRate);
+        seq.configure(p);
+        const bool keysBefore = seq.takesKeys(), awakeBefore = seq.wantsProcessing();
+        seq.preview(true);
+        const bool keysDuring = seq.takesKeys(), awake = seq.wantsProcessing();
+        const std::vector<Event> e = planOn(seq, 0.0, 2.5);
+        seq.preview(false);
+        const std::vector<Event> after = planOn(seq, 0.0, 2.0);
+        std::printf("      played by the button in Key: %zu events, the first on %d at %.0f, the second on %d at %.0f; "
+                    "stopped, %zu\n",
+                    e.size(), e.empty() ? -1 : e[0].key, e.empty() ? -1.0 : e[0].frame, e.size() > 2 ? e[2].key : -1,
+                    e.size() > 2 ? e[2].frame : -1.0, after.size());
+        check(keysBefore && !awakeBefore && !keysDuring && awake && e.size() == 3 && e[0].on && e[0].key == 62 &&
+                  near(e[0].frame, 0.0) && !e[1].on && near(e[1].frame, kStep) && e[2].on && e[2].key == 66 &&
+                  near(e[2].frame, 2.0 * kStep) && after.size() == 1 && !after[0].on && after[0].key == 66 &&
+                  near(after[0].frame, 0.0) && seq.takesKeys() && !seq.previewing(),
+              "the Play button plays the pattern from its loop's start, as written but for Transpose, the keys left be");
+        ParamValues off = p;
+        off[paramIndex(SeqParam::Enabled)] = 0.0;
+        Sequencer idle;
+        idle.prepare(kSampleRate);
+        idle.configure(off);
+        idle.preview(true);
+        const bool offIgnored = !idle.previewing();
+        seq.preview(true);
+        planOn(seq, 0.0, 0.5);
+        seq.configure(off);
+        check(offIgnored && !seq.previewing(), "the Play button plays nothing while the sequencer is off, and stops with it");
+
+        // From a step (the first note picked): the note at 6 at once, the one at 4 only once the loop comes round; with
+        // Reverse, the note at 6 and two steps later the one at 4; with Swing at 75 %, a note on the odd step 5 at once
+        // too; from step 2, outside the loop, from its start.
+        auto from = [&](const ParamValues &q, double step, double steps) {
+            Sequencer f;
+            f.prepare(kSampleRate);
+            f.configure(q);
+            f.preview(true, step);
+            return planOn(f, 0.0, steps);
+        };
+        const std::vector<Event> at6 = from(p, 6.0, 3.0);
+        ParamValues reverse = p;
+        reverse[paramIndex(SeqParam::Order)] = static_cast<double>(SeqOrder::Reverse);
+        const std::vector<Event> back6 = from(reverse, 6.0, 2.5);
+        ParamValues swung = p;
+        swung[paramIndex(SeqParam::Swing)] = 0.75;
+        note(swung, 2, 5.0, 1.0, 62);
+        const std::vector<Event> at5 = from(swung, 5.0, 0.5);
+        const std::vector<Event> outside = from(p, 2.0, 0.5);
+        std::printf("      played from a step: from 6, on %d at %.0f (%zu events); reversed, then on %d at %.0f; swung from "
+                    "5, on %d at %.0f; from 2, on %d\n",
+                    at6.empty() ? -1 : at6[0].key, at6.empty() ? -1.0 : at6[0].frame, at6.size(),
+                    back6.size() > 2 ? back6[2].key : -1, back6.size() > 2 ? back6[2].frame : -1.0,
+                    at5.empty() ? -1 : at5[0].key, at5.empty() ? -1.0 : at5[0].frame,
+                    outside.empty() ? -1 : outside[0].key);
+        check(at6.size() == 2 && at6[0].on && at6[0].key == 66 && near(at6[0].frame, 0.0) && back6.size() == 3 &&
+                  back6[0].key == 66 && near(back6[0].frame, 0.0) && back6[2].on && back6[2].key == 62 &&
+                  near(back6[2].frame, 2.0 * kStep) && !at5.empty() && at5[0].on && at5[0].key == 64 &&
+                  near(at5[0].frame, 0.0) && !outside.empty() && outside[0].key == 62 && near(outside[0].frame, 0.0),
+              "the Play button starts at a step of the loop, the way the Order goes, and else at the loop's start");
+
+        ParamValues host = blank();
+        note(host, 0, 0.0, 1.0, 60);
+        note(host, 1, 5.0, 1.0, 64);
+        Sequencer h;
+        h.prepare(kSampleRate);
+        h.configure(host);
+        h.preview(true);
+        const std::vector<Event> fromStart = planOn(h, 37.5, 1.5);
+        h.preview(false);
+        const std::vector<Event> back = planOn(h, 39.0, 10.0);
+        std::printf("      played by the button in Host at step 37.5: first on %d at %.0f; off again, the next on %d at step "
+                    "%.2f\n",
+                    fromStart.empty() ? -1 : fromStart[0].key, fromStart.empty() ? -1.0 : fromStart[0].frame,
+                    back.empty() ? -1 : back[0].key, back.empty() ? -1.0 : 39.0 + back[0].frame / kStep);
+        check(fromStart.size() == 2 && fromStart[0].on && fromStart[0].key == 60 && near(fromStart[0].frame, 0.0) &&
+                  !back.empty() && back[0].on && back[0].key == 60 && near(back[0].frame, 9.0 * kStep),
+              "in Host, the Play button plays from the loop's start, then the transport takes it back");
+    }
+    // Through the synth, in Key: the Play button plays the pattern, a key pressed meanwhile plays a note of its own beside
+    // it, and the telemetry says it plays until it is turned off.
+    {
+        auto t = std::make_unique<Telemetry>();
+        Engine e(1);
+        e.p[paramIndex(SeqParam::Enabled)] = 1.0;
+        e.p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Key);
+        note(e.p, 0, 0.0, 16.0, 69); // the whole bar long
+        e.synth().setTempo(120.0);
+        e.render(256);
+        e.synth().setSeqPreview(true);
+        e.render(512);
+        const int patternOnly = e.synth().activeVoiceCount();
+        e.noteOn(50);
+        e.render(512);
+        e.synth().telemetry(*t);
+        const int withKey = e.synth().activeVoiceCount();
+        const bool shown = t->seqPreview;
+        e.synth().setSeqPreview(false);
+        e.render(512);
+        e.synth().telemetry(*t);
+        std::printf("      the Play button through the synth in Key: %d voice, %d with a key pressed\n", patternOnly, withKey);
+        check(patternOnly == 1 && withKey == 2 && shown && !t->seqPreview && e.synth().isActive({-1, 0, 0, 50}),
+              "with the Play button on, keys play notes beside the pattern, and the telemetry says it plays");
+    }
+    // Random picks among the steps notes start in, each played on to the next note's: four quarter notes play one on
+    // every beat and none between (several of them, the same picks each time it plays), the playhead moving on
+    // steadily within a beat; and with notes at steps 0, 3 and 8, each time round the loop starts on a note, the picks
+    // filling its 16 steps.
+    {
+        ParamValues p = blank();
+        p[paramIndex(SeqParam::Order)] = static_cast<double>(SeqOrder::Random);
+        for (int i = 0; i < 4; ++i)
+            note(p, i, 4.0 * i, 4.0, 60 + 2 * i);
+        auto run = [&](const ParamValues &q, std::vector<float> *positions = nullptr) {
+            Sequencer seq;
+            seq.prepare(kSampleRate);
+            seq.configure(q);
+            return planOn(seq, 0.0, 64.0, 250, {}, positions);
+        };
+        std::vector<float> positions;
+        const std::vector<Event> e = run(p, &positions);
+        int ons = 0, offBeat = 0;
+        std::vector<bool> heard(128, false);
+        for (const Event &ev : e) {
+            if (!ev.on)
+                continue;
+            ++ons;
+            heard[static_cast<size_t>(ev.key)] = true;
+            const double beat = ev.frame / kStep / 4.0;
+            if (std::abs(beat - std::round(beat)) > 1e-3)
+                ++offBeat;
+        }
+        const int kinds = static_cast<int>(std::count(heard.begin(), heard.end(), true));
+        const std::vector<Event> again = run(p);
+        bool same = again.size() == e.size();
+        for (size_t i = 0; same && i < e.size(); ++i)
+            same = again[i].on == e[i].on && again[i].key == e[i].key && near(again[i].frame, e[i].frame);
+        const double share = 250.0 / kStep;
+        int strayJumps = 0;
+        // (A stretch ending on a beat ends a hair before it, as its frames add up: the jump shows a stretch later.)
+        auto byBeat = [&](double t) { return std::abs(t - 4.0 * std::round(t / 4.0)) <= share * 1.01; };
+        for (size_t i = 1; i < positions.size(); ++i) {
+            const double moved = positions[i] - positions[i - 1];
+            const double t0 = i * share, t1 = (i + 1) * share; // where the two stretches ended, in steps
+            if ((moved < -1e-4 || moved > share + 1e-3) && !byBeat(t0) && !byBeat(t1))
+                ++strayJumps;
+        }
+        ParamValues uneven = blank();
+        uneven[paramIndex(SeqParam::Order)] = static_cast<double>(SeqOrder::Random);
+        note(uneven, 0, 0.0, 1.0, 60);
+        note(uneven, 1, 3.0, 1.0, 64);
+        note(uneven, 2, 8.0, 1.0, 67);
+        const std::vector<Event> u = run(uneven);
+        int roundsOnNote = 0, unevenOns = 0;
+        for (int round = 0; round < 4; ++round)
+            roundsOnNote += std::any_of(u.begin(), u.end(), [&](const Event &ev) {
+                return ev.on && near(ev.frame, 16.0 * round * kStep);
+            });
+        for (const Event &ev : u)
+            unevenOns += ev.on;
+        std::printf("      Random over quarter notes: %d notes on in 16 beats, %d off the beat, %d pitches, %s; the playhead "
+                    "jumping %d times within a beat; notes at 0, 3 and 8: %d of 4 rounds starting on a note, %d notes on\n",
+                    ons, offBeat, kinds, same ? "alike again" : "otherwise again", strayJumps, roundsOnNote, unevenOns);
+        check(ons == 16 && offBeat == 0 && kinds >= 3 && same && strayJumps == 0 && roundsOnNote == 4 && unevenOns >= 8,
+              "Random picks among the steps notes start in, playing on to the next note's, the loop keeping its length");
+    }
+    // The loop shortened step by step under the playhead in its second time round (Key, from a key; Host, with the
+    // transport; and the Play button), a note on every step: it plays on from where it is, one note a step, up to the new
+    // loop's end and round from its start, rather than jumping about and starting the notes it lands in the middle of;
+    // and in Host, the transport jumping locks it to the bars again.
+    {
+        ParamValues p = blank();
+        for (int s = 0; s < 16; ++s)
+            note(p, s, s, 1.0, 60 + s);
+        for (int mode = 0; mode < 3; ++mode) {
+            ParamValues q = p;
+            if (mode != 1)
+                q[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Key);
+            Sequencer seq;
+            seq.prepare(kSampleRate);
+            seq.configure(q);
+            if (mode == 0)
+                seq.keyDown(60);
+            else if (mode == 2)
+                seq.preview(true);
+            // In stretches of 250 samples, which a step's 6000 hold whole: the transport goes on from where it was.
+            planOn(seq, 0.0, 26.25, 250);
+            int end = 16;
+            std::vector<float> positions;
+            const std::vector<Event> e = planOn(
+                seq, 26.25, 2.5, 250,
+                [&](double) {
+                    if (end > 12) { // the loop's end dragged a step a stretch
+                        q[paramIndex(0, SeqPatternParam::LoopEnd)] = --end;
+                        seq.configure(q);
+                    }
+                },
+                &positions);
+            std::vector<int> ons;
+            for (const Event &ev : e)
+                if (ev.on)
+                    ons.push_back(ev.key);
+            bool steady = true;
+            for (size_t i = 1; i < positions.size(); ++i)
+                if (positions[i] < positions[i - 1] && !(positions[i - 1] > 11.0f && positions[i] < 1.0f))
+                    steady = false;
+            const char *names[] = {"Key", "Host", "the Play button"};
+            std::printf("      the loop shortened from 16 to 12 at step 10.25 (%s): %zu notes on (%d, %d), the playhead "
+                        "%.2f to %.2f%s\n",
+                        names[mode], ons.size(), ons.empty() ? -1 : ons[0], ons.size() > 1 ? ons[1] : -1,
+                        positions.empty() ? -1.0f : positions.front(), positions.empty() ? -1.0f : positions.back(),
+                        steady ? "" : ", jumping back");
+            check(steady && ons.size() == 2 && ons[0] == 71 && ons[1] == 60,
+                  "the loop shortened under the playhead: it plays on from where it is, each note once");
+            if (mode == 1) {
+                // (After the note it held ends.)
+                const std::vector<Event> jumped = planOn(seq, 48.0, 0.5);
+                const auto on = std::find_if(jumped.begin(), jumped.end(), [](const Event &ev) { return ev.on; });
+                check(on != jumped.end() && on->key == 60 && near(on->frame, 0.0),
+                      "the transport jumping locks the pattern to the bars again");
+            }
+        }
+    }
 }
 
-// The layout chunk's floats after the preset's info: the order of the places past the first 16 and their folds.
-constexpr uint32_t kAfterInfo = kMaxSources - kFirstSources + 1;
+// The layout chunk's floats after the preset's info: the order of the places past the first 16 and their folds, and
+// whether the SEQ view's roll bends notes.
+constexpr uint32_t kAfterInfo = kMaxSources - kFirstSources + 1 + 1;
 
 // The layout chunk, the patch's last, cut short by its last `floats` floats: as saved before they came.
 void cutLayout(std::vector<unsigned char> &bytes, uint32_t floats) {
@@ -8811,6 +9281,45 @@ int main() {
             sane = sane && inRange && finite && peak > 0.01f && peak < 2.0f;
         }
         check(sane, "the example presets hold valid values and sound at a sane level");
+    }
+
+    // --- The example presets' triads at full velocity, struck together as a host's quantized chord is, held 2 s and
+    // let go. Their Volume keeps them at -1 dBFS at most (see AGENTS.md); this leaves that dB for what a note's
+    // randomness moves. A drum preset is played a hit at a time.
+    std::printf("example presets' triads (peak at full velocity, dBFS):\n");
+    {
+        const std::vector<std::vector<int>> chords = {{48, 52, 55}, {60, 64, 67}, {72, 76, 79}};
+        const std::vector<std::vector<int>> hits = {{36}, {60}, {84}};
+        constexpr int kHeld = static_cast<int>(2.0 * kSampleRate / kBlock), kLetGo = kHeld / 2;
+        bool under = true;
+        for (const FactoryPreset &preset : factoryPresets()) {
+            ParamValues values;
+            gui::UiLayout layout;
+            loadFactoryPreset(preset, values, layout);
+            // As the plugin plays it: its voices and play mode (see PluginCore::applyPlayMode()).
+            auto on = [&values](GlobalParam p) { return values[paramIndex(p)] >= 0.5; };
+            const int voices = static_cast<int>(std::lround(values[paramIndex(GlobalParam::Voices)]));
+            float peak = 0.0f;
+            for (const std::vector<int> &keys : layout.presetInfo.category == "Drum" ? hits : chords) {
+                Engine e(2, voices);
+                e.synth().setPlayMode(on(GlobalParam::Mono), on(GlobalParam::Legato), on(GlobalParam::GlideAlways));
+                e.p = values;
+                for (int key : keys)
+                    e.noteOn(key);
+                float left[kBlock], right[kBlock];
+                for (int b = 0; b < kHeld + kLetGo; ++b) {
+                    if (b == kHeld)
+                        for (int key : keys)
+                            e.noteOff(key);
+                    e.synth().render(left, right, kBlock, e.p);
+                    for (uint32_t s = 0; s < kBlock; ++s)
+                        peak = std::max({peak, std::abs(left[s]), std::abs(right[s])});
+                }
+            }
+            std::printf("      %-16s %6.1f\n", preset.name.c_str(), 20.0 * std::log10(peak + 1e-30f));
+            under = under && peak < 1.0f;
+        }
+        check(under, "the example presets' triads at full velocity peak under 0 dBFS");
     }
     presetContentChecks();
     scopeChecks();

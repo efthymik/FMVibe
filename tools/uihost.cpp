@@ -444,11 +444,13 @@ SIZE frameSize(HWND window) {
 // A client area the editor fills: its width for the size given, or less where that would be taller.
 void fitEditor(uint32_t &width, uint32_t &height) {
     const uint32_t room = height;
+    height = 0; // the width's height: a height given would have the plugin follow it where it moved further
     app.gui->adjust_size(app.plugin, &width, &height);
     clap_gui_resize_hints_t hints{};
     if (height > room && app.gui->get_resize_hints(app.plugin, &hints) && hints.aspect_ratio_height > 0) {
         width = static_cast<uint32_t>(static_cast<uint64_t>(room) * hints.aspect_ratio_width /
                                       hints.aspect_ratio_height);
+        height = 0;
         app.gui->adjust_size(app.plugin, &width, &height);
     }
 }

@@ -6,6 +6,8 @@
 //
 // Text the editor shows itself, rather than through the View, is worded in src/uistrings.inc.
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -36,9 +38,18 @@ public:
 
     // Sizes are in physical pixels, as CLAP specifies them.
     void size(uint32_t &width, uint32_t &height) const;
-    // The height for `width` at the view's current proportions (the keyboard strip may be collapsed).
+    // The size nearest `width` x `height` at the view's current proportions (the keyboard strip may be collapsed), as
+    // constrain() finds it from the editor's size now.
     void fit(uint32_t &width, uint32_t &height) const;
-    static void constrain(uint32_t &width, uint32_t &height, float viewHeight);
+    // The size a host's window may take at the view's proportions (a view `viewHeight` tall): `width` with the height
+    // following it, or, where the host moved the height further from the editor's size (`fromWidth` x `fromHeight`)
+    // than the width, as a window dragged by its top or bottom edge (a pixel at a time too), `height` with the width
+    // following it. A height of 0, a size that already keeps the proportions (but for rounding, both sides moved) or no
+    // size to go from takes the width.
+    static void constrain(uint32_t &width, uint32_t &height, float viewHeight, uint32_t fromWidth = 0,
+                          uint32_t fromHeight = 0);
+    static constexpr uint32_t kMinWidth = 600;
+    static constexpr uint32_t kMaxWidth = 3600;
     // Asks the host for the size the view's proportions want, held within the monitor's work area: a state, a fold or
     // a DPI change may make the window another size.
     void fitLayout();
@@ -183,5 +194,22 @@ private:
     uint64_t noticeUntil_ = 0;
 #endif
 };
+
+inline void Editor::constrain(uint32_t &width, uint32_t &height, float viewHeight, uint32_t fromWidth,
+                              uint32_t fromHeight) {
+    if (height > 0 && fromWidth > 0 && fromHeight > 0 && viewHeight > 0.0f) {
+        const auto followed = static_cast<uint32_t>(
+            std::lround(std::clamp(width, kMinWidth, kMaxWidth) * viewHeight / View::kWidth));
+        // A size held within the screen floors both sides, so with the width moved too, a pixel or two off is still the
+        // width's. With the width as it was, a pixel is a drag: a host offers an edge dragged slowly a pixel at a time.
+        const bool rounded = width != fromWidth && (followed > height ? followed - height : height - followed) <= 2;
+        const double widthMoved = std::fabs(static_cast<double>(width) - fromWidth) / fromWidth;
+        const double heightMoved = std::fabs(static_cast<double>(height) - fromHeight) / fromHeight;
+        if (followed != height && !rounded && heightMoved > widthMoved)
+            width = static_cast<uint32_t>(std::lround(height * View::kWidth / viewHeight));
+    }
+    width = std::clamp(width, kMinWidth, kMaxWidth);
+    height = static_cast<uint32_t>(std::lround(width * viewHeight / View::kWidth));
+}
 
 } // namespace fmvibe::gui

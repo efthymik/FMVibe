@@ -418,7 +418,7 @@ std::vector<std::pair<int, Rect>> RoutingPanel::routeLabels() const {
             wires.push_back(
                 {param,
                  wireBetween(from, routing_.nodeCenter(from), to, routing_.nodeCenter(to), routing_.wireBend(param)),
-                 glyph ? 38.0f + 18.0f : 38.0f});
+                 glyph ? kWireLabelW + kLabelGlyphW : kWireLabelW});
         }
     // A loop's label goes beside it on the right, or else on its left, above it or at an upper corner: the first
     // of these clear of the other nodes, the loops' labels before it and where the wires' labels would rest with
@@ -427,12 +427,16 @@ std::vector<std::pair<int, Rect>> RoutingPanel::routeLabels() const {
     std::vector<Rect> wished;
     for (const Between &b : wires)
         wished.push_back(chip(labelAlong(b.wire.start, b.wire.control, b.wire.end, b.wire.label, b.width), b.width));
-    constexpr float kLoopLabelW = 44.0f;
     const Rect inside{kRouting.x + 4.0f, kRouting.y + 3.0f, kRouting.w - 8.0f, kRouting.h - 6.0f};
     for (int node : on)
         if (const int param = routeParam(node, node); routing_.wired(param) && param != moving) {
             const Point loop = loopCenter(node, routing_.nodeCenter(node));
-            const Point offsets[] = {{32.0f, 0.0f}, {-32.0f, 0.0f}, {0.0f, -21.0f}, {32.0f, -20.0f}, {-32.0f, -20.0f}};
+            constexpr float kAbove = 12.0f + 0.5f * kWireLabelH; // its foot 12 px over the loop's center
+            const Point offsets[] = {{kLoopLabelX, 0.0f},
+                                     {-kLoopLabelX, 0.0f},
+                                     {0.0f, -kAbove},
+                                     {kLoopLabelX, 1.0f - kAbove},
+                                     {-kLoopLabelX, 1.0f - kAbove}};
             auto clearOf = [&](Rect r, bool all) {
                 if (!inside.contains({r.x, r.y}) || !inside.contains({r.right(), r.bottom()}) || meetsLabel(r, taken))
                     return false;
@@ -456,7 +460,7 @@ std::vector<std::pair<int, Rect>> RoutingPanel::routeLabels() const {
         }
     for (const Between &b : wires) {
         const Point at = labelAlong(b.wire.start, b.wire.control, b.wire.end, b.wire.label, b.width, taken);
-        labels.emplace_back(b.param, chip(at, 38.0f));
+        labels.emplace_back(b.param, chip(at, kWireLabelW));
         taken.push_back(chip(at, b.width));
     }
     for (int node : on)
@@ -464,9 +468,9 @@ std::vector<std::pair<int, Rect>> RoutingPanel::routeLabels() const {
             const OutWire w = outWireOf(node, routing_.nodeCenter(node), routing_.wireBend(outParam(node)));
             // Beside the line where it is too short for the label to fit along it; else along it, clear of the nodes
             // and the labels before it.
-            const Point at = w.beside ? w.label : labelAlong(w.start, w.control, w.end, w.label, 40.0f, taken);
-            labels.emplace_back(outParam(node), chip(at, 40.0f));
-            taken.push_back(chip(at, 40.0f));
+            const Point at = w.beside ? w.label : labelAlong(w.start, w.control, w.end, w.label, kOutLabelW, taken);
+            labels.emplace_back(outParam(node), chip(at, kOutLabelW));
+            taken.push_back(chip(at, kOutLabelW));
         }
     return labels;
 }
@@ -481,25 +485,23 @@ RoutingPanel::LabelPill RoutingPanel::labelPill(int param, int mode, Rect idle) 
     const std::optional<Widget> &hover = host_.hovered();
     const std::optional<Widget> held = host_.dragged();
     pill.open = (hover && mine(*hover)) || (mode >= 0 && host_.openList() == mode) || (held && mine(*held));
-    // A mode other than Phase shows inside it at rest, at its left: the label widens by kGlyphW, still centered on its
-    // wire, and its depth's text sits that much right of the middle, half of kGlyphW.
-    constexpr float kGlyphW = 18.0f;
+    // A mode other than Phase shows inside it at rest, at its left: the label widens by kLabelGlyphW, still centered on
+    // its wire, and its depth's text sits that much right of the middle, half of kLabelGlyphW.
     const bool glyph = mode >= 0 && routeMode(value(mode)) != RouteMode::Phase;
-    const float shift = glyph ? 0.5f * kGlyphW : 0.0f;
+    const float shift = glyph ? 0.5f * kLabelGlyphW : 0.0f;
     if (!pill.open) {
         pill.glyph = glyph;
-        pill.depth = glyph ? Rect{idle.x - shift, idle.y, idle.w + kGlyphW, idle.h} : idle;
+        pill.depth = glyph ? Rect{idle.x - shift, idle.y, idle.w + kLabelGlyphW, idle.h} : idle;
         pill.whole = pill.depth;
         return pill;
     }
     // The depth's text stays where it rests, so it doesn't move as the pill opens and the mouse on it stays on it; the
     // mode's part goes on its left, over where a glyph shows at rest, and the x on its right.
-    constexpr float kModeW = 28.0f, kRemoveW = 20.0f;
     idle.x += shift;
     pill.depth = idle;
     if (mode >= 0)
-        pill.mode = {idle.x - kModeW, idle.y, kModeW, idle.h};
-    pill.remove = {idle.right(), idle.y, kRemoveW, idle.h};
+        pill.mode = {idle.x - kLabelModeW, idle.y, kLabelModeW, idle.h};
+    pill.remove = {idle.right(), idle.y, kLabelRemoveW, idle.h};
     const float left = mode >= 0 ? pill.mode.x : idle.x;
     pill.whole = {left, idle.y, pill.remove.right() - left, idle.h};
     return pill;
@@ -1323,17 +1325,22 @@ bool RoutingPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         std::string text = percent(amount);
         if (w.kind == Kind::WireLabel && w.a == w.b)
             text = trf(Str::CaptionFeedback, {text});
+        // In the graph larger than on the operator page's INPUTS tab (see kWireLabelH), its glyph, text and ranges too.
+        const bool graph = kRouting.contains(w.rect.center());
+        const float glyphW = graph ? kLabelGlyphW : 18.0f;
         // Its ranges and handles are over and under it, and its text stays in the middle, its digits centered.
         constexpr float lift = -1.0f;
         Rect textRect{w.rect.x, w.rect.y + lift, w.rect.w, w.rect.h};
         if (w.modeGlyph) { // its mode, other than Phase, at its left
             const auto mode = routeMode(value(routeModeParam(w.a, w.b)));
-            routeModeIcon(c, {w.rect.x + 13.0f, w.rect.center().y}, mode, kPanel, 0.85f);
-            textRect = {w.rect.x + 18.0f, w.rect.y + lift, w.rect.w - 18.0f, w.rect.h}; // where it sits when open
+            routeModeIcon(c, {w.rect.x + (graph ? 15.0f : 13.0f), w.rect.center().y}, mode, kPanel, graph ? 1.0f : 0.85f);
+            textRect = {w.rect.x + glyphW, w.rect.y + lift, w.rect.w - glyphW, w.rect.h}; // where it sits when open
         }
-        c.text(textRect, text, kTextLabel, kPanel, Align::Center, true);
+        c.text(textRect, text, graph ? kTextBody : kTextLabel, kPanel, Align::Center, true);
         // Just above it, clear of its solid fill (the hovered one's, twice as thick, too); the handles go below.
-        host_.paintModRange(c, {w.rect.x + 7.0f, w.rect.y - 4.0f, w.rect.w - 14.0f, 1.5f}, w.param);
+        const Rect ranges = graph ? Rect{w.rect.x + 9.0f, w.rect.y - 5.0f, w.rect.w - 18.0f, 2.0f}
+                                  : Rect{w.rect.x + 7.0f, w.rect.y - 4.0f, w.rect.w - 14.0f, 1.5f};
+        host_.paintModRange(c, ranges, w.param);
         break;
     }
     case Kind::LabelMode: {
@@ -1345,12 +1352,12 @@ bool RoutingPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
             c.fillRect(w.group, kText.alpha(open ? 0.26f : 0.18f), w.group.h * 0.5f);
             c.popClip();
         }
-        const Point m{w.rect.x + 11.0f, w.rect.center().y};
-        routeModeIcon(c, m, routeMode(value(w.param)), kPanel, 0.85f);
-        const Point v{w.rect.right() - 7.0f, w.rect.center().y};
+        const Point m{w.rect.x + 13.0f, w.rect.center().y};
+        routeModeIcon(c, m, routeMode(value(w.param)), kPanel, 1.0f);
+        const Point v{w.rect.right() - 8.5f, w.rect.center().y};
         const float dir = open ? -1.0f : 1.0f;
-        const Point chevron[] = {{v.x - 2.5f, v.y - 1.2f * dir}, {v.x, v.y + 1.5f * dir}, {v.x + 2.5f, v.y - 1.2f * dir}};
-        c.polyline(chevron, 3, kPanel, 1.4f);
+        const Point chevron[] = {{v.x - 3.0f, v.y - 1.4f * dir}, {v.x, v.y + 1.8f * dir}, {v.x + 3.0f, v.y - 1.4f * dir}};
+        c.polyline(chevron, 3, kPanel, 1.6f);
         break;
     }
     case Kind::LabelRemove: {
@@ -1361,8 +1368,8 @@ bool RoutingPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         }
         const Point m = w.rect.center();
         const Color ink = kPanel;
-        c.line({m.x - 3.0f, m.y - 3.0f}, {m.x + 3.0f, m.y + 3.0f}, ink, 1.3f);
-        c.line({m.x - 3.0f, m.y + 3.0f}, {m.x + 3.0f, m.y - 3.0f}, ink, 1.3f);
+        c.line({m.x - 3.5f, m.y - 3.5f}, {m.x + 3.5f, m.y + 3.5f}, ink, 1.5f);
+        c.line({m.x - 3.5f, m.y + 3.5f}, {m.x + 3.5f, m.y - 3.5f}, ink, 1.5f);
         break;
     }
     case Kind::GridCell: {
