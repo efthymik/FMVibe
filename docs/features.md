@@ -1173,7 +1173,11 @@ what it started goes on.
     and beats over it, with the loop as a bar in the accent (dragged by its ends to size it and by its middle to move
     it, the cursor left and right or moving; across the bars outside it for a new loop; a double-click loops the whole
     pattern again), the steps outside the loop shaded; and the playhead, while the sequencer plays the pattern shown (running backward through the steps it plays
-    backward, reversed or on Ping-Pong's way back). The wheel scrolls the
+    backward, reversed or on Ping-Pong's way back). The audio thread says where it is once a block of the host's, which
+    the editor's polls fall between unevenly; so once the playhead is seen moving on at the tempo's pace, the editor
+    carries it on at that pace itself between them, along the loop as the order runs it, easing toward each new
+    position and never going back, and shows one that jumps (the host's transport moved, a Random step, the loop
+    changed) as it comes. With no new position it goes no further than an eighth of a second's worth past the last. The wheel scrolls the
     rows; over the roll, Ctrl+wheel zooms in and out across and Alt+wheel up and down, at the mouse, as the − and +
     after the arrows at the lane tabs' right do (across from the whole pattern to two steps, the rows from 0.6 to 3
     times as high). A bar at the roll's right scrolls the rows (dragged, a click on its track jumping there, or the

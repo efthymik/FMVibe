@@ -307,6 +307,28 @@ private:
     }(); // when each slot's note started glowing, in seconds (see seqNow()), -1 for never
     std::array<bool, kSeqNotes> seqInFirstStep_{}; // whether the playhead was in each note's first step at the last poll
     bool seqGlowed_ = false;
+    // The playhead as the roll and the tiles draw it. The telemetry's position moves once a block of the host's (8 ms of
+    // audio at least) and reaches the editor on its poll, whose clock beats against the blocks', so drawn as it comes it
+    // jumps on by uneven strides. Once the telemetry is seen moving on at the tempo's pace, the editor carries it on at
+    // that pace itself, along the loop as the order runs it (round, back, to and fro, or to the end of a Random step),
+    // pulled gently toward where each new position puts it and never back; a position that jumps (the host's transport
+    // moved, a Random step, a loop or pattern changed) is shown as it comes, and so is one that stays (no further than
+    // kSeqHeadLead past it). Whether what it shows moved, to paint.
+    bool seqFollowHead(const Telemetry &t);
+    struct SeqHead {
+        double shown = -1.0;   // where it is drawn, in the pattern's steps; -1 while the sequencer doesn't play
+        int pattern = -1;      // the pattern it plays
+        float heard = -1.0f;   // the telemetry's last position
+        double phase = 0.0;    // where it is drawn along the loop's cycle (see HeadCycle in seqpanel.cpp)
+        double anchor = 0.0;   // where the telemetry's last position is along it, near `phase`
+        double anchorAt = 0.0; // when that came, on the editor's clock
+        double polled = 0.0;   // the last poll
+        bool moving = false;   // the telemetry's last position followed the one before at the tempo's pace
+        std::array<int, 3> cycle{}; // the loop's start and end and the order it was carried along
+    };
+    SeqHead seqHead_;
+    static constexpr double kSeqHeadLead = 0.12; // seconds: carried on no further past a position than this
+    static constexpr double kSeqHeadPull = 0.15; // the share of the way to where the telemetry puts it, each poll
     // The roll's keys lit as the sequencer plays their notes (or one is heard while held): each eases up to lit and
     // back down a step every poll, rather than switching. Whether any moved, to paint.
     bool seqFollowKeys(const Telemetry &t);

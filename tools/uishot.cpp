@@ -28,6 +28,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <limits>
 #include <map>
 #include <numbers>
 #include <numeric>
@@ -8295,6 +8296,117 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         }
         model.themeName = themeWas;
         check(parted, "a slight line parts the roll from the lane under it, in every theme");
+    }
+    // The playhead moving on evenly between the telemetry's positions: the audio thread telling where it is once a
+    // block of 1024 samples at 48 kHz (21.3 ms) and the editor polling every 15.6 ms, as a Windows timer ticks, at 120
+    // BPM in sixteenths (8 steps a second), forward, reversed and on Ping-Pong (starting on its way back, which the
+    // first positions have to tell, and round its turn). Drawn as the telemetry comes, it would move on by none, one or
+    // two blocks a poll; carried on, every poll's stride (read off the rendered pixels, once it has settled, clear of
+    // the roll's ends) is within half of their mean. And with the telemetry still, it goes no further than a little past
+    // where the telemetry is.
+    {
+        static double clock = 0.0;
+        view.setClock([] { return clock; });
+        const float tempoWas = model.live.tempo;
+        model.live.tempo = 120.0f;
+        constexpr double kBlock = 1024.0 / 48000.0, kPoll = 0.015625, kSpeed = 8.0;
+        const float pxPerStep = kSeqGrid.w / 16.0f;
+        // Where the playhead's head crosses the ruler (the bright run nearest `expected`), NaN for none.
+        auto headX = [&](float expected) {
+            renderer.save(view, dir / "36a-seq-playhead-run.png");
+            float best = std::numeric_limits<float>::quiet_NaN();
+            float runFrom = -1.0f;
+            for (float x = kSeqGrid.x; x <= kSeqGrid.x + kSeqGrid.w + 1.0f; x += 1.0f) {
+                const bool lit = x <= kSeqGrid.x + kSeqGrid.w && bright({x + 0.5f, rulerY});
+                if (lit && runFrom < 0.0f)
+                    runFrom = x;
+                if (!lit && runFrom >= 0.0f) {
+                    const float middle = (runFrom + x - 1.0f) * 0.5f;
+                    if (std::isnan(best) || std::abs(middle - expected) < std::abs(best - expected))
+                        best = middle;
+                    runFrom = -1.0f;
+                }
+            }
+            return best;
+        };
+        struct Run {
+            float mean = 0.0f, spread = 0.0f; // px a poll (their size, on Ping-Pong), and the most one is off it
+            bool stays = false;
+        };
+        // From `from` along the order's cycle (see HeadCycle in seqpanel.cpp): Ping-Pong's 32 steps there and back.
+        auto run = [&](SeqOrder order, double from) {
+            Run result;
+            model.set(paramIndex(SeqParam::Order), static_cast<double>(order));
+            model.live.seqPosition = -1.0f;
+            view.poll();
+            auto place = [&](double t) { // where the sequencer plays at `t` seconds
+                const double phase = from + kSpeed * t;
+                if (order == SeqOrder::Reverse)
+                    return 16.0 - std::fmod(phase, 16.0);
+                if (order == SeqOrder::PingPong) {
+                    const double i = std::fmod(phase, 32.0);
+                    return i < 16.0 ? i : 32.0 - i;
+                }
+                return std::fmod(phase, 16.0);
+            };
+            std::vector<float> strides;
+            float last = std::numeric_limits<float>::quiet_NaN();
+            constexpr int kPolls = 48, kSettle = 12;
+            for (int i = 0; i < kPolls; ++i) {
+                const double t = i * kPoll;
+                clock = 50.0 + t;
+                model.live.seqPosition = static_cast<float>(place((std::floor(t / kBlock) + 1.0) * kBlock));
+                view.poll();
+                const float x = headX(kSeqGrid.x + static_cast<float>(place(t)) * pxPerStep);
+                auto clear = [&](float at) { // of the roll's ends, which clip the head
+                    return at > kSeqGrid.x + 8.0f && at < kSeqGrid.x + kSeqGrid.w - 8.0f;
+                };
+                if (i >= kSettle && !std::isnan(last) && clear(x) && clear(last)) {
+                    float stride = x - last;
+                    if (std::abs(stride) > pxPerStep * 8.0f) // round the pattern's end
+                        stride += (stride < 0.0f ? 1.0f : -1.0f) * 16.0f * pxPerStep;
+                    strides.push_back(order == SeqOrder::PingPong ? std::abs(stride) : stride);
+                }
+                last = x;
+            }
+            for (float s : strides)
+                result.mean += s / static_cast<float>(strides.size());
+            for (float s : strides)
+                result.spread = std::max(result.spread, std::abs(s - result.mean));
+            // The telemetry still: on a little, then standing.
+            for (int i = 0; i < 12; ++i) {
+                clock += kPoll;
+                view.poll();
+            }
+            const float stood = headX(last);
+            clock += kPoll;
+            view.poll();
+            const float heard = kSeqGrid.x + model.live.seqPosition * pxPerStep;
+            result.stays = headX(last) == stood && std::abs(stood - heard) <= kSpeed * 0.15f * pxPerStep;
+            return result;
+        };
+        // From step 13 round the pattern's end; from 13 back; and from 3 on Ping-Pong's way back, turning at 0.
+        const Run forward = run(SeqOrder::Forward, 13.0), back = run(SeqOrder::Reverse, 3.0),
+                  pingPong = run(SeqOrder::PingPong, 29.0);
+        const float expected = static_cast<float>(kSpeed * kPoll) * pxPerStep;
+        std::printf("      playhead: %.2f px a poll forward (+-%.2f), %.2f reversed (+-%.2f), %.2f on Ping-Pong "
+                    "(+-%.2f), %.2f expected\n",
+                    forward.mean, forward.spread, back.mean, back.spread, pingPong.mean, pingPong.spread, expected);
+        auto even = [&](const Run &r, float sign) {
+            return std::abs(r.mean - sign * expected) < expected * 0.1f && r.spread < expected * 0.5f && r.stays;
+        };
+        model.set(paramIndex(SeqParam::Order), 0.0);
+        model.live.tempo = tempoWas;
+        model.live.seqPosition = -1.0f;
+        view.poll();
+        view.setClock([] {
+            return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        });
+        model.live.seqPosition = 6.0f;
+        view.poll();
+        check(even(forward, 1.0f) && even(back, -1.0f) && even(pingPong, 1.0f),
+              "the playhead moves on evenly between the telemetry's positions, forward, reversed and on Ping-Pong "
+              "(from its way back, round its turn), and stands once they stop moving");
     }
 
     // A note dragged onto another's start and pitch takes its place: the one there goes, in the same undo step; and so

@@ -278,8 +278,8 @@ void SeqPanel::poll(const Telemetry &t, std::vector<Rect> &repaint) {
     if (!seqBlipPitches_.empty() && host_.now() >= seqBlipUntil_)
         seqBlipEnd();
     const Telemetry &was = host_.telemetry();
-    bool moved = false;
-    if (wide() && (t.seqPosition != was.seqPosition || t.seqPattern != was.seqPattern || t.seqKeys != was.seqKeys))
+    bool moved = seqFollowHead(t) && wide();
+    if (wide() && (t.seqPattern != was.seqPattern || t.seqKeys != was.seqKeys))
         moved = true;
     // The Play buttons, played or stopped: the card's while the view shows, the title bar's while the sequencer is on.
     auto previewMoved = [&] {
@@ -321,6 +321,132 @@ bool SeqPanel::step() {
 
 double SeqPanel::seqNow() {
     return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+namespace {
+
+// The loop's cycle as the sequencer's order runs it (see Sequencer::patternPlace()): a phase going on at the steps'
+// pace, and where in the pattern it plays. Forward, the loop from its start; Reverse, from its end back; Ping-Pong
+// there and back, a cycle of twice the loop. Random has no cycle: its phase is where it plays, within the step picked.
+struct HeadCycle {
+    double start = 0.0, end = 1.0;
+    SeqOrder order = SeqOrder::Forward;
+
+    double length() const { return std::max(end - start, 1.0); }
+    bool pingPong() const { return order == SeqOrder::PingPong && length() > 1.0; } // a loop of one step plays on
+    double period() const { return pingPong() ? 2.0 * length() : length(); }
+    static double wrap(double x, double period) { return x - std::floor(x / period) * period; }
+    double place(double phase) const {
+        if (order == SeqOrder::Random)
+            return phase;
+        if (order == SeqOrder::Reverse)
+            return end - wrap(phase, length());
+        if (pingPong()) {
+            const double i = wrap(phase, period());
+            return i < length() ? start + i : start + period() - i;
+        }
+        return start + wrap(phase, length());
+    }
+    // The first phase past `from` that plays `at`.
+    double phaseAfter(double at, double from) const {
+        if (order == SeqOrder::Random)
+            return at;
+        const double p = period();
+        auto after = [&](double base) { return base + (std::floor((from - base) / p) + 1.0) * p; };
+        if (order == SeqOrder::Reverse)
+            return after(end - at);
+        if (pingPong())
+            return std::min(after(at - start), after(p - (at - start)));
+        return after(at - start);
+    }
+    // The other phase that plays where `phase` does: on Ping-Pong's way the other way (else `phase` itself).
+    double mirrored(double phase) const {
+        if (!pingPong())
+            return phase;
+        return phase + period() - 2.0 * wrap(phase, period());
+    }
+};
+
+} // namespace
+
+bool SeqPanel::seqFollowHead(const Telemetry &t) {
+    SeqHead &h = seqHead_;
+    const double was = h.shown;
+    const double now = host_.now();
+    const double dt = std::clamp(now - h.polled, 0.0, kSeqHeadLead);
+    h.polled = now;
+    if (t.seqPosition < 0.0f) {
+        h.shown = -1.0;
+        h.heard = -1.0f;
+        h.moving = false;
+        return h.shown != was;
+    }
+    const int pattern = std::clamp(t.seqPattern, 0, kSeqPatterns - 1);
+    const auto [loopStart, loopEnd] = seqLoopOf(pattern);
+    const int order = stepped(value(paramIndex(SeqParam::Order)), 0, static_cast<int>(SeqOrder::Count) - 1);
+    const HeadCycle cycle{static_cast<double>(loopStart), static_cast<double>(loopEnd), static_cast<SeqOrder>(order)};
+    const int rate = stepped(value(paramIndex(SeqParam::Rate)), 0, static_cast<int>(SeqRate::Count) - 1);
+    const double speed = std::max(static_cast<double>(t.tempo), 0.0) / 60.0 * kSeqStepsPerBeat[rate]; // steps a second
+    const double raw = t.seqPosition;
+    const std::array<int, 3> loop{loopStart, loopEnd, order};
+    // Shown where the telemetry says, and carried on only once it is seen to move on.
+    auto jump = [&](double phase) {
+        h.shown = raw;
+        h.phase = h.anchor = phase;
+        h.anchorAt = now;
+        h.moving = false;
+    };
+    if (h.shown < 0.0 || t.seqPattern != h.pattern || loop != h.cycle || speed <= 0.0 || raw < cycle.start - 1e-4 ||
+        raw > cycle.end + 1e-4) {
+        h.pattern = t.seqPattern;
+        h.cycle = loop;
+        h.heard = t.seqPosition;
+        jump(cycle.phaseAfter(raw, 0.0));
+        return h.shown != was;
+    }
+    // The furthest it goes on past a position, in steps: within half the loop's cycle, so that a position a little
+    // back can't pass for one most of the way round.
+    double reach = speed * kSeqHeadLead;
+    if (cycle.order != SeqOrder::Random)
+        reach = std::min(reach, 0.5 * cycle.period());
+    double before = h.phase; // where it was drawn: it goes on from there, never back
+    if (h.moving)
+        h.phase += speed * dt;
+    if (t.seqPosition != h.heard) {
+        h.heard = t.seqPosition;
+        double next = cycle.phaseAfter(raw, h.anchor);
+        if (!h.moving) {
+            // Which way it went is not known yet, on Ping-Pong: on from either phase that plays the last position.
+            const double other = cycle.mirrored(h.anchor), fromOther = cycle.phaseAfter(raw, other);
+            if (fromOther - other < next - h.anchor) {
+                next = fromOther;
+                h.anchor = h.phase = other;
+            }
+        }
+        const double ahead = next - h.anchor;
+        if (ahead <= 0.0 || ahead > reach || std::abs(next - h.phase) > reach) {
+            jump(next);
+            return h.shown != was;
+        }
+        if (!h.moving) // seen moving on: from here
+            h.phase = before = next;
+        h.anchor = next;
+        h.anchorAt = now;
+        h.moving = true;
+    }
+    if (h.moving) {
+        // Where the telemetry's position would be by now, which the playhead eases toward; never back, never further
+        // than `reach` past the last position (it stays there should the audio thread stop telling), and for Random
+        // never past the end of the step it plays.
+        const double target = h.anchor + speed * std::min(now - h.anchorAt, kSeqHeadLead);
+        double cap = h.anchor + reach;
+        if (cycle.order == SeqOrder::Random)
+            cap = std::min(cap, std::floor(h.anchor) + 1.0);
+        h.phase += (target - h.phase) * kSeqHeadPull;
+        h.phase = std::clamp(h.phase, std::min(before, cap), cap);
+        h.shown = cycle.place(h.phase);
+    }
+    return h.shown != was;
 }
 
 bool SeqPanel::seqTrackGlows(const Telemetry &t) {
@@ -3480,9 +3606,9 @@ void SeqPanel::paintSeqTile(Canvas &c, int pattern, Rect tile, bool hovered, boo
         c.fillRect(*view, light.alpha(hot ? 0.1f : 0.06f), kRadiusMark);
         c.strokeRect(*view, kText.alpha(hot ? 0.85f : 0.55f), 1.0f, kRadiusMark);
     }
-    const Telemetry &t = host_.telemetry();
-    if (t.seqPosition >= 0.0f && t.seqPattern == pattern && t.seqPosition <= static_cast<float>(steps)) {
-        const float x = std::round(r.x + t.seqPosition * stepW) + 0.5f;
+    const SeqHead &playhead = seqHead_;
+    if (playhead.shown >= 0.0 && playhead.pattern == pattern && playhead.shown <= static_cast<double>(steps)) {
+        const float x = std::round(r.x + static_cast<float>(playhead.shown) * stepW) + 0.5f;
         c.line({x, r.y - 2.0f}, {x, r.bottom() + 2.0f}, kText, 1.0f);
     }
     if (landing)
@@ -3826,10 +3952,10 @@ void SeqPanel::paintBack(Canvas &c) {
     }
 
     // Where it plays now, while it plays this pattern.
-    const Telemetry &telemetry = host_.telemetry();
-    if (telemetry.seqPosition >= 0.0f && telemetry.seqPattern == pattern &&
-        seqStepX(telemetry.seqPosition) >= roll().grid.x && seqStepX(telemetry.seqPosition) <= roll().grid.x + roll().grid.w) {
-        const float x = seqStepX(telemetry.seqPosition);
+    const SeqHead &playhead = seqHead_;
+    if (playhead.shown >= 0.0 && playhead.pattern == pattern && seqStepX(playhead.shown) >= roll().grid.x &&
+        seqStepX(playhead.shown) <= roll().grid.x + roll().grid.w) {
+        const float x = seqStepX(playhead.shown);
         c.line({x, roll().ruler.y}, {x, roll().laneArea.y + roll().laneArea.h}, kText.alpha(0.8f), 1.2f);
         const Point head[] = {{x - 5.0f, roll().ruler.y + 9.0f}, {x + 5.0f, roll().ruler.y + 9.0f}, {x, roll().ruler.y + 15.0f}};
         c.fillPolygon(head, 3, kText);
