@@ -4758,6 +4758,37 @@ void testCurveLoop(const std::filesystem::path &dir, Renderer &renderer) {
           "a Curve's full-size editor's title row sets its clock from its list, opening under it, and its Unipolar "
           "and sync");
 
+    // While the card's Phase knob is held, a line across the plot where notes would start the curve (at 30 %), in the
+    // full-size editor and, that closed, in the widened card (read off the rendered pixels, low on the plot, clear of
+    // the curve and the grid's lines), gone once it is let go.
+    {
+        const int phase = paramIndex(0, SourceParam::Phase);
+        const double phaseBefore = model.value(phase);
+        model.set(phase, 0.3);
+        view.poll();
+        const Point knob = curveKnob(0, 1);
+        auto whileHeld = [&](Point at, const char *name) {
+            view.mouseDown(knob, {});
+            renderer.save(view, dir / name);
+            const uint32_t line = renderer.pixel(at);
+            view.mouseUp(knob, {});
+            view.mouseMove({600.0f, 500.0f}, {});
+            renderer.save(view, dir / "10h-curve-phase-let-go.png");
+            return line != renderer.pixel(at);
+        };
+        const bool inEditor = whileHeld(shapeAt(0.3, -0.8), "10h-curve-phase-held.png");
+        click(view, kShapeDone);
+        const Point inCard{cardShapeAt(0, 0.3, -0.8).x - 0.5f, cardShapeAt(0, 0.3, -0.8).y};
+        const bool inWideCard = whileHeld(inCard, "10h-curve-phase-held-card.png");
+        click(view, wideButton(0, 2)); // the full-size editor again, for what follows
+        model.set(phase, phaseBefore);
+        view.poll();
+        std::printf("      the phase line: %d in the editor, %d in the card\n", inEditor, inWideCard);
+        check(inEditor && inWideCard && model.value(phase) == phaseBefore,
+              "a Curve's Phase knob held draws a line where notes would start it, in the full-size editor and in its "
+              "widened card (read off the rendered pixels)");
+    }
+
     // Its loop's strip over the plot, on 16 columns: an end dragged sizes it, the start too, its middle moves it as long
     // as it is, a drag outside it draws a new one, its ends stay a column apart, and a double-click loops the whole
     // curve again; each one undo step.

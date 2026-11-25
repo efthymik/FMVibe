@@ -212,6 +212,9 @@ private:
     // Its loop over the plot `r` (what the clock mode doesn't play dimmed, its ends, its bar) and its ruler's labels: in
     // the strip over the big editor's plot, at the foot of a widened card's (`card`).
     void paintLoop(Canvas &c, int shape, Rect r, bool card);
+    // While an LFO's (a Curve's) Phase knob is dragged, a line across the plot `r` where notes would start it, as its
+    // card's display marks it while the Phase does something.
+    void paintPhaseDragged(Canvas &c, int lfo, Rect r) const;
     // The ruler's labels along a plot `width` wide, at least `gap` apart: where each is (0..1) and what it reads.
     std::vector<std::pair<double, std::string>> rulerMarks(int shape, float width, float gap) const;
     // A Curve's big editor's title row: its name, then its clock list, its Unipolar and sync switches and its Rate (or

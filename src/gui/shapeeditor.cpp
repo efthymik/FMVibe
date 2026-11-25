@@ -335,6 +335,16 @@ std::vector<std::pair<double, std::string>> ShapeEditor::rulerMarks(int shape, f
     return marks;
 }
 
+void ShapeEditor::paintPhaseDragged(Canvas &c, int lfo, Rect r) const {
+    const std::optional<Widget> held = host_.dragged();
+    const int phase = paramIndex(lfo, SourceParam::Phase);
+    auto get = [this](int index) { return value(index); };
+    if (!held || held->param != phase || (lfoShared(get, lfo) && !lfoAnchored(get, lfo)))
+        return; // free, not anchored: it starts nowhere in particular
+    const float x = r.x + static_cast<float>(std::clamp(value(phase), 0.0, 1.0)) * r.w;
+    c.line({x, r.y}, {x, r.bottom()}, shapeColor(lfo).alpha(0.8f), 1.5f);
+}
+
 void ShapeEditor::paintLoop(Canvas &c, int shape, Rect r, bool card) {
     const Color color = shapeColor(shape);
     // The ruler's labels on round places (see rulerMarks()): at the foot of a card's plot, in the strip under the bar
@@ -1074,6 +1084,7 @@ void ShapeEditor::paintShapeEditor(Canvas &c, int shape) {
     plotLine(c, points.data(), points.size(), color, 2.0f);
     if (curveShape(lfo))
         paintLoop(c, lfo, r, false);
+    paintPhaseDragged(c, lfo, r);
 
     if (const auto now = host_.lfoNow(lfo)) {
         if (curveShape(lfo)) { // a line across at the level it puts out, which a release can take off its curve
@@ -1662,8 +1673,11 @@ void ShapeEditor::paintLfoCard(Canvas &c, float card, int lfo) {
     area.push_back(areaAt(r, 0.0, zero));
     c.fillPolygon(area.data(), area.size(), color.alpha(0.12f));
     plotLine(c, points.data(), points.size(), color, 2.0f);
-    if (curveShape(lfo) && !elsewhere) // the big editor has it, and shows it
-        paintLoop(c, lfo, r, true);
+    if (!elsewhere) { // the big editor has it, and shows them
+        if (curveShape(lfo))
+            paintLoop(c, lfo, r, true);
+        paintPhaseDragged(c, lfo, r);
+    }
     if (const auto now = host_.lfoNow(lfo)) {
         if (curveShape(lfo)) { // and a line across at the level it puts out, as in the big editor
             const float y = areaAt(r, 0.0, std::clamp(host_.lfoLevelNow(lfo), -1.0, 1.0)).y;

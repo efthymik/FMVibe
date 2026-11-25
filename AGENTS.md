@@ -897,6 +897,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     curve's length in One-Shot and Sustain (a length in s or ms, or a rate in Hz) and as a rate retriggered; its
     places reading as times there, in bars and beats synced, else as a share; its full-size editor's title row
     setting its clock mode from a list of its own (opening under its button, not the card's), its Unipolar and its sync;
+    its Phase knob held drawing a line where notes would start it, there and in the widened card, and not once let go
+    (read off the rendered pixels);
     its loop's strip over the full-size plot, on the grid's columns: an end dragged
     sizing it, the start too, its middle moving it, a drag outside it drawing a new one, its ends a column apart and
     a double-click looping the whole curve, each one undo step, with the move cursor over it and the left-right one
