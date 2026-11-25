@@ -334,7 +334,10 @@ void ShapeEditor::paintLoop(Canvas &c, int shape, Rect r, bool card) {
         const float at = r.x + static_cast<float>(x) * r.w;
         if (card && at > r.right() - 30.0f)
             continue; // no room for it
-        if (card)
+        if (card && isOpEnvCurve(shape)) // an ENVELOPE tab's, under its plot
+            c.text({at + (x == 0.0 ? 0.0f : -gap * 0.5f), r.bottom() + 4.0f, gap, 12.0f}, text,
+                   kTextSmall, kFaint, x == 0.0 ? Align::Left : Align::Center);
+        else if (card)
             c.text({at + 3.0f, r.bottom() - 13.0f, gap - 6.0f, 12.0f}, text, kTextSmall, kFaint, Align::Left);
         else if (at > r.right() - 30.0f)
             c.text({at - 80.0f, strip.y + 8.0f, 80.0f, 12.0f}, text, kTextSmall, kFaint, Align::Right);

@@ -4222,7 +4222,8 @@ void View::paintButtonFace(Canvas &c, const Widget &w, bool lit, bool hot, Color
             return;
         }
         // Its part of the row's well, lit to its edges (the well's outer corners rounded), as the well is.
-        c.pushClip({w.partLeft, w.group.y, w.partRight - w.partLeft, w.group.h});
+        c.pushClip(w.stacked ? Rect{w.group.x, w.partLeft, w.group.w, w.partRight - w.partLeft}
+                             : Rect{w.partLeft, w.group.y, w.partRight - w.partLeft, w.group.h});
         c.fillRect(w.group, face, radius);
         c.popClip();
         lastPartLit_ = lit;
@@ -4238,22 +4239,32 @@ void View::paintButtonFace(Canvas &c, const Widget &w, bool lit, bool hot, Color
     // Its part of the pill: the pill painted within it, so only the pill's outer corners are rounded. The outline is
     // drawn inside the pill, and the lines between parts (round-capped) stop half a pixel short of its top and bottom,
     // so nothing reaches past it.
-    const bool first = w.partLeft <= w.group.x, last = w.partRight >= w.group.right();
+    // A column's (stacked) the same turned on its side: its parts from top to bottom, the lines between them across.
+    const bool first = w.partLeft <= (w.stacked ? w.group.y : w.group.x);
+    const bool last = w.partRight >= (w.stacked ? w.group.bottom() : w.group.right());
     if (first)
         lastPartLit_ = false;
-    c.pushClip({w.partLeft, w.group.y, w.partRight - w.partLeft, w.group.h});
-    const float top = w.group.y + 0.5f, bottom = w.group.bottom() - 0.5f;
+    c.pushClip(w.stacked ? Rect{w.group.x, w.partLeft, w.group.w, w.partRight - w.partLeft}
+                         : Rect{w.partLeft, w.group.y, w.partRight - w.partLeft, w.group.h});
+    const float top = (w.stacked ? w.group.x : w.group.y) + 0.5f;
+    const float bottom = (w.stacked ? w.group.right() : w.group.bottom()) - 0.5f;
+    auto between = [&](float at, float from, float to, Color ink) { // a line between two parts
+        if (w.stacked)
+            c.line({from, at}, {to, at}, ink, 1.0f);
+        else
+            c.line({at, from}, {at, to}, ink, 1.0f);
+    };
     if (fill.a < 1.0f) // a lit part's tint goes over the pill's own fill
         c.fillRect(w.group, kRaised, radius);
     c.fillRect(w.group, fill, radius);
     c.strokeRect(w.group, lit ? color : kTrack, 1.0f, radius);
     if (lit) {
         if (!first)
-            c.line({w.partLeft + 0.5f, top}, {w.partLeft + 0.5f, bottom}, color, 1.0f);
+            between(w.partLeft + 0.5f, top, bottom, color);
         if (!last)
-            c.line({w.partRight - 0.5f, top}, {w.partRight - 0.5f, bottom}, color, 1.0f);
+            between(w.partRight - 0.5f, top, bottom, color);
     } else if (!first && !lastPartLit_) {
-        c.line({w.partLeft, top + 1.0f}, {w.partLeft, bottom - 1.0f}, kTrack, 1.0f);
+        between(w.partLeft, top + 1.0f, bottom - 1.0f, kTrack);
     }
     c.popClip();
     lastPartLit_ = lit;
@@ -4297,7 +4308,6 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                            : isPartialCount(w.param) || field == FxParam::ChorusVoices ? count.c_str()
                            : w.param == paramIndex(GlobalParam::Mono) ? tr(w.b == 0 ? Str::SwitchPoly : Str::SwitchMono)
                            : w.param == paramIndex(GlobalParam::Legato) ? tr(Str::SwitchLegato)
-                           : opOfField(w.param, OpParam::EnvMode) >= 0 ? tr(w.b == 0 ? Str::SwitchAdsr : Str::SwitchCurve)
                            : field == FxParam::ShaperMode               ? tr(clipModes[std::clamp(w.b, 0, 2)])
                            : field == FxParam::AmpMic ? tr(kMicShortNames[std::clamp(w.b, 0, 2)])
                            : field == FxParam::MdRms                                            ? tr(Str::SwitchRms)
@@ -4327,6 +4337,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         else if (opOfField(w.param, OpParam::Warp) >= 0) // a sine as the warp reads it
             warpIcon(c, {w.rect.center().x - 9.0f, w.rect.center().y - 5.0f, 18.0f, 10.0f}, static_cast<OpWarp>(w.b),
                      on ? litInk(color) : (hovered ? kText : kDim));
+        else if (opOfField(w.param, OpParam::EnvMode) >= 0) // an AHDSR's shape, or a curve through its points
+            envModeIcon(c, w.rect.center(), w.b == 1, on ? litInk(color) : (hovered ? kText : kDim), switchIconScale());
         else if (opOfField(w.param, OpParam::UnisonCurve) >= 0) // where five copies' pitches go
             uniCurveIcon(c, w.rect.center(), static_cast<UniCurve>(w.b), on ? litInk(color) : (hovered ? kText : kDim));
         else if (opOfField(w.param, OpParam::UnisonPan) >= 0) // and where they sit

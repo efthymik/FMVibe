@@ -800,8 +800,6 @@ STR(SwitchFree, "Free")
 STR(SwitchAnchor, "Anchor")
 STR(SwitchOneShot, "One-Shot")
 STR(SwitchSustain, "Sustain")
-STR(SwitchAdsr, "ADSR") // an operator's ENVELOPE tab: its AHDSR, or its drawn envelope
-STR(SwitchCurve, "Curve")
 STR(SwitchHard, "HARD") // the shaper effect's first three curves
 STR(SwitchSoft, "SOFT")
 STR(SwitchAsym, "ASYM")

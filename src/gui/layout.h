@@ -204,22 +204,25 @@ inline Rect inputsName(float y) { return {kOpWell.x + 8.0f, y, 26.0f, 18.0f}; }
 inline Rect inputsMode(float y, int mode) { return {kOpWell.x + 36.0f + mode * 26.0f, y, 26.0f, 18.0f}; }
 inline Rect inputsModeName(float y) { return {kOpWell.x + 146.0f, y, 66.0f, 18.0f}; }
 inline Rect inputsDepth(float y) { return {kOpWell.right() - 12.0f - 48.0f, y, 48.0f, 18.0f}; }
-// Envelope: a row under the tabs (ADSR | Curve, and for a drawn envelope One-Shot | Sustain, its sync switch and, at
-// the right, the pencil that opens its full-size editor), then the curve, its knobs under the well (a drawn
-// envelope's Length alone, in the middle).
-constexpr float kOpEnvRowH = 28.0f;
-constexpr Rect kOpEnvRect{kOpDisplay.x, kOpDisplay.y + kOpEnvRowH, kOpDisplay.w, kOpDisplay.h - kOpEnvRowH};
-inline Rect opEnvModeButton(int curve) { // 0 ADSR, 1 Curve
-    return {kOpDisplay.x + 6.0f + curve * 52.0f, kOpDisplay.y + 4.0f, 52.0f, 20.0f};
+// Envelope: the curve on the whole display; in the row under the well, at its left, ADSR over Curve (their icons, one
+// pill), then the AHDSR's five knobs, or for a drawn envelope One-Shot | Sustain, its sync switch, its Length and, at
+// the right, the pencil that opens its full-size editor.
+constexpr Rect kOpEnvRect = kOpDisplay;
+inline Rect opEnvModeButton(int curve) { // 0 ADSR, over 1 Curve
+    return {kOpDisplay.x, kOpControlsY - 20.0f + curve * 20.0f, 26.0f, 20.0f};
+}
+inline Point opEnvKnob(int knob) { // the AHDSR's: Attack, Hold, Decay, Sustain, Release, right of ADSR | Curve
+    constexpr float left = kOpDisplay.x + 32.0f, step = (kOpDisplay.x + kOpDisplay.w - left) / 5.0f;
+    return {left + step * (static_cast<float>(knob) + 0.5f), kOpControlsY};
 }
 inline Rect opEnvSustainButton(int sustain) { // 0 One-Shot, 1 Sustain, as the Curve's clock modes' icons
-    return {opEnvModeButton(1).right() + 10.0f + sustain * 30.0f, kOpDisplay.y + 4.0f, 30.0f, 20.0f};
+    return {kInspector.x + 70.0f + sustain * 26.0f, kOpControlsY - 11.0f, 26.0f, 22.0f};
 }
-inline Rect opEnvSyncButton() { return {opEnvSustainButton(1).right() + 10.0f, kOpDisplay.y + 4.0f, 22.0f, 20.0f}; }
-inline Rect opEnvEditButton() { return {kOpDisplay.right() - 6.0f - 28.0f, kOpDisplay.y + 4.0f, 28.0f, 20.0f}; }
-// A drawn envelope's plot in the display: room above it for its loop's strip, and the plot's margins.
-constexpr Rect kOpEnvPlot{kOpEnvRect.x + 8.0f, kOpEnvRect.y + 10.0f, kOpEnvRect.w - 16.0f, kOpEnvRect.h - 18.0f};
-constexpr Point kOpEnvLengthKnob{kInspector.x + kInspector.w * 0.5f, kOpControlsY};
+inline Rect opEnvSyncButton() { return {kInspector.x + 148.0f, kOpControlsY - 11.0f, 24.0f, 22.0f}; }
+constexpr Point kOpEnvLengthKnob{kInspector.x + 196.0f, kOpControlsY};
+inline Rect opEnvEditButton() { return {kOpDisplay.right() - 26.0f, kOpControlsY - 11.0f, 26.0f, 22.0f}; }
+// A drawn envelope's plot in the display: room above it for its loop's strip, and under it for the ruler's times.
+constexpr Rect kOpEnvPlot{kOpDisplay.x + 10.0f, kOpDisplay.y + 16.0f, kOpDisplay.w - 20.0f, 80.0f};
 // Unison: where the copies sit, over a row of buttons along the well's bottom (how they spread in pitch, then, past a
 // rule, where they sit across), its knobs under the well.
 constexpr float kUnisonKnobsY = kOpControlsY;

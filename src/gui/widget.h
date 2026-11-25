@@ -300,9 +300,11 @@ struct Widget {
     Rect clip{};          // on a card that may be scrolled partly out: drawn and hit only within this
     bool popup = false;   // in the open list of a pill (its row's bypass, depth and remove): over everything else
     // One of a row of buttons drawn merged into one pill, as Poly | Mono: the pill, and from where to where this
-    // one's part of it reaches (halfway across the gaps to its neighbors). group.w is 0 for a button on its own.
+    // one's part of it reaches (halfway across the gaps to its neighbors). group.w is 0 for a button on its own. In a
+    // column of them (stacked), partLeft and partRight are its part's top and bottom.
     Rect group{};
     float partLeft = 0.0f, partRight = 0.0f;
+    bool stacked = false;
     bool modeGlyph = false; // a wire label in the graph showing its route's mode (not Phase) inside it
     // A stepper's field (see isStepper()): drawn in place of its knob, and hit as its rect is. It may reach past the
     // rect's sides, as far as the widgets beside it leave room.
@@ -312,17 +314,27 @@ struct Widget {
 };
 
 // Merges the buttons added to `list` since `from` into one pill, as Poly | Mono, each its part of it (see
-// Widget::group).
+// Widget::group); buttons one under another into a column (ADSR over Curve).
 inline void mergeButtons(std::vector<Widget> &list, size_t from) {
     if (list.size() < from + 2)
         return;
+    const bool stacked = list[from + 1].rect.y >= list[from].rect.bottom() - 0.5f;
     Rect group = list[from].rect;
-    group.w = list.back().rect.right() - group.x;
+    if (stacked)
+        group.h = list.back().rect.bottom() - group.y;
+    else
+        group.w = list.back().rect.right() - group.x;
     for (size_t i = from; i < list.size(); ++i) {
         Widget &w = list[i];
         w.group = group;
-        w.partLeft = i == from ? group.x : (list[i - 1].rect.right() + w.rect.x) * 0.5f;
-        w.partRight = i + 1 == list.size() ? group.right() : (w.rect.right() + list[i + 1].rect.x) * 0.5f;
+        w.stacked = stacked;
+        if (stacked) {
+            w.partLeft = i == from ? group.y : (list[i - 1].rect.bottom() + w.rect.y) * 0.5f;
+            w.partRight = i + 1 == list.size() ? group.bottom() : (w.rect.bottom() + list[i + 1].rect.y) * 0.5f;
+        } else {
+            w.partLeft = i == from ? group.x : (list[i - 1].rect.right() + w.rect.x) * 0.5f;
+            w.partRight = i + 1 == list.size() ? group.right() : (w.rect.right() + list[i + 1].rect.x) * 0.5f;
+        }
     }
 }
 

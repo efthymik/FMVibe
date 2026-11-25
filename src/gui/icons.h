@@ -110,6 +110,9 @@ void filterIcon(Canvas &c, Rect r, FilterType type, Color color);
 bool isFxIconSwitch(FxParam field);
 void fxSwitchIcon(Canvas &c, Point m, FxParam field, Color color);
 void lfoClockIcon(Canvas &c, Point m, LfoClock clock, Color color, float scale = 1.0f);
+// An operator's envelope's two kinds, about 16 x 10 around `m`: an AHDSR's shape (attack, hold, decay, sustain and
+// release), or a curve through its points (a drawn one).
+void envModeIcon(Canvas &c, Point m, bool curve, Color color, float scale = 1.0f);
 // A modulation's polarity, about 10 x 8 around `m`: a wave about a middle line for bipolar, humps up from a
 // baseline for unipolar, like the LFO's UNIPOLAR switch.
 void polarityIcon(Canvas &c, Point m, bool bipolar, Color color, float scale = 1.0f);

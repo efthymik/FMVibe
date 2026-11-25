@@ -280,8 +280,8 @@ void InspectorPanel::widgets(std::vector<Widget> &list) const {
             add(Kind::Toggle, kSyncButton, paramIndex(op, OpParam::Sync));
         }
         if (tab == InspectorTab::Envelope) {
-            // ADSR | Curve; for a drawn envelope, One-Shot | Sustain, its sync switch, its pencil and its Length, else
-            // the AHDSR's knobs.
+            // ADSR over Curve; for a drawn envelope, One-Shot | Sustain, its sync switch, its Length and its pencil,
+            // else the AHDSR's knobs: along the row under the well.
             const size_t modes = list.size();
             for (int curve = 0; curve < 2; ++curve)
                 add(Kind::Choice, opEnvModeButton(curve), paramIndex(op, OpParam::EnvMode), op, curve);
@@ -300,10 +300,8 @@ void InspectorPanel::widgets(std::vector<Widget> &list) const {
                 const int ahdsr[] = {paramIndex(op, OpParam::Attack), paramIndex(op, OpParam::Hold),
                                      paramIndex(op, OpParam::Decay), paramIndex(op, OpParam::Sustain),
                                      paramIndex(op, OpParam::Release)};
-                const float step = (kInspector.w - 32.0f) / 5.0f;
                 for (int i = 0; i < 5; ++i)
-                    knob(ahdsr[i], {kInspector.x + 16.0f + step * (i + 0.5f), kOpControlsY}, kOpKnobD,
-                         tr(envLabels[i]));
+                    knob(ahdsr[i], opEnvKnob(i), kOpKnobD, tr(envLabels[i]));
             }
         }
     } else {

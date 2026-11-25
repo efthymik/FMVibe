@@ -384,6 +384,22 @@ void noteIcon(Canvas &c, Point m, Color color) {
     c.polyline(flag, std::size(flag), color, 1.4f);
 }
 
+void envModeIcon(Canvas &c, Point m, bool curve, Color color, float scale) {
+    auto at = [&](float x, float y) { return Point{m.x + x * scale, m.y + y * scale}; };
+    if (!curve) {
+        const Point points[] = {at(-8.0f, 5.0f), at(-5.0f, -4.5f), at(-3.0f, -4.5f), at(0.5f, 0.0f), at(4.5f, 0.0f),
+                                at(7.5f, 5.0f)};
+        c.polyline(points, std::size(points), color, 1.3f);
+        return;
+    }
+    // Up, down a little and up again, as a curve drawn through its points (three of them dots).
+    const Point points[] = {at(-7.0f, 4.5f),  at(-5.5f, -0.5f), at(-4.0f, -3.5f), at(-2.5f, -3.8f), at(-1.0f, -1.5f),
+                            at(0.5f, 0.8f),   at(2.0f, 1.2f),   at(3.5f, 0.2f),   at(5.2f, -2.0f),  at(7.0f, -4.5f)};
+    c.polyline(points, std::size(points), color, 1.3f);
+    for (const Point &p : {points[0], points[6], points[9]})
+        c.fillCircle(p, 1.6f * scale, color);
+}
+
 void polarityIcon(Canvas &c, Point m, bool bipolar, Color color, float scale) {
     const std::vector<double> key{static_cast<double>(Curve::PolarityIcon), m.x, m.y, bipolar ? 1.0 : 0.0, scale};
     const std::vector<Point> points = icons.get(key, [&] {

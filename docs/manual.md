@@ -278,8 +278,8 @@ The display zooms to fit the whole envelope. While notes play, a dashed line and
 
 #### Drawn envelopes
 
-**ADSR | Curve**, at the top of the tab, switches the operator to a **drawn envelope**: a curve you draw, which can
-have as many stages as you like. The first time you switch, the curve is drawn from the AHDSR, so the sound stays
+The two buttons at the left of the row under the display switch between the **ADSR** envelope (the upper button)
+and a **drawn envelope** (the lower one): a curve you draw, which can have as many stages as you like. The first time you switch, the curve is drawn from the AHDSR, so the sound stays
 about the same; switching back to ADSR keeps the curve for later.
 
 - Draw it on the display as you would a shaper's curve: double-click to add or delete a point, drag points, and

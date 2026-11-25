@@ -1918,14 +1918,17 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     opens none), so its knobs can take the drop:
     - **Envelope** (to begin with): the operator's envelope, and its knobs. While notes play, a dashed line across
       it shows the newest voice's envelope level, with a dot where it meets the curve, as a mod envelope's card
-      does. A row along its top holds **ADSR | Curve**; with Curve, One-Shot | Sustain (the Curve source's icons),
-      its sync switch (the metronome) and, at the right, a pencil. Switched to Curve the first time (its shape still
+      does. The curve has the whole display; its controls are in the row under the well, which starts with **ADSR**
+      over **Curve**, one pill of two icons (an AHDSR's shape, and a curve through its points, named in their
+      tooltips), then the AHDSR's five knobs, a little closer together for it; with Curve, One-Shot | Sustain (the
+      Curve source's icons), its sync switch (the metronome), Length and, at the right, a pencil. Switched to Curve
+      the first time (its shape still
       as a new patch has it), the curve is drawn from the AHDSR in the same undo step: the attack, hold and decay, a
       flat stretch at the sustain level as Sustain's loop (a quarter of the other times, at least 50 ms), then the
       release, the segments' curves bent alike, Length their sum. The display then shows the drawn curve, edited in
       place as a voice shaper's curve is on its page (points, bends, Points | Steps and Snap from the grid's
-      settings), with its loop's bar along its top in Sustain and the ruler's times at its foot, and a Length knob
-      (a note value while synced) in place of the five. While notes play, a dashed line across shows the newest
+      settings), with its loop's bar along its top in Sustain and the ruler's times under it, clear of the curve's
+      foot; Length is a note value while synced. While notes play, a dashed line across shows the newest
       voice's level and a dot where it is on the curve. The pencil opens its full-size editor over the routing panel,
       the inspector staying beside it (the tab's display greyed out meanwhile), with One-Shot | Sustain, sync and
       Length in its title row, the loop's strip and ruler over the plot as a Curve source's has them, and the point
