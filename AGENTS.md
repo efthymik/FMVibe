@@ -641,7 +641,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the modulation panel's + SOURCE opening the list of source types under it, adding Random and MIDI sources, each
     with its card, a MIDI card's knob picking
     its controller and its input's list pressure or slide instead, its CC knob going, and the list button's tooltip
-    following its input; a Random card's Unipolar switch, beside its clock list as an LFO card's, bipolar to begin
+    following its input; a Random card's Unipolar switch, under its clock list as a Curve card's, bipolar to begin
     with, setting its polarity and lit while unipolar (read off the rendered pixels), undoably; a Curve source added second from the list,
     unipolar and widened, its Unipolar switch under its clock list, undoably, and folded showing
     CRV and its number (read off the rendered pixels);

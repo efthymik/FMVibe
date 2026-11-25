@@ -1608,8 +1608,9 @@ std::vector<View::Widget> View::widgets() const {
             // the clock switches together (see setLfoClock()).
             const bool random = mods_.sourceTypeOf(s) == SourceType::Random;
             const bool curve = mods_.sourceTypeOf(s) == SourceType::Curve;
+            const bool clockFirst = curve || random; // no shape list: laid out as a Curve card
             const int clock = paramIndex(s, SourceParam::Free);
-            if (curve || random) {
+            if (clockFirst) {
                 add(Kind::ListButton, lfoShapeButton(card), clock);
                 if (listMenu_ == clock && !listEditor_) // a Curve's full-size editor's opens under its own button
                     lfoList = lfoShapeButton(card);
@@ -1622,24 +1623,24 @@ std::vector<View::Widget> View::widgets() const {
                     lfoList = lfoClockButton(card);
             }
             if (!widened)
-                add(Kind::LfoDisplay, sourceDisplay(card, random), -1, s);
+                add(Kind::LfoDisplay, sourceDisplay(card), -1, s);
             // Synced, the knob picks a note value instead of a rate and shows it as its label. An LFO's Unipolar switch
-            // between its shape list and the knobs, its sync switch under it, beside its clock list, a Random's in the
-            // same places; a Curve's two under its list's right end, Unipolar first, its three knobs alike beside it. A
-            // Random's Unipolar is its Bipolar switch, lit while it is off.
-            add(Kind::Toggle, curve ? curveSyncButton(card) : lfoSyncButton(card), paramIndex(s, SourceParam::Sync));
-            add(Kind::Toggle, curve ? curveUnipolarSwitch(card) : lfoUnipolarSwitch(card),
+            // between its shape list and the knobs, its sync switch under it, beside its clock list; a Curve's and a
+            // Random's two under their list's right end, Unipolar first, their three knobs alike beside it. A Random's
+            // Unipolar is its Bipolar switch, lit while it is off.
+            add(Kind::Toggle, clockFirst ? curveSyncButton(card) : lfoSyncButton(card), paramIndex(s, SourceParam::Sync));
+            add(Kind::Toggle, clockFirst ? curveUnipolarSwitch(card) : lfoUnipolarSwitch(card),
                 paramIndex(s, random ? SourceParam::Bipolar : SourceParam::Unipolar));
             // A Curve playing its curve once from each note takes and shows a length (see shownValue()).
             const bool synced = value(paramIndex(s, SourceParam::Sync)) >= 0.5;
             const bool length = mods_.curveTime(s) == ModulationModel::CurveTime::Seconds;
             knob(synced ? paramIndex(s, SourceParam::Division) : paramIndex(s, SourceParam::Rate),
-                 curve ? curveKnob(card, 0) : lfoKnob(card, 0), 30.0f,
+                 clockFirst ? curveKnob(card, 0) : lfoKnob(card, 0), 30.0f,
                  synced ? nullptr : tr(length ? Str::LabelLength : Str::LabelRate));
-            // A Random card has no Phase, which it takes none of, but Smooth and Chaos beside its narrower display.
+            // A Random card has no Phase, which it takes none of, but Smooth and Chaos.
             if (random) {
-                knob(paramIndex(s, SourceParam::RandomSmooth), randomKnob(card, 0), 30.0f, tr(Str::LabelSmooth));
-                knob(paramIndex(s, SourceParam::RandomChaos), randomKnob(card, 1), 30.0f, tr(Str::LabelChaos));
+                knob(paramIndex(s, SourceParam::RandomSmooth), curveKnob(card, 1), 30.0f, tr(Str::LabelSmooth));
+                knob(paramIndex(s, SourceParam::RandomChaos), curveKnob(card, 2), 30.0f, tr(Str::LabelChaos));
             } else {
                 knob(paramIndex(s, SourceParam::Phase), curve ? curveKnob(card, 1) : lfoKnob(card, 1), 30.0f,
                      tr(Str::LabelPhase));
@@ -4184,7 +4185,7 @@ void View::paintSource(Canvas &c, float card, int s) {
     if (s == wideLfo()) {
         shapes_.paintLfoCard(c, card, s);
     } else if (lfo) {
-        paintLfo(c, sourceDisplay(card, mods_.lfoShapeOf(s) == LfoShape::Random), s);
+        paintLfo(c, sourceDisplay(card), s);
     } else if (mods_.sourceTypeOf(s) == SourceType::Env) {
         paintEnvelope(c, sourceDisplay(card), kOps + s, color, true);
     } else {

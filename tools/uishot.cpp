@@ -1157,9 +1157,9 @@ Point lfoMode(float card, int mode) {
 Point cardShapeAt(float card, double x, double y) {
     return {cardX(card) + 281.0f + static_cast<float>(x) * 264.0f, 659.0f - static_cast<float>(y) * 44.88f};
 }
-// A Random card's Smooth (0) and Chaos (1) knobs, right of its narrowed display.
+// A Random card's Smooth (0) and Chaos (1) knobs, beside its Rate, where a Curve card's Phase and Slew are.
 Point randomKnob(float card, int knob) {
-    return detail::randomKnob(card, knob);
+    return detail::curveKnob(card, knob + 1);
 }
 
 void doubleClick(View &view, Point p) {
@@ -1320,7 +1320,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     check(randomSynced && std::abs(model.value(paramIndex(1, SourceParam::RandomSmooth)) - 0.6) < 1e-6 &&
               std::abs(model.value(paramIndex(1, SourceParam::RandomChaos)) - 0.3) < 1e-6,
           "a Random source starts synced and bipolar, and its Smooth and Chaos knobs set them");
-    // Its clock modes are Retrigger and Free alone, in a list where an LFO's shape list is: the
+    // Its clock modes are Retrigger and Free alone, in a list where an LFO's shape list is, as a Curve card's: the
     // wheel over its list stops at Free, and the list holds the two (a click where a third would be picks nothing),
     // each picked with Anchor and One-Shot left off.
     {
@@ -1371,7 +1371,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
         }
         return false;
     };
-    const float plotW = detail::sourceDisplay(1.0f, true).w - 20.0f; // inside its display, 10 px in from either side
+    const float plotW = detail::sourceDisplay(1.0f).w - 20.0f; // inside its display, 10 px in from either side
     check(lineIn(cardX(1) + 27.0f) && lineIn(cardX(1) + 26.0f + 0.05f * plotW),
           "a running random LFO's line reaches the left edge of its display");
     // Between snapshots the line scrolls on at the LFO's rate; run past the end of the cycle before a snapshot brings
@@ -1403,7 +1403,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     const bool heldShot = renderer.save(view, dir / "17a3-random-held.png");
     const float heldY = 688.0f + 0.5f * 18.0f;
     check(heldShot && dotAt({cardX(1) + 26.0f + plotW, heldY}) && lineIn(cardX(1) + 30.0f) &&
-              lineIn(cardX(1) + 90.0f),
+              lineIn(cardX(1) + 90.0f) && lineIn(cardX(1) + 200.0f),
           "a Random source at 0 Hz shows the value the newest voice holds, as a line across its display");
     model.live = Telemetry{};
     view.poll();
@@ -11489,11 +11489,11 @@ void testNewSources(const std::filesystem::path &dir, Renderer &renderer) {
               onPressure && onSlide && model.value(paramIndex(2, SourceParam::CcNumber)) == 1.0,
           "+ SOURCE's list adds Random and MIDI sources, a MIDI card's list picking pressure or slide over a controller");
 
-    // A Random card's Unipolar switch, beside its clock list, its sync under it, as an LFO card's: bipolar to begin
-    // with, a click making it unipolar and lighting the switch (read off the rendered pixels, clear of its icon),
-    // another bipolar again; each an undo step.
+    // A Random card's Unipolar switch, under its clock list beside its sync, as a Curve card's: bipolar to begin with,
+    // a click making it unipolar and lighting the switch (read off the rendered pixels, clear of its icon), another
+    // bipolar again; each an undo step.
     {
-        const Rect polarity = detail::lfoUnipolarSwitch(0.0f);
+        const Rect polarity = detail::curveUnipolarSwitch(0.0f);
         const int bipolarParam = paramIndex(0, SourceParam::Bipolar);
         const Point clearOfIcon{polarity.x + 3.0f, polarity.y + 3.0f};
         const bool startsBipolar = model.value(bipolarParam) == 1.0;

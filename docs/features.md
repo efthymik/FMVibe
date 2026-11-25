@@ -2020,10 +2020,9 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   shaped like + Effect (a drawn plus, the word and a chevron), which opens the list of source types under it to add
   one, and beside it how many of the 32 places are taken, as in 4/32 (with every
   place taken it is dimmed, and a click says so). Random and Curve cards are laid out as an LFO's (see below), with
-  their clock modes' list where an LFO's shape list is. A Random card has its Unipolar switch beside the list and its
-  sync switch under it, where an LFO's are, and no Phase knob; its Unipolar switch sets which way its depths swing, as
-  the polarity in its title's menu does (it starts bipolar, the switch off). A Curve card has its Unipolar and sync
-  switches under its list and three knobs beside it. A MIDI card has its input's list (CC,
+  their clock modes' list where an LFO's shape list is, their Unipolar and sync switches under it and three knobs
+  beside it. A Random card's Unipolar switch sets which way its depths swing, as the polarity in its title's menu
+  does (it starts bipolar, the switch off); it has no Phase knob. A MIDI card has its input's list (CC,
   Pressure or Slide, where an LFO's shape is; its tooltip says what the input follows), and right of it its CC stepper
   (while its input is a controller) and Slew; under them, both cards'
   display is a bar of what the newest voice gets now (from the middle while the source is bipolar), with its value.
@@ -2074,7 +2073,7 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     modulates nothing, it reads **No modulations** alone and adds an empty modulation from the source there (see the
     Mods view), with its target's menu open.
     A Random
-    card has **Smooth** and **Chaos** knobs beside its display, which shows four made-up cycles of what they do;
+    card has **Smooth** and **Chaos** knobs beside its Rate, and its display shows four made-up cycles of what they do;
     while notes play it shows the source's own last four cycles instead, as one line scrolling left with the live dot
     at its right end (at the end of a cycle, it waits there until the next one comes in). Standing still at 0 Hz,
     it shows four made-up notes' values, and while notes play a line across at the value the newest voice holds,
@@ -2092,15 +2091,14 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     an infinity sign for **Free**, an anchor for **Anchor** and a single cycle that ends in a dot for **One-Shot**. An
     LFO has those four, a Random source the first two and a Curve card five, with **Sustain** last (a rise, a level
     between two ticks and a fall); a Random's and a Curve's list is where an LFO's shape list is. Each pick, step or
-    wheel notch is one undo step. Right of the two rows, centered on them, are the Rate and Phase knobs (a Random
-    card's Rate alone), over a Random card's Smooth and Chaos. Between an LFO's shape list and Rate, level with the
-    list, is the
+    wheel notch is one undo step. Right of the two rows, centered on them, are an LFO's Rate and Phase knobs.
+    Between an LFO's shape list and Rate, level with the list, is the
     **Unipolar** switch, a hump on a baseline as a Mods row's polarity switch has, and under it, level with the clock
     list, the sync switch: a small square button with the metronome the effects' SYNC has, which turns the Rate knob
-    into a note-value knob (as it starts, on). A Random card has its two in the same places, beside its clock list
-    and under it. A Curve card has its Unipolar and sync switches under its clock list instead, at its right end
-    before the Rate knob, and right of the list three knobs alike, side by side: Rate (labeled Length while it reads
-    as one), Phase and **Slew**.
+    into a note-value knob (as it starts, on). A Curve card and a Random card have their Unipolar and sync switches
+    under their clock list instead, at its right end before the Rate knob, and right of the list three knobs alike,
+    side by side: a Curve's Rate (labeled Length while it reads as one), Phase and **Slew**, a Random's Rate,
+    **Smooth** and **Chaos**.
     The Phase knob is faint while it does nothing (on a free LFO that isn't anchored), and otherwise
     a thin line on the display marks where notes start the LFO (or where the song starts an anchored one). A Curve's
     dot keeps to its curve, as an envelope's does, and a dashed line across, while it runs, shows the level it puts
