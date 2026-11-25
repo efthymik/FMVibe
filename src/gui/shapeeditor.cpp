@@ -358,14 +358,18 @@ std::vector<std::pair<double, std::string>> ShapeEditor::rulerMarks(int shape, f
     return marks;
 }
 
-void ShapeEditor::paintPhaseDragged(Canvas &c, int lfo, Rect r) const {
+void ShapeEditor::paintPhase(Canvas &c, int lfo, Rect r) const {
     const std::optional<Widget> held = host_.dragged();
     const int phase = paramIndex(lfo, SourceParam::Phase);
     auto get = [this](int index) { return value(index); };
-    if (!held || held->param != phase || (lfoShared(get, lfo) && !lfoAnchored(get, lfo)))
+    if (lfoShared(get, lfo) && !lfoAnchored(get, lfo))
         return; // free, not anchored: it starts nowhere in particular
-    const float x = r.x + static_cast<float>(std::clamp(value(phase), 0.0, 1.0)) * r.w;
-    c.line({x, r.y}, {x, r.bottom()}, shapeColor(lfo).alpha(0.8f), 1.5f);
+    const double at = std::clamp(value(phase), 0.0, 1.0);
+    const float x = r.x + static_cast<float>(at) * r.w;
+    if (held && held->param == phase)
+        c.line({x, r.y}, {x, r.bottom()}, shapeColor(lfo).alpha(0.8f), 1.5f);
+    else if (at > 0.0 && at < 1.0) // at either end it is the plot's edge
+        c.line({x, r.y}, {x, r.bottom()}, shapeColor(lfo).alpha(0.3f), 1.0f, true);
 }
 
 void ShapeEditor::paintLoop(Canvas &c, int shape, Rect r, bool card) {
@@ -1107,7 +1111,7 @@ void ShapeEditor::paintShapeEditor(Canvas &c, int shape) {
     plotLine(c, points.data(), points.size(), color, 2.0f);
     if (curveShape(lfo))
         paintLoop(c, lfo, r, false);
-    paintPhaseDragged(c, lfo, r);
+    paintPhase(c, lfo, r);
 
     if (const auto now = host_.lfoNow(lfo)) {
         if (curveShape(lfo)) { // a line across at the level it puts out, which a release can take off its curve
@@ -1685,7 +1689,7 @@ void ShapeEditor::paintLfoCard(Canvas &c, float card, int lfo) {
     if (!elsewhere) { // the big editor has it, and shows them
         if (curveShape(lfo))
             paintLoop(c, lfo, r, true);
-        paintPhaseDragged(c, lfo, r);
+        paintPhase(c, lfo, r);
     }
     if (const auto now = host_.lfoNow(lfo)) {
         if (curveShape(lfo)) { // and a line across at the level it puts out, as in the big editor

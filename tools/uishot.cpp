@@ -4791,6 +4791,21 @@ void testCurveLoop(const std::filesystem::path &dir, Renderer &renderer) {
             renderer.save(view, dir / "10h-curve-phase-let-go.png");
             return line != renderer.pixel(at);
         };
+        // Let go, a faint dashed line stays there: some of its column differs from the plot at Phase 0.
+        auto column = [&](Point at) {
+            std::vector<uint32_t> pixels;
+            for (float dy = -30.0f; dy <= 30.0f; dy += 1.0f)
+                pixels.push_back(renderer.pixel({at.x, at.y + dy}));
+            return pixels;
+        };
+        renderer.save(view, dir / "10h-curve-phase-dashed.png");
+        const std::vector<uint32_t> dashed = column(shapeAt(0.3, -0.5));
+        model.set(phase, 0.0);
+        view.poll();
+        renderer.save(view, dir / "10h-curve-phase-none.png");
+        const bool faint = column(shapeAt(0.3, -0.5)) != dashed;
+        model.set(phase, 0.3);
+        view.poll();
         const bool inEditor = whileHeld(shapeAt(0.3, -0.8), "10h-curve-phase-held.png");
         click(view, kShapeDone);
         const Point inCard{cardShapeAt(0, 0.3, -0.8).x - 0.5f, cardShapeAt(0, 0.3, -0.8).y};
@@ -4798,10 +4813,10 @@ void testCurveLoop(const std::filesystem::path &dir, Renderer &renderer) {
         click(view, wideButton(0, 2)); // the full-size editor again, for what follows
         model.set(phase, phaseBefore);
         view.poll();
-        std::printf("      the phase line: %d in the editor, %d in the card\n", inEditor, inWideCard);
-        check(inEditor && inWideCard && model.value(phase) == phaseBefore,
-              "a Curve's Phase knob held draws a line where notes would start it, in the full-size editor and in its "
-              "widened card (read off the rendered pixels)");
+        std::printf("      the phase line: %d faint, %d in the editor, %d in the card\n", faint, inEditor, inWideCard);
+        check(faint && inEditor && inWideCard && model.value(phase) == phaseBefore,
+              "a Curve's Phase shows as a faint dashed line where notes start it, a solid one while its knob is held, "
+              "in the full-size editor and in its widened card (read off the rendered pixels)");
     }
 
     // Its loop's strip over the plot, on 16 columns: an end dragged sizes it, the start too, its middle moves it as long

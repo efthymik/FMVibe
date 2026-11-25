@@ -898,8 +898,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     places reading as times unsynced (looped too), in bars and beats synced, else as a share at 0 Hz; its full-size editor's title row
     setting its clock mode from a list of its own (opening under its button, not the card's), its Unipolar and its sync,
     and its Phase and Slew knobs taking the wheel;
-    its Phase knob held drawing a line where notes would start it, there and in the widened card, and not once let go
-    (read off the rendered pixels);
+    its Phase a faint dashed line where notes start it, drawn solid while its knob is held, there and in the widened
+    card (read off the rendered pixels);
     its loop's strip over the full-size plot, on the grid's columns: an end dragged
     sizing it, the start too, its middle moving it, a drag outside it drawing a new one, its ends a column apart and
     a double-click looping the whole curve, each one undo step, with the move cursor over it and the left-right one

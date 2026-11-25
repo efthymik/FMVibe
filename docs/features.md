@@ -2106,7 +2106,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     **Smooth** and **Chaos**.
     The Phase knob is faint while it does nothing (on a free LFO that isn't anchored), and otherwise
     a thin line on the display marks where notes start the LFO (or where the song starts an anchored one). A widened
-    card's plot and the full-size editor show that line only while the Phase knob is held. A Curve's
+    card's plot and the full-size editor show it as a faint dashed line (none at 0 or 100 %), drawn solid while the
+    Phase knob is held. A Curve's
     dot keeps to its curve, as an envelope's does, and a dashed line across, while it runs, shows the level it puts
     out, which a release in Sustain takes off the curve until the next point (in its widened card and full-size
     editor alike). A

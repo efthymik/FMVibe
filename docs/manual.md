@@ -736,8 +736,8 @@ The **shape tools**, in a row beside the shape, each one undo step:
 For editing points, see [Shape editors](#shape-editors). Where an LFO has its shape list, a Curve source has its
 **clock mode** list; its arrows and the mouse wheel step through the modes. Under its right end are the **Unipolar**
 and sync switches, and beside it three knobs: Rate (Length), Phase and **Slew**, which smooths what the curve puts out, so its
-jumps glide instead of stepping. Slew is off to begin with. While you drag Phase, a line on the curve shows where notes
-will start it.
+jumps glide instead of stepping. Slew is off to begin with. A faint dashed line on the curve shows where notes start
+it (Phase), drawn solid while you drag the knob.
 
 A Curve source has a fifth clock mode, **Sustain**, after One-Shot. It works like an envelope with a sustain loop:
 
