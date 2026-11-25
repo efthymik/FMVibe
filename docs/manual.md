@@ -777,8 +777,8 @@ A Random source is a random LFO: it takes a new value every cycle.
 - **Chaos**: how far each new value may move from the last; at 0 % it wanders, at 100 % (default) it jumps
   anywhere, like sample and hold.
 - **Smooth**: glides to each new value over that share of the cycle instead of jumping (0 % steps).
-- **Retrigger** or **Free** clock modes only.
-- **Unipolar | Bipolar** (bipolar by default).
+- **Retrigger** or **Free** clock modes only, from the list at the top of the card.
+- **Unipolar**: swings 0 to 1 instead of −1 to 1 (off by default, so the source starts bipolar).
 
 At **0 Hz** (unsynced, Rate at its bottom) a Random source stands still: each note takes a random value as it starts
 and holds it, so every note detunes, brightens or pans a little differently.
