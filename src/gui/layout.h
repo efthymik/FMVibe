@@ -1498,6 +1498,10 @@ inline Rect presetStep(int direction) {
 // follow the host's tempo.
 constexpr Rect kTempoSync{215.0f, kTitleRowY, 24.0f, kTopRowH};
 constexpr Rect kTempoBox{kTempoSync.x + kTempoSync.w + 4.0f, kTitleRowY, 76.0f, kTopRowH};
+// At the tempo's right, while the sequencer is on: the SEQ card's Play button again, its icon alone, whatever view
+// shows.
+constexpr Rect kTitleSeqPreview{kTempoBox.x + kTempoBox.w + 4.0f, kTitleRowY, 26.0f, kTopRowH};
+static_assert(kTitleSeqPreview.x + kTitleSeqPreview.w + 4.0f <= kPresetName.x - 30.0f); // clear of the back arrow
 // The octave shift: two small buttons under the keys' right end, the keys' range between them.
 inline Rect octaveButton(int dir, float top) {
     return {dir < 0 ? 1094.0f : 1162.0f, top + kKeys.y + kKeys.h + 2.0f, 14.0f, 12.0f};

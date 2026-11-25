@@ -48,6 +48,9 @@ public:
     bool seqOn() const; // the sequencer's power switch: off, the view takes no input but at it and the size button
     // Where the Play button starts the pattern: the start of the first note picked in the loop, or -1 (its start).
     double seqPreviewFrom() const;
+    // Where either Play button starts it: there while the roll shows, else from the loop's start (with the notes picked
+    // out of sight, the title bar's button plays the pattern as it is).
+    double seqPreviewStart() const;
     // Whether the Play button shows the pattern playing: as it was last asked, until the telemetry says so (or a moment
     // has passed, the audio thread not taking it), then as the telemetry says. So a second click soon after the first
     // stops what the first started, though the telemetry hasn't caught up.

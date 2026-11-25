@@ -970,7 +970,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     keys play notes as they would without the sequencer (in Key and Latch, those it held as it started are let go, the
     host told they have ended), and the host's transport leaves it be. Stopped, it plays as Play says again: in Host,
     from the transport's place, chasing; in Key and Latch, once a key is pressed. It does nothing while the sequencer is
-    off. It is the editor's, not a param: hosts don't see it, and presets and the host's state don't keep it.
+    off. It is the editor's, not a param: hosts don't see it, and presets and the host's state don't keep it. The
+    title bar shows it again at the tempo's right while the sequencer is on (see Header, below).
   - **Speed** sets a step's length as a multiple of a 1/16 step's speed, at the host's tempo (the roll's snap names
     its grids for a step of a 1/16): ×1/4, ×1/3, ×1/2, ×2/3, ×3/4, ×1 (to begin with), ×1.5 or ×2, a step of a 1/4,
     1/8 dotted, 1/8, 1/16 dotted, 1/8 triplet, 1/16, 1/16 triplet or 1/32. (Its param, `SeqParam::Rate`, kept its id and
@@ -1940,7 +1941,11 @@ what it started goes on.
   transport and lets the editor set its tempo, the browser demo and `fmvibe-uihost`, has no H: the synth always plays
   its own tempo there, which the field sets from the start and the host's transport follows (`fmvibe-uihost`'s
   starting at its `--tempo`, the demo's kept in the browser's storage, its first preset setting it as the page
-  opens). Under it, the
+  opens). At the tempo's right, while the sequencer is on, the SEQ card's **Play** button shows again as its icon
+  alone (`kTitleSeqPreview`, a `SeqPreview` widget the SEQ view presses and paints), in whatever view shows: a
+  triangle, and a square lit while the pattern plays (from either button). It plays from the first note picked in the
+  roll only while the roll shows, and from the loop's start otherwise (`SeqPanel::seqPreviewStart()`). With the
+  sequencer off it isn't there. Under it, the
   **global strip** spreads across the editor, from the output scope under the name to the voice count at its right
   end. First the output scope:
   the output after Volume (its two sides' mean) over two periods of the newest note's pitch (kept once the note has

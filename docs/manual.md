@@ -146,6 +146,10 @@ Tabs use two small marks in their top-right corner, with the same meaning everyw
 From left to right:
 
 - **Tempo** (only in hosts that let the plugin set the tempo, such as the browser demo): see [Tempo](#tempo).
+- **Play** (a triangle), right of the tempo, only while the sequencer is on: plays the sequencer's pattern from the
+  start of its loop, from any view. It is the SEQ card's Play button: while the pattern plays it shows a lit square,
+  and a click stops it. With the SEQ view showing, it starts at the earliest selected note, as the card's button
+  does.
 - The **preset bar**: the current preset's category, name and author, arrows to step through presets and an
   **(i)** button for the preset's info card. See [Presets](#14-presets).
 - **Undo** and **Redo** (curved arrows). Hovering one shows what it would undo or redo.
@@ -1252,6 +1256,8 @@ Each pattern has a **loop** (the whole pattern by default), which is what plays.
 - **Play** button, at the right of the Pattern row: plays the pattern from the start of its loop, whatever the Play
   mode below is set to. If notes are selected in the roll, it starts at the earliest selected note in the loop
   instead. While it plays, the keyboard plays notes as usual, and the button shows **Stop**: click it to stop.
+  While the sequencer is on, the same button sits in the title bar too, right of the tempo (see
+  [Title bar](#title-bar)).
 - **Play**:
   - **Host**: plays with the host's transport, locked to its bars. You can still play the synth from the keyboard
     on top. The browser demo's transport always runs, so there a preset set to Host starts playing as soon as you

@@ -1936,6 +1936,8 @@ std::vector<View::Widget> View::widgets() const {
     if (!controller_.hasTempo())
         add(Kind::TempoSync, kTempoSync);
     add(!controller_.hasTempo() && controller_.tempoSync() ? Kind::TempoHost : Kind::TempoBox, kTempoBox);
+    if (seq_.seqOn()) // the SEQ card's Play button again, the SEQ view's to press, paint and tell of (b 1)
+        add(Kind::SeqPreview, kTitleSeqPreview, -1, -1, 1);
     add(Kind::PresetStep, presetStep(-1), -1, -1);
     add(Kind::PresetNameBox, kPresetName);
     if (controller_.presetHasFile())

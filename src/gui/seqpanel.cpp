@@ -281,12 +281,19 @@ void SeqPanel::poll(const Telemetry &t, std::vector<Rect> &repaint) {
     bool moved = false;
     if (wide() && (t.seqPosition != was.seqPosition || t.seqPattern != was.seqPattern || t.seqKeys != was.seqKeys))
         moved = true;
-    if (wide() && t.seqPreview != was.seqPreview) // the Play button, played or stopped
-        repaint.push_back(kSeqPreviewButton);
+    // The Play buttons, played or stopped: the card's while the view shows, the title bar's while the sequencer is on.
+    auto previewMoved = [&] {
+        if (wide())
+            repaint.push_back(kSeqPreviewButton);
+        if (seqOn())
+            repaint.push_back(kTitleSeqPreview);
+    };
+    if (t.seqPreview != was.seqPreview)
+        previewMoved();
     // What it was last asked shown until the telemetry says so, or the audio thread didn't take it in time.
     if (seqPreviewAsked_ && (t.seqPreview == *seqPreviewAsked_ || host_.now() - seqPreviewAskedAt_ >= kSeqPreviewWait)) {
-        if (t.seqPreview != *seqPreviewAsked_ && wide())
-            repaint.push_back(kSeqPreviewButton);
+        if (t.seqPreview != *seqPreviewAsked_)
+            previewMoved();
         seqPreviewAsked_.reset();
     }
     if (wide() && seqTrackGlows(t))
@@ -453,6 +460,8 @@ bool SeqPanel::seqSelected(int slot) const {
            std::find(seqSelection_.begin(), seqSelection_.end(), slot) != seqSelection_.end() &&
            value(seqNoteIndex(seqPattern(), slot, SeqNoteParam::Start)) < seqSteps();
 }
+
+double SeqPanel::seqPreviewStart() const { return wide() ? seqPreviewFrom() : -1.0; }
 
 bool SeqPanel::seqPreviewShown() const {
     if (seqPreviewAsked_ && host_.now() - seqPreviewAskedAt_ < kSeqPreviewWait)
@@ -2243,9 +2252,9 @@ bool SeqPanel::pressAs(const Widget &w, Point p, Modifiers mods, const Widget &h
     case Kind::SeqSize:
         toggleSize();
         return true;
-    case Kind::SeqPreview: { // played or stopped, as it shows (switched off, it takes no clicks)
+    case Kind::SeqPreview: { // played or stopped, as it shows (switched off, it takes no clicks; the title bar's isn't there)
         const bool play = !seqPreviewShown();
-        controller().playSeqPreview(play, seqPreviewFrom());
+        controller().playSeqPreview(play, seqPreviewStart());
         seqPreviewAsked_ = play;
         seqPreviewAskedAt_ = host_.now();
         return true;
@@ -3274,7 +3283,7 @@ std::string SeqPanel::tooltip(const Widget &w) const {
         return tr(full() ? Str::TipSeqHalf : Str::TipSeqFull);
     if (w.kind == Kind::SeqPreview)
         return tr(seqPreviewShown() ? Str::TipSeqPreviewStop
-                  : seqPreviewFrom() >= 0.0    ? Str::TipSeqPreviewPlayFrom
+                  : seqPreviewStart() >= 0.0   ? Str::TipSeqPreviewPlayFrom
                                                : Str::TipSeqPreviewPlay);
     switch (w.kind) {
     case Kind::SeqTool:
@@ -4018,6 +4027,10 @@ bool SeqPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         // mouse passes it by.
         const bool playing = seqPreviewShown();
         const Color ink = paintMainActionFace(c, w.rect, hovered, playing);
+        if (w.b == 1) { // the title bar's, its icon alone
+            transportIcon(c, w.rect.center(), ink, playing);
+            return true;
+        }
         transportIcon(c, {w.rect.x + 15.0f, w.rect.center().y}, ink, playing);
         c.text({w.rect.x + 25.0f, w.rect.y, w.rect.w - 29.0f, w.rect.h}, tr(playing ? Str::SeqPreviewStop : Str::SeqPreviewPlay),
                kTextLabel, ink, Align::Left, true);

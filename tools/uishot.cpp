@@ -4504,6 +4504,87 @@ void testSeqPlay(const std::filesystem::path &dir, Renderer &renderer) {
           "a note dragged, stretched or moved by the arrows ends with the pattern at the latest");
 }
 
+// The title bar's Play button, at the tempo's right: not there while the sequencer is off (a click there asking
+// nothing, the title bar as it was, read off the rendered pixels); on, there in whatever view shows, a click playing
+// the pattern from the loop's start and a second stopping it, lit while it plays (read off the rendered pixels),
+// editing nothing; lit too while the SEQ card's Play plays it; and from the first note picked while the roll shows,
+// from the loop's start while it doesn't.
+void testSeqTitlePlay(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    view.poll();
+    const Rect title = detail::kTitleSeqPreview;
+    const Point button = rectCenter(title);
+    const Point face{title.x + 4.0f, button.y}; // clear of its icon
+    const Point away{600.0f, 690.0f};
+
+    view.mouseMove(away, {});
+    renderer.save(view, dir / "36x-seq-title-off.png");
+    const uint32_t off = renderer.pixel(face);
+    click(view, button);
+    const bool offIgnored = model.previews.empty();
+
+    model.set(paramIndex(SeqParam::Enabled), 1.0);
+    view.poll();
+    view.mouseMove(away, {});
+    const bool restShot = renderer.save(view, dir / "36x-seq-title-on.png");
+    const uint32_t resting = renderer.pixel(face);
+    const auto valuesBefore = model.values;
+    click(view, button);
+    const double fromRouting = model.previewFrom;
+    view.poll();
+    view.mouseMove(away, {});
+    const bool playShot = renderer.save(view, dir / "36x-seq-title-playing.png");
+    const uint32_t playing = renderer.pixel(face);
+    click(view, button);
+    view.poll();
+    view.mouseMove(away, {});
+    renderer.save(view, dir / "36x-seq-title-stopped.png");
+    const uint32_t stopped = renderer.pixel(face);
+    view.undo();
+    const bool untouched = model.values == valuesBefore;
+    const bool onOff = model.previews.size() == 2 && model.previews[0] && !model.previews[1];
+    std::printf("      the title bar's Play: off %06x, on %06x, playing %06x, stopped %06x; asked %zu times, from %.0f\n",
+                off & 0xFFFFFF, resting & 0xFFFFFF, playing & 0xFFFFFF, stopped & 0xFFFFFF, model.previews.size(),
+                fromRouting);
+    check(offIgnored && restShot && playShot && off != resting && onOff && fromRouting == -1.0 && playing != resting &&
+              stopped == resting && untouched,
+          "the title bar's Play button shows only with the sequencer on, and plays and stops the pattern, lit while it "
+          "plays, editing nothing");
+
+    // The SEQ card's Play lights it too; and the note at step 8 picked, it starts there while the roll shows and from
+    // the loop's start once another view shows.
+    click(view, {308.0f, 116.0f}); // the SEQ tab
+    model.set(seqNoteIndex(0, 0, SeqNoteParam::Start), 8.0);
+    model.set(seqNoteIndex(0, 0, SeqNoteParam::Length), 2.0);
+    model.set(seqNoteIndex(0, 0, SeqNoteParam::Pitch), 60.0);
+    view.poll();
+    click(view, rectCenter(detail::kSeqPreviewButton));
+    view.poll();
+    view.mouseMove(away, {});
+    renderer.save(view, dir / "36x-seq-title-card-playing.png");
+    const bool cardLit = renderer.pixel(face) == playing;
+    click(view, rectCenter(detail::kSeqPreviewButton));
+    view.poll();
+    using detail::kSeqGrid;
+    const float rh = kSeqGrid.h / std::floor(kSeqGrid.h / detail::kSeqRowH); // rows from C3 (48) up, a bar across
+    click(view, {kSeqGrid.x + 9.0f * kSeqGrid.w / 16.0f, kSeqGrid.y + kSeqGrid.h - (60.0f - 48.0f + 0.5f) * rh});
+    click(view, button);
+    const double fromPicked = model.previewFrom;
+    click(view, button);
+    view.poll();
+    click(view, {60.0f, 116.0f}); // the ROUTING tab
+    view.poll();
+    click(view, button);
+    const double fromHidden = model.previewFrom;
+    click(view, button);
+    view.poll();
+    std::printf("      lit by the card's Play: %s; from the note picked %.0f, the roll hidden %.0f\n", cardLit ? "yes" : "no",
+                fromPicked, fromHidden);
+    check(cardLit && fromPicked == 8.0 && fromHidden == -1.0,
+          "the title bar's Play button is lit by the card's, and starts at a note picked only while the roll shows");
+}
+
 // Points picked on the SEQ view's BEND lane, as a shape editor's are: with Select, a box from empty space picking the
 // points it reaches (ringed, read off the rendered pixels), one of them dragged moving them all as far, one undo step,
 // stopping as a whole at a neighbor not picked; Shift+click adding a point; with Draw, a point picked dragged moving
@@ -16923,6 +17004,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testSeqCurvePick(dir, renderer);
     testSeqNoteBend(dir, renderer);
     testSeqPlay(dir, renderer);
+    testSeqTitlePlay(dir, renderer);
     testSeqPicks(dir, renderer);
     testFxEmptyMods(dir, renderer);
     testBrowserPickRescanned(dir, renderer);
