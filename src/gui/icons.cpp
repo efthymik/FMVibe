@@ -2,11 +2,13 @@
 
 #include "layout.h"
 #include "theme.h"
+#include "../clipcurve.h"
 #include "../unison.h"
 #include "../warp.h"
 
 #include <algorithm>
 #include <cmath>
+#include <initializer_list>
 #include <iterator>
 #include <numbers>
 
@@ -849,6 +851,196 @@ std::vector<Point> waveIcon(OpWave wave, Rect r) {
     std::vector<double> key = curveKey(Curve::WaveIcon, r);
     key.push_back(static_cast<double>(wave));
     return icons.get(key, [&] { return wavePoints(wave, r); });
+}
+
+// --- The type lists' icons.
+
+namespace {
+// A curve across `r`, x from 0 to 1 at `n` steps, y from -1 (bottom) to 1 (top), its points kept as the icons' are.
+template <class F>
+std::vector<Point> iconCurve(Rect r, int kind, int which, int n, F &&y) {
+    const std::vector<double> key{static_cast<double>(Curve::TypeIcon), r.x, r.y, r.w, r.h, static_cast<double>(kind),
+                                  static_cast<double>(which)};
+    return icons.get(key, [&] {
+        std::vector<Point> points;
+        for (int i = 0; i <= n; ++i) {
+            const double x = static_cast<double>(i) / n;
+            points.push_back({r.x + static_cast<float>(x) * r.w,
+                              r.center().y - static_cast<float>(std::clamp(y(x), -1.0, 1.0)) * 0.5f * r.h});
+        }
+        return points;
+    });
+}
+} // namespace
+
+// Its transfer curve, input across and output up, driven so its character shows, scaled to fill the box; Custom a
+// line through points, as an LFO's Custom shape is drawn; Stack three layers stacked, a flat plate and two under it.
+void clipModeIcon(Canvas &c, Rect r, ClipMode mode, Color color) {
+    if (mode == ClipMode::Stack) {
+        const float m = r.center().x, w = 7.0f, h = 2.0f;
+        const Point plate[] = {{m - w, r.y + h}, {m, r.y}, {m + w, r.y + h}, {m, r.y + 2.0f * h}, {m - w, r.y + h}};
+        c.polyline(plate, 5, color, 1.3f);
+        for (const float dy : {2.8f, 5.6f}) {
+            const Point layer[] = {{m - w, r.y + h + dy}, {m, r.y + 2.0f * h + dy}, {m + w, r.y + h + dy}};
+            c.polyline(layer, 3, color, 1.3f);
+        }
+        return;
+    }
+    if (mode == ClipMode::Custom) {
+        const Point points[] = {{r.x, r.bottom()}, {r.x + 0.35f * r.w, r.y + 0.6f * r.h},
+                                {r.x + 0.65f * r.w, r.y + 0.4f * r.h}, {r.right(), r.y}};
+        c.polyline(points, 4, color, 1.5f);
+        for (const Point p : points)
+            c.fillCircle(p, 1.6f, color);
+        return;
+    }
+    const double drive = mode == ClipMode::SineFold || mode == ClipMode::Fold ? 2.2 : mode == ClipMode::Hard ? 1.6 : 2.5;
+    double top = 0.0;
+    for (int i = 0; i <= 40; ++i)
+        top = std::max(top, std::abs(clipShape(mode, drive * (2.0 * i / 40.0 - 1.0))));
+    const std::vector<Point> points = iconCurve(r, 0, static_cast<int>(mode), 40, [&](double x) {
+        return clipShape(mode, drive * (2.0 * x - 1.0)) / std::max(top, 1e-6);
+    });
+    c.polyline(points.data(), points.size(), color, 1.5f);
+}
+
+namespace {
+// An arc about `m`, `radius` across and `ry` up and down, from angle `from` to `to` (radians, 0 to the right, going
+// clockwise on screen as y grows down).
+std::vector<Point> iconArc(Point m, float radius, float ry, float from, float to, int steps = 16) {
+    std::vector<Point> points;
+    for (int i = 0; i <= steps; ++i) {
+        const float t = from + (to - from) * i / steps;
+        points.push_back({m.x + radius * std::cos(t), m.y + ry * std::sin(t)});
+    }
+    return points;
+}
+void iconLine(Canvas &c, std::initializer_list<Point> points, Color color, float width = 1.3f) {
+    const std::vector<Point> line(points);
+    c.polyline(line.data(), line.size(), color, width);
+}
+} // namespace
+
+// The reverb's algorithms as the places they sound like: a hall's columns under its roof, a room as a box seen from
+// its open side, a plate hung on its two wires, and a shimmer's sparkles.
+void reverbTypeIcon(Canvas &c, Rect r, ReverbType type, Color color) {
+    const Point m = r.center();
+    switch (type) {
+    case ReverbType::Hall:
+        iconLine(c, {{m.x - 8.0f, m.y - 2.0f}, {m.x, m.y - 6.0f}, {m.x + 8.0f, m.y - 2.0f}, {m.x - 8.0f, m.y - 2.0f}},
+                 color);
+        for (const float x : {-5.5f, -1.8f, 1.8f, 5.5f})
+            c.line({m.x + x, m.y - 1.0f}, {m.x + x, m.y + 4.5f}, color, 1.2f);
+        c.line({m.x - 8.0f, m.y + 5.5f}, {m.x + 8.0f, m.y + 5.5f}, color, 1.3f);
+        break;
+    case ReverbType::Room: // the back wall, and the floor's and ceiling's edges running out to the front
+        c.strokeRect({m.x - 3.0f, m.y - 3.0f, 6.0f, 6.0f}, color, 1.2f);
+        for (const float sx : {-1.0f, 1.0f})
+            for (const float sy : {-1.0f, 1.0f})
+                c.line({m.x + 3.0f * sx, m.y + 3.0f * sy}, {m.x + 7.5f * sx, m.y + 6.0f * sy}, color, 1.2f);
+        break;
+    case ReverbType::Plate:
+        c.line({m.x - 4.0f, m.y - 6.0f}, {m.x - 4.0f, m.y - 2.5f}, color, 1.0f);
+        c.line({m.x + 4.0f, m.y - 6.0f}, {m.x + 4.0f, m.y - 2.5f}, color, 1.0f);
+        c.strokeRect({m.x - 7.0f, m.y - 2.5f, 14.0f, 8.0f}, color, 1.3f);
+        c.line({m.x - 4.0f, m.y + 1.5f}, {m.x + 4.0f, m.y + 1.5f}, color, 1.0f); // a ripple across it
+        break;
+    default: { // Shimmer: a four-pointed star and two small ones
+        auto star = [&](Point p, float size) {
+            const float k = 0.28f * size;
+            iconLine(c, {{p.x, p.y - size}, {p.x + k, p.y - k}, {p.x + size, p.y}, {p.x + k, p.y + k}, {p.x, p.y + size},
+                         {p.x - k, p.y + k}, {p.x - size, p.y}, {p.x - k, p.y - k}, {p.x, p.y - size}},
+                     color, 1.2f);
+        };
+        star({m.x - 2.0f, m.y + 0.5f}, 5.5f);
+        star({m.x + 5.5f, m.y - 4.0f}, 2.5f);
+        c.fillCircle({m.x + 6.0f, m.y + 4.0f}, 1.2f, color);
+        break;
+    }
+    }
+}
+
+// The amp's models as what they play: a clean tone's gem, the blues' notes, a crunch's crackle, a lead's flame, a heavy
+// anvil, a bass clef and a fuzzy ball.
+void ampModelIcon(Canvas &c, Rect r, AmpModel model, Color color) {
+    const Point m = r.center();
+    switch (model) {
+    case AmpModel::Clean: // a cut gem: its crown, its girdle and its point
+        iconLine(c, {{m.x - 7.0f, m.y - 2.0f}, {m.x - 4.0f, m.y - 5.5f}, {m.x + 4.0f, m.y - 5.5f}, {m.x + 7.0f, m.y - 2.0f},
+                     {m.x, m.y + 6.0f}, {m.x - 7.0f, m.y - 2.0f}, {m.x + 7.0f, m.y - 2.0f}},
+                 color);
+        iconLine(c, {{m.x - 2.0f, m.y - 5.5f}, {m.x - 3.0f, m.y - 2.0f}, {m.x, m.y + 6.0f}, {m.x + 3.0f, m.y - 2.0f},
+                     {m.x + 2.0f, m.y - 5.5f}},
+                 color, 1.0f);
+        break;
+    case AmpModel::Blues: // two quavers beamed together
+        for (const float x : {-4.5f, 3.5f}) {
+            c.fillCircle({m.x + x, m.y + 4.0f}, 2.2f, color);
+            c.line({m.x + x + 2.0f, m.y + 4.0f}, {m.x + x + 2.0f, m.y - 5.0f}, color, 1.2f);
+        }
+        c.line({m.x - 2.5f, m.y - 5.0f}, {m.x + 5.5f, m.y - 6.0f}, color, 2.0f);
+        break;
+    case AmpModel::Crunch: // a crackle
+        iconLine(c, {{m.x - 8.0f, m.y + 1.0f}, {m.x - 5.0f, m.y - 4.0f}, {m.x - 2.5f, m.y + 3.0f}, {m.x, m.y - 6.0f},
+                     {m.x + 2.5f, m.y + 5.0f}, {m.x + 5.0f, m.y - 3.0f}, {m.x + 8.0f, m.y + 1.0f}},
+                 color);
+        break;
+    case AmpModel::Lead: { // a flame: a round foot, rising to a tip with a lick of flame beside it
+        std::vector<Point> flame = iconArc({m.x, m.y + 2.0f}, 4.5f, 4.0f, 0.0f, kPi, 12);
+        for (const Point p : {Point{-4.0f, -1.5f}, Point{-1.5f, -4.0f}, Point{0.5f, -7.0f}, Point{1.5f, -3.5f},
+                              Point{3.5f, -5.0f}, Point{4.5f, -1.0f}, Point{4.5f, 2.0f}})
+            flame.push_back({m.x + p.x, m.y + p.y});
+        c.polyline(flame.data(), flame.size(), color, 1.3f);
+        iconLine(c, {{m.x - 1.5f, m.y + 4.5f}, {m.x - 1.5f, m.y + 1.5f}, {m.x + 0.5f, m.y - 1.0f}, {m.x + 1.5f, m.y + 2.5f},
+                     {m.x - 1.5f, m.y + 4.5f}},
+                 color, 1.0f);
+        break;
+    }
+    case AmpModel::Heavy: // an anvil: its face and horn, its waist and its foot
+        iconLine(c, {{m.x - 8.0f, m.y - 3.5f}, {m.x + 7.0f, m.y - 3.5f}, {m.x + 7.0f, m.y - 0.5f}, {m.x + 3.0f, m.y - 0.5f},
+                     {m.x + 2.0f, m.y + 2.5f}, {m.x + 5.0f, m.y + 5.0f}, {m.x - 5.0f, m.y + 5.0f}, {m.x - 2.0f, m.y + 2.5f},
+                     {m.x - 3.0f, m.y - 0.5f}, {m.x - 4.5f, m.y - 0.5f}, {m.x - 8.0f, m.y - 3.5f}},
+                 color);
+        break;
+    case AmpModel::Bass: { // a bass clef: its curl and its two dots
+        std::vector<Point> curl = iconArc({m.x - 2.0f, m.y - 1.5f}, 4.0f, 4.0f, 1.0f * kPi, 2.2f * kPi);
+        curl.push_back({m.x - 6.0f, m.y + 6.0f});
+        c.polyline(curl.data(), curl.size(), color, 1.4f);
+        c.fillCircle({m.x - 5.5f, m.y - 1.5f}, 1.3f, color);
+        c.fillCircle({m.x + 5.0f, m.y - 3.5f}, 1.1f, color);
+        c.fillCircle({m.x + 5.0f, m.y + 0.5f}, 1.1f, color);
+        break;
+    }
+    default: // Fuzz: a ball of fuzz, spikes all round
+        c.strokeCircle(m, 3.0f, color, 1.2f);
+        for (int i = 0; i < 10; ++i) {
+            const float t = i * 2.0f * kPi / 10.0f;
+            c.line({m.x + 4.0f * std::cos(t), m.y + 4.0f * std::sin(t)},
+                   {m.x + 6.5f * std::cos(t), m.y + 6.0f * std::sin(t)}, color, 1.1f);
+        }
+        break;
+    }
+}
+
+// CC a knob turned, Pressure a key pressed down onto its bed, Slide a finger moving up and down.
+void midiInputIcon(Canvas &c, Rect r, MidiInput input, Color color) {
+    const Point m = r.center();
+    if (input == MidiInput::Cc) {
+        c.strokeCircle(m, 4.5f, color, 1.3f);
+        c.line(m, {m.x + 2.6f, m.y - 3.4f}, color, 1.3f);
+    } else if (input == MidiInput::Pressure) {
+        c.line({m.x - 6.0f, r.bottom()}, {m.x + 6.0f, r.bottom()}, color, 1.3f);
+        c.line({m.x, r.y}, {m.x, r.bottom() - 3.0f}, color, 1.3f);
+        c.line({m.x - 2.5f, r.bottom() - 5.5f}, {m.x, r.bottom() - 3.0f}, color, 1.3f);
+        c.line({m.x + 2.5f, r.bottom() - 5.5f}, {m.x, r.bottom() - 3.0f}, color, 1.3f);
+    } else {
+        c.line({m.x, r.y}, {m.x, r.bottom()}, color, 1.3f);
+        for (const float way : {-1.0f, 1.0f}) {
+            const Point tip{m.x, way < 0.0f ? r.y : r.bottom()};
+            c.line(tip, {tip.x - 2.5f, tip.y - way * 2.5f}, color, 1.3f);
+            c.line(tip, {tip.x + 2.5f, tip.y - way * 2.5f}, color, 1.3f);
+        }
+    }
 }
 
 } // namespace fmvibe::gui::detail

@@ -136,6 +136,25 @@ bool isSourcePower(int param) {
     return sourceFieldOf(param) == SourceParam::Enabled;
 }
 
+// A type list's icon (a shaper's curve, the reverb's algorithm, the amp's model, a MIDI source's input), for `value`,
+// in a box about 16 x 10 as an LFO shape's; none for the amp's cabinets, whose names say their speakers and need the
+// room.
+bool hasTypeIcon(int param) {
+    const FxParam field = fxFieldOf(param);
+    return isClipMode(param) || isMidiInput(param) || field == FxParam::ReverbType || field == FxParam::AmpModel;
+}
+void typeIcon(Canvas &c, Rect r, int param, int value, Color color) {
+    const FxParam field = fxFieldOf(param);
+    if (isClipMode(param))
+        clipModeIcon(c, r, static_cast<ClipMode>(value), color);
+    else if (isMidiInput(param))
+        midiInputIcon(c, r, static_cast<MidiInput>(value), color);
+    else if (field == FxParam::ReverbType)
+        reverbTypeIcon(c, r, static_cast<ReverbType>(value), color);
+    else if (field == FxParam::AmpModel)
+        ampModelIcon(c, r, static_cast<AmpModel>(value), color);
+}
+
 // An LFO shape's icon, as its list shows it, in a box about 16 x 10.
 void lfoShapeIcon(Canvas &c, Rect r, LfoShape shape, Color color) {
     const std::vector<Point> points = shapeIcon(shape, r);
@@ -4714,12 +4733,15 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const bool model = isModelList(w), plain = w.a == kModelListPlain;
         const bool filterType = isFilterTypeList(w.param) && !plain;
         const bool clockList = isCurveClock(w.param) || isEnvClock(w.param);
-        const float indent = isLfoShape(w.param) || clockList ? 24.0f : filterType ? 30.0f : 0.0f;
+        const bool typed = hasTypeIcon(w.param) && !plain;
+        const float indent = isLfoShape(w.param) || clockList || typed ? 24.0f : filterType ? 30.0f : 0.0f;
         // A list with arrows has them at its ends (see the ListStep widgets), and no chevron.
         const bool steps = isSteppableList(w.param) && !plain;
         const float left = w.rect.x + (steps ? kListStepW + 2.0f : 10.0f);
         if (isLfoShape(w.param))
             lfoShapeIcon(c, {left, w.rect.center().y - 5.0f, 16.0f, 10.0f}, static_cast<LfoShape>(shown), color);
+        if (typed)
+            typeIcon(c, {left, w.rect.center().y - 5.0f, 16.0f, 10.0f}, w.param, shown, color);
         if (clockList) // a Curve's clock mode (an envelope's One-Shot or Sustain), by its icon, as its buttons have it
             lfoClockIcon(c, {left + 9.0f, w.rect.center().y},
                          isEnvClock(w.param) ? envClockOf(shown) : static_cast<LfoClock>(shown), color,
@@ -4817,11 +4839,14 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const bool modeChoice = routeModeFrom(w.param) >= 0;
         const bool filterType = isFilterTypeList(w.param);
         const bool clockList = isCurveClock(w.param) || isEnvClock(w.param);
-        const bool iconed = isLfoShape(w.param) || clockList || modeChoice;
+        const bool iconed = isLfoShape(w.param) || clockList || modeChoice || hasTypeIcon(w.param);
         const float indent = iconed ? 24.0f : filterType ? 30.0f : 0.0f;
         if (isLfoShape(w.param))
             lfoShapeIcon(c, {w.rect.x + 10.0f, w.rect.center().y - 5.0f, 16.0f, 10.0f}, static_cast<LfoShape>(w.b),
                          selected ? listColor(w.param) : kDim);
+        if (hasTypeIcon(w.param))
+            typeIcon(c, {w.rect.x + 10.0f, w.rect.center().y - 5.0f, 16.0f, 10.0f}, w.param, w.b,
+                     selected ? listColor(w.param) : kDim);
         if (clockList)
             lfoClockIcon(c, {w.rect.x + 19.0f, w.rect.center().y},
                          isEnvClock(w.param) ? envClockOf(w.b) : static_cast<LfoClock>(w.b),

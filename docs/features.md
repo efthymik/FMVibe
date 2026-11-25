@@ -2245,7 +2245,13 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   label, OUT label or matrix cell types a value on Ctrl+Click, since its double-click removes or toggles the route.
 - **Menus and lists**: every list and menu (the effects', the source types', the waves', a list button's, a Param EQ
   band's shapes, the Mods view's cascading menus) marks the row under the mouse, and the one picked, in the same
-  neutral tones; only a row's icon takes a color (the effect's, the band's, the source's).
+  neutral tones; only a row's icon takes a color (the effect's, the band's, the source's). The type lists show an icon
+  before each entry's name, on their button and in the list: an LFO's shape, a clock mode, a filter's type, a route's
+  mode, a shaper's curve (its transfer curve, a drawn curve's points, Stack three layers stacked), the reverb's algorithm
+  (a hall's columns, a room as a box, a plate on its wires, a shimmer's sparkles), the amp's model (Clean a gem, Blues
+  two notes, Crunch a crackle, Lead a flame, Heavy an anvil, Bass a bass clef, Fuzz a spiky ball) and a MIDI
+  source's input (CC a knob, Pressure a key pressed down, Slide an arrow up and down); the amp's cabinets show their
+  names alone, which say their speakers.
 - **Stepping lists**: a voice filter's and the filter effect's type, a voice shaper's and the shaper effect's curve, the
   amp's model and cabinet, the reverb's algorithm and an LFO's shape (its icon and name between the arrows) have an arrow at each end of their list's button, in place of the chevron: ‹ steps to
   the entry before the one shown and › to the one after, in the list's order, round its ends (from the last on to the
