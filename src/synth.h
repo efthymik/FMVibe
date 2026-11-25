@@ -479,6 +479,7 @@ private:
         double fade = 1.0;
         bool fresh = false;     // just started: operator phases are set in its first block
         bool keepLfos = false;  // joined a held note in poly legato: its LFOs carry on as copied, taking no first step
+        bool keepFollow = false; // and its Curves' Slew from where the held one's stood (see Synth::curveSlew())
         NoteRef note{};
         double velocity = 0.0;
         uint64_t order = 0;     // note-on sequence number, for stealing the oldest
@@ -645,7 +646,7 @@ private:
     void advanceLfo(Lfo &lfo, double hz, uint32_t frames, uint32_t &rng, bool oneShot, double chaos,
                     LfoLoop loop = {}, CurveRelease *release = nullptr) const;
     double voiceLfo(Voice &v, int s, const double *p, const ParamValues &params, uint32_t hostFrames) const;
-    double curveSlew(Voice &v, int s, double in, const double *p, uint32_t hostFrames) const;
+    double curveSlew(double &out, double in, double slew, bool restart, uint32_t hostFrames) const;
     // An operator's drawn envelope for this block, its Envelope following it, or its AHDSR again once it is switched
     // back (see OpParam::EnvMode); `p` are the voice's params.
     void followDrawn(Voice &v, int op, const double *p, const ParamValues &params);
@@ -1071,6 +1072,7 @@ private:
         bool on = false;
         std::array<Lfo, kMaxSources> lfos{};
         std::array<CurveRelease, kMaxSources> curveReleases{};
+        std::array<double, kMaxSources> follow{}; // what its Curves put out through their Slew (see Voice::follow)
         std::array<double, kAllSources> auxOut{};
         std::array<SlotMod, kAllSources * kSlots> held{}; // the slots of sources other than the LFOs
         int heldCount = 0;

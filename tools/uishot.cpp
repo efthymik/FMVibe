@@ -5636,18 +5636,19 @@ void testOpEnvCurve(const std::filesystem::path &dir, Renderer &renderer) {
     renderer.save(view, dir / "3h-env-adsr.png");
     click(view, detail::opEnvModeButton(1).center());
     renderer.save(view, dir / "3h-env-curve.png");
-    const double hold = envTimeFromNorm(model.value(paramIndex(0, OpParam::Hold)));
-    const double column = std::max(0.25 * (0.1 + hold + 0.3 + 0.4), 0.05);
-    const double total = 0.1 + hold + 0.3 + column + 0.4;
+    // Its Hold Off, as a new patch has it: no hold, and no point for one (an envelope time's 0 would be 1 ms).
+    const bool holdOff = model.value(paramIndex(0, OpParam::Hold)) == 0.0;
+    const double column = std::max(0.25 * (0.1 + 0.3 + 0.4), 0.05);
+    const double total = 0.1 + 0.3 + column + 0.4;
     const int count = static_cast<int>(model.value(shape));
-    const bool filled = model.value(mode) == 1.0 && model.value(sustain) == 1.0 && count == (hold > 0.0 ? 6 : 5) &&
+    const bool filled = holdOff && model.value(mode) == 1.0 && model.value(sustain) == 1.0 && count == 5 &&
                         std::abs(timeFromNorm(model.value(length)) - 1.0) < 1e-6 &&
                         std::abs(point(1, PointField::X) - 0.1 / total) < 1e-9 && point(1, PointField::Y) == 1.0 &&
                         point(count - 3, PointField::X) == model.value(loopStart) &&
                         point(count - 2, PointField::X) == model.value(loopEnd) &&
                         point(count - 3, PointField::Y) == 0.0 && point(count - 2, PointField::Y) == 0.0 &&
                         point(count - 1, PointField::X) == 1.0 && point(count - 1, PointField::Y) == -1.0 &&
-                        point(2, PointField::Curve) < 0.0; // the decay's curve starts fast, as a shape bent down
+                        point(1, PointField::Curve) < 0.0; // the decay's curve starts fast, as a shape bent down
     view.undo();
     const bool undone = model.value(mode) == 0.0 && model.value(shape) == paramTable()[shape].def &&
                         model.value(length) == paramTable()[length].def;
@@ -5678,6 +5679,25 @@ void testOpEnvCurve(const std::filesystem::path &dir, Renderer &renderer) {
         const bool down = fresh.value(mode) == 0.0;
         check(up && down, "the wheel over an operator's ADSR | Curve switches it as a click does, its Curve drawn from "
                           "its AHDSR the first time");
+    }
+    // With a hold, the curve holds its top that long, a point at each end of it.
+    {
+        FakeController held;
+        View holding(held);
+        held.ui.opTab = InspectorTab::Envelope;
+        held.set(paramIndex(0, OpParam::Attack), normFromTime(0.1));
+        held.set(paramIndex(0, OpParam::Hold), normFromTime(0.2));
+        held.set(paramIndex(0, OpParam::Decay), normFromTime(0.3));
+        held.set(paramIndex(0, OpParam::Sustain), 0.5);
+        held.set(paramIndex(0, OpParam::Release), normFromTime(0.4));
+        holding.poll();
+        click(holding, detail::opEnvModeButton(1).center());
+        const double heldColumn = 0.25 * (0.1 + 0.2 + 0.3 + 0.4), heldTotal = 0.1 + 0.2 + 0.3 + heldColumn + 0.4;
+        auto at = [&](int i, PointField field) { return held.value(shapeFieldIndex(shape, i, field)); };
+        check(static_cast<int>(held.value(shape)) == 6 && std::abs(at(1, PointField::X) - 0.1 / heldTotal) < 1e-9 &&
+                  std::abs(at(2, PointField::X) - 0.3 / heldTotal) < 1e-9 && at(1, PointField::Y) == 1.0 &&
+                  at(2, PointField::Y) == 1.0,
+              "an operator's AHDSR with a hold is drawn with its top held as long, and one with Hold Off without");
     }
 
     click(view, detail::opEnvSustainButton(0).center());

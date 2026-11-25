@@ -1835,7 +1835,10 @@ void ShapeEditor::drawEnvelope(int op) {
         auto bend = [&](OpParam field) {
             return std::clamp(-value(paramIndex(op, field)) * kCurveSteepness / 8.0, -1.0, 1.0);
         };
-        const double attack = time(OpParam::Attack), hold = time(OpParam::Hold), decay = time(OpParam::Decay);
+        // A hold of 0 is none (Off), as the AHDSR has it (see envRates()), where an envelope time's 0 is 1 ms.
+        const double holdNorm = value(paramIndex(op, OpParam::Hold));
+        const double attack = time(OpParam::Attack), hold = holdNorm > 0.0 ? timeFromNorm(holdNorm) : 0.0;
+        const double decay = time(OpParam::Decay);
         const double release = time(OpParam::Release);
         const double sustain = std::clamp(value(paramIndex(op, OpParam::Sustain)), 0.0, 1.0);
         const double column = std::max(0.25 * (attack + hold + decay + release), 0.05); // the loop: some room to see

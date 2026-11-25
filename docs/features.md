@@ -497,7 +497,9 @@ What the plugin does and how its editor works, in full. Building and installing 
     are set on the loop's bar over the shape, or from a point's right-click menu (see the shape editor).
   - A Curve source's **Slew** (Off to begin with, up to 1 s) lags what it puts out behind its curve, from where the
     curve is as the note starts, as a MIDI source's Slew follows its controller: a jump in the curve, or its loop
-    wrapping, glides instead of stepping. Off, it puts out its curve as it always did.
+    wrapping, glides instead of stepping. Off, it puts out its curve as it always did. A note joining a held one in
+    poly legato goes on from where the held one's Slew stands, and the effects' tail, once the last voice has ended,
+    from where the voice's stood.
   - In One-Shot and Sustain, unsynced, a Curve source's **Rate** reads as the curve's **length** (1.20 s rather than
     0.83 Hz), on its knob and in its full-size editor, whose label then says Length, and a length typed into it ("1.5
     s", "800 ms") sets it; a rate typed with "Hz" still goes. The param is still the rate, so nothing saved changes.
@@ -2031,7 +2033,7 @@ what it started goes on.
       tooltips), then the AHDSR's five knobs, a little closer together for it; with Curve, One-Shot | Sustain (the
       Curve source's icons), its sync switch (the metronome), Length, Slew and, at the right, a pencil. Switched to Curve
       the first time (its shape still
-      as a new patch has it), the curve is drawn from the AHDSR in the same undo step: the attack, hold and decay, a
+      as a new patch has it), the curve is drawn from the AHDSR in the same undo step: the attack, hold (none while Off) and decay, a
       flat stretch at the sustain level as Sustain's loop (a quarter of the other times, at least 50 ms), then the
       release, the segments' curves bent alike, in their proportions, Length 1 s. The display then shows the drawn curve, edited in
       place as a voice shaper's curve is on its page (points, bends, Points | Steps and Snap from the grid's

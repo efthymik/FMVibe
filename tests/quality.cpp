@@ -9578,6 +9578,69 @@ int main() {
         check(plain - low > 0.4f && std::abs(lowSlewed - low) < 1e-6f && share > 0.04f && share < 0.25f,
               "a Curve source's Slew lags what it puts out behind its curve");
     }
+    // The same square through a 1 s Slew: a note joining a held one in poly legato carries on from where the held one's
+    // Slew stands, rather than from its curve; and on a reverb's Mix, the effects' tail goes on from where the voice's
+    // stood as it ended, rather than jumping onto the curve.
+    {
+        auto curveOn = [](Engine &e, double slew, int target) {
+            e.p[paramIndex(0, SourceParam::Type)] = static_cast<double>(SourceType::Curve);
+            e.p[paramIndex(0, SourceParam::Sync)] = 0.0;
+            e.p[paramIndex(0, SourceParam::Rate)] = normFromRate(1.0);
+            e.p[paramIndex(0, SourceParam::CurveSlew)] = slew;
+            e.p[shapeCountIndex(0)] = 4.0;
+            const double square[4][3] = {{0.0, -1.0, 0.0}, {0.5, -1.0, 0.0}, {0.5, 1.0, 0.0}, {1.0, 1.0, 0.0}};
+            for (int i = 0; i < 4; ++i)
+                for (int f = 0; f < 3; ++f)
+                    e.p[shapePointIndex(0, i, static_cast<PointField>(f))] = square[i][f];
+            e.p[slotTargetIndex(0, 0)] = slotTargetValue(target);
+            e.p[slotAmountIndex(0, 0)] = 0.5;
+        };
+        auto joined = [&](double slew) {
+            Engine e(2);
+            e.synth().setPlayMode(false, true, false);
+            curveOn(e, slew, paramIndex(GlobalParam::FmAmount));
+            e.noteOn(48);
+            e.render(28800); // 0.6 s: a tenth of a second past the step up
+            Telemetry held, join;
+            e.synth().telemetry(held);
+            e.noteOn(55);
+            e.render(kBlock);
+            e.synth().telemetry(join);
+            return std::pair{held.sources[0], join.sources[0]};
+        };
+        const auto [heldPlain, joinPlain] = joined(0.0);
+        const auto [heldSlewed, joinSlewed] = joined(normFromTime(1.0));
+        std::printf("      joining in poly legato: the held voice's Curve at %.3f (%.3f unslewed), the new one's %.3f\n",
+                    heldSlewed, heldPlain, joinSlewed);
+        check(heldPlain - heldSlewed > 0.2f && std::abs(joinSlewed - heldSlewed) < 0.02f && joinPlain == heldPlain,
+              "a note joining a held one in poly legato carries its Curve's Slew on from the held one's");
+
+        Engine e(2);
+        e.p[paramIndex(0, OpParam::Release)] = normFromTime(0.01);
+        e.p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+        e.p[paramIndex(0, FxParam::ReverbDecay)] = 1.0;
+        chain(e.p, {0});
+        const int mix = paramIndex(0, FxParam::ReverbMix);
+        e.p[mix] = 0.5;
+        curveOn(e, normFromTime(1.0), mix);
+        e.noteOn(57);
+        e.render(26400); // 0.55 s: just past the step up
+        e.noteOff(57);
+        Telemetry t;
+        float before = 0.0f, after = 0.0f;
+        bool ended = false;
+        for (int block = 0; block < 200 && !ended; ++block) {
+            e.synth().telemetry(t);
+            before = t.modOffset[mix];
+            e.render(kBlock);
+            e.synth().telemetry(t);
+            ended = t.voices == 0 && t.fxTail;
+            after = t.modOffset[mix];
+        }
+        std::printf("      the voice ending: Reverb Mix's modulation %+.3f, then %+.3f in the tail\n", before, after);
+        check(ended && std::abs(after - before) < 0.02f,
+              "the effects' tail carries a Curve's Slew on from where the voice's stood");
+    }
 
     // --- A mod envelope releases after its key is let go, its voice running on (silently, once its operators have
     // faded) for as long as that takes: half way through a straight 0.5 s release it is at half its level, and what

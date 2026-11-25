@@ -546,6 +546,8 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
         std::array<DrawnEnvelope, kOps> drawn;
         std::array<Envelope, kMaxSources> modEnvs;
         std::array<Lfo, kMaxSources> lfos;
+        std::array<double, kMaxSources> follow; // its Curves' Slew, where it has run a block (else none yet)
+        bool followed = false;
     };
     std::optional<Joined> joined;
     if (legato_ && overlapping) {
@@ -563,6 +565,8 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
             joined->drawn = with->drawn; // its Envelopes follow these from its first block on
             joined->modEnvs = with->modEnvs;
             joined->lfos = with->lfos;
+            joined->follow = with->follow;
+            joined->followed = !with->fresh;
         }
     }
     // A key struck again while the pedal holds its note: that note goes into its release, the new one taking over.
@@ -596,6 +600,11 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
         v.modEnvs = joined->modEnvs;
         v.lfos = joined->lfos;
         v.keepLfos = true;
+        // Its Curves' Slew carries on from where the held voice's stood (MIDI sources start afresh, from v.fresh).
+        if (joined->followed) {
+            v.follow = joined->follow;
+            v.keepFollow = true;
+        }
         v.fade = 0.0;
         return;
     }
@@ -1406,6 +1415,7 @@ void Synth::startFxTail(const Voice &v, const ParamValues &params) {
     fxTail_.silent = 0.0;
     fxTail_.lfos = v.lfos;
     fxTail_.curveReleases = v.curveReleases;
+    fxTail_.follow = v.follow;
     fxTail_.auxOut = v.auxOut;
     std::fill_n(fxTail_.auxOut.begin() + kOpSource, kOps, 0.0); // the voice's operators have stopped
     fxTail_.rng = v.rng;
@@ -1451,8 +1461,10 @@ int Synth::fxTailBlock(const ParamValues &params, uint32_t frames) {
         else if (!lfo.left)
             leaveLoop(params, s, lfo, fxTail_.curveReleases[s], loop);
         const double curve = lfoOutput(get, params, s, lfo);
-        const double value =
-            lfo.left ? std::clamp(curve + leftOffset(lfo, fxTail_.curveReleases[s]), -1.0, 1.0) : curve;
+        double value = lfo.left ? std::clamp(curve + leftOffset(lfo, fxTail_.curveReleases[s]), -1.0, 1.0) : curve;
+        // A Curve's Slew goes on from where the voice's stood, as it would have in the voice.
+        if (sourceType(params[paramIndex(s, SourceParam::Type)]) == SourceType::Curve)
+            value = curveSlew(fxTail_.follow[s], value, get(paramIndex(s, SourceParam::CurveSlew)), false, frames);
         const bool bipolar = sourceBipolar(get, s);
         fxTail_.auxOut[s] = 0.5 * (value + 1.0);
         const double swing = bipolar ? 0.5 * value : 0.5 * (value + 1.0);
@@ -2970,11 +2982,10 @@ FMVIBE_NOINLINE double Synth::voiceLfo(Voice &v, int s, const double *p, const P
 }
 
 // A Curve's Slew: what it puts out lags behind its curve, as a MIDI source's follows its controller, from where the curve
-// is as the note starts. Off, it is the curve's value, which it keeps, so turned on it glides from there.
-FMVIBE_NOINLINE double Synth::curveSlew(Voice &v, int s, double in, const double *p, uint32_t hostFrames) const {
-    double &out = v.follow[s];
-    const double slew = p[paramIndex(s, SourceParam::CurveSlew)];
-    if (slew <= 0.0 || v.fresh)
+// is as the note starts (`restart`). Off, it is the curve's value, which it keeps, so turned on it glides from there.
+// `out` is what it put out last, `slew` its CurveSlew param.
+FMVIBE_NOINLINE double Synth::curveSlew(double &out, double in, double slew, bool restart, uint32_t hostFrames) const {
+    if (slew <= 0.0 || restart)
         out = in;
     else
         out = in + (out - in) * std::exp(-static_cast<double>(hostFrames) / (timeFromNorm(slew) * sampleRate_));
@@ -3138,8 +3149,9 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         }
         if (runsLfo(type)) { // an LFO, or Random, a random one
             double value = voiceLfo(v, s, p, params, hostFrames);
-            if (type == SourceType::Curve)
-                value = curveSlew(v, s, value, p, hostFrames);
+            if (type == SourceType::Curve) // a joined voice's from where the held one's was
+                value = curveSlew(v.follow[s], value, p[paramIndex(s, SourceParam::CurveSlew)],
+                                  v.fresh && !v.keepFollow, hostFrames);
             const bool lfoUnipolar = !sourceBipolar(get, s);
             collectSlots(s, lfoUnipolar ? 0.5 * (value + 1.0) : value, 0.5 * (value + 1.0), 0.5 * value, !lfoUnipolar);
             continue;
@@ -3261,7 +3273,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     const bool starting = v.fresh;
     if (v.fresh) {
         v.fresh = false;
-        v.keepLfos = false;
+        v.keepLfos = v.keepFollow = false;
         for (int i = 0; i < kOps; ++i) {
             const double start = p[paramIndex(i, OpParam::Phase)];
             const double amount = p[paramIndex(i, OpParam::PhaseRandom)];
