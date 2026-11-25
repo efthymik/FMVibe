@@ -74,15 +74,17 @@ public:
         stage_ = Stage::Release;
         enterSegment();
     }
-    // Follows `drawn` for this block (where it is idle, stands idle); and whether it does.
+    // Follows `drawn` for this block; and whether it does. Where that one is idle, it stops following it, and an AHDSR
+    // still releasing (switched back to it, and on to the drawn one again after the note was let go) runs out.
     void follow(DrawnEnvelope &drawn) {
         if (drawn.idle()) {
-            if (stage_ != Stage::Idle)
+            if (stage_ == Stage::Drawn)
                 stop();
             return;
         }
         drawn_ = &drawn;
         stage_ = Stage::Drawn;
+        drawnRising_ = drawn.rising();
     }
     bool following() const { return stage_ == Stage::Drawn; }
     // Back to its AHDSR from where the drawn envelope left it: rising again while the key is down, else releasing.
@@ -100,7 +102,10 @@ public:
 
     bool idle() const { return stage_ == Stage::Idle; }
     // Still on its way up (attack or hold): it will be louder than it is now.
-    bool rising() const { return stage_ == Stage::Attack || stage_ == Stage::Hold; }
+    // Still on its way up: its attack or hold, or a drawn envelope short of its shape's top as the block started.
+    bool rising() const {
+        return stage_ == Stage::Attack || stage_ == Stage::Hold || (stage_ == Stage::Drawn && drawnRising_);
+    }
     double level() const { return level_; }
     // Where it is, for the editor: its stage (0 attack, 1 hold, 2 decay, 3 sustain, 4 release) plus how far
     // along that stage (0..1; the sustain, which has no end, at 0); -1 when idle or following a drawn envelope.
@@ -247,6 +252,7 @@ private:
     double e_ = 1.0;    // exp(-k * t_)
     double k_ = 0.0;
     bool resync_ = true;
+    bool drawnRising_ = false;       // whether what it follows was rising as the block started (see follow())
     DrawnEnvelope *drawn_ = nullptr; // what it follows, while it does
 };
 

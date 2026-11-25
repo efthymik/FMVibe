@@ -5464,6 +5464,23 @@ void testCurveLoop(const std::filesystem::path &dir, Renderer &renderer) {
                 onEnd.size(), first.size(), model.value(loopStart), model.value(loopEnd));
     check(setEnd && setStart && startUndone && onEnd == wanted && first == firstWanted,
           "a Curve's point's menu sets the loop's start or end exactly there, undoably, and leaves out what would cross");
+    // Stored the other way round, as a state may hold it (the loop 0.1 to 0.9): Set as Loop Start moves its start,
+    // both ends written in order.
+    {
+        const double startWas = model.value(loopStart), endWas = model.value(loopEnd);
+        model.set(loopStart, 0.9);
+        model.set(loopEnd, 0.1);
+        view.poll();
+        view.menuCommand(menuEntry(shapeAt(pointX, 0.0), tr(Str::MenuSetLoopStart)));
+        const bool reversedStart = loopIs(pointX, 0.9);
+        view.undo();
+        const bool reversedUndone = loopIs(0.9, 0.1);
+        model.set(loopStart, startWas);
+        model.set(loopEnd, endWas);
+        view.poll();
+        check(reversedStart && reversedUndone,
+              "Set as Loop Start on a loop stored the other way round moves its start, undoably");
+    }
     view.mouseMove(shapeAt(pointX, 0.0), {});
     check(renderer.save(view, dir / "10h-curve-editor-sustain.png"), "render a Curve's full-size editor in Sustain");
 
@@ -5562,6 +5579,24 @@ void testOpEnvCurve(const std::filesystem::path &dir, Renderer &renderer) {
     check(filled && undone && adsr && kept,
           "an operator's ENVELOPE tab's ADSR | Curve switches to its drawn envelope in one undo step, drawn from its "
           "AHDSR the first time and kept as drawn after");
+    // The wheel over it does as a click: up, the Curve, drawn from the AHDSR the first time; down, the AHDSR again.
+    {
+        FakeController fresh;
+        View wheeled(fresh);
+        fresh.ui.opTab = InspectorTab::Envelope;
+        fresh.set(paramIndex(0, OpParam::Attack), normFromTime(0.1));
+        fresh.set(paramIndex(0, OpParam::Decay), normFromTime(0.3));
+        fresh.set(paramIndex(0, OpParam::Sustain), 0.5);
+        fresh.set(paramIndex(0, OpParam::Release), normFromTime(0.4));
+        wheeled.poll();
+        wheeled.wheel(detail::opEnvModeButton(1).center(), 1.0f, {});
+        const bool up = fresh.value(mode) == 1.0 && static_cast<int>(fresh.value(shape)) == count &&
+                        std::abs(fresh.value(shapeFieldIndex(shape, 1, PointField::X)) - 0.1 / total) < 1e-9;
+        wheeled.wheel(detail::opEnvModeButton(0).center(), -1.0f, {});
+        const bool down = fresh.value(mode) == 0.0;
+        check(up && down, "the wheel over an operator's ADSR | Curve switches it as a click does, its Curve drawn from "
+                          "its AHDSR the first time");
+    }
 
     click(view, detail::opEnvSustainButton(0).center());
     const bool oneShot = model.value(sustain) == 0.0;
@@ -5634,6 +5669,25 @@ void testOpEnvCurve(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, detail::opEnvEditButton().center());
     renderer.save(view, dir / "3h-env-editor.png");
     const bool open = editorOpen();
+    // Open, the newest voice moving along it repaints the whole editor, not only the inspector's part under it.
+    {
+        model.live.voices = 1;
+        model.live.opEnvPhase[0] = 0.3f;
+        model.live.opEnvLevels[0] = 0.4f;
+        view.poll();
+        model.live.opEnvPhase[0] = 0.6f;
+        model.live.opEnvLevels[0] = 0.7f;
+        view.poll();
+        const Rect panel = detail::kShapeEditorPanel;
+        const bool whole = std::any_of(view.changedAreas().begin(), view.changedAreas().end(), [&](Rect r) {
+            return r.x <= panel.x + 0.5f && r.right() >= panel.right() - 0.5f && r.y <= panel.y + 0.5f &&
+                   r.bottom() >= panel.bottom() - 0.5f;
+        });
+        model.live.voices = 0;
+        model.live.opEnvPhase[0] = -1.0f;
+        view.poll();
+        check(whole, "a drawn envelope's full-size editor repaints the whole of it as the newest voice moves along it");
+    }
     click(view, detail::opEnvEditButton().center()); // on its plot now, the inspector under it
     const bool covering = editorOpen();
     // Its mode list, where a Curve's clock list is: One-Shot picked from it, under its button, one undo step.
@@ -5729,6 +5783,49 @@ void testShapeCopyPaste(const std::filesystem::path &dir, Renderer &renderer) {
     const bool shaperUndone = count(s1.curve) == static_cast<int>(paramTable()[s1.curve].def);
     check(middle && ends && shaperCount == envCount + 1 && shaperUndone,
           "a shape pasted into a symmetric shaper curve keeps its ends at the curve's and gets a point in its middle");
+
+    // A symmetric curve with no point in its middle (Symmetric switched on with no room for one, or as a state holds
+    // it) copies as it sounds: its right half from where its segment across the middle stands there, its points after
+    // as they are. Pasted into a Curve source of more points, the points past the clip's go back to their defaults.
+    {
+        const double xs[] = {0.0, 0.4, 0.6, 1.0}, ys[] = {-1.0, 0.2, 0.8, 1.0};
+        model.set(s1.curve, 4.0);
+        for (int i = 0; i < 4; ++i) {
+            model.set(shapeFieldIndex(s1.curve, i, PointField::X), xs[i]);
+            model.set(shapeFieldIndex(s1.curve, i, PointField::Y), ys[i]);
+            model.set(shapeFieldIndex(s1.curve, i, PointField::Curve), 0.0);
+        }
+        view.poll();
+        view.menuCommand(entry(onShaper, Str::MenuCopyShape));
+        const ShapeClip clip = shapeClipboard();
+        bool split = false, after = false;
+        for (const ShapeClip::Point &p : clip.points) {
+            split = split || (std::abs(p.x - 0.5) < 1e-9 && std::abs(p.y - 0.5) < 1e-9);
+            after = after || (std::abs(p.x - 0.6) < 1e-9 && std::abs(p.y - 0.8) < 1e-9);
+        }
+        check(split && after, "a symmetric curve without a point in its middle copies as it sounds there");
+
+        model.set(lfo, 10.0);
+        for (int i = 0; i < 10; ++i) {
+            model.set(shapePointIndex(0, i, PointField::X), i / 10.0);
+            model.set(shapePointIndex(0, i, PointField::Y), 0.5);
+            model.set(shapePointIndex(0, i, PointField::Curve), 0.3);
+        }
+        view.poll();
+        view.mouseMove(cardShapeAt(0, 0.5, 0.0), {});
+        view.seqKey(View::Key::Paste, false);
+        const int pasted = count(lfo);
+        bool reset = pasted == static_cast<int>(clip.points.size());
+        for (int i = pasted; reset && i < 10; ++i)
+            for (const PointField f : {PointField::X, PointField::Y, PointField::Curve})
+                reset = reset && model.value(shapePointIndex(0, i, f)) == paramTable()[shapePointIndex(0, i, f)].def;
+        view.undo();
+        const bool shortUndone = count(lfo) == 10 && model.value(shapePointIndex(0, 9, PointField::Curve)) == 0.3;
+        std::printf("      a %d-point clip pasted over 10 points: %d points\n", static_cast<int>(clip.points.size()),
+                    pasted);
+        check(reset && shortUndone, "a shape pasted over one of more points puts the points past it back at their "
+                                    "defaults, undoably");
+    }
 
     // A Curve source of 40 points, Ctrl+C over its card, then Ctrl+V into velocity's curve: thinned to its 16.
     model.set(lfo, 40.0);
@@ -12148,6 +12245,12 @@ void testNewSources(const std::filesystem::path &dir, Renderer &renderer) {
         view.undo();
         check(startsBipolar && unipolar && polarShot && lit && bipolar && model.value(bipolarParam) == 0.0,
               "a Random card's Unipolar switch sets its polarity, lit while it is unipolar, undoably");
+        // The wheel turns it on upward and off downward, as it shows: down bipolar, up unipolar (lit) again.
+        view.wheel(polarity.center(), -1.0f, {});
+        const bool wheelOff = model.value(bipolarParam) == 1.0;
+        view.wheel(polarity.center(), 1.0f, {});
+        const bool wheelOn = model.value(bipolarParam) == 0.0;
+        check(wheelOff && wheelOn, "the wheel over a Random card's Unipolar switch turns it on upward, as it shows");
     }
 
     // A Curve source, an LFO of a drawn shape, from the list (second, after LFO): unipolar to begin with, its card

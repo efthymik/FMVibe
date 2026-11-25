@@ -710,6 +710,10 @@ std::optional<std::vector<std::pair<int, double>>> ShapeEditor::drawnChanges(int
         put(shapeIndex(shape, point, PointField::Y), points[k].y);
         put(shapeIndex(shape, point, PointField::Curve), points[k].curve);
     }
+    // The points it had past those back at their defaults, so a preset saved sparse leaves them out.
+    for (int point = static_cast<int>(points.size()); point < shapePointCount(shape); ++point)
+        for (const PointField field : {PointField::X, PointField::Y, PointField::Curve})
+            put(shapeIndex(shape, point, field), table_[shapeIndex(shape, point, field)].def);
     put(shapeBase(shape), static_cast<double>(points.size()));
     return changes;
 }
@@ -733,23 +737,22 @@ std::string ShapeEditor::shapeName(int shape) const {
 }
 
 // As it sounds: a symmetric curve's left half is its right half turned round its middle, not the points it keeps there.
+// Its right half starts at the middle, where it stands there (a point put there on its segment, where it has none).
 void ShapeEditor::copyShape(int shape) {
     ShapeClip clip;
     const std::vector<DrawnPoint> points = drawnPoints(shape);
     if (curveSymmetric(shape)) {
-        std::vector<DrawnPoint> right;
+        std::vector<ShapeClip::Point> all;
         for (const DrawnPoint &p : points)
-            if (p.x > 0.5 - kOnMiddle)
-                right.push_back(p);
-        if (!right.empty()) {
-            right.front().x = 0.5;
-            for (size_t i = right.size() - 1; i >= 1; --i) // a segment run backward bends the other way
-                clip.points.push_back({1.0 - right[i].x, -right[i].y, -right[i - 1].curve});
-            if (std::abs(right.front().y) > 1e-9) // a curve that doesn't pass through the middle jumps there
-                clip.points.push_back({0.5, -right.front().y, 0.0});
-            for (const DrawnPoint &p : right)
-                clip.points.push_back({p.x, p.y, p.curve});
-        }
+            all.push_back({p.x, p.y, p.curve});
+        const size_t middle = splitClipAt(all, 0.5);
+        std::vector<ShapeClip::Point> right(all.begin() + static_cast<std::ptrdiff_t>(middle), all.end());
+        right.front().x = 0.5;
+        for (size_t i = right.size() - 1; i >= 1; --i) // a segment run backward bends the other way
+            clip.points.push_back({1.0 - right[i].x, -right[i].y, -right[i - 1].curve});
+        if (std::abs(right.front().y) > 1e-9) // a curve that doesn't pass through the middle jumps there
+            clip.points.push_back({0.5, -right.front().y, 0.0});
+        clip.points.insert(clip.points.end(), right.begin(), right.end());
     } else {
         for (const DrawnPoint &p : points)
             clip.points.push_back({p.x, p.y, p.curve});
@@ -776,11 +779,11 @@ void ShapeEditor::pasteShape(int shape) {
     points.front().x = 0.0;
     const size_t had = points.size();
     const size_t most = static_cast<size_t>(shapeMaxPoints(shape));
-    if (curveSymmetric(shape)) { // its middle point, with room for it
-        points = thinClip(points, most - 1);
+    const bool symmetric = curveSymmetric(shape);
+    points = thinClip(points, symmetric ? most - 1 : most); // a symmetric one's middle point, with room for it
+    const size_t kept = points.size();                       // of the clip's own
+    if (symmetric)
         splitClipAt(points, 0.5);
-    }
-    points = thinClip(points, most);
     std::vector<DrawnPoint> drawn;
     for (const ShapeClip::Point &p : points)
         drawn.push_back({std::clamp(p.x, 0.0, 1.0), std::clamp(p.y, -1.0, 1.0), std::clamp(p.curve, -1.0, 1.0)});
@@ -795,8 +798,8 @@ void ShapeEditor::pasteShape(int shape) {
     }
     if (!changes->empty())
         editMany(*changes);
-    if (points.size() < had)
-        host_.flash(trf(Str::MsgShapeThinned, {std::to_string(points.size()), std::to_string(had)}));
+    if (kept < had)
+        host_.flash(trf(Str::MsgShapeThinned, {std::to_string(kept), std::to_string(had)}));
     else
         host_.flash(trf(Str::MsgShapePasted, {shapeName(shape)}));
 }
@@ -2593,9 +2596,9 @@ bool ShapeEditor::contextMenu(const std::optional<Widget> &hit, Point, std::vect
             const double x = shapePointX(hit->a, hit->b);
             const LfoLoop loop = loopOf(hit->a);
             menuLoop_ = {hit->a, x};
-            if (x < loop.end)
+            if (x <= loop.end - kLoopApart) // the ends kept as far apart as a drag keeps them
                 items.push_back({kMenuSetLoopStart, tr(Str::MenuSetLoopStart)});
-            if (x > loop.start)
+            if (x >= loop.start + kLoopApart)
                 items.push_back({kMenuSetLoopEnd, tr(Str::MenuSetLoopEnd)});
         }
         const bool end = isCurve(hit->a) && hit->b + 1 == shapePointCount(hit->a);
@@ -2624,8 +2627,13 @@ bool ShapeEditor::menuCommand(int command) {
         return true;
     }
     if ((command == kMenuSetLoopStart || command == kMenuSetLoopEnd) && menuLoop_.first >= 0) { // exactly at the point
+        // Both ends written, in order: a state may hold them the other way round, which loopOf() reads in order.
+        LfoLoop loop = loopOf(menuLoop_.first);
+        (command == kMenuSetLoopStart ? loop.start : loop.end) = menuLoop_.second;
+        if (loop.end - loop.start < kLoopApart) // the point moved since the menu opened
+            return true;
         const auto [start, end] = loopParams(menuLoop_.first);
-        mods_.edit(command == kMenuSetLoopStart ? start : end, menuLoop_.second);
+        editMany({{start, loop.start}, {end, loop.end}});
         return true;
     }
     if (command == kMenuDeletePoint && menuPoint_.first >= 0) {

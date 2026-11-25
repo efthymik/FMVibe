@@ -8207,8 +8207,9 @@ int main() {
 
         // A Slew lags what it puts out behind its shape, a one-pole lag: a shape jumping from nothing to full at its
         // middle, and its Sustain loop wrapping from full back to nothing, step no further than a 5 ms lag lets them
-        // (under a 200th of the way a sample), where without one they jump; let go, it stands idle only once what it puts
-        // out has settled, under -80 dB.
+        // (under a 200th of the way a sample), where without one they jump; let go, once its end has faded out, what it
+        // still puts out runs down to nothing in a straight line within the slew's time, no steeper than the lag took
+        // it, and it stands idle then (rather than waiting for the lag to settle, 9 times as long).
         {
             const Points points{{0.0, -1.0, 0.0}, {0.5, -1.0, 0.0}, {0.5, 1.0, 0.0}, {1.0, 1.0, 0.0}};
             const std::vector<double> shape = shapeOf(points);
@@ -8232,18 +8233,66 @@ int main() {
                 d.next();
             d.release();
             d.prepare(shape.data(), 4800.0, 0.0, 1.0, false, d.level(), kRate, 240.0);
-            int samples = 0;
-            while (!d.idle() && samples < 48000) {
-                d.next();
-                ++samples;
-            }
+            std::vector<double> released{d.level()};
+            while (!d.idle() && released.size() < 48000)
+                released.push_back(d.next());
+            const int samples = static_cast<int>(released.size()) - 1;
+            const double releaseStep = mostStep(released, 0, released.size());
             std::printf("      a 5 ms slew: the jump's step %.4f (%.2f without), the loop's wrap %.4f (%.2f without); "
-                        "idle %d samples after it is let go, at %.1e\n",
-                        jumpSlewed, jump, wrapSlewed, wrap, samples, d.level());
+                        "idle %d samples after it is let go, at %.1e, steps at most %.4f\n",
+                        jumpSlewed, jump, wrapSlewed, wrap, samples, d.level(), releaseStep);
             check(jump > 0.99 && wrap > 0.99 && jumpSlewed < 1.0 / 200.0 && wrapSlewed < 1.0 / 200.0,
                   "a drawn envelope's Slew smooths its shape's jumps and its loop's wrap");
-            check(samples > 1500 && samples < 4000 && d.level() < 1e-4,
-                  "a slewed drawn envelope let go stands idle once what it puts out has settled");
+            check(samples > 240 && samples <= 2 * 240 + 4 && d.level() == 0.0 && releaseStep < 1.0 / 200.0,
+                  "a slewed drawn envelope let go runs down to nothing within its slew's time after its fade, smoothly, "
+                  "and stands idle then");
+        }
+
+        // Rising, as an AHDSR's attack counts for stealing, while short of its shape's highest point the first time:
+        // a rise to full at 0.6 of its time, down after, rising until then and not after; an Envelope following it says
+        // so, as of the block's start.
+        {
+            const Points points{{0.0, -1.0, 0.0}, {0.6, 1.0, 0.0}, {1.0, -1.0, 0.0}};
+            const std::vector<double> shape = shapeOf(points);
+            DrawnEnvelope d;
+            Envelope env;
+            d.start();
+            d.prepare(shape.data(), 1000.0, 0.0, 1.0, false, 0.0, kRate);
+            env.follow(d);
+            const bool atStart = d.rising() && env.rising();
+            for (int n = 0; n < 590; ++n)
+                d.next();
+            const bool before = d.rising();
+            for (int n = 0; n < 20; ++n)
+                d.next();
+            const bool after = !d.rising();
+            d.prepare(shape.data(), 1000.0, 0.0, 1.0, false, d.level(), kRate);
+            env.follow(d);
+            check(atStart && before && after && !env.rising(),
+                  "a drawn envelope counts as rising, as an attack does, only until its shape's highest point");
+        }
+
+        // An AHDSR releasing, followed by a drawn envelope already done (an operator switched back to its AHDSR after its
+        // note was let go, and on to its drawn one again): the release runs on rather than stopping at once.
+        {
+            const std::vector<double> shape = shapeOf({{0.0, -1.0, 0.0}, {1.0, -1.0, 0.0}});
+            const EnvRates rates = envRates(normFromTime(0.001), 0.0, normFromTime(0.1), 0.8, normFromTime(0.5), 0.0,
+                                            0.0, 0.0, kRate);
+            Envelope env;
+            env.start();
+            for (int n = 0; n < 24000; ++n)
+                env.next(rates);
+            env.release();
+            for (int n = 0; n < 48; ++n)
+                env.next(rates);
+            const double was = env.level();
+            DrawnEnvelope d; // never started: done, as one let go and faded out is
+            d.prepare(shape.data(), 1000.0, 0.0, 1.0, false, 0.0, kRate);
+            env.follow(d);
+            const double next = env.next(rates);
+            std::printf("      an AHDSR releasing at %.3f, followed by a done drawn envelope: %.3f next\n", was, next);
+            check(d.idle() && !env.following() && was > 0.5 && next > 0.9 * was && next < was,
+                  "an AHDSR releasing runs on when its operator goes back to a drawn envelope that is done");
         }
 
         // Sustain, its loop [0.25, 0.5] of a rise to 1 at a quarter and a fall to 0.5 by the half, flat after: held, it

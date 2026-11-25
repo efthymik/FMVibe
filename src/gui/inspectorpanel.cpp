@@ -742,7 +742,10 @@ bool InspectorPanel::opTabModulated(int op, InspectorTab tab) const {
                   paramIndex(op, OpParam::UnisonSpread), paramIndex(op, OpParam::UnisonBlend),
                   paramIndex(op, OpParam::PhaseRandom)};
     if (tab == InspectorTab::Envelope)
-        params = opEnvDrawn(op) ? std::vector<int>{paramIndex(op, OpParam::EnvLength), paramIndex(op, OpParam::EnvSlew)}
+        params = opEnvDrawn(op) ? std::vector<int>{paramIndex(op, value(paramIndex(op, OpParam::EnvSync)) >= 0.5
+                                                                  ? OpParam::EnvDivision // the Length knob, synced
+                                                                  : OpParam::EnvLength),
+                                                   paramIndex(op, OpParam::EnvSlew)}
                                 : std::vector<int>{paramIndex(op, OpParam::Attack), paramIndex(op, OpParam::Hold),
                                                    paramIndex(op, OpParam::Decay), paramIndex(op, OpParam::Sustain),
                                                    paramIndex(op, OpParam::Release)};

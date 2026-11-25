@@ -91,7 +91,7 @@ public:
     void toggleShape(int shape) { shapeEditor_ = shapeEditor_ == shape ? -1 : shape; }
     // An operator's envelope switched to its drawn one (Curve), in one undo step: the first time, while its shape is
     // still as a new patch has it, drawn from its AHDSR (the attack, hold and decay, a flat stretch at the sustain
-    // level as Sustain's loop, then the release), its Length their sum.
+    // level as Sustain's loop, then the release), keeping their proportions over a Length of a second.
     void drawEnvelope(int op);
     // A shape copied as it is drawn (see shapeclip.h), and the shape copied pasted into one, fitted to it, as one undo
     // step: as it is into a Curve source or an operator's envelope (with its loop region, if it has one); into a shaper's

@@ -46,8 +46,10 @@ What the plugin does and how its editor works, in full. Building and installing 
     `src/drawnenvelope.h`, which `Envelope` follows in a stage of its own, so the voices' loop calls it as before):
     each segment's bend kept as an exponential multiplied each sample, not worked out again. **Slew** (Off to begin
     with, up to 1 s) lags what it puts out behind its shape, a one-pole lag a sample at a time, so a jump drawn in it
-    or its loop wrapping from one level to another doesn't click; slewed, its voice ends only once what it puts out has
-    settled under -80 dB. Its fields and shape are the editor's alone (hidden from hosts); Length and Slew can be
+    or its loop wrapping from one level to another doesn't click; slewed, once its end has faded out, what it still
+    puts out runs down to nothing in a straight line, as steeply as the lag was taking it, so within the Slew's time,
+    and its voice ends then. Until it first reaches its curve's highest point it counts, for voice stealing, at its
+    top, as an attack does. Its fields and shape are the editor's alone (hidden from hosts); Length and Slew can be
     modulated, at the control rate. An operator on its AHDSR costs what it did;
   - **Fixed** pitch (off by default): the operator plays at **Freq** (1 Hz–2 kHz on a log curve) times **Mult**
     (×0.001, ×0.01, ×0.1, ×1 or ×10), so 1 mHz to 20 kHz, whatever the note. The note, pitch bend, glide, the

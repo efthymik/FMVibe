@@ -905,10 +905,13 @@ void clipModeIcon(Canvas &c, Rect r, ClipMode mode, Color color) {
         return;
     }
     const double drive = mode == ClipMode::SineFold || mode == ClipMode::Fold ? 2.2 : mode == ClipMode::Hard ? 1.6 : 2.5;
-    double top = 0.0;
-    for (int i = 0; i <= 40; ++i)
-        top = std::max(top, std::abs(clipShape(mode, drive * (2.0 * i / 40.0 - 1.0))));
+    double top = -1.0; // how far it reaches, worked out only as the cache takes its points
     const std::vector<Point> points = iconCurve(r, 0, static_cast<int>(mode), 40, [&](double x) {
+        if (top < 0.0) {
+            top = 0.0;
+            for (int i = 0; i <= 40; ++i)
+                top = std::max(top, std::abs(clipShape(mode, drive * (2.0 * i / 40.0 - 1.0))));
+        }
         return clipShape(mode, drive * (2.0 * x - 1.0)) / std::max(top, 1e-6);
     });
     c.polyline(points.data(), points.size(), color, 1.5f);
@@ -926,8 +929,7 @@ std::vector<Point> iconArc(Point m, float radius, float ry, float from, float to
     return points;
 }
 void iconLine(Canvas &c, std::initializer_list<Point> points, Color color, float width = 1.3f) {
-    const std::vector<Point> line(points);
-    c.polyline(line.data(), line.size(), color, width);
+    c.polyline(points.begin(), points.size(), color, width);
 }
 } // namespace
 

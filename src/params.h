@@ -2294,7 +2294,8 @@ inline double timeFromNorm(double x) { return kMinTime * std::pow(kMaxTime / kMi
 inline double normFromTime(double seconds) { return std::log(seconds / kMinTime) / std::log(kMaxTime / kMinTime); }
 // Where kMaxEnvTime sits on that curve: the top of the envelopes' attack, hold, decay and release.
 inline const double kMaxEnvNorm = normFromTime(kMaxEnvTime);
-// A drawn envelope's and a Curve's Slew, Off up to a second (a voice runs on until its lag has settled).
+// A drawn envelope's and a Curve's Slew, Off up to a second (a drawn envelope done, what it still puts out runs down
+// within its slew's time, its voice running on until then).
 constexpr double kMaxSlewTime = 1.0;
 inline const double kMaxSlewNorm = normFromTime(kMaxSlewTime);
 // The longest glide, on the same curve; a state or preset with a longer one loads it as this.

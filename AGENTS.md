@@ -442,7 +442,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     let go at its end fading out over 5 ms; in Sustain looping its loop while held and, let go, leaving it from the
     level it was at and sliding onto its shape by its end, a loop ending on a drop going down with it over 5 ms;
     started again going on from the level it was at; a 5 ms Slew smoothing a jump and its loop's wrap and, let go,
-    standing idle once what it puts out has settled; and in the synth, an operator's level and place following its
+    running down to nothing within its slew's time after its fade and standing idle then; counting as rising until its
+    shape's top; an AHDSR releasing running on when its operator goes back to a drawn envelope that is done; and in the synth, an operator's level and place following its
     shape, its voice ending once it has faded out, and in Sustain looping while held and playing on to its end; and a
     Curve source's Slew lagging a square's step;
   - the scope capturing nothing until asked, then an operator's cycles from where they start (a sine's a sine, a
@@ -656,7 +657,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     with its card, a MIDI card's knob picking
     its controller and its input's list pressure or slide instead, its CC knob going, and the list button's tooltip
     following its input; a Random card's Unipolar switch, under its clock list as a Curve card's, bipolar to begin
-    with, setting its polarity and lit while unipolar (read off the rendered pixels), undoably; a Curve source added second from the list,
+    with, setting its polarity and lit while unipolar (read off the rendered pixels), undoably, the wheel turning it on
+    upward as it shows; a Curve source added second from the list,
     unipolar and widened, its Unipolar switch under its clock list, undoably, and folded showing
     CRV and its number (read off the rendered pixels);
   - with an LFO in each of the 32 places, a MODS row's source menu listing them in two columns of 16 inside the
@@ -920,19 +922,22 @@ the plain CMake commands and installing into a host are in the [README](README.m
     elsewhere; with Shift and with Ctrl, an end, the loop's middle and a new loop dragged off the columns, where the
     mouse is, each one undo step, the ends kept 1/256 apart; what each clock mode doesn't play dimmed and no bar one-shot (read off the rendered pixels); a point's
     Set as Loop Start and Set as Loop End putting that end exactly there, off the grid too, undoably, an entry that
-    would cross the other end left out; the widened card's strip along its plot's top, none one-shot; and, let go in
+    would cross the other end left out, and on a loop stored the other way round moving the end it says; the widened card's strip along its plot's top, none one-shot; and, let go in
     Sustain, its dot keeping to its curve while a dashed line across moves to the level it puts out (read off the
     rendered pixels);
   - an operator's ENVELOPE tab's ADSR | Curve switching to its drawn envelope in one undo step, drawn from its AHDSR
-    the first time (its points, loop and Length) and kept as drawn after; One-Shot | Sustain and its sync switch, its
+    the first time (its points, loop and Length; by the wheel too) and kept as drawn after; One-Shot | Sustain and its sync switch, its
     Length knob setting its length or, synced, its note value, and its Slew knob its slew, Off to begin with; its loop's end dragged on the tab's display onto the
     grid, one undo step; the newest voice's dot on it (read off the rendered pixels); and its pencil opening its
     full-size editor in the panel a Curve's takes (as wide as the routing panel, in the row's middle), laid out as a Curve's, its One-Shot | Sustain a list
-    there, picked from undoably, its done button and a view tab closing it;
+    there, picked from undoably, the newest voice moving along it repainting the whole of it, its done button and a
+    view tab closing it;
   - Copy Shape and Paste Shape: an operator's envelope copied from its menu (Paste Shape offered only once a shape is
     copied) pasting into a Curve source by Ctrl+V as it is, with its loop region, one undo step; into a symmetric voice
     shaper's curve its ends at the curve's and a point in its middle; a Curve source of 40 points into velocity's
-    curve thinned to its 16; into the BEND lane across the pattern, and the lane's curve copied back;
+    curve thinned to its 16; a symmetric curve without a middle point copied as it sounds there, and pasted over a
+    Curve source of more points putting the points past it back at their defaults, undoably; into the BEND lane across
+    the pattern, and the lane's curve copied back;
   - an LFO's shape list (going with the LFO undone, offering no Random or Custom shape, the wheel stepping along it
     to Square), a Random
     source starting synced and bipolar, its knobs, its dot waiting at the end of a cycle and, at 0 Hz, a line at the value it holds

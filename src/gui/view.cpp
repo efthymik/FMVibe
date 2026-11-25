@@ -965,6 +965,19 @@ int View::lfoClockCount(int lfo) const {
                                                            : kLfoModes;
 }
 
+void View::pickEnvMode(int op, bool curve) {
+    const int param = paramIndex(op, OpParam::EnvMode);
+    if (curve == (value(param) >= 0.5))
+        return;
+    if (curve) {
+        shapes_.drawEnvelope(op);
+        return;
+    }
+    if (shapeEditing() == opEnvCurve(op))
+        shapes_.close();
+    edit(param, 0.0);
+}
+
 // Free, Anchor, One-Shot and a Curve's Sustain set for `clock` alone (none for Retrigger), in one undo step.
 void View::setLfoClock(int lfo, LfoClock clock) {
     const std::pair<SourceParam, LfoClock> modes[] = {{SourceParam::Free, LfoClock::Free},
@@ -1187,6 +1200,13 @@ bool View::poll() {
                 t.lfoTo[s] != telemetry_.lfoTo[s] || t.lfoOffsets[s] != telemetry_.lfoOffsets[s] ||
                 t.envPos[s] != telemetry_.envPos[s] || (t.voices > 0 && t.lfoRates[s] != 0.0f))
                 inCard(s);
+        // An operator's drawn envelope open full size: its dot and level line move across the whole of it, not only
+        // where the inspector is under it.
+        if (const int shape = shapeEditing(); isOpEnvCurve(shape)) {
+            const int op = opOfEnvCurve(shape);
+            if (t.opEnvPhase[op] != telemetry_.opEnvPhase[op] || t.opEnvLevels[op] != telemetry_.opEnvLevels[op])
+                in(shapes_.shapePanel());
+        }
     }
     // A compressor's and an amp's meters move on while a tail drives them once the notes have ended, in the FX view;
     // the host's tempo shows in the synced effects' and LFOs' captions, and the title bar, whether notes play or not.
@@ -6777,12 +6797,9 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::Choice:
         if (isLfoClockChoice(w))
             setLfoClock(w.a, static_cast<LfoClock>(w.b));
-        else if (const int op = opOfField(w.param, OpParam::EnvMode); op >= 0 && w.b == 1 && value(w.param) < 0.5)
-            shapes_.drawEnvelope(op);
-        else if (op >= 0 && w.b == 0 && shapeEditing() == opEnvCurve(op)) { // its AHDSR: its drawn one's editor shuts
-            shapes_.close();
-            edit(w.param, w.b);
-        } else
+        else if (const int op = opOfField(w.param, OpParam::EnvMode); op >= 0)
+            pickEnvMode(op, w.b == 1);
+        else
             edit(w.param, w.b);
         break;
     case Kind::Toggle:
@@ -7729,8 +7746,15 @@ void View::wheel(Point p, float steps, Modifiers mods) {
         return;
     // A switch and the partial counts move as a click on them does: a switch on upward and off downward, with what
     // the symmetric switches bring along (the Fixed switch's, the inspector's), and a count to the next one offered.
+    if (const int op = opOfField(hit->param, OpParam::EnvMode); op >= 0) { // ADSR | Curve, as a click picks them
+        if (whole != 0)
+            pickEnvMode(op, whole > 0);
+        return;
+    }
     if (hit->kind == Kind::Toggle) {
-        if (whole != 0 && (whole > 0) != (value(hit->param) >= 0.5))
+        // On upward as it shows: a Random's Unipolar switch, on its Bipolar, is lit while that is off.
+        const bool inverted = sourceFieldOf(hit->param) == SourceParam::Bipolar;
+        if (whole != 0 && (whole > 0) != ((value(hit->param) >= 0.5) != inverted))
             flipSwitch(hit->param);
         return;
     }

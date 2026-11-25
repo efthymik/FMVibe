@@ -22,7 +22,8 @@ namespace fmvibe {
 // it again, or a first note on a shape that starts above nothing, starts from the level it was at, the same way.
 //
 // With a slew, what it puts out lags behind all that, a one-pole lag, smoothing the shape's jumps and its loop's wrap;
-// it stands idle only once that has settled. Without, it puts out its level as it is.
+// once its end is done, what it still puts out runs down to nothing in a straight line, as steeply as the lag was
+// taking it (so within the slew's time), and it stands idle then. Without, it puts out its level as it is.
 //
 // start() and release() only note what happened: prepare(), before each block's samples, takes them up, as it has the
 // shape and its time then.
@@ -47,8 +48,11 @@ public:
         out_ = 0.0;
     }
 
-    bool idle() const { return stage_ == Stage::Idle && !startAsked_ && out_ < kSettled; }
+    bool idle() const { return stage_ == Stage::Idle && !startAsked_ && out_ <= 0.0; }
     bool held() const { return held_; }
+    // Whether it is on its way up to its shape's highest point the first time, as an AHDSR's attack is (see
+    // Envelope::rising()).
+    bool rising() const { return stage_ == Stage::Play && x_ < peakX_; }
     double level() const { return out_; } // what it puts out
     // Where it is along its shape, 0..1, for the editor; -1 while idle.
     double phase() const { return stage_ == Stage::Idle ? -1.0 : x_; }
@@ -62,6 +66,12 @@ public:
         shape_ = shape;
         count_ = shapePointCount(shape[0]);
         samples_ = std::max(samples, 1.0);
+        peakX_ = 0.0;
+        for (int point = 1, top = 0; point < count_; ++point)
+            if (pointLevel(point) > pointLevel(top)) {
+                top = point;
+                peakX_ = pointX(point);
+            }
         // Its segment found again where it is, as the shape or its time may have changed since the last block.
         if (stage_ == Stage::Play && !seek(x_)) {
             x_ = 1.0;
@@ -88,6 +98,10 @@ public:
 
     double next() {
         const double level = step();
+        if (stage_ == Stage::Idle) { // done: what it still puts out runs down (see DrawnEnvelope)
+            out_ = std::max(out_ - tail_, 0.0);
+            return out_;
+        }
         if (slew_ > 0.0)
             out_ += (level - out_) * slew_;
         else
@@ -97,7 +111,6 @@ public:
 
 private:
     enum class Stage { Idle, Play, Hold, Fade };
-    static constexpr double kSettled = 1e-4; // -80 dB: a slewed level this near nothing is done
 
     double step() {
         switch (stage_) {
@@ -114,11 +127,12 @@ private:
         }
         return level_;
     }
-    // At its end, done (what it puts out still settling, with a slew), keeping what start() asked if it hasn't been
-    // taken up.
+    // At its end, done (what it puts out running down, with a slew, as steeply as its lag took it: at once without),
+    // keeping what start() asked if it hasn't been taken up.
     void end() {
         stage_ = Stage::Idle;
         level_ = 0.0;
+        tail_ = slew_ > 0.0 ? out_ * slew_ : out_;
         startAsked_ = held_;
         releaseAsked_ = false;
     }
@@ -242,6 +256,8 @@ private:
     double level_ = 0.0; // along its shape, before its slew
     double out_ = 0.0;   // what it puts out
     double slew_ = 0.0;  // a sample's share of the way to its level, 0 for none
+    double tail_ = 0.0;  // done, how far what it puts out runs down a sample
+    double peakX_ = 0.0; // where its shape first reaches its highest point
     double x_ = 0.0;
     // The segment it is in: its index, its start and length along the shape, its first level and its rise, how far
     // along it is (t_) and by how much a sample (dt_), and for a bent one exp(8 curve t) (e_), its step and scale.
