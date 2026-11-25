@@ -1157,9 +1157,9 @@ Point lfoMode(float card, int mode) {
 Point cardShapeAt(float card, double x, double y) {
     return {cardX(card) + 281.0f + static_cast<float>(x) * 264.0f, 659.0f - static_cast<float>(y) * 44.88f};
 }
-// A random LFO's Smooth (0) and Chaos (1) knobs, right of its narrowed display.
+// A Random card's Smooth (0) and Chaos (1) knobs, right of its narrowed display.
 Point randomKnob(float card, int knob) {
-    return {cardX(card) + 186.0f + knob * 50.0f, 677.0f};
+    return detail::randomKnob(card, knob);
 }
 
 void doubleClick(View &view, Point p) {
@@ -1320,8 +1320,9 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     check(randomSynced && std::abs(model.value(paramIndex(1, SourceParam::RandomSmooth)) - 0.6) < 1e-6 &&
               std::abs(model.value(paramIndex(1, SourceParam::RandomChaos)) - 0.3) < 1e-6,
           "a Random source starts synced and bipolar, and its Smooth and Chaos knobs set them");
-    // Its clock modes are Retrigger and Free alone: the wheel over its list stops at Free, and the list holds the two
-    // (a click where a third would be picks nothing), each picked with Anchor and One-Shot left off.
+    // Its clock modes are Retrigger and Free alone, in a list where an LFO's shape list is: the
+    // wheel over its list stops at Free, and the list holds the two (a click where a third would be picks nothing),
+    // each picked with Anchor and One-Shot left off.
     {
         auto clocks = [&] {
             return std::array{model.value(paramIndex(1, SourceParam::Free)),
@@ -1329,16 +1330,21 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
                               model.value(paramIndex(1, SourceParam::OneShot))};
         };
         using Clocks = std::array<double, 3>;
-        view.wheel(lfoClockPoint(1), 3.0f, {});
+        const Rect clockList = detail::lfoShapeButton(1.0f);
+        auto pickRandomClock = [&](LfoClock clock) {
+            click(view, clockList.center());
+            click(view, detail::listMenuItem(clockList, 2, static_cast<int>(clock)).center());
+        };
+        view.wheel(clockList.center(), 3.0f, {});
         const bool wheeled = clocks() == Clocks{1.0, 0.0, 0.0};
-        pickLfoClock(view, 1, LfoClock::Retrigger, 2);
+        pickRandomClock(LfoClock::Retrigger);
         const bool retriggered = clocks() == Clocks{};
-        pickLfoClock(view, 1, LfoClock::Free, 2);
+        pickRandomClock(LfoClock::Free);
         const bool freed = clocks() == Clocks{1.0, 0.0, 0.0};
-        click(view, lfoClockPoint(1));
-        click(view, detail::listMenuItem(detail::lfoClockButton(1.0f), 2, 2).center());
+        click(view, clockList.center());
+        click(view, detail::listMenuItem(clockList, 2, 2).center());
         const bool freeAgain = clocks() == Clocks{1.0, 0.0, 0.0};
-        pickLfoClock(view, 1, LfoClock::Retrigger, 2);
+        pickRandomClock(LfoClock::Retrigger);
         check(wheeled && retriggered && freed && freeAgain && clocks() == Clocks{},
               "a Random source's clock modes are Retrigger and Free alone");
     }
@@ -1365,12 +1371,13 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
         }
         return false;
     };
-    check(lineIn(cardX(1) + 27.0f) && lineIn(cardX(1) + 26.0f + 0.05f * 125.0f),
+    const float plotW = detail::sourceDisplay(1.0f, true).w - 20.0f; // inside its display, 10 px in from either side
+    check(lineIn(cardX(1) + 27.0f) && lineIn(cardX(1) + 26.0f + 0.05f * plotW),
           "a running random LFO's line reaches the left edge of its display");
     // Between snapshots the line scrolls on at the LFO's rate; run past the end of the cycle before a snapshot brings
     // the next one, it waits there with the dot on the glide's end rather than jump back to the start of the same
     // cycle, and so it does when a snapshot's phase has wrapped round ahead of its glide.
-    const Point held{cardX(1) + 26.0f + 125.0f, 688.0f - 0.7f * 18.0f}; // the right end, at the glide's end
+    const Point held{cardX(1) + 26.0f + plotW, 688.0f - 0.7f * 18.0f}; // the right end, at the glide's end
     auto dotAt = [&](Point p) {
         const uint32_t color = renderer.pixel(p);
         return (color >> 16 & 255) > 190 && (color >> 8 & 255) > 190 && (color & 255) > 190;
@@ -1395,7 +1402,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     view.poll();
     const bool heldShot = renderer.save(view, dir / "17a3-random-held.png");
     const float heldY = 688.0f + 0.5f * 18.0f;
-    check(heldShot && dotAt({cardX(1) + 26.0f + 125.0f, heldY}) && lineIn(cardX(1) + 30.0f) &&
+    check(heldShot && dotAt({cardX(1) + 26.0f + plotW, heldY}) && lineIn(cardX(1) + 30.0f) &&
               lineIn(cardX(1) + 90.0f),
           "a Random source at 0 Hz shows the value the newest voice holds, as a line across its display");
     model.live = Telemetry{};
@@ -11482,29 +11489,27 @@ void testNewSources(const std::filesystem::path &dir, Renderer &renderer) {
               onPressure && onSlide && model.value(paramIndex(2, SourceParam::CcNumber)) == 1.0,
           "+ SOURCE's list adds Random and MIDI sources, a MIDI card's list picking pressure or slide over a controller");
 
-    // A Random card's Unipolar | Bipolar, where an LFO's shape list is (from x 16 of the card, 122 px wide, at y 564 +
-    // 42, 22 px high), each half of it: bipolar to begin with, Unipolar lit by a click (read off the rendered pixels,
-    // clear of its icon), Bipolar again by the other; each an undo step.
+    // A Random card's Unipolar switch, beside its clock list, its sync under it, as an LFO card's: bipolar to begin
+    // with, a click making it unipolar and lighting the switch (read off the rendered pixels, clear of its icon),
+    // another bipolar again; each an undo step.
     {
-        auto polarity = [](int bipolar) {
-            return Point{cardX(0) + 16.0f + 61.0f * (static_cast<float>(bipolar) + 0.5f), 564.0f + 42.0f + 11.0f};
-        };
+        const Rect polarity = detail::lfoUnipolarSwitch(0.0f);
         const int bipolarParam = paramIndex(0, SourceParam::Bipolar);
-        const Point clearOfIcon{polarity(0).x - 20.0f, polarity(0).y + 6.0f};
+        const Point clearOfIcon{polarity.x + 3.0f, polarity.y + 3.0f};
         const bool startsBipolar = model.value(bipolarParam) == 1.0;
         view.mouseMove({600.0f, 328.0f}, {});
         renderer.save(view, dir / "11j-random-bipolar.png");
         const uint32_t unlit = renderer.pixel(clearOfIcon);
-        click(view, polarity(0));
+        click(view, polarity.center());
         const bool unipolar = model.value(bipolarParam) == 0.0;
         view.mouseMove({600.0f, 328.0f}, {});
         const bool polarShot = renderer.save(view, dir / "11j-random-unipolar.png");
         const bool lit = renderer.pixel(clearOfIcon) != unlit;
-        click(view, polarity(1));
+        click(view, polarity.center());
         const bool bipolar = model.value(bipolarParam) == 1.0;
         view.undo();
         check(startsBipolar && unipolar && polarShot && lit && bipolar && model.value(bipolarParam) == 0.0,
-              "a Random card's Unipolar | Bipolar switch sets its polarity, undoably");
+              "a Random card's Unipolar switch sets its polarity, lit while it is unipolar, undoably");
     }
 
     // A Curve source, an LFO of a drawn shape, from the list (second, after LFO): unipolar to begin with, its card

@@ -774,14 +774,14 @@ inline Rect sourceMenuButton() {
     return {kAddSourceX, kModPanel.y + 9.0f, 116.0f, 22.0f};
 }
 
-// A random LFO's display makes room at its right for the Smooth and Chaos knobs.
+// A Random card's display makes room at its right for the Smooth and Chaos knobs.
 constexpr float kRandomKnobsW = 100.0f;
 inline Rect sourceDisplay(float card, bool narrow = false) {
     const Rect p = sourceCard(card);
     return {p.x + 16.0f, p.y + 98.0f, p.w - 32.0f - (narrow ? kRandomKnobsW : 0.0f), 52.0f};
 }
 
-// 0 is Smooth, 1 Chaos.
+// 0 is Smooth, 1 Chaos, under the Rate knob (and where an LFO's Phase is).
 inline Point randomKnob(float card, int knob) {
     const Rect display = sourceDisplay(card, true);
     return {display.right() + 25.0f + knob * 50.0f, display.y + 15.0f};
@@ -891,37 +891,25 @@ constexpr ClipMode kClipModesOffered[] = {ClipMode::Hard,   ClipMode::Soft,     
                                           ClipMode::Fold,   ClipMode::Stack,    ClipMode::Custom};
 static_assert(std::size(kClipModesOffered) == static_cast<size_t>(ClipMode::Count), "the list offers every curve");
 
-// A Random card's polarity, Unipolar (0) | Bipolar (1), where an LFO's shape list is, each half of it, over its clock
-// list as an LFO's. (A Curve card has its clock list there.)
-inline Rect randomPolaritySwitch(float card, int bipolar) {
-    const Rect list = lfoShapeButton(card);
-    return {list.x + bipolar * list.w * 0.5f, list.y, list.w * 0.5f, list.h};
-}
-
-// Right of those two rows, the Rate (0) and Phase (1) knobs with their labels, each over a random LFO's Smooth and
-// Chaos; a small square sits between the shape list and the knob, level with the list: a Random's sync switch, an
-// LFO's Unipolar (see lfoUnipolarSwitch()).
+// Right of those two rows, the Rate (0) and Phase (1) knobs with their labels, each over a Random card's Smooth and
+// Chaos.
 inline Point lfoKnob(float card, int knob) {
     return {randomKnob(card, knob).x, lfoShapeButton(card).y + 14.0f}; // the label takes 18 px under the knob
 }
 
-inline Rect sourceSync(float card) {
-    const Point rate = lfoKnob(card, 0);
-    const float x = (lfoShapeButton(card).right() + rate.x - 15.0f) * 0.5f;
-    return {x - 10.0f, lfoShapeButton(card).center().y - 10.0f, 20.0f, 20.0f};
-}
-
-// An LFO's and a Random source's clock modes, a list under the shape's (or the polarity's), as wide; a Curve's are its
-// list where the shape's is (see detail::isCurveClock()).
+// An LFO's clock modes, a list under the shape's, as wide; a Curve's and a Random source's are their list where the
+// shape's is (see detail::isCurveClock()).
 inline Rect lfoClockButton(float card) {
     const Rect list = lfoShapeButton(card);
     return {list.x, list.bottom() + 6.0f, list.w, list.h};
 }
 
-// An LFO's Unipolar switch, beside its shape list where a Random source's sync switch is, and its sync switch under it,
-// level with the clock list.
+// An LFO's Unipolar switch, a small square between its shape list and the Rate knob, level with the list, and its sync
+// switch under it, level with the clock list; a Random card's two in the same places, beside its clock list and under.
 inline Rect lfoUnipolarSwitch(float card) {
-    return sourceSync(card);
+    const Rect list = lfoShapeButton(card);
+    const float x = (list.right() + lfoKnob(card, 0).x - 15.0f) * 0.5f;
+    return {x - 10.0f, list.center().y - 10.0f, 20.0f, 20.0f};
 }
 inline Rect lfoSyncButton(float card) {
     const Rect unipolar = lfoUnipolarSwitch(card);

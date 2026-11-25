@@ -1603,58 +1603,47 @@ std::vector<View::Widget> View::widgets() const {
         if (widened)
             shapes_.cardWidgets(list, s, card);
         if (lfo) {
-            // An LFO's shape list, a Random card's Unipolar | Bipolar in its place (its Bipolar, one of them lit, as
-            // the clock modes were), or a Curve's clock modes; and under it an LFO's and a Random's clock modes, a list
-            // too. Every one keys on the source's Free switch (see isCurveClock()) and sets the clock switches
-            // together (see setLfoClock()).
+            // An LFO's shape list, and under it its clock modes, a list too; a Curve's and a Random's clock modes in
+            // the shape list's place. Every clock list keys on the source's Free switch (see isCurveClock()) and sets
+            // the clock switches together (see setLfoClock()).
             const bool random = mods_.sourceTypeOf(s) == SourceType::Random;
             const bool curve = mods_.sourceTypeOf(s) == SourceType::Curve;
             const int clock = paramIndex(s, SourceParam::Free);
-            if (random) {
-                const size_t polarity = list.size();
-                for (int bipolar = 0; bipolar < 2; ++bipolar)
-                    add(Kind::Choice, randomPolaritySwitch(card, bipolar), paramIndex(s, SourceParam::Bipolar), s,
-                        bipolar);
-                merge(polarity);
-            } else if (curve) {
+            if (curve || random) {
                 add(Kind::ListButton, lfoShapeButton(card), clock);
-                if (listMenu_ == clock && !listEditor_) // the full-size editor's opens under its own button
+                if (listMenu_ == clock && !listEditor_) // a Curve's full-size editor's opens under its own button
                     lfoList = lfoShapeButton(card);
             } else {
                 add(Kind::ListButton, lfoShapeButton(card), paramIndex(s, SourceParam::Shape));
                 if (listMenu_ == paramIndex(s, SourceParam::Shape))
                     lfoList = lfoShapeButton(card);
-            }
-            if (!curve) {
                 add(Kind::ListButton, lfoClockButton(card), clock);
                 if (listMenu_ == clock)
                     lfoList = lfoClockButton(card);
             }
             if (!widened)
                 add(Kind::LfoDisplay, sourceDisplay(card, random), -1, s);
-            if (random) {
-                knob(paramIndex(s, SourceParam::RandomSmooth), randomKnob(card, 0), 30.0f, tr(Str::LabelSmooth));
-                knob(paramIndex(s, SourceParam::RandomChaos), randomKnob(card, 1), 30.0f, tr(Str::LabelChaos));
-            }
             // Synced, the knob picks a note value instead of a rate and shows it as its label. An LFO's Unipolar switch
-            // between its shape list and the knobs, its sync switch under it, beside its clock list; a Random's sync
-            // where an LFO's Unipolar is; a Curve's two under its list's right end, Unipolar first, its three knobs
-            // alike beside it.
-            // A Random card has no Unipolar switch, which its polarity stands for, and no Phase, which it takes none of.
-            add(Kind::Toggle, curve ? curveSyncButton(card) : random ? sourceSync(card) : lfoSyncButton(card),
-                paramIndex(s, SourceParam::Sync));
-            if (!random)
-                add(Kind::Toggle, curve ? curveUnipolarSwitch(card) : lfoUnipolarSwitch(card),
-                    paramIndex(s, SourceParam::Unipolar));
+            // between its shape list and the knobs, its sync switch under it, beside its clock list, a Random's in the
+            // same places; a Curve's two under its list's right end, Unipolar first, its three knobs alike beside it. A
+            // Random's Unipolar is its Bipolar switch, lit while it is off.
+            add(Kind::Toggle, curve ? curveSyncButton(card) : lfoSyncButton(card), paramIndex(s, SourceParam::Sync));
+            add(Kind::Toggle, curve ? curveUnipolarSwitch(card) : lfoUnipolarSwitch(card),
+                paramIndex(s, random ? SourceParam::Bipolar : SourceParam::Unipolar));
             // A Curve playing its curve once from each note takes and shows a length (see shownValue()).
             const bool synced = value(paramIndex(s, SourceParam::Sync)) >= 0.5;
             const bool length = mods_.curveTime(s) == ModulationModel::CurveTime::Seconds;
             knob(synced ? paramIndex(s, SourceParam::Division) : paramIndex(s, SourceParam::Rate),
                  curve ? curveKnob(card, 0) : lfoKnob(card, 0), 30.0f,
                  synced ? nullptr : tr(length ? Str::LabelLength : Str::LabelRate));
-            if (!random)
+            // A Random card has no Phase, which it takes none of, but Smooth and Chaos beside its narrower display.
+            if (random) {
+                knob(paramIndex(s, SourceParam::RandomSmooth), randomKnob(card, 0), 30.0f, tr(Str::LabelSmooth));
+                knob(paramIndex(s, SourceParam::RandomChaos), randomKnob(card, 1), 30.0f, tr(Str::LabelChaos));
+            } else {
                 knob(paramIndex(s, SourceParam::Phase), curve ? curveKnob(card, 1) : lfoKnob(card, 1), 30.0f,
                      tr(Str::LabelPhase));
+            }
             if (curve)
                 knob(paramIndex(s, SourceParam::CurveSlew), curveKnob(card, 2), 30.0f, tr(Str::LabelSlew));
         } else if (mods_.sourceTypeOf(s) == SourceType::Env) {
@@ -4301,9 +4290,11 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const bool envClock = w.kind == Kind::Choice && opOfField(w.param, OpParam::EnvSustain) >= 0;
         const bool clockMode = isLfoClockChoice(w) || envClock;
         const int clock = envClock ? static_cast<int>(w.b == 1 ? LfoClock::Sustain : LfoClock::OneShot) : w.b;
+        // A Random card's Unipolar switch is its Bipolar param's, lit while it is off.
+        const bool inverted = w.kind == Kind::Toggle && sourceFieldOf(w.param) == SourceParam::Bipolar;
         const bool on = isLfoClockChoice(w)                ? static_cast<int>(lfoClockOf(w.a)) == w.b
                         : w.kind == Kind::Choice ? std::lround(value(w.param)) == w.b
-                                                 : value(w.param) >= 0.5;
+                                                 : (value(w.param) >= 0.5) != inverted;
         const Str clipModes[] = {Str::SwitchHard, Str::SwitchSoft, Str::SwitchAsym};
         constexpr Str kMicShortNames[] = {Str::MicDynamicShort, Str::MicCondenserShort, Str::MicRibbonShort};
         static_assert(std::size(kMicShortNames) == static_cast<size_t>(AmpMic::Count));
@@ -4379,8 +4370,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                                                                    // card's choice either one
             polarityIcon(c, w.rect.center(), w.kind == Kind::Choice && w.b == 0,
                          on ? litInk(color) : (hovered ? kText : kDim), switchIconScale());
-        else if (sourceFieldOf(w.param) == SourceParam::Bipolar) // a Random card's: either one, as a MODS row's
-            polarityIcon(c, w.rect.center(), w.b == 1, on ? litInk(color) : (hovered ? kText : kDim), switchIconScale());
+        else if (sourceFieldOf(w.param) == SourceParam::Bipolar) // a Random card's Unipolar, as an LFO's
+            polarityIcon(c, w.rect.center(), false, on ? litInk(color) : (hovered ? kText : kDim), switchIconScale());
         else if (field == FxParam::PhaserStereo || field == FxParam::FlangerStereo || field == FxParam::AmpStereo)
             stereoIcon(c, w.rect.center(), on ? litInk(color) : (hovered ? kText : kDim)); // named in its tooltip
         else if (opOfField(w.param, OpParam::Sync) >= 0) // NOTE, named in its tooltip
@@ -5762,8 +5753,8 @@ void View::paintTooltip(Canvas &c) {
     }
     else if (sourceFieldOf(param) == SourceParam::Unipolar) // the LFO's switch, or a Curve card's Unipolar | Bipolar
         text = tr(hover_->kind == Kind::Choice && hover_->b == 0 ? Str::TipBipolar : Str::TipUnipolar);
-    else if (sourceFieldOf(param) == SourceParam::Bipolar) // a Random card's Unipolar | Bipolar
-        text = tr(hover_->b == 1 ? Str::TipBipolar : Str::TipUnipolar);
+    else if (sourceFieldOf(param) == SourceParam::Bipolar) // a Random card's Unipolar switch
+        text = tr(Str::TipUnipolar);
     else if (field == FxParam::DelaySync)
         text = tr(Str::TipDelaySync);
     else if (field == FxParam::PhaserSync || field == FxParam::FlangerSync)

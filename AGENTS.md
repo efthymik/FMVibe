@@ -641,8 +641,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the modulation panel's + SOURCE opening the list of source types under it, adding Random and MIDI sources, each
     with its card, a MIDI card's knob picking
     its controller and its input's list pressure or slide instead, its CC knob going, and the list button's tooltip
-    following its input; a Random card's Unipolar | Bipolar, where an LFO's shape list is, bipolar to begin
-    with, setting its polarity (read off the rendered pixels), undoably; a Curve source added second from the list,
+    following its input; a Random card's Unipolar switch, beside its clock list as an LFO card's, bipolar to begin
+    with, setting its polarity and lit while unipolar (read off the rendered pixels), undoably; a Curve source added second from the list,
     unipolar and widened, its Unipolar switch under its clock list, undoably, and folded showing
     CRV and its number (read off the rendered pixels);
   - with an LFO in each of the 32 places, a MODS row's source menu listing them in two columns of 16 inside the
@@ -774,7 +774,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - an LFO starting synced in quarter notes, and its sync switch freeing it; its Phase knob, marked on its display
     and faint while the LFO is free, and lit while it is anchored (read off the rendered pixels); its clock modes a
     list under its shape list, a pick undoable, the mode in force picked again leaving it, the wheel over it stepping
-    along them and held at One-Shot, and its Unipolar switch beside its shape list, apart; a Random source's list Retrigger and Free
+    along them and held at One-Shot, and its Unipolar switch beside its shape list, apart; a Random source's list, where an LFO's shape list is, Retrigger and Free
     alone;
   - the three-band dynamics' card: a band's row picking the band its knobs set, its threshold lines dragged
     across (Above stopping at Below) undoably, Alt-dragged for the ratio and double-clicked back, a line on another

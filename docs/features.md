@@ -2019,11 +2019,11 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   covers it), then **+ Source**,
   shaped like + Effect (a drawn plus, the word and a chevron), which opens the list of source types under it to add
   one, and beside it how many of the 32 places are taken, as in 4/32 (with every
-  place taken it is dimmed, and a click says so). Random and Curve cards are laid out as an LFO's (see below). A
-  Random card has **Unipolar** | **Bipolar** (as icons) where an LFO's shape list is, one of them lit, which sets which
-  way its depths swing, as the polarity in its title's menu does, no Unipolar switch and no Phase knob. A Curve card
-  has its clock modes' list there instead (see below), its Unipolar and sync switches under it and three knobs beside
-  it. A MIDI card has its input's list (CC,
+  place taken it is dimmed, and a click says so). Random and Curve cards are laid out as an LFO's (see below), with
+  their clock modes' list where an LFO's shape list is. A Random card has its Unipolar switch beside the list and its
+  sync switch under it, where an LFO's are, and no Phase knob; its Unipolar switch sets which way its depths swing, as
+  the polarity in its title's menu does (it starts bipolar, the switch off). A Curve card has its Unipolar and sync
+  switches under its list and three knobs beside it. A MIDI card has its input's list (CC,
   Pressure or Slide, where an LFO's shape is; its tooltip says what the input follows), and right of it its CC stepper
   (while its input is a controller) and Slew; under them, both cards'
   display is a bar of what the newest voice gets now (from the middle while the source is bipolar), with its value.
@@ -2085,21 +2085,22 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     is open with one switched on, the CLAP plugin keeps processing with nothing sounding, where a host would let it
     sleep and the clock would stand still. An LFO picks its shape from a list, like a
     shaper's curve, its button and each entry showing the shape's icon before its name (the wheel over it steps
-    along them). Under the shape list (a Random card's polarity), as wide as it, is its clock modes' list: its
+    along them). Under the shape list, as wide as it, is its clock modes' list: its
     button shows the mode it runs in, its icon and name, with arrows that step along the list, round its ends, and the
     wheel over it steps along it too; its list shows the modes with their icons, the one in force checked (the button
     shows no tooltip, as the shape list doesn't). Its icons: a rise that starts again at each dot for **Retrigger**,
     an infinity sign for **Free**, an anchor for **Anchor** and a single cycle that ends in a dot for **One-Shot**. An
-    LFO has those four, a Random source the first two. A Curve card has five, with **Sustain** last (a rise, a level
-    between two ticks and a fall), in its list where an LFO's shape list is. Each pick, step or wheel notch is one
-    undo step. Right of the two rows, centered on them, are the Rate and Phase knobs (a Random card's Rate alone),
-    over a Random card's Smooth and Chaos. Between an LFO's shape list and Rate, level with the list, is the
+    LFO has those four, a Random source the first two and a Curve card five, with **Sustain** last (a rise, a level
+    between two ticks and a fall); a Random's and a Curve's list is where an LFO's shape list is. Each pick, step or
+    wheel notch is one undo step. Right of the two rows, centered on them, are the Rate and Phase knobs (a Random
+    card's Rate alone), over a Random card's Smooth and Chaos. Between an LFO's shape list and Rate, level with the
+    list, is the
     **Unipolar** switch, a hump on a baseline as a Mods row's polarity switch has, and under it, level with the clock
     list, the sync switch: a small square button with the metronome the effects' SYNC has, which turns the Rate knob
-    into a note-value knob (as it starts, on). A Random card has its sync switch where an LFO's Unipolar switch is,
-    beside its polarity. A Curve card has its Unipolar and sync switches under its clock list instead, at its
-    right end before the Rate knob, and right of the list three knobs alike, side by side: Rate (labeled Length while it reads as one), Phase and
-    **Slew**.
+    into a note-value knob (as it starts, on). A Random card has its two in the same places, beside its clock list
+    and under it. A Curve card has its Unipolar and sync switches under its clock list instead, at its right end
+    before the Rate knob, and right of the list three knobs alike, side by side: Rate (labeled Length while it reads
+    as one), Phase and **Slew**.
     The Phase knob is faint while it does nothing (on a free LFO that isn't anchored), and otherwise
     a thin line on the display marks where notes start the LFO (or where the song starts an anchored one). A Curve's
     dot keeps to its curve, as an envelope's does, and a dashed line across, while it runs, shows the level it puts
