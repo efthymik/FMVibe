@@ -1149,8 +1149,8 @@ More checks:
   keyboard, from the computer keyboard as in the browser demo (A W S E D … from middle C by key position, Z and X
   shifting the octave and C and V stepping the velocity through 1, 20, 40 … 100, 120 and 127, both of which the
   window's title shows; keys the editor takes for typing stay its own) and from every
-  MIDI input it can open, at a tempo of 140 BPM for synced LFOs and effects, its transport playing from its start
-  for anchored LFOs. It offers the plugin FMVibe's own host extension for the tempo (`src/hosttempo.h`), so the
+  MIDI input it can open, at a tempo of 140 BPM for synced LFOs and effects, its transport stopped at its start (so
+  a sequencer set to Host plays only by its Play button, and anchored LFOs run free). It offers the plugin FMVibe's own host extension for the tempo (`src/hosttempo.h`), so the
   editor's title bar shows the tempo, to change as it plays (the plugin playing its own, with no H). With
   `--silent`, or without a device, it still runs the plugin in real time into silence, so the meters, the scope and
   the analyzers move; `--no-midi` leaves the MIDI inputs alone and `--tempo <bpm>` sets another tempo. It restarts
@@ -1324,10 +1324,11 @@ version pinned at its top. After that it loads Visual Studio's environment for C
 - The page stands in for a host's transport: its `Controller` offers the tempo (`hasTempo()`), which is the synth's
   own (`ownTempo()`; `tempoSync()` is never on there, and the title bar shows no H), for the editor's title bar to
   drag, scroll or type (20–999 BPM, kept in the browser's storage), and which `dsp_tempo()` hands the synth as
-  `Plugin::process()` does the host's tempo. Its transport always plays: `dsp_init()` starts it at the song's start,
-  and so does `dsp_restart()`, which the worklet calls as the page loads a patch (an example, or Init), so a preset
-  whose sequencer is set to Host plays its pattern from its start as it loads, and anchored LFOs stand where it puts
-  them.
+  `Plugin::process()` does the host's tempo. Its transport is stopped, so a sequencer set to Host plays nothing by
+  itself and anchored LFOs run free. Instead `dsp_restart()`, which `dsp_init()` and the worklet call as the page loads
+  a patch (an example, or Init), stops the sequencer's Play button and, for a patch whose sequencer is on and set to
+  Host, presses it after the patch's first block (once the sequencer has read that it is on), so such a preset plays
+  its pattern from its loop's start as it loads, the button lit.
 - The page polls and paints at most about 60 times a second, whatever the display's rate, and, like the plugin
   window, repaints on a mouse move only when what the editor shows changes.
 - The page ships FMVibe's `LICENSE` (as `LICENSE.txt`) and `web/site/THIRD-PARTY-NOTICES.txt`, the licenses of the

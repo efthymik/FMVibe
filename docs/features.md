@@ -450,8 +450,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     notes start. While the transport is stopped, or in a host that gives no position, it runs on from where it is,
     as a free one, and it lands back in place as playback starts. As its place comes from the song position times
     its rate, modulating the rate moves it along at once rather than speeding it up. A one-shot is never anchored.
-    The browser demo's transport always plays, from the song's start as the sound starts and again as a preset (or
-    Init) loads; `fmvibe-uihost` plays its transport from the moment it starts.
+    The browser demo's and `fmvibe-uihost`'s transports are stopped, so an anchored LFO runs free there.
   - **Phase** (0–100 %, 0 to begin with) is where in its cycle each note starts an LFO: at 25 % a sine starts at
     its peak, and 100 % is the cycle's start again. A free LFO keeps its shared clock, so it doesn't use it (nor does
     a Random source, which keeps its steps); an anchored one stands at it at the song's start. A one-shot runs from there to the cycle's
@@ -949,9 +948,11 @@ What the plugin does and how its editor works, in full. Building and installing 
   starts or jumps. Random order follows no place in the loop and goes on picking as it was.
   - **Play** (Key to begin with; a patch saved at state version 16 or earlier that doesn't say loads Host, which it was to
     begin with then): **Host** plays with the host's transport, locked to its bars (and silent while it is stopped; keys still
-    play the synth on top). In the browser demo, whose transport always plays and starts again from the song's start
-    as a preset loads, a preset set to Host plays its pattern from its start as it loads, with no key held. Each block it plays on from where the last one ended while the host's position is within
-    a thousandth of a step of it (a position rounds, one handed in seconds most of all, as `fmvibe-uihost`'s is), so a
+    play the synth on top). The browser demo's and `fmvibe-uihost`'s transports are stopped, so Host plays nothing there
+    by itself; but the browser demo presses the Play button as it loads a patch whose sequencer is on and set to Host, so
+    the pattern plays from its loop's start as it loads, with no key held (and stops what the button played for any
+    other patch). Each block it plays on from where the last one ended while the host's position is within
+    a thousandth of a step of it (a position rounds, one handed in seconds most of all), so a
     note starting where a block does starts once, neither missed nor played twice; further off, the transport has
     jumped, and the notes playing end and it starts over there. **Key** plays while a key is held, from the pattern's start, transposed by the newest key
     from C4 (`kSeqTransposeFrom`: C4 plays it as written, whatever the scale's root), and stops when the keys are let

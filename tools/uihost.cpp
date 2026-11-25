@@ -79,8 +79,9 @@ class Audio {
 public:
     Audio(const clap_plugin_t *plugin, bool silent, double tempo) : plugin_(plugin), silent_(silent), tempo_(tempo) {
         transport_.header = {sizeof(transport_), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_TRANSPORT, 0};
-        // Playing from the moment it starts, as a song would, for anchored LFOs.
-        transport_.flags = CLAP_TRANSPORT_HAS_TEMPO | CLAP_TRANSPORT_HAS_TIME_SIGNATURE | CLAP_TRANSPORT_IS_PLAYING |
+        // Stopped at the song's start, as a host's transport before it plays: a sequencer set to Host waits for its Play
+        // button, and anchored LFOs run free.
+        transport_.flags = CLAP_TRANSPORT_HAS_TEMPO | CLAP_TRANSPORT_HAS_TIME_SIGNATURE |
                            CLAP_TRANSPORT_HAS_BEATS_TIMELINE | CLAP_TRANSPORT_HAS_SECONDS_TIMELINE;
         transport_.tempo = tempo;
         transport_.tsig_num = 4;
@@ -279,11 +280,7 @@ private:
             clap_process_t process{};
             process.steady_time = steadyTime_;
             process.frames_count = n;
-            // The beats go on from where they were at the tempo set now, which the editor may change as it plays.
-            const double seconds = static_cast<double>(steadyTime_) / rate_;
-            transport_.tempo = tempo();
-            transport_.song_pos_seconds = static_cast<clap_sectime>(std::llround(seconds * CLAP_SECTIME_FACTOR));
-            transport_.song_pos_beats = static_cast<clap_beattime>(std::llround(beats_ * CLAP_BEATTIME_FACTOR));
+            transport_.tempo = tempo(); // which the editor may change as it plays; the position stays at the start
             process.transport = &transport_;
             process.audio_outputs = &output;
             process.audio_outputs_count = 1;
@@ -298,7 +295,6 @@ private:
                 out[2 * (done + i) + 1] = std::clamp(right_[i], -1.0f, 1.0f);
             }
             steadyTime_ += n;
-            beats_ += n / rate_ * transport_.tempo / 60.0;
             done += n;
         }
     }
@@ -314,7 +310,6 @@ private:
     // Audio thread only.
     bool processing_ = false;
     int64_t steadyTime_ = 0;
-    double beats_ = 0.0; // where the transport is, in beats
     clap_event_transport_t transport_{};
     std::vector<float> left_, right_;
     std::vector<clap_event_midi_t> pending_;

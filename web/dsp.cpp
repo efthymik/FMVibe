@@ -24,6 +24,7 @@ float right[kMaxFrames];
 Telemetry telemetry{};
 double sampleRate = 48000.0;
 int oversampling = 2;
+bool previewOnLoad = false; // the Play button to be pressed after the next block (see dsp_restart())
 
 int voiceLimit() {
     return std::clamp(static_cast<int>(std::lround(values[paramIndex(GlobalParam::Voices)])), 1, kMaxVoices);
@@ -47,11 +48,16 @@ EMSCRIPTEN_KEEPALIVE int dsp_param_count() {
     return kParamCount;
 }
 
-// The page's transport, standing in for a host's: it always plays, from the song's start as the sound starts and
-// again whenever the page loads a patch (dsp_restart()), so a sequencer set to Host plays its pattern from its start
-// and anchored LFOs stand where that puts them. render() moves it on.
+// A patch loaded (as the sound starts, and whenever the page loads an example or Init). The page's transport,
+// standing in for a host's, is stopped, so a sequencer set to Host plays only by its Play button, and anchored LFOs run
+// free. So a patch whose sequencer is on and set to Host has its Play button pressed, its pattern playing from its
+// loop's start; any other stops what the button played. The button is pressed once the patch's first block has been
+// rendered (see dsp_render()), since the sequencer takes it only once it has read that the patch switches it on.
 EMSCRIPTEN_KEEPALIVE void dsp_restart() {
-    synth.setTransport(true, 0.0, 0.0);
+    synth.setTransport(false, 0.0, 0.0);
+    synth.setSeqPreview(false);
+    previewOnLoad = values[paramIndex(SeqParam::Enabled)] >= 0.5 &&
+                    std::lround(values[paramIndex(SeqParam::Play)]) == static_cast<long>(SeqPlay::Host);
 }
 
 EMSCRIPTEN_KEEPALIVE void dsp_init(double rate, int factor) {
@@ -119,6 +125,10 @@ EMSCRIPTEN_KEEPALIVE void dsp_render(int frames) {
     applyPlayMode();
     synth.render(left, right, static_cast<uint32_t>(frames), values);
     synth.clearEndedNotes(); // nobody to report them to
+    if (previewOnLoad && frames > 0) {
+        previewOnLoad = false;
+        synth.setSeqPreview(true);
+    }
 }
 
 // The editor's view of the newest voice, taken now; the page sends these bytes over as they are.
