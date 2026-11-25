@@ -1222,13 +1222,6 @@ void ShapeEditor::paintOpEnvEditor(Canvas &c, int shape) {
 
 void ShapeEditor::paintOpEnvelope(Canvas &c, int op) {
     const int shape = opEnvCurve(op);
-    if (shapeEditing() == shape) { // the full-size editor has it: shown here, greyed out
-        c.pushLayer({0.0f, 0.0f}, kDimOpacity, kOpEnvRect);
-        paintShapeGrid(c, kOpEnvPlot, -1.0, false);
-        paintOpEnvCurve(c, shape, kOpEnvPlot);
-        c.popLayer();
-        return;
-    }
     paintShapeGrid(c, kOpEnvPlot, -1.0, false);
     paintOpEnvCurve(c, shape, kOpEnvPlot);
 }
@@ -1889,8 +1882,6 @@ void ShapeEditor::opEnvWidgets(std::vector<Widget> &list, int op) const {
     const WidgetAdder add{list};
     const int shape = opEnvCurve(op);
     add(Kind::OpEnvEdit, opEnvEditButton(), -1, op);
-    if (shapeEditing() == shape) // the full-size editor has it
-        return;
     add(Kind::ShapeArea, kOpEnvPlot.inset(-6.0f), -1, shape);
     if (loopShown(shape))
         add(Kind::ShapeLoop, loopStrip(shape), -1, shape);
@@ -2052,8 +2043,8 @@ bool ShapeEditor::paintWidget(Canvas &c, const Widget &w, bool hovered) {
     case Kind::ClipDisplay: // a drawn curve's edit button, beside its list; lit while its big editor is open
         editButton(c, w.rect, clipColor(w.a), hovered, shapeEditing() == kMaxSources + w.a);
         break;
-    case Kind::OpEnvEdit: // an operator's drawn envelope's, likewise
-        editButton(c, w.rect, kAccent, hovered, shapeEditing() == opEnvCurve(w.a));
+    case Kind::OpEnvEdit: // an operator's drawn envelope's (its full-size editor, open, covers it)
+        editButton(c, w.rect, kAccent, hovered, false);
         break;
     case Kind::ShapePoint: { // compact: smaller, in a shaper's card; picked: filled, and ringed
         const bool focused = hovered || active;
