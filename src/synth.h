@@ -103,6 +103,10 @@ struct Telemetry {
     std::array<float, kMaxSources> lfoRates{};     // cycles per second, to move the phases on between snapshots
     std::array<float, kMaxSources> lfoFrom{};      // a Random LFO's glide this cycle: the value it leaves,
     std::array<float, kMaxSources> lfoTo{};        // and the one it heads for (-1..1, before Unipolar)
+    // A Curve in Sustain let go: whether it has left its loop (a bit a place), going on to its curve's end and staying
+    // there, and what it adds to its curve meanwhile (-2..2, before Unipolar), fading out as it goes (see Synth::Lfo).
+    uint32_t lfoLeft = 0;
+    std::array<float, kMaxSources> lfoOffsets{};
     float notePitch = 0.0f;                     // its pitch, what the note source follows: semitones, 69 is A4
     float noteVelocity = 0.0f;                  // its velocity, what the velocity source follows: 0..1
     // Where the pitch bend stands, -1..1: what the pitch bend source puts out (the MIDI bend, the Pitch Bend param
@@ -117,6 +121,9 @@ struct Telemetry {
     std::array<float, kOps> opEnvLevels{};      // operator envelope alone (0..1)
     // Where each operator's and mod envelope is, see Envelope::position(); -1 idle (or not an envelope).
     std::array<float, kOps> opEnvPos{};
+    // Where an operator's drawn envelope is along its shape, 0..1 (see DrawnEnvelope::phase()); -1 while it plays its
+    // AHDSR or none.
+    std::array<float, kOps> opEnvPhase{};
     std::array<float, kMaxSources> envPos{};
     std::array<std::array<float, kMcBands>, kFxSlots> fxReduction{}; // compressor gain reduction, dB
     // Three-band dynamics' bands: their detectors' levels (1 is full scale) and their gains (dB), see
@@ -407,6 +414,21 @@ private:
         double held = 0.0; // the Random shape's value for this cycle
         double from = 0.0; // and for the last one, which it glides from
         bool restart = false; // a note (re)started it: its next block moves it to its Phase
+        // A Curve in Sustain (see lfoSustain()): its key has gone up (or the pedal), so it leaves its loop; and it has,
+        // its phase going on to the curve's end (left implies Sustain, as of its last block), as its CurveRelease says.
+        bool letGo = false;
+        bool left = false;
+    };
+    // How a Curve in Sustain that has left its loop goes on (see Lfo::left): what it put out as it left, less the curve
+    // where it went on from, carried on top of the curve so it goes on from the level it was at, fading out along the
+    // curve from `fadeFrom` to `fadeTo`, or, where the loop ends at the curve's end (the two the same), over
+    // kCurveGlide, `glide` the share of it left then. Kept apart from the Lfo, at a voice's end, so the fields its
+    // samples read stay as close together as they were.
+    struct CurveRelease {
+        double offset = 0.0;
+        double fadeFrom = 0.0;
+        double fadeTo = 0.0;
+        double glide = 0.0;
     };
 
     // One LFO/envelope slot's contribution to a param, in plain units.
@@ -473,7 +495,7 @@ private:
         double pressure = -1.0; // its note's aftertouch, 0..1, or -1 while none came: the channel's stands in
         double slide = 0.5;     // its note's slide, 0..1, resting in the middle
         bool newRandom = false; // (re)started: its random LFOs take a new value in its next block
-        std::array<double, kMaxSources> follow{}; // what Midi sources put out, 0..1
+        std::array<double, kMaxSources> follow{}; // what Midi sources put out, 0..1, and Curves through their Slew
         double fmScale = 0.0;   // ramped, like the output gains and levels
         Levels levels{};
         double gainL = 0.0;
@@ -550,6 +572,10 @@ private:
         std::array<double, kOps> opMean{};
         std::array<double, kOps> opLevel{};
         std::array<double, kOps> phaseSet{}; // where each operator's Phase has moved its wave to (see turnPhase())
+        std::array<CurveRelease, kMaxSources> curveReleases{}; // its LFOs' (see Lfo::left)
+        // Its operators' drawn envelopes (see OpParam::EnvMode), which their Envelopes follow while they play one:
+        // started and released with them, kept apart from them so the fields the voice's samples read stay together.
+        std::array<DrawnEnvelope, kOps> drawn{};
     };
 
     struct HeldNote {
@@ -613,8 +639,16 @@ private:
     static std::array<double, kMaxUnison> unisonDetunes(int index, int copies, const UnisonModes &modes);
     // Brings the filters' block down to the host rate and measures it.
     void analyzeFilters(uint32_t hostFrames, bool sounding, const ParamValues &params);
-    // One-shot, it stops at the end of the cycle instead of starting the next. Chaos is the Random shape's.
-    void advanceLfo(Lfo &lfo, double hz, uint32_t frames, uint32_t &rng, bool oneShot, double chaos) const;
+    // One-shot, it stops at the end of the cycle instead of starting the next; else it loops `loop`. A Curve that has
+    // left its loop (see Lfo) goes on to the curve's end and stays there, its offset gliding out in `release` (see
+    // CurveRelease). Chaos is the Random shape's.
+    void advanceLfo(Lfo &lfo, double hz, uint32_t frames, uint32_t &rng, bool oneShot, double chaos,
+                    LfoLoop loop = {}, CurveRelease *release = nullptr) const;
+    double voiceLfo(Voice &v, int s, const double *p, const ParamValues &params, uint32_t hostFrames) const;
+    double curveSlew(Voice &v, int s, double in, const double *p, uint32_t hostFrames) const;
+    // An operator's drawn envelope for this block, its Envelope following it, or its AHDSR again once it is switched
+    // back (see OpParam::EnvMode); `p` are the voice's params.
+    void followDrawn(Voice &v, int op, const double *p, const ParamValues &params);
     // Moves the free and anchored LFOs' shared clocks on by `frames`, which end `end` frames into this render(); with
     // no frames, only the anchored ones go to where the transport stands `end` frames in. Their params are what is
     // set with the host's, the macros' and the newest voice's modulation.
@@ -964,8 +998,9 @@ private:
     std::vector<double> slotSum_ = std::vector<double>(kVoiceParamCount, 0.0);
     std::vector<uint32_t> slotPassOf_ = std::vector<uint32_t>(kVoiceParamCount, 0u);
     uint32_t slotPass_ = 0;
-    // Whether one of a voice's mod envelopes that modulates something (switched on, with a target) is still going.
-    bool modEnvReleasing(const Voice &v, const ParamValues &params) const;
+    // Whether one of a voice's mod envelopes, or a Curve in Sustain let go, that modulates something (switched on, with
+    // a target) is still going: its release, or the curve on to its end.
+    bool modulationReleasing(const Voice &v, const ParamValues &params) const;
     // The clocks free LFOs follow instead of their own: they run at the newest
     // voice's rate, like the effects, and keep going between notes.
     std::array<Lfo, kMaxSources> freeLfos_{};
@@ -1035,6 +1070,7 @@ private:
     struct FxTail {
         bool on = false;
         std::array<Lfo, kMaxSources> lfos{};
+        std::array<CurveRelease, kMaxSources> curveReleases{};
         std::array<double, kAllSources> auxOut{};
         std::array<SlotMod, kAllSources * kSlots> held{}; // the slots of sources other than the LFOs
         int heldCount = 0;

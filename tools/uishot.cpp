@@ -9,6 +9,7 @@
 #include "gui/layout.h"
 #include "gui/lists.h"
 #include "gui/routing.h"
+#include "gui/shapeclip.h"
 #include "gui/theme.h"
 #include "gui/view.h"
 #include "uistrings.h"
@@ -654,9 +655,9 @@ Point sourceHandle(float card) {
     return detail::sourceHandleRect(detail::sourceCard(card)).center();
 }
 
-// An LFO's sync switch, a square left of its Rate knob.
+// An LFO's sync switch, a square beside its clock list.
 Point sourceSync(float card) {
-    return {cardX(card) + 155.0f, 620.0f};
+    return detail::lfoSyncButton(card).center();
 }
 
 Point sourcePower(float card) {
@@ -679,34 +680,37 @@ Point shapeItem(float card, LfoShape shape) {
     return {shapeButton(card).x, 647.0f + static_cast<float>(row) * 22.0f};
 }
 
-// An LFO card's clock modes under its shape list, and its Unipolar switch under the sync switch.
-Point retriggerToggle(float card) {
-    return {cardX(card) + 31.25f, 644.0f};
+// A Curve card's list of clock modes, where an LFO's shape list is: a mode in the list it opens, its arrows (-1 the left
+// one), and a pick from it.
+Point clockItem(float card, LfoClock clock) {
+    return {shapeButton(card).x, 647.0f + static_cast<float>(clock) * 22.0f};
 }
-
-Point freeToggle(float card) {
-    return {cardX(card) + 61.75f, 644.0f};
+Point clockArrow(float card, int dir) {
+    return detail::listStepButton(detail::lfoShapeButton(card), dir).center();
 }
+void pickClock(View &view, float card, LfoClock clock);
 
-Point anchorToggle(float card) {
-    return {cardX(card) + 92.25f, 644.0f};
+// An LFO card's clock modes, a list under its shape list (a Random card's under its polarity), and a pick from it: an
+// LFO's four modes, a Random's two.
+Point lfoClockPoint(float card) {
+    return detail::lfoClockButton(card).center();
 }
+void pickLfoClock(View &view, float card, LfoClock clock, int modes = 4);
 
-Point oneShotToggle(float card) {
-    return {cardX(card) + 122.75f, 644.0f};
-}
-
-// A Random card's two clock modes, Retrigger and Free, each as wide as two of an LFO's.
-Point randomRetriggerToggle(float card) {
-    return {cardX(card) + 46.5f, 644.0f};
-}
-
-Point randomFreeToggle(float card) {
-    return {cardX(card) + 107.5f, 644.0f};
-}
-
+// The Unipolar switch beside an LFO's shape list.
 Point unipolarToggle(float card) {
-    return {cardX(card) + 155.0f, 644.0f};
+    return detail::lfoUnipolarSwitch(card).center();
+}
+
+// A Curve card's sync and Unipolar switches, under its clock list, and its Rate (or Length), Phase and Slew knobs.
+Point curveSyncToggle(float card) {
+    return detail::curveSyncButton(card).center();
+}
+Point curveUnipolarToggle(float card) {
+    return detail::curveUnipolarSwitch(card).center();
+}
+Point curveKnob(float card, int knob) {
+    return detail::curveKnob(card, knob);
 }
 
 // Its Rate and Phase knobs, over a random LFO's Smooth and Chaos.
@@ -878,16 +882,25 @@ Point sourceListItem(const View &view, Point click, SourceType type) {
 }
 
 
-// The freeform shape editor: x 0..1 across, y -1..1 up. An LFO's spans the routing panel and the inspector, its
-// plot 1088 wide; the note source's curve, like the partial editor, fills the routing panel only, 772 wide.
-Point shapeAt(double x, double y, float width = 1088.0f) {
-    return {56.0f + static_cast<float>(x) * width, 330.0f - static_cast<float>(y) * 126.0f};
+// The freeform shape editor: x 0..1 across, y -1..1 up. A Curve's, an envelope's, the note source's and velocity's
+// curves' are as wide as the routing panel, in the middle of the panels' row (detail::kShapeEditorPanel), their plot
+// 772 wide, a Curve's under the strip of its loop (12 px lower and shorter than the others'); a voice shaper's curve,
+// like the partial editor, fills the routing panel, as wide.
+constexpr float kEditorX = detail::kShapeEditorPanel.x;
+Point shapeAt(double x, double y, float width = 772.0f) {
+    return {kEditorX + 40.0f + static_cast<float>(x) * width, 336.0f - static_cast<float>(y) * 120.0f};
 }
-Point noteCurveAt(double x, double y) { // over the routing panel, right of the lens
+Point stripCurveAt(double x, double y) { // the note source's and velocity's curves
+    return {kEditorX + 40.0f + static_cast<float>(x) * 772.0f, 330.0f - static_cast<float>(y) * 126.0f};
+}
+Point noteCurveAt(double x, double y) { // over the routing panel, right of the lens: a voice shaper's curve
     return {detail::kRouting.x + 40.0f + static_cast<float>(x) * 772.0f, 330.0f - static_cast<float>(y) * 126.0f};
 }
-constexpr Point kShapeDone{1154.0f, 152.0f};
-constexpr Point kRoutingEditorDone{detail::kRouting.x + detail::kRouting.w - 30.0f, 152.0f}; // the note curve's and the partial editor's
+constexpr Point kShapeDone{detail::kShapeEditorPanel.x + detail::kShapeEditorPanel.w - 30.0f, 152.0f};
+constexpr Point kRoutingEditorDone{detail::kRouting.x + detail::kRouting.w - 30.0f, 152.0f}; // a voice shaper's and the partial editor's
+// The title row's mode list (a Curve's clock list, an envelope's One-Shot | Sustain), after the name.
+constexpr Rect kTitleList{kEditorX + 16.0f + 136.0f + 12.0f, 141.0f, 122.0f, 22.0f};
+constexpr float kTitleDx = kTitleList.x - 148.0f; // from where the list stood, left of the panels' row
 // A shaper's big curve editor is a 520 px panel in the middle of the effects' panel, its plot 440 wide.
 Point clipAt(double x, double y) {
     return {380.0f + static_cast<float>(x) * 440.0f, 330.0f - static_cast<float>(y) * 126.0f};
@@ -1084,6 +1097,17 @@ void click(View &view, Point p, Modifiers mods = {}) {
     view.mouseUp(p, mods);
 }
 
+void pickClock(View &view, float card, LfoClock clock) {
+    click(view, shapeButton(card));
+    click(view, clockItem(card, clock));
+}
+
+void pickLfoClock(View &view, float card, LfoClock clock, int modes) {
+    const Rect button = detail::lfoClockButton(card);
+    click(view, button.center());
+    click(view, detail::listMenuItem(button, modes, static_cast<int>(clock)).center());
+}
+
 // + SOURCE, after the modulation panel's toggle, then a type in the list it opens under it.
 Point sourceMenuEntry(SourceType type) {
     const Rect button = detail::sourceMenuButton();
@@ -1123,11 +1147,12 @@ constexpr Point kUndoButton{952.0f, 18.0f};
 constexpr Point kRedoButton{986.0f, 18.0f};
 // The LFO shape editor's reset button (the note curve's further left), and its grid's buttons: per axis (0 across)
 // a step down (part 0), the count, a step up.
-constexpr Point kShapeReset{1120.0f, 152.0f};
-constexpr Point kNoteCurveReset{804.0f + kRoutingDx, 152.0f};
+constexpr Point kShapeReset{kShapeDone.x - 34.0f, 152.0f};
+constexpr Point kNoteCurveReset = kShapeReset; // the note source's and velocity's, where a Curve's is
 Point shapeGrid(int axis, int part) {
     constexpr float kParts[] = {18.0f, 28.0f, 18.0f};
-    const float x = 1144.0f - (axis == 0 ? 148.0f : 64.0f) + (part > 0 ? 18.0f : 0.0f) + (part > 1 ? 28.0f : 0.0f);
+    const float right = shapeAt(1.0, 0.0).x;
+    const float x = right - (axis == 0 ? 148.0f : 64.0f) + (part > 0 ? 18.0f : 0.0f) + (part > 1 ? 28.0f : 0.0f);
     return {x + kParts[part] * 0.5f, 486.0f};
 }
 // A Custom LFO's display, a click on which widens its card to two card places. The widened card's title row buttons:
@@ -1143,17 +1168,17 @@ Point wideButton(float card, int button) {
     return detail::lfoCardButton(card, button).center();
 }
 Point lfoTool(float card, int tool) {
-    return {cardX(card) + 16.0f + tool * 41.5f + 18.75f, 673.0f};
+    return detail::lfoToolButton(card, tool).center();
 }
 Point lfoMode(float card, int mode) {
-    return {cardX(card) + 16.0f + (mode < 2 ? mode * 75.0f + 37.5f : 156.0f + 44.5f), 701.0f};
+    return detail::lfoModeButton(card, mode).center();
 }
 Point cardShapeAt(float card, double x, double y) {
     return {cardX(card) + 281.0f + static_cast<float>(x) * 264.0f, 659.0f - static_cast<float>(y) * 44.88f};
 }
-// A random LFO's Smooth (0) and Chaos (1) knobs, right of its narrowed display.
+// A Random card's Smooth (0) and Chaos (1) knobs, beside its Rate, where a Curve card's Phase and Slew are.
 Point randomKnob(float card, int knob) {
-    return {cardX(card) + 186.0f + knob * 50.0f, 677.0f};
+    return detail::curveKnob(card, knob + 1);
 }
 
 void doubleClick(View &view, Point p) {
@@ -1314,8 +1339,9 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     check(randomSynced && std::abs(model.value(paramIndex(1, SourceParam::RandomSmooth)) - 0.6) < 1e-6 &&
               std::abs(model.value(paramIndex(1, SourceParam::RandomChaos)) - 0.3) < 1e-6,
           "a Random source starts synced and bipolar, and its Smooth and Chaos knobs set them");
-    // Its clock modes are Retrigger and Free alone: the wheel stops at Free, and a click where an LFO's One-Shot
-    // would be picks Free, Anchor and One-Shot left off.
+    // Its clock modes are Retrigger and Free alone, in a list where an LFO's shape list is, as a Curve card's: the
+    // wheel over its list stops at Free, and the list holds the two (a click where a third would be picks nothing),
+    // each picked with Anchor and One-Shot left off.
     {
         auto clocks = [&] {
             return std::array{model.value(paramIndex(1, SourceParam::Free)),
@@ -1323,16 +1349,21 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
                               model.value(paramIndex(1, SourceParam::OneShot))};
         };
         using Clocks = std::array<double, 3>;
-        view.wheel(randomRetriggerToggle(1), 3.0f, {});
+        const Rect clockList = detail::lfoShapeButton(1.0f);
+        auto pickRandomClock = [&](LfoClock clock) {
+            click(view, clockList.center());
+            click(view, detail::listMenuItem(clockList, 2, static_cast<int>(clock)).center());
+        };
+        view.wheel(clockList.center(), 3.0f, {});
         const bool wheeled = clocks() == Clocks{1.0, 0.0, 0.0};
-        click(view, randomRetriggerToggle(1));
+        pickRandomClock(LfoClock::Retrigger);
         const bool retriggered = clocks() == Clocks{};
-        click(view, oneShotToggle(1));
+        pickRandomClock(LfoClock::Free);
         const bool freed = clocks() == Clocks{1.0, 0.0, 0.0};
-        click(view, randomRetriggerToggle(1));
-        click(view, randomFreeToggle(1));
+        click(view, clockList.center());
+        click(view, detail::listMenuItem(clockList, 2, 2).center());
         const bool freeAgain = clocks() == Clocks{1.0, 0.0, 0.0};
-        click(view, randomRetriggerToggle(1));
+        pickRandomClock(LfoClock::Retrigger);
         check(wheeled && retriggered && freed && freeAgain && clocks() == Clocks{},
               "a Random source's clock modes are Retrigger and Free alone");
     }
@@ -1359,12 +1390,13 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
         }
         return false;
     };
-    check(lineIn(cardX(1) + 27.0f) && lineIn(cardX(1) + 26.0f + 0.05f * 125.0f),
+    const float plotW = detail::sourceDisplay(1.0f).w - 20.0f; // inside its display, 10 px in from either side
+    check(lineIn(cardX(1) + 27.0f) && lineIn(cardX(1) + 26.0f + 0.05f * plotW),
           "a running random LFO's line reaches the left edge of its display");
     // Between snapshots the line scrolls on at the LFO's rate; run past the end of the cycle before a snapshot brings
     // the next one, it waits there with the dot on the glide's end rather than jump back to the start of the same
     // cycle, and so it does when a snapshot's phase has wrapped round ahead of its glide.
-    const Point held{cardX(1) + 26.0f + 125.0f, 688.0f - 0.7f * 18.0f}; // the right end, at the glide's end
+    const Point held{cardX(1) + 26.0f + plotW, 688.0f - 0.7f * 18.0f}; // the right end, at the glide's end
     auto dotAt = [&](Point p) {
         const uint32_t color = renderer.pixel(p);
         return (color >> 16 & 255) > 190 && (color >> 8 & 255) > 190 && (color & 255) > 190;
@@ -1389,8 +1421,8 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     view.poll();
     const bool heldShot = renderer.save(view, dir / "17a3-random-held.png");
     const float heldY = 688.0f + 0.5f * 18.0f;
-    check(heldShot && dotAt({cardX(1) + 26.0f + 125.0f, heldY}) && lineIn(cardX(1) + 30.0f) &&
-              lineIn(cardX(1) + 90.0f),
+    check(heldShot && dotAt({cardX(1) + 26.0f + plotW, heldY}) && lineIn(cardX(1) + 30.0f) &&
+              lineIn(cardX(1) + 90.0f) && lineIn(cardX(1) + 200.0f),
           "a Random source at 0 Hz shows the value the newest voice holds, as a line across its display");
     model.live = Telemetry{};
     view.poll();
@@ -1598,7 +1630,8 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     view.undo();
 
     // The full-size shape editor (from a Curve source's widened card) spans the inspector, which it hides: no
-    // operator tab or knob where they were. Its grid: a step up across is 24 lines, and Ctrl snaps a point to them.
+    // operator tab or knob where they were. Its grid, 8 x 8 to begin with: a step up across is 12 lines, and Ctrl snaps a
+    // point to them.
     model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Curve));
     view.poll();
     click(view, lfoDisplay(0));
@@ -1607,14 +1640,16 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     drag(view, kOpPhaseKnob, {kOpPhaseKnob.x, kOpPhaseKnob.y - 30.0f});
     check(model.value(paramIndex(0, OpParam::Phase)) == fineBefore && model.value(shapeCountIndex(0)) == 2.0,
           "the LFO shape editor hides the inspector");
+    const bool eight = model.layout().shapeGridX == 8 && model.layout().shapeGridY == 8;
     click(view, shapeGrid(0, 2));
     click(view, shapeGrid(1, 0));
-    check(model.layout().shapeGridX == 24 && model.layout().shapeGridY == 6, "the grid's buttons step its lines");
+    check(eight && model.layout().shapeGridX == 12 && model.layout().shapeGridY == 6,
+          "the grid starts 8 x 8, and its buttons step its lines");
     view.mouseDown(shapeAt(0.5, 1.0), {});
     view.mouseMove(shapeAt(0.3, 0.6), {false, true});
     view.mouseUp(shapeAt(0.3, 0.6), {false, true});
     const int point = shapePointIndex(0, 1, PointField::X);
-    check(std::abs(model.value(point) - 7.0 / 24.0) < 1e-9 &&
+    check(std::abs(model.value(point) - 4.0 / 12.0) < 1e-9 &&
               std::abs(model.value(shapePointIndex(0, 1, PointField::Y)) - 2.0 / 3.0) < 1e-9,
           "Ctrl snaps a point to the grid");
     view.mouseMove(shapeAt(0.3, 0.6), {});
@@ -1622,7 +1657,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, kShapeReset);
     const bool reset = model.value(point) == 0.5 && model.value(shapeCountIndex(0)) == 2.0;
     view.undo();
-    check(reset && std::abs(model.value(point) - 7.0 / 24.0) < 1e-9, "the reset button brings the first shape back, and undoes");
+    check(reset && std::abs(model.value(point) - 4.0 / 12.0) < 1e-9, "the reset button brings the first shape back, and undoes");
     click(view, kShapeDone); // back into the widened card, and that back to its size
     click(view, wideButton(0, 0));
 
@@ -5069,6 +5104,781 @@ void testSeqCurvePick(const std::filesystem::path &dir, Renderer &renderer) {
 // pick how a click works and whether points snap; its full-size button opens the shape over the panels, greying the
 // card's editor out until it closes, and its own collapse button, another shape or folding takes the card back to
 // its size; collapsing the modulation panel leaves it widened.
+// A Curve source's loop and its Sustain, as the editor works them. Its card's five clock modes, Sustain last, under the
+// sync switch, where an LFO's four leave its Unipolar switch; its Rate shown and typed as the curve's length while it
+// plays its curve once from each note; its loop's bar on a strip over its plot, in the full-size editor and in the
+// widened card, dragged as the SEQ view's loop, on the grid's columns; what the clock mode doesn't play dimmed; its
+// points' Set as Loop Start and Set as Loop End; its places read as times, beats or a share of the cycle.
+void testCurveLoop(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    model.layout().shapeGridX = 16; // the loop's columns below
+    View view(model);
+    model.values[paramIndex(0, SourceParam::Type)] = static_cast<double>(SourceType::Curve);
+    model.values[paramIndex(1, SourceParam::Type)] = static_cast<double>(SourceType::Lfo);
+    view.poll();
+    const int sustain = paramIndex(0, SourceParam::CurveSustain), oneShot = paramIndex(0, SourceParam::OneShot);
+    const int loopStart = paramIndex(0, SourceParam::LoopStart), loopEnd = paramIndex(0, SourceParam::LoopEnd);
+    auto loopIs = [&](double start, double end) {
+        return std::abs(model.value(loopStart) - start) < 1e-9 && std::abs(model.value(loopEnd) - end) < 1e-9;
+    };
+    // Its clock modes, a list where an LFO's shape list is: a pick from it sets the switches, one undo step; its arrows
+    // step along it, round its ends, and the wheel over it too; no tooltip under it, as an LFO's shape list has none
+    // (read off the rendered pixels). Its Unipolar switch under the sync button, as an LFO's; the row under the list clear (a click
+    // there sets nothing, and its face is the card's, read off the rendered pixels). An LFO card beside it keeps its
+    // four clock buttons and its Unipolar switch.
+    pickClock(view, 0, LfoClock::OneShot);
+    const bool picked = model.value(oneShot) == 1.0 && model.value(sustain) == 0.0;
+    pickClock(view, 0, LfoClock::Sustain);
+    const bool sustained = model.value(sustain) == 1.0 && model.value(oneShot) == 0.0;
+    view.undo();
+    const bool undone = model.value(sustain) == 0.0 && model.value(oneShot) == 1.0;
+    click(view, clockArrow(0, 1));
+    const bool stepped = model.value(sustain) == 1.0 && model.value(oneShot) == 0.0;
+    click(view, clockArrow(0, 1)); // round the end, to Retrigger
+    const bool round = model.value(sustain) == 0.0 && model.value(oneShot) == 0.0 &&
+                       model.value(paramIndex(0, SourceParam::Free)) == 0.0 &&
+                       model.value(paramIndex(0, SourceParam::Anchor)) == 0.0;
+    click(view, clockArrow(0, -1)); // and back
+    view.wheel(shapeButton(0), -1.0f, {});
+    const bool wheeled = model.value(oneShot) == 1.0 && model.value(sustain) == 0.0;
+    view.wheel(shapeButton(0), 1.0f, {});
+    view.wheel(shapeButton(0), 1.0f, {}); // held at the list's end
+    const bool held = model.value(sustain) == 1.0;
+    pickClock(view, 0, LfoClock::Retrigger);
+    const bool retriggered = model.value(sustain) == 0.0 && model.value(oneShot) == 0.0;
+    click(view, curveUnipolarToggle(0));
+    const bool unipolar = model.value(paramIndex(0, SourceParam::Unipolar)) == 1.0;
+    view.undo();
+    const bool polarUndone = model.value(paramIndex(0, SourceParam::Unipolar)) == 0.0;
+    const int sync = paramIndex(0, SourceParam::Sync);
+    const double syncWas = model.value(sync);
+    click(view, curveSyncToggle(0));
+    const bool syncFlipped = model.value(sync) != syncWas;
+    view.undo();
+    const bool clear = model.value(sync) == syncWas && model.value(sustain) == 0.0 && model.value(oneShot) == 0.0;
+    // Its Slew, a knob as its Length and Phase are, beside them, Off to begin with: dragged up, a lag, one undo step.
+    const int slew = paramIndex(0, SourceParam::CurveSlew);
+    const Point slewKnob = curveKnob(0, 2);
+    const bool slewOff = model.value(slew) == 0.0;
+    drag(view, slewKnob, {slewKnob.x, slewKnob.y - 30.0f});
+    const bool slewed = model.value(slew) > 0.0;
+    view.undo();
+    const bool slewUndone = model.value(slew) == 0.0;
+    pickLfoClock(view, 1, LfoClock::OneShot);
+    click(view, unipolarToggle(1));
+    const bool lfoKept = model.value(paramIndex(1, SourceParam::OneShot)) == 1.0 &&
+                         model.value(paramIndex(1, SourceParam::Unipolar)) == 1.0 &&
+                         model.value(paramIndex(1, SourceParam::CurveSustain)) == 0.0;
+    const Point under{shapeButton(0).x, 617.0f + 11.0f + 6.0f + 11.0f};
+    view.mouseMove(shapeButton(0), {});
+    renderer.save(view, dir / "10h-curve-clock-tip.png");
+    const uint32_t tip = renderer.pixel(under);
+    view.mouseMove({600.0f, 328.0f}, {});
+    renderer.save(view, dir / "10h-curve-card.png");
+    const bool noTip = tip == renderer.pixel(under);
+    pickClock(view, 0, LfoClock::OneShot);
+    view.mouseMove(shapeButton(0), {});
+    click(view, shapeButton(0));
+    const bool listShot = renderer.save(view, dir / "10h-curve-clock-list.png");
+    click(view, {600.0f, 328.0f}); // closes it
+    pickClock(view, 0, LfoClock::Retrigger);
+    check(picked && sustained && undone && stepped && round && wheeled && held && retriggered,
+          "a Curve card's clock modes are a list: a pick, its arrows and the wheel set the mode, each one undo step");
+    check(unipolar && polarUndone && syncFlipped && clear && slewOff && slewed && slewUndone && lfoKept && noTip &&
+              listShot,
+          "a Curve card has its sync and Unipolar switches under its clock list and its Length, Phase and Slew knobs "
+          "alike beside it, its list showing no tooltip; an LFO card picks its clock mode from its own list, its "
+          "Unipolar switch beside it");
+
+    // Its Rate, unsynced, reads as the curve's length while it plays it once from each note, and takes one typed (a rate
+    // in Hz too); retriggered, a rate.
+    model.set(paramIndex(0, SourceParam::Sync), 0.0);
+    model.set(paramIndex(0, SourceParam::Rate), normFromRate(1.0 / 1.2));
+    view.poll();
+    auto menuEntry = [&](Point at, const std::string &label) {
+        for (const MenuItem &item : view.contextMenu(at))
+            if (item.label == label)
+                return item.command;
+        return -1;
+    };
+    auto shown = [&] { // the Rate as typing it starts
+        view.menuCommand(menuEntry(curveKnob(0, 0), tr(Str::MenuEditValue)));
+        const std::string text = view.copyText(false);
+        view.endTyping(false);
+        return text;
+    };
+    const std::string asRate = shown();
+    pickClock(view, 0, LfoClock::Sustain);
+    const std::string asLength = shown();
+    auto typeRate = [&](const char *text) {
+        view.menuCommand(menuEntry(curveKnob(0, 0), tr(Str::MenuEditValue)));
+        type(view, text);
+        view.typeKey(View::Key::Enter);
+        return sweepRateHz(model.value(paramIndex(0, SourceParam::Rate)));
+    };
+    const double typedLength = typeRate("1.5 s"), typedMs = typeRate("800 ms"), typedHz = typeRate("2 Hz");
+    pickClock(view, 0, LfoClock::OneShot);
+    const std::string oneShotShown = shown();
+    std::printf("      a Curve's Rate: %s retriggered, %s in Sustain; typed 1.5 s: %.3f Hz, 800 ms: %.3f Hz, "
+                "2 Hz: %.3f Hz; one-shot %s\n",
+                asRate.c_str(), asLength.c_str(), typedLength, typedMs, typedHz, oneShotShown.c_str());
+    check(asRate == "0.83 Hz" && asLength == "1.20 s" && std::abs(typedLength - 1.0 / 1.5) < 1e-6 &&
+              std::abs(typedMs - 1.25) < 1e-6 && std::abs(typedHz - 2.0) < 1e-6 && oneShotShown == "500.0 ms",
+          "a Curve's Rate reads and takes a length in One-Shot and Sustain, unsynced, and a rate otherwise");
+
+    // Its places read as times unsynced, looped too (along a cycle of its Rate), in bars and beats synced, and as a
+    // share of the cycle standing still at 0 Hz.
+    {
+        ModulationModel mods(model);
+        model.set(paramIndex(0, SourceParam::Rate), normFromRate(1.0 / 1.2));
+        const std::string seconds = mods.curvePlace(0, 0.25, false), secondsBrief = mods.curvePlace(0, 0.25, true);
+        model.set(paramIndex(0, SourceParam::Sync), 1.0);
+        int whole = 0;
+        for (int d = static_cast<int>(kSlowestDivision); d < kDivisions; ++d)
+            if (divisionName(d) == std::string("1/1"))
+                whole = d;
+        model.set(paramIndex(0, SourceParam::Division), whole);
+        const std::string beats = mods.curvePlace(0, 0.3125, false), beat = mods.curvePlace(0, 0.25, true);
+        model.set(paramIndex(0, SourceParam::Sync), 0.0);
+        model.set(oneShot, 0.0);
+        const std::string looped = mods.curvePlace(0, 0.31, false);
+        model.set(paramIndex(0, SourceParam::Rate), 0.0);
+        const std::string share = mods.curvePlace(0, 0.31, false);
+        std::printf("      a Curve's places: %s (%s), %s (%s), %s, %s\n", seconds.c_str(), secondsBrief.c_str(),
+                    beats.c_str(), beat.c_str(), looped.c_str(), share.c_str());
+        check(seconds == "0.30 s" && secondsBrief == "0.3 s" && beats == "1.2.2" && beat == "1.2" &&
+                  looped == "0.37 s" && share == "31.0 %",
+              "a Curve's places read as times unsynced, looped too, in bars and beats synced, and as a share at 0 Hz");
+    }
+    model.set(paramIndex(0, SourceParam::Rate), normFromRate(1.0 / 1.2));
+    view.poll();
+
+    // The full-size editor: its title row's clock list, as its card's but opening under its own button, its Unipolar
+    // and sync switches and its Rate.
+    click(view, lfoDisplay(0));
+    click(view, wideButton(0, 2));
+    const Rect titleList = kTitleList; // after its name
+    auto titleClock = [&](int mode) {
+        click(view, titleList.center());
+        click(view, detail::listMenuItem(titleList, 5, mode).center());
+        view.mouseMove({600.0f, 500.0f}, {});
+    };
+    titleClock(4);
+    const bool titleSustain = model.value(sustain) == 1.0;
+    titleClock(0);
+    const bool titleRetrigger = model.value(sustain) == 0.0 && model.value(oneShot) == 0.0;
+    // Its list alone opens, not its card's too: One-Shot's place in the card's list takes nothing.
+    click(view, titleList.center());
+    const Rect cardList = detail::lfoShapeButton(0);
+    click(view, detail::listMenuItem(cardList, 5, static_cast<int>(LfoClock::OneShot)).center());
+    const bool titleOwn = model.value(oneShot) == 0.0;
+    const int titlePolarity = paramIndex(0, SourceParam::Unipolar);
+    const double wasUnipolar = model.value(titlePolarity);
+    click(view, {289.0f + kTitleDx, 152.0f}); // its Unipolar switch
+    const bool titleUnipolar = model.value(titlePolarity) == 1.0 - wasUnipolar;
+    view.undo();
+    click(view, {317.0f + kTitleDx, 152.0f}); // its sync switch
+    const bool titleSync = model.value(paramIndex(0, SourceParam::Sync)) == 1.0;
+    view.undo();
+    // Its knobs after Rate, as on its card: Phase and Slew, each taking the wheel.
+    auto wheelTakes = [&](Point at, int param) {
+        const double was = model.value(param);
+        view.wheel(at, 1.0f, {});
+        const bool moved = model.value(param) != was;
+        view.undo();
+        return moved && model.value(param) == was;
+    };
+    const bool titlePhase = wheelTakes({478.0f + kTitleDx, 152.0f}, paramIndex(0, SourceParam::Phase));
+    const bool titleSlew = wheelTakes({574.0f + kTitleDx, 152.0f}, paramIndex(0, SourceParam::CurveSlew));
+    std::printf("      title row: %d %d %d %d %d %d %d\n", titleSustain, titleRetrigger, titleOwn, titleUnipolar,
+                titleSync, titlePhase, titleSlew);
+    check(titleSustain && titleRetrigger && titleOwn && titleUnipolar && titleSync && titlePhase && titleSlew,
+          "a Curve's full-size editor's title row sets its clock from its list, opening under it, its Unipolar and "
+          "sync, and its Phase and Slew");
+
+    // While the card's Phase knob is held, a line across the plot where notes would start the curve (at 30 %), in the
+    // full-size editor and, that closed, in the widened card (read off the rendered pixels, low on the plot, clear of
+    // the curve and the grid's lines), gone once it is let go.
+    {
+        const int phase = paramIndex(0, SourceParam::Phase);
+        const double phaseBefore = model.value(phase);
+        model.set(phase, 0.3);
+        view.poll();
+        const Point knob = curveKnob(0, 1);
+        auto whileHeld = [&](Point at, const char *name) {
+            view.mouseDown(knob, {});
+            renderer.save(view, dir / name);
+            const uint32_t line = renderer.pixel(at);
+            view.mouseUp(knob, {});
+            view.mouseMove({600.0f, 500.0f}, {});
+            renderer.save(view, dir / "10h-curve-phase-let-go.png");
+            return line != renderer.pixel(at);
+        };
+        // Let go, a faint dashed line stays there: some of its column differs from the plot at Phase 0.
+        auto column = [&](Point at) {
+            std::vector<uint32_t> pixels;
+            for (float dy = -30.0f; dy <= 30.0f; dy += 1.0f)
+                pixels.push_back(renderer.pixel({at.x, at.y + dy}));
+            return pixels;
+        };
+        renderer.save(view, dir / "10h-curve-phase-dashed.png");
+        const std::vector<uint32_t> dashed = column(shapeAt(0.3, -0.5));
+        model.set(phase, 0.0);
+        view.poll();
+        renderer.save(view, dir / "10h-curve-phase-none.png");
+        const bool faint = column(shapeAt(0.3, -0.5)) != dashed;
+        model.set(phase, 0.3);
+        view.poll();
+        const bool inEditor = whileHeld(shapeAt(0.3, -0.8), "10h-curve-phase-held.png");
+        click(view, kShapeDone);
+        const Point inCard{cardShapeAt(0, 0.3, -0.8).x - 0.5f, cardShapeAt(0, 0.3, -0.8).y};
+        const bool inWideCard = whileHeld(inCard, "10h-curve-phase-held-card.png");
+        click(view, wideButton(0, 2)); // the full-size editor again, for what follows
+        model.set(phase, phaseBefore);
+        view.poll();
+        std::printf("      the phase line: %d faint, %d in the editor, %d in the card\n", faint, inEditor, inWideCard);
+        check(faint && inEditor && inWideCard && model.value(phase) == phaseBefore,
+              "a Curve's Phase shows as a faint dashed line where notes start it, a solid one while its knob is held, "
+              "in the full-size editor and in its widened card (read off the rendered pixels)");
+    }
+
+    // Its loop's strip over the plot, on 16 columns: an end dragged sizes it, the start too, its middle moves it as long
+    // as it is, a drag outside it draws a new one, its ends stay a column apart, and a double-click loops the whole
+    // curve again; each one undo step.
+    auto stripAt = [](double x) { return Point{shapeAt(x, 0.0).x, 180.0f}; };
+    drag(view, stripAt(1.0), stripAt(0.76));
+    const bool end = loopIs(0.0, 0.75);
+    drag(view, stripAt(0.0), stripAt(0.24));
+    const bool start = loopIs(0.25, 0.75);
+    view.undo();
+    const bool oneStep = loopIs(0.0, 0.75);
+    view.redo();
+    drag(view, stripAt(0.5), stripAt(0.63));
+    const bool moved = loopIs(0.375, 0.875);
+    drag(view, stripAt(0.0625), stripAt(0.19));
+    const bool drawn = loopIs(0.0625, 0.1875);
+    drag(view, stripAt(0.1875), stripAt(0.0));
+    const bool apart = loopIs(0.0625, 0.125);
+    view.doubleClick(stripAt(0.5), {});
+    const bool whole = loopIs(0.0, 1.0);
+    view.undo();
+    const bool wholeUndone = loopIs(0.0625, 0.125);
+    // The cursors: moving over the loop, left and right over an end or outside it.
+    model.set(loopStart, 0.25);
+    model.set(loopEnd, 0.5);
+    view.poll();
+    view.mouseMove(stripAt(0.375), {});
+    const bool moveCursor = view.cursor() == CursorKind::Move;
+    view.mouseMove(stripAt(0.5), {});
+    const bool endCursor = view.cursor() == CursorKind::Horizontal;
+    view.mouseMove(stripAt(0.8), {});
+    const bool outCursor = view.cursor() == CursorKind::Horizontal;
+    std::printf("      the loop's strip: %d %d %d %d %d %d %d %d, cursors %d %d %d\n", end, start, oneStep, moved, drawn,
+                apart, whole, wholeUndone, moveCursor, endCursor, outCursor);
+    check(end && start && oneStep && moved && drawn && apart && whole && wholeUndone,
+          "a Curve's loop is set on its strip as the SEQ view's loop is, on the grid's columns, each drag one undo step");
+    check(moveCursor && endCursor && outCursor, "the loop's strip shows moving over the loop, left and right elsewhere");
+
+    // With Shift held, and again with Ctrl, a drag on the strip goes off the columns, where the mouse is: an end, the
+    // loop's middle (as far as the mouse goes) and a new loop, each one undo step, the ends kept 1/256 apart.
+    auto freeDrag = [&](Point from, Point to, Modifiers mods) {
+        view.mouseDown(from, mods);
+        view.mouseMove({(from.x + to.x) * 0.5f, (from.y + to.y) * 0.5f}, mods);
+        view.mouseMove(to, mods);
+        view.mouseUp(to, mods);
+    };
+    auto loopNear = [&](double start, double end) {
+        return std::abs(model.value(loopStart) - start) < 1e-4 && std::abs(model.value(loopEnd) - end) < 1e-4;
+    };
+    const Modifiers shift{true, false, false}, ctrl{false, true, false};
+    freeDrag(stripAt(0.5), stripAt(0.61), shift);
+    const bool freeEnd = loopNear(0.25, 0.61);
+    view.undo();
+    const bool freeUndone = loopIs(0.25, 0.5);
+    freeDrag(stripAt(0.25), stripAt(0.33), ctrl);
+    const bool freeStart = loopNear(0.33, 0.5);
+    freeDrag(stripAt(0.4), stripAt(0.47), shift);
+    const bool freeMoved = loopNear(0.40, 0.57);
+    freeDrag(stripAt(0.8), stripAt(0.93), ctrl);
+    const bool freeDrawn = loopNear(0.8, 0.93);
+    freeDrag(stripAt(0.93), stripAt(0.7), shift);
+    const bool freeApart = loopNear(0.8, 0.8 + 1.0 / 256.0);
+    std::printf("      free drags: %d %d %d %d %d %d, loop %.4f to %.4f\n", freeEnd, freeUndone, freeStart, freeMoved,
+                freeDrawn, freeApart, model.value(loopStart), model.value(loopEnd));
+    check(freeEnd && freeUndone && freeStart && freeMoved && freeDrawn && freeApart,
+          "with Shift or Ctrl held, a Curve's loop and its ends drag off the grid's columns, each one undo step");
+    model.set(loopStart, 0.25);
+    model.set(loopEnd, 0.5);
+    view.poll();
+
+    // What the mode doesn't play dimmed (read off the rendered pixels): past the loop retriggered, either side of it
+    // free, nothing in Sustain; no bar one-shot, whose drag on the strip sets nothing.
+    const Point after = shapeAt(0.8, 0.7), before = shapeAt(0.1, 0.7);
+    const Point bar{stripAt(0.375).x, 177.0f}; // on the bar, along the strip's top
+    view.mouseMove({600.0f, 500.0f}, {});
+    renderer.save(view, dir / "10h-curve-loop-retrigger.png");
+    const uint32_t retriggerAfter = renderer.pixel(after), retriggerBefore = renderer.pixel(before),
+                   retriggerBar = renderer.pixel(bar);
+    titleClock(1);
+    renderer.save(view, dir / "10h-curve-loop-free.png");
+    const uint32_t freeBefore = renderer.pixel(before);
+    titleClock(4);
+    renderer.save(view, dir / "10h-curve-loop-sustain.png");
+    const uint32_t sustainAfter = renderer.pixel(after), sustainBefore = renderer.pixel(before);
+    titleClock(3);
+    renderer.save(view, dir / "10h-curve-loop-one-shot.png");
+    const uint32_t oneShotAfter = renderer.pixel(after), oneShotBar = renderer.pixel(bar);
+    drag(view, stripAt(0.5), stripAt(0.75));
+    const bool noBar = loopIs(0.25, 0.5);
+    check(retriggerAfter != sustainAfter && retriggerBefore == sustainBefore && freeBefore != retriggerBefore &&
+              oneShotAfter == sustainAfter && oneShotBar != retriggerBar && noBar,
+          "a Curve's full-size editor dims what its clock mode doesn't play, and has no loop bar one-shot (read off "
+          "the rendered pixels)");
+
+    // A point's menu: Set as Loop Start and End, exactly at the point (off the grid too), each one undo step, left out
+    // where that end would cross the other; Delete point as before.
+    titleClock(4); // Sustain
+    view.doubleClick(shapeAt(0.37, 0.0), {}); // a point off the grid, the second of three
+    const double pointX = model.value(shapePointIndex(0, 1, PointField::X));
+    auto labels = [&](Point at) {
+        std::vector<std::string> found;
+        for (const MenuItem &item : view.contextMenu(at))
+            found.push_back(item.label);
+        return found;
+    };
+    view.menuCommand(menuEntry(shapeAt(pointX, 0.0), tr(Str::MenuSetLoopEnd)));
+    const bool setEnd = loopIs(0.25, pointX);
+    view.menuCommand(menuEntry(shapeAt(0.0, -1.0), tr(Str::MenuSetLoopStart))); // the first point
+    const bool setStart = loopIs(0.0, pointX);
+    view.undo();
+    const bool startUndone = loopIs(0.25, pointX);
+    const std::vector<std::string> onEnd = labels(shapeAt(pointX, 0.0)); // the loop's end: no Set as Loop Start
+    const std::vector<std::string> first = labels(shapeAt(0.0, -1.0));  // left of its start: no Set as Loop End
+    // Then Copy Shape, and Paste Shape while a shape is copied, as over any shape.
+    std::vector<std::string> wanted{tr(Str::MenuSetLoopEnd), "", tr(Str::MenuDeletePoint), "", tr(Str::MenuCopyShape)};
+    std::vector<std::string> firstWanted{tr(Str::MenuSetLoopStart), "", tr(Str::MenuCopyShape)};
+    if (!shapeClipboard().empty())
+        for (std::vector<std::string> *list : {&wanted, &firstWanted})
+            list->push_back(tr(Str::MenuPasteShape));
+    std::printf("      a point's menu: %zu entries at the loop's end, %zu on the first point; loop %.4f to %.4f\n",
+                onEnd.size(), first.size(), model.value(loopStart), model.value(loopEnd));
+    check(setEnd && setStart && startUndone && onEnd == wanted && first == firstWanted,
+          "a Curve's point's menu sets the loop's start or end exactly there, undoably, and leaves out what would cross");
+    // Stored the other way round, as a state may hold it (the loop 0.1 to 0.9): Set as Loop Start moves its start,
+    // both ends written in order.
+    {
+        const double startWas = model.value(loopStart), endWas = model.value(loopEnd);
+        model.set(loopStart, 0.9);
+        model.set(loopEnd, 0.1);
+        view.poll();
+        view.menuCommand(menuEntry(shapeAt(pointX, 0.0), tr(Str::MenuSetLoopStart)));
+        const bool reversedStart = loopIs(pointX, 0.9);
+        view.undo();
+        const bool reversedUndone = loopIs(0.9, 0.1);
+        model.set(loopStart, startWas);
+        model.set(loopEnd, endWas);
+        view.poll();
+        check(reversedStart && reversedUndone,
+              "Set as Loop Start on a loop stored the other way round moves its start, undoably");
+    }
+    view.mouseMove(shapeAt(pointX, 0.0), {});
+    check(renderer.save(view, dir / "10h-curve-editor-sustain.png"), "render a Curve's full-size editor in Sustain");
+
+    // The widened card: its loop's strip along the top of its plot, its end dragged and a double-click looping the
+    // whole curve again; no strip one-shot.
+    click(view, kShapeDone);
+    auto cardStripAt = [](double x) { return Point{cardX(0) + 281.0f + static_cast<float>(x) * 264.0f, 605.0f}; };
+    model.set(loopStart, 0.25);
+    model.set(loopEnd, 0.5);
+    view.poll();
+    drag(view, cardStripAt(0.5), cardStripAt(0.74));
+    const bool cardEnd = loopIs(0.25, 0.75);
+    view.mouseMove(cardShapeAt(0, 0.5, 1.0), {});
+    const bool cardShot = renderer.save(view, dir / "10h-curve-card-sustain.png");
+    view.doubleClick(cardStripAt(0.5), {});
+    const bool cardWhole = loopIs(0.0, 1.0);
+    pickClock(view, 0, LfoClock::OneShot);
+    model.set(loopEnd, 0.5);
+    view.poll();
+    drag(view, cardStripAt(0.5), cardStripAt(0.74));
+    const bool cardNoBar = loopIs(0.0, 0.5);
+    check(cardEnd && cardShot && cardWhole && cardNoBar,
+          "a widened Curve card's loop is set on a strip along its plot's top, and has none one-shot");
+
+    // Let go in Sustain, a Curve's dot keeps to its curve, as an envelope's does, and a dashed line across shows the
+    // level it puts out (read off the rendered pixels): what it carries on top of the curve moves the line, not the dot.
+    pickClock(view, 0, LfoClock::Sustain);
+    view.mouseMove({600.0f, 328.0f}, {});
+    auto get = [&model](int index) { return model.value(index); };
+    const Point onCurve = cardShapeAt(0, 0.6, shapeValue(get, 0, 0.6));
+    auto released = [&](float offset, const char *name) {
+        model.live.voices = 1;
+        model.live.lfoPhases[0] = 0.6f;
+        model.live.lfoRates[0] = 0.0f;
+        model.live.lfoLeft = 1u;
+        model.live.lfoOffsets[0] = offset;
+        view.poll();
+        renderer.save(view, dir / name);
+        std::vector<uint32_t> row; // along where the line goes for a level of -0.2, left of the curve's dot
+        for (double x = 0.05; x < 0.25; x += 0.01)
+            row.push_back(renderer.pixel(cardShapeAt(0, x, -0.2)));
+        return std::pair{renderer.pixel(onCurve), row};
+    };
+    const auto [dotOn, rowOn] = released(0.0f, "10h-curve-card-on-curve.png");
+    const float lower = static_cast<float>(-0.2 - shapeValue(get, 0, 0.6));
+    const auto [dotOff, rowOff] = released(lower, "10h-curve-card-released.png");
+    model.live = {};
+    view.poll();
+    check(dotOn == dotOff && rowOn != rowOff,
+          "a Curve let go in Sustain keeps its dot on its curve, a line across showing the level it puts out");
+}
+
+// An operator's drawn envelope on its ENVELOPE tab: ADSR | Curve switching to it in one undo step, drawn from its AHDSR
+// the first time (and not again once drawn); One-Shot | Sustain; its sync switch, its Length knob then setting its note
+// value; its loop's bar on the tab's display dragged, one undo step; the newest voice's dot on it (read off the
+// rendered pixels); and the pencil opening its full-size editor, which a view tab closes.
+void testOpEnvCurve(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    model.ui.opTab = InspectorTab::Envelope;
+    const int mode = paramIndex(0, OpParam::EnvMode), sustain = paramIndex(0, OpParam::EnvSustain);
+    const int loopStart = paramIndex(0, OpParam::EnvLoopStart), loopEnd = paramIndex(0, OpParam::EnvLoopEnd);
+    const int length = paramIndex(0, OpParam::EnvLength), sync = paramIndex(0, OpParam::EnvSync);
+    const int division = paramIndex(0, OpParam::EnvDivision), shape = opEnvShapeIndex(0);
+    auto point = [&](int i, PointField field) { return model.value(shapeFieldIndex(shape, i, field)); };
+    model.set(paramIndex(0, OpParam::Attack), normFromTime(0.1));
+    model.set(paramIndex(0, OpParam::Decay), normFromTime(0.3));
+    model.set(paramIndex(0, OpParam::Sustain), 0.5);
+    model.set(paramIndex(0, OpParam::Release), normFromTime(0.4));
+    view.poll();
+    renderer.save(view, dir / "3h-env-adsr.png");
+    click(view, detail::opEnvModeButton(1).center());
+    renderer.save(view, dir / "3h-env-curve.png");
+    const double hold = envTimeFromNorm(model.value(paramIndex(0, OpParam::Hold)));
+    const double column = std::max(0.25 * (0.1 + hold + 0.3 + 0.4), 0.05);
+    const double total = 0.1 + hold + 0.3 + column + 0.4;
+    const int count = static_cast<int>(model.value(shape));
+    const bool filled = model.value(mode) == 1.0 && model.value(sustain) == 1.0 && count == (hold > 0.0 ? 6 : 5) &&
+                        std::abs(timeFromNorm(model.value(length)) - 1.0) < 1e-6 &&
+                        std::abs(point(1, PointField::X) - 0.1 / total) < 1e-9 && point(1, PointField::Y) == 1.0 &&
+                        point(count - 3, PointField::X) == model.value(loopStart) &&
+                        point(count - 2, PointField::X) == model.value(loopEnd) &&
+                        point(count - 3, PointField::Y) == 0.0 && point(count - 2, PointField::Y) == 0.0 &&
+                        point(count - 1, PointField::X) == 1.0 && point(count - 1, PointField::Y) == -1.0 &&
+                        point(2, PointField::Curve) < 0.0; // the decay's curve starts fast, as a shape bent down
+    view.undo();
+    const bool undone = model.value(mode) == 0.0 && model.value(shape) == paramTable()[shape].def &&
+                        model.value(length) == paramTable()[length].def;
+    click(view, detail::opEnvModeButton(1).center());
+    model.set(length, normFromTime(2.0)); // drawn now: switching back and again leaves it as it is
+    click(view, detail::opEnvModeButton(0).center());
+    const bool adsr = model.value(mode) == 0.0;
+    click(view, detail::opEnvModeButton(1).center());
+    const bool kept = model.value(mode) == 1.0 && model.value(length) == normFromTime(2.0) &&
+                      static_cast<int>(model.value(shape)) == count;
+    check(filled && undone && adsr && kept,
+          "an operator's ENVELOPE tab's ADSR | Curve switches to its drawn envelope in one undo step, drawn from its "
+          "AHDSR the first time and kept as drawn after");
+    // The wheel over it does as a click: up, the Curve, drawn from the AHDSR the first time; down, the AHDSR again.
+    {
+        FakeController fresh;
+        View wheeled(fresh);
+        fresh.ui.opTab = InspectorTab::Envelope;
+        fresh.set(paramIndex(0, OpParam::Attack), normFromTime(0.1));
+        fresh.set(paramIndex(0, OpParam::Decay), normFromTime(0.3));
+        fresh.set(paramIndex(0, OpParam::Sustain), 0.5);
+        fresh.set(paramIndex(0, OpParam::Release), normFromTime(0.4));
+        wheeled.poll();
+        wheeled.wheel(detail::opEnvModeButton(1).center(), 1.0f, {});
+        const bool up = fresh.value(mode) == 1.0 && static_cast<int>(fresh.value(shape)) == count &&
+                        std::abs(fresh.value(shapeFieldIndex(shape, 1, PointField::X)) - 0.1 / total) < 1e-9;
+        wheeled.wheel(detail::opEnvModeButton(0).center(), -1.0f, {});
+        const bool down = fresh.value(mode) == 0.0;
+        check(up && down, "the wheel over an operator's ADSR | Curve switches it as a click does, its Curve drawn from "
+                          "its AHDSR the first time");
+    }
+
+    click(view, detail::opEnvSustainButton(0).center());
+    const bool oneShot = model.value(sustain) == 0.0;
+    renderer.save(view, dir / "3h-env-oneshot.png");
+    view.undo();
+    const bool sustained = model.value(sustain) == 1.0;
+    const Point knob = detail::kOpEnvLengthKnob;
+    drag(view, knob, {knob.x, knob.y - 40.0f});
+    const bool longer = model.value(length) > normFromTime(2.0);
+    click(view, detail::opEnvSyncButton().center());
+    const double lengthWas = model.value(length), divisionWas = model.value(division);
+    drag(view, knob, {knob.x, knob.y - 40.0f});
+    const bool synced = model.value(sync) == 1.0 && model.value(length) == lengthWas &&
+                        model.value(division) != divisionWas;
+    view.undo();
+    view.undo();
+    const bool unsynced = model.value(sync) == 0.0 && model.value(division) == divisionWas;
+    const int envSlew = paramIndex(0, OpParam::EnvSlew);
+    const Point slewKnob = detail::kOpEnvSlewKnob;
+    const bool slewOff = model.value(envSlew) == 0.0;
+    drag(view, slewKnob, {slewKnob.x, slewKnob.y - 30.0f});
+    const bool slewed = model.value(envSlew) > 0.0;
+    view.undo();
+    check(oneShot && sustained && longer && synced && unsynced && slewOff && slewed && model.value(envSlew) == 0.0,
+          "a drawn envelope's One-Shot | Sustain and sync switch set it, its Length knob its length, or synced its note "
+          "value, and its Slew knob its slew, Off to begin with");
+
+    // Its loop's bar, along the top of the tab's display: its end dragged right, onto the grid's columns.
+    const Rect plot = detail::kOpEnvPlot;
+    const double startWas = model.value(loopStart), endWas = model.value(loopEnd);
+    const Point end{plot.x + static_cast<float>(endWas) * plot.w, plot.y - 3.0f};
+    drag(view, end, {end.x + 0.15f * plot.w, end.y});
+    const double endNow = model.value(loopEnd);
+    const bool shortened = endNow > endWas + 0.05 && model.value(loopStart) == startWas &&
+                           std::abs(endNow * 8.0 - std::round(endNow * 8.0)) < 1e-9;
+    view.undo();
+    const bool loopUndone = model.value(loopEnd) == endWas;
+    check(shortened && loopUndone, "a drawn envelope's loop's end, dragged on its ENVELOPE tab, snaps to the grid in one "
+                                   "undo step");
+
+    // The newest voice in its loop: a dot on the shape there (and the line across at its level).
+    const Point dot{plot.x + static_cast<float>(0.5 * (startWas + endWas)) * plot.w, plot.center().y};
+    view.mouseMove({600.0f, 328.0f}, {});
+    renderer.save(view, dir / "3h-env-idle.png");
+    const uint32_t idle = renderer.pixel(dot);
+    model.live.voices = 1;
+    model.live.opEnvPhase[0] = static_cast<float>(0.5 * (startWas + endWas));
+    model.live.opEnvLevels[0] = 0.5f;
+    view.poll();
+    renderer.save(view, dir / "3h-env-playing.png");
+    const uint32_t playing = renderer.pixel(dot);
+    model.live.voices = 0;
+    model.live.opEnvPhase[0] = -1.0f;
+    view.poll();
+    check(playing != idle, "a drawn envelope's ENVELOPE tab shows where the newest voice is on it");
+
+    // The pencil opens the full-size editor over the routing panel and the inspector, as a Curve's, the pencil under
+    // it; its done button and a view tab close it. Open, its title row's Slew knob takes the wheel (its name, then the
+    // mode list, sync, Length and Slew, as a Curve's title row has them).
+    const Point titleSlew{450.0f + kTitleDx, 152.0f};
+    auto editorOpen = [&] {
+        const double was = model.value(envSlew);
+        view.wheel(titleSlew, 1.0f, {});
+        const bool open = model.value(envSlew) != was;
+        if (open)
+            view.undo();
+        return open && model.value(envSlew) == was;
+    };
+    const bool shut = !editorOpen();
+    click(view, detail::opEnvEditButton().center());
+    renderer.save(view, dir / "3h-env-editor.png");
+    const bool open = editorOpen();
+    // Open, the newest voice moving along it repaints the whole editor, not only the inspector's part under it.
+    {
+        model.live.voices = 1;
+        model.live.opEnvPhase[0] = 0.3f;
+        model.live.opEnvLevels[0] = 0.4f;
+        view.poll();
+        model.live.opEnvPhase[0] = 0.6f;
+        model.live.opEnvLevels[0] = 0.7f;
+        view.poll();
+        const Rect panel = detail::kShapeEditorPanel;
+        const bool whole = std::any_of(view.changedAreas().begin(), view.changedAreas().end(), [&](Rect r) {
+            return r.x <= panel.x + 0.5f && r.right() >= panel.right() - 0.5f && r.y <= panel.y + 0.5f &&
+                   r.bottom() >= panel.bottom() - 0.5f;
+        });
+        model.live.voices = 0;
+        model.live.opEnvPhase[0] = -1.0f;
+        view.poll();
+        check(whole, "a drawn envelope's full-size editor repaints the whole of it as the newest voice moves along it");
+    }
+    click(view, detail::opEnvEditButton().center()); // on its plot now, the inspector under it
+    const bool covering = editorOpen();
+    // Its mode list, where a Curve's clock list is: One-Shot picked from it, under its button, one undo step.
+    const Rect modeList = kTitleList;
+    click(view, modeList.center());
+    view.mouseMove(detail::listMenuItem(modeList, 2, 0).center(), {});
+    renderer.save(view, dir / "3h-env-editor-list.png");
+    click(view, detail::listMenuItem(modeList, 2, 0).center());
+    const bool listOneShot = model.value(sustain) == 0.0;
+    view.undo();
+    const bool listUndone = model.value(sustain) == 1.0;
+    click(view, kShapeDone);
+    const bool done = !editorOpen();
+    click(view, detail::opEnvEditButton().center());
+    click(view, detail::kViewTabs[static_cast<int>(RoutingView::Graph)].center());
+    const bool closed = !editorOpen();
+    std::printf("      the envelope's editor: %d %d %d %d %d %d %d\n", shut, open, covering, listOneShot, listUndone,
+                done, closed);
+    check(shut && open && covering && listOneShot && listUndone && done && closed,
+          "a drawn envelope's pencil opens its full-size editor over the routing panel and the inspector, its mode "
+          "list picking One-Shot or Sustain, its done button and a view tab closing it");
+}
+
+// Copy Shape and Paste Shape between the kinds of drawn shape, from their right-click menus and with Ctrl+C and Ctrl+V
+// over them, each paste one undo step and fitted to where it goes: an operator's envelope into a Curve source as it is,
+// with its loop region; into a symmetric voice shaper's curve, its ends at the curve's and a point in its middle; a
+// Curve source of 40 points into velocity's curve, thinned to its 16, its way round to its start a point at its end;
+// and into a sequencer lane across the pattern, whose curve copied pastes back into the Curve source. Paste Shape is
+// offered only once a shape is copied.
+void testShapeCopyPaste(const std::filesystem::path &dir, Renderer &renderer) {
+    shapeClipboard() = {};
+    FakeController model;
+    View view(model);
+    model.ui.opTab = InspectorTab::Envelope;
+    model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Curve));
+    view.poll();
+    auto entry = [&](Point at, Str label) {
+        for (const MenuItem &item : view.contextMenu(at))
+            if (item.label == tr(label))
+                return item.command;
+        return -1;
+    };
+    auto field = [&](int base, int i, PointField f) { return model.value(shapeFieldIndex(base, i, f)); };
+    auto count = [&](int base) { return static_cast<int>(model.value(base)); };
+    const int env = opEnvShapeIndex(0), lfo = shapeCountIndex(0);
+    const int lfoCount = count(lfo);
+
+    // Operator A's envelope, drawn from its AHDSR, its loop moved; its menu offers Copy Shape alone, then Paste too.
+    click(view, detail::opEnvModeButton(1).center());
+    model.set(paramIndex(0, OpParam::EnvLoopStart), 0.25);
+    model.set(paramIndex(0, OpParam::EnvLoopEnd), 0.5);
+    view.poll();
+    const Point onEnv{detail::kOpEnvPlot.x + 0.95f * detail::kOpEnvPlot.w, detail::kOpEnvPlot.y + 4.0f};
+    const bool copyOnly = entry(onEnv, Str::MenuCopyShape) >= 0 && entry(onEnv, Str::MenuPasteShape) < 0;
+    view.menuCommand(entry(onEnv, Str::MenuCopyShape));
+    const bool pasteOffered = entry(onEnv, Str::MenuPasteShape) >= 0;
+    const int envCount = count(env);
+
+    // Ctrl+V over the Curve source's widened card: as it is, with its loop region; one undo step.
+    click(view, lfoDisplay(0));
+    view.mouseMove(cardShapeAt(0, 0.5, 0.0), {});
+    const bool took = view.seqKey(View::Key::Paste, false);
+    bool same = count(lfo) == envCount;
+    for (int i = 1; same && i < envCount; ++i)
+        same = field(lfo, i, PointField::X) == field(env, i, PointField::X) &&
+               field(lfo, i, PointField::Y) == field(env, i, PointField::Y) &&
+               field(lfo, i, PointField::Curve) == field(env, i, PointField::Curve);
+    const bool looped = model.value(paramIndex(0, SourceParam::LoopStart)) == 0.25 &&
+                        model.value(paramIndex(0, SourceParam::LoopEnd)) == 0.5;
+    renderer.save(view, dir / "10k-shape-pasted.png");
+    view.undo();
+    const bool undone = count(lfo) == lfoCount && model.value(paramIndex(0, SourceParam::LoopEnd)) == 1.0;
+    check(copyOnly && pasteOffered && took && same && looped && undone,
+          "an operator's envelope copied from its menu pastes into a Curve source as it is, with its loop region, by "
+          "Ctrl+V over it, in one undo step; Paste Shape offered once a shape is copied");
+
+    // Into a symmetric voice shaper's Custom curve, from its page's menu: its ends at the curve's, a point in its middle.
+    const ShaperParams s1 = shaperParams(kFxSlots);
+    model.set(s1.mode, static_cast<double>(ClipMode::Custom));
+    model.set(s1.symmetric, 1.0);
+    click(view, nodeTab(kOps + kFilters));
+    const Rect shaperArea = detail::kShaperDisplay.inset(8.0f);
+    const Point onShaper{shaperArea.x + 0.8f * shaperArea.w, shaperArea.y + 6.0f};
+    view.menuCommand(entry(onShaper, Str::MenuPasteShape));
+    const int shaperCount = count(s1.curve);
+    bool middle = false;
+    for (int i = 0; i < shaperCount; ++i)
+        middle = middle || std::abs(field(s1.curve, i, PointField::X) - 0.5) < 1e-9;
+    const bool ends = field(s1.curve, shaperCount - 1, PointField::X) == 1.0 &&
+                      field(s1.curve, shaperCount - 1, PointField::Y) == -1.0 && model.value(s1.symmetric) == 1.0;
+    renderer.save(view, dir / "10k-shape-pasted-shaper.png");
+    view.undo();
+    const bool shaperUndone = count(s1.curve) == static_cast<int>(paramTable()[s1.curve].def);
+    check(middle && ends && shaperCount == envCount + 1 && shaperUndone,
+          "a shape pasted into a symmetric shaper curve keeps its ends at the curve's and gets a point in its middle");
+
+    // A symmetric curve with no point in its middle (Symmetric switched on with no room for one, or as a state holds
+    // it) copies as it sounds: its right half from where its segment across the middle stands there, its points after
+    // as they are. Pasted into a Curve source of more points, the points past the clip's go back to their defaults.
+    {
+        const double xs[] = {0.0, 0.4, 0.6, 1.0}, ys[] = {-1.0, 0.2, 0.8, 1.0};
+        model.set(s1.curve, 4.0);
+        for (int i = 0; i < 4; ++i) {
+            model.set(shapeFieldIndex(s1.curve, i, PointField::X), xs[i]);
+            model.set(shapeFieldIndex(s1.curve, i, PointField::Y), ys[i]);
+            model.set(shapeFieldIndex(s1.curve, i, PointField::Curve), 0.0);
+        }
+        view.poll();
+        view.menuCommand(entry(onShaper, Str::MenuCopyShape));
+        const ShapeClip clip = shapeClipboard();
+        bool split = false, after = false;
+        for (const ShapeClip::Point &p : clip.points) {
+            split = split || (std::abs(p.x - 0.5) < 1e-9 && std::abs(p.y - 0.5) < 1e-9);
+            after = after || (std::abs(p.x - 0.6) < 1e-9 && std::abs(p.y - 0.8) < 1e-9);
+        }
+        check(split && after, "a symmetric curve without a point in its middle copies as it sounds there");
+
+        model.set(lfo, 10.0);
+        for (int i = 0; i < 10; ++i) {
+            model.set(shapePointIndex(0, i, PointField::X), i / 10.0);
+            model.set(shapePointIndex(0, i, PointField::Y), 0.5);
+            model.set(shapePointIndex(0, i, PointField::Curve), 0.3);
+        }
+        view.poll();
+        view.mouseMove(cardShapeAt(0, 0.5, 0.0), {});
+        view.seqKey(View::Key::Paste, false);
+        const int pasted = count(lfo);
+        bool reset = pasted == static_cast<int>(clip.points.size());
+        for (int i = pasted; reset && i < 10; ++i)
+            for (const PointField f : {PointField::X, PointField::Y, PointField::Curve})
+                reset = reset && model.value(shapePointIndex(0, i, f)) == paramTable()[shapePointIndex(0, i, f)].def;
+        view.undo();
+        const bool shortUndone = count(lfo) == 10 && model.value(shapePointIndex(0, 9, PointField::Curve)) == 0.3;
+        std::printf("      a %d-point clip pasted over 10 points: %d points\n", static_cast<int>(clip.points.size()),
+                    pasted);
+        check(reset && shortUndone, "a shape pasted over one of more points puts the points past it back at their "
+                                    "defaults, undoably");
+    }
+
+    // A Curve source of 40 points, Ctrl+C over its card, then Ctrl+V into velocity's curve: thinned to its 16.
+    model.set(lfo, 40.0);
+    for (int i = 0; i < 40; ++i) {
+        model.set(shapePointIndex(0, i, PointField::X), i / 40.0);
+        model.set(shapePointIndex(0, i, PointField::Y), std::sin(2.0 * std::numbers::pi * i / 40.0));
+        model.set(shapePointIndex(0, i, PointField::Curve), 0.0);
+    }
+    view.poll();
+    view.mouseMove(cardShapeAt(0, 0.3, 0.0), {});
+    const bool copied = view.seqKey(View::Key::Copy, false);
+    const float y = view.height() - 179.0f;
+    click(view, {1142.0f, y}); // velocity's display opens its curve over the routing panel
+    const Rect routing = detail::kRouting;
+    const Point onVelocity{routing.x + routing.w * 0.5f, routing.y + 60.0f + (routing.h - 96.0f) * 0.5f};
+    view.mouseMove(onVelocity, {});
+    view.seqKey(View::Key::Paste, false);
+    const int velocity = paramIndex(VelocityParam::Curve);
+    const bool thinned = count(velocity) == kMaxNotePoints && field(velocity, kMaxNotePoints - 1, PointField::X) == 1.0 &&
+                         std::abs(field(velocity, kMaxNotePoints - 1, PointField::Y)) < 1e-9;
+    renderer.save(view, dir / "10k-shape-pasted-velocity.png");
+    view.undo();
+    const bool velocityUndone = count(velocity) == static_cast<int>(paramTable()[velocity].def);
+    check(copied && thinned && velocityUndone,
+          "a Curve source of 40 points pastes into velocity's curve thinned to its 16, ending where it started");
+
+    // Into the sequencer's BEND lane, from its menu, across the pattern; the lane's curve copied with Ctrl+C pastes
+    // back into the Curve source.
+    click(view, detail::kViewTabs[static_cast<int>(RoutingView::Seq)].center());
+    model.ui.seqLane = SeqLane::Bend;
+    model.set(paramIndex(SeqParam::Enabled), 1.0); // the SEQ view's menus open only while the sequencer is on
+    view.poll();
+    const Point onLane = detail::kSeqLaneArea.center();
+    view.menuCommand(entry(onLane, Str::MenuPasteShape));
+    const double steps = kSeqStepsPerBar * std::lround(model.value(paramIndex(0, SeqPatternParam::Length)));
+    const int bend = seqCurveCountIndex(0, SeqCurve::Bend);
+    const bool lane = count(bend) == 40 && model.value(seqCurveIndex(0, SeqCurve::Bend, 10, PointField::X)) == 0.25 * steps &&
+                      std::abs(model.value(seqCurveIndex(0, SeqCurve::Bend, 10, PointField::Y)) - 1.0) < 1e-9;
+    renderer.save(view, dir / "10k-shape-pasted-lane.png");
+    view.mouseMove(onLane, {});
+    view.seqKey(View::Key::Copy, false);
+    model.set(paramIndex(SeqParam::Enabled), 0.0);
+    click(view, detail::kViewTabs[static_cast<int>(RoutingView::Graph)].center()); // the source cards again
+    model.set(lfo, 3.0);
+    view.poll();
+    view.mouseMove(cardShapeAt(0, 0.5, 0.0), {});
+    view.seqKey(View::Key::Paste, false);
+    const bool back = count(lfo) == 40 && std::abs(field(lfo, 10, PointField::Y) - 1.0) < 1e-9;
+    std::printf("      pasted: env %d points, shaper %d, velocity %d, lane %d\n", envCount, shaperCount,
+                count(velocity), count(bend));
+    check(lane && back, "a shape pastes into a sequencer lane across its pattern, and the lane's curve copies back");
+}
+
 void testWideLfoCard(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -5214,6 +6024,9 @@ void testWideLfoCard(const std::filesystem::path &dir, Renderer &renderer) {
     const bool greyed = pointValue(2, 0, PointField::Y) == firstLevel;
     view.mouseMove({400.0f, 728.0f}, {});
     const bool bigShot = renderer.save(view, dir / "10g-lfo-full-size.png");
+    // Its plot dimmed meanwhile (read off the rendered pixels): inside its display, left of the plot.
+    const Point margin{cardShapeAt(wideCard, 0.0, 0.6).x - 4.0f, cardShapeAt(wideCard, 0.0, 0.6).y};
+    const uint32_t dimmedPlot = renderer.pixel(margin);
     click(view, kShapeDone);
     const bool back = switches(powerAt(2, 2.0f), 2);
     // Closed by a view tab too, the card's editor is back in use.
@@ -5222,13 +6035,23 @@ void testWideLfoCard(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, lfoTool(wideCard, 0));
     const bool restored = pointValue(2, 0, PointField::Y) == -firstLevel;
     view.undo();
+    // And by a click on the card's dimmed plot, its editor taking clicks again, undimmed.
+    click(view, wideButton(wideCard, 2));
+    click(view, cardShapeAt(wideCard, 0.5, 0.0));
+    click(view, lfoTool(wideCard, 0));
+    const bool plotCloses = pointValue(2, 0, PointField::Y) == -firstLevel;
+    view.undo();
+    renderer.save(view, dir / "10g-lfo-full-size-closed.png");
+    const uint32_t plainPlot = renderer.pixel(margin);
+    std::printf("      the card's plot: %08x dimmed, %08x plain\n", dimmedPlot, plainPlot);
     // The SEQ view covering the modulation panel and going again leaves the card widened.
     click(view, detail::kViewTabs[static_cast<int>(RoutingView::Seq)].center());
     click(view, kRoutingTab);
     const bool kept = switches(powerAt(2, 2.0f), 2);
-    check(covered && greyed && bigShot && back && restored && kept,
-          "the full-size editor greys the widened card's editor out until it closes, by its done button or a tab, "
-          "and the card stays widened while the SEQ view covers it");
+    check(covered && greyed && bigShot && back && restored && plotCloses && dimmedPlot != plainPlot && kept,
+          "the full-size editor greys the widened card's editor out, its plot dimmed (read off the rendered pixels), "
+          "until it closes, by its done button, a tab or a click on that plot, and the card stays widened while the "
+          "SEQ view covers it");
     // Back to its size by its collapse button; its display widens it again.
     click(view, wideButton(wideCard, 0));
     const bool collapsed = switches(sourcePower(2), 2);
@@ -9392,26 +10215,27 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, {1026.0f, y});
     const int low = paramIndex(NoteParam::Low), high = paramIndex(NoteParam::High);
     const double lowFrom = model.value(low);
-    drag(view, {182.0f + kRoutingDx, 152.0f}, {182.0f + kRoutingDx, 52.0f}); // Low's knob, 100 px up: ten notes, landing on a whole one
+    constexpr float kStripDx = kEditorX - 16.0f; // the editor's x from the panels' row's left
+    drag(view, {kTitleList.x + 18.0f, 152.0f}, {kTitleList.x + 18.0f, 52.0f}); // Low's knob, 100 px up: ten notes, landing on a whole one
     const bool raised = model.value(low) == std::round(lowFrom) + 10.0;
-    view.doubleClick(noteCurveAt(0.5, 0.6), {});
+    view.doubleClick(stripCurveAt(0.5, 0.6), {});
     const bool pointAdded = model.value(paramIndex(NoteParam::Curve)) == 4.0;
     // Steps, under the plot left of the grid's controls, has a plain click draw a step here too; Points goes back.
-    click(view, {514.0f + kRoutingDx, 486.0f});
-    click(view, noteCurveAt(0.2, -0.5));
+    click(view, {514.0f + kStripDx, 486.0f});
+    click(view, stripCurveAt(0.2, -0.5));
     const bool stepped = model.layout().shapeSteps && model.value(paramIndex(NoteParam::Curve)) > 4.0;
     view.undo();
-    click(view, {446.0f + kRoutingDx, 486.0f});
-    click(view, noteCurveAt(0.2, -0.5));
+    click(view, {446.0f + kStripDx, 486.0f});
+    click(view, stripCurveAt(0.2, -0.5));
     const bool modes = stepped && !model.layout().shapeSteps && model.value(paramIndex(NoteParam::Curve)) == 4.0;
     model.live.notePitch = 72.0f;
     view.poll();
-    view.mouseMove(noteCurveAt(0.5, 0.6), {});
+    view.mouseMove(stripCurveAt(0.5, 0.6), {});
     const bool curveShot = renderer.save(view, dir / "26c-note-curve.png");
     click(view, kNoteCurveReset);
     const bool reset = model.value(low) == paramTable()[low].def && model.value(high) == paramTable()[high].def &&
                        model.value(paramIndex(NoteParam::Curve)) == 3.0;
-    click(view, kRoutingEditorDone);
+    click(view, kShapeDone);
     check(raised && pointAdded && modes && curveShot && reset,
           "the note source's display opens its curve, with its range's knobs, Points | Steps working there, and the "
           "reset button puts both back");
@@ -9968,9 +10792,9 @@ void testVelocity(const std::filesystem::path &dir, Renderer &renderer) {
     // and the reset button takes it back to the line.
     const int curve = paramIndex(VelocityParam::Curve);
     click(view, display);
-    view.doubleClick(noteCurveAt(0.5, 0.6), {});
+    view.doubleClick(stripCurveAt(0.5, 0.6), {});
     const bool pointAdded = model.value(curve) == 3.0;
-    view.mouseMove(noteCurveAt(0.5, 0.6), {});
+    view.mouseMove(stripCurveAt(0.5, 0.6), {});
     const bool curveShot = renderer.save(view, dir / "26m-velocity-curve.png");
     click(view, kNoteCurveReset);
     const bool reset = model.value(curve) == 2.0 && model.value(shapeFieldIndex(curve, 1, PointField::Y)) == 1.0;
@@ -11400,34 +12224,38 @@ void testNewSources(const std::filesystem::path &dir, Renderer &renderer) {
               onPressure && onSlide && model.value(paramIndex(2, SourceParam::CcNumber)) == 1.0,
           "+ SOURCE's list adds Random and MIDI sources, a MIDI card's list picking pressure or slide over a controller");
 
-    // A Random card's Unipolar | Bipolar, where an LFO's shape list is (from x 16 of the card, 122 px wide, at y 564 +
-    // 42, 22 px high), each half of it: bipolar to begin with, Unipolar lit by a click (read off the rendered pixels,
-    // clear of its icon), Bipolar again by the other; each an undo step.
+    // A Random card's Unipolar switch, under its clock list beside its sync, as a Curve card's: bipolar to begin with,
+    // a click making it unipolar and lighting the switch (read off the rendered pixels, clear of its icon), another
+    // bipolar again; each an undo step.
     {
-        auto polarity = [](int bipolar) {
-            return Point{cardX(0) + 16.0f + 61.0f * (static_cast<float>(bipolar) + 0.5f), 564.0f + 42.0f + 11.0f};
-        };
+        const Rect polarity = detail::curveUnipolarSwitch(0.0f);
         const int bipolarParam = paramIndex(0, SourceParam::Bipolar);
-        const Point clearOfIcon{polarity(0).x - 20.0f, polarity(0).y + 6.0f};
+        const Point clearOfIcon{polarity.x + 3.0f, polarity.y + 3.0f};
         const bool startsBipolar = model.value(bipolarParam) == 1.0;
         view.mouseMove({600.0f, 328.0f}, {});
         renderer.save(view, dir / "11j-random-bipolar.png");
         const uint32_t unlit = renderer.pixel(clearOfIcon);
-        click(view, polarity(0));
+        click(view, polarity.center());
         const bool unipolar = model.value(bipolarParam) == 0.0;
         view.mouseMove({600.0f, 328.0f}, {});
         const bool polarShot = renderer.save(view, dir / "11j-random-unipolar.png");
         const bool lit = renderer.pixel(clearOfIcon) != unlit;
-        click(view, polarity(1));
+        click(view, polarity.center());
         const bool bipolar = model.value(bipolarParam) == 1.0;
         view.undo();
         check(startsBipolar && unipolar && polarShot && lit && bipolar && model.value(bipolarParam) == 0.0,
-              "a Random card's Unipolar | Bipolar switch sets its polarity, undoably");
+              "a Random card's Unipolar switch sets its polarity, lit while it is unipolar, undoably");
+        // The wheel turns it on upward and off downward, as it shows: down bipolar, up unipolar (lit) again.
+        view.wheel(polarity.center(), -1.0f, {});
+        const bool wheelOff = model.value(bipolarParam) == 1.0;
+        view.wheel(polarity.center(), 1.0f, {});
+        const bool wheelOn = model.value(bipolarParam) == 0.0;
+        check(wheelOff && wheelOn, "the wheel over a Random card's Unipolar switch turns it on upward, as it shows");
     }
 
     // A Curve source, an LFO of a drawn shape, from the list (second, after LFO): unipolar to begin with, its card
-    // widened to draw its shape there (its power switch where a widened card's is), and its Unipolar | Bipolar where an
-    // LFO's shape list is, setting its Unipolar, undoably.
+    // widened to draw its shape there (its power switch where a widened card's is), and its Unipolar switch under the
+    // sync button, as an LFO's, undoably.
     {
         FakeController fresh;
         View curveView(fresh);
@@ -11445,7 +12273,7 @@ void testNewSources(const std::filesystem::path &dir, Renderer &renderer) {
         click(curveView, widePower);
         curveView.mouseMove({600.0f, 328.0f}, {});
         const bool curveShot = renderer.save(curveView, dir / "11l-curve-source.png");
-        click(curveView, {cardX(0) + 16.0f + 61.0f * 1.5f, 564.0f + 42.0f + 11.0f}); // Bipolar
+        click(curveView, curveUnipolarToggle(0)); // off: bipolar
         const bool bipolar = fresh.value(unipolarParam) == 0.0;
         curveView.undo();
         check(curveListShot && curveAdded && wide && curveShot && bipolar && fresh.value(unipolarParam) == 1.0,
@@ -13268,8 +14096,9 @@ void run(const std::filesystem::path &dir, float scale) {
     check(model.value(paramIndex(0, OpParam::Transpose)) == 4.0, "the pitch knob transposes in whole semitones");
     model.set(paramIndex(0, OpParam::Transpose), 0.0);
     check(isModTarget(paramIndex(0, OpParam::Transpose)), "an operator's pitch can be modulated");
-    // An LFO's clock modes: one at a time, as Poly | Mono, each setting Free, Anchor and One-Shot for it in one undo
-    // step; a click on the one lit leaves it, and the wheel steps along them. Unipolar is a switch of its own.
+    // An LFO's clock modes, a list under its shape list: a pick sets Free, Anchor and One-Shot for it in one undo step,
+    // the mode in force picked again leaves it, the wheel over the list steps along them, held at One-Shot (an LFO has
+    // no Sustain). Unipolar is a switch of its own.
     {
         const int free = paramIndex(0, SourceParam::Free), anchor = paramIndex(0, SourceParam::Anchor),
                   oneShot = paramIndex(0, SourceParam::OneShot);
@@ -13277,27 +14106,33 @@ void run(const std::filesystem::path &dir, float scale) {
             return std::array{model.value(free), model.value(anchor), model.value(oneShot)};
         };
         using Modes = std::array<double, 3>;
-        click(view, oneShotToggle(0));
+        pickLfoClock(view, 0, LfoClock::OneShot);
         click(view, unipolarToggle(0));
         const bool oneShotOn =
             modes() == Modes{0.0, 0.0, 1.0} && model.value(paramIndex(0, SourceParam::Unipolar)) == 1.0;
-        click(view, anchorToggle(0));
+        pickLfoClock(view, 0, LfoClock::Anchor);
         const bool anchored = modes() == Modes{0.0, 1.0, 0.0};
-        click(view, anchorToggle(0));
+        pickLfoClock(view, 0, LfoClock::Anchor);
         const bool stays = modes() == Modes{0.0, 1.0, 0.0};
-        click(view, freeToggle(0));
+        pickLfoClock(view, 0, LfoClock::Free);
         const bool freed = modes() == Modes{1.0, 0.0, 0.0};
         view.undo();
         const bool undone = modes() == Modes{0.0, 1.0, 0.0};
-        click(view, retriggerToggle(0));
+        pickLfoClock(view, 0, LfoClock::Retrigger);
         const bool retriggered = modes() == Modes{0.0, 0.0, 0.0};
-        view.wheel(retriggerToggle(0), 1.0f, {});
+        view.wheel(lfoClockPoint(0), 1.0f, {});
         const bool wheeled = modes() == Modes{1.0, 0.0, 0.0};
-        click(view, retriggerToggle(0));
+        view.wheel(lfoClockPoint(0), 5.0f, {});
+        const bool held = modes() == Modes{0.0, 0.0, 1.0};
+        view.mouseMove(lfoClockPoint(0), {});
+        click(view, lfoClockPoint(0));
+        const bool listShot = renderer.save(view, dir / "4b-lfo-clock-list.png");
+        click(view, {600.0f, 328.0f}); // closes it
+        pickLfoClock(view, 0, LfoClock::Retrigger);
         click(view, unipolarToggle(0));
-        check(oneShotOn && anchored && stays && freed && undone && retriggered && wheeled && modes() == Modes{} &&
-                  model.value(paramIndex(0, SourceParam::Unipolar)) == 0.0,
-              "an LFO's clock modes go one at a time, undoably, and its Unipolar switch stands apart");
+        check(oneShotOn && anchored && stays && freed && undone && retriggered && wheeled && held && listShot &&
+                  modes() == Modes{} && model.value(paramIndex(0, SourceParam::Unipolar)) == 0.0,
+              "an LFO's clock modes are a list, a pick setting the mode undoably, and its Unipolar switch stands apart");
         click(view, unipolarToggle(0)); // left unipolar, for the title menu's polarity check further on
     }
 
@@ -14848,26 +15683,26 @@ void run(const std::filesystem::path &dir, float scale) {
     };
     const bool phaseShot = renderer.save(view, dir / "4c-lfo-phase.png");
     const uint32_t tickThen = brightness(tick), arcThen = brightness(arc);
-    click(view, freeToggle(0));
+    pickLfoClock(view, 0, LfoClock::Free);
     view.mouseMove({400.0f, 328.0f}, {});
     const bool freeShot = renderer.save(view, dir / "4d-lfo-phase-free.png");
     const bool faint = brightness(tick) < tickThen && brightness(arc) < arcThen;
-    click(view, retriggerToggle(0));
+    pickLfoClock(view, 0, LfoClock::Retrigger);
     check(std::abs(model.value(phase) - 0.25) < 1e-6 && phaseShot && freeShot && faint &&
               model.value(paramIndex(0, SourceParam::Free)) == 0.0,
           "an LFO's Phase knob sets its start, marked on its display, and goes faint while the LFO is free");
     // Anchored to the host's transport, its Phase is where it stood at the song's start: the knob and the tick stay
     // as they were (read off the rendered pixels).
     const int anchor = paramIndex(0, SourceParam::Anchor);
-    click(view, anchorToggle(0));
+    pickLfoClock(view, 0, LfoClock::Anchor);
     view.mouseMove({400.0f, 328.0f}, {});
     const bool anchorShot = renderer.save(view, dir / "4e-lfo-anchor.png");
     const uint32_t tickNow = brightness(tick), arcNow = brightness(arc);
     std::printf("      anchored: Phase tick %u (was %u), arc %u (was %u)\n", tickNow, tickThen, arcNow, arcThen);
-    view.mouseMove(anchorToggle(0), {});
+    view.mouseMove(lfoClockPoint(0), {});
     const bool tipShot = renderer.save(view, dir / "4f-lfo-anchor-tip.png");
     const bool anchored = model.value(anchor) == 1.0;
-    click(view, retriggerToggle(0));
+    pickLfoClock(view, 0, LfoClock::Retrigger);
     check(anchorShot && tipShot && anchored && tickNow == tickThen && arcNow == arcThen && model.value(anchor) == 0.0,
           "an anchored LFO keeps its Phase in use");
     model.set(phase, 0.0);
@@ -15173,7 +16008,25 @@ void run(const std::filesystem::path &dir, float scale) {
     view.mouseMove(clipAt(0.3, -0.5), {});
     check(renderer.save(view, dir / "8c-clip-curve.png"), "render the shaper's big curve editor");
     {
-        // Snap, in its title row, snaps a dragged point to the grid without Ctrl.
+        // Under its plot, left of the grid's controls, how to edit it, in two lines where one doesn't fit, clear of
+        // GRID: the strip before that label (x 614 to 622, the hint ending at 612) as bare as with a point's readout,
+        // which is short (read off the rendered pixels).
+        auto strip = [&] {
+            std::vector<uint32_t> pixels;
+            for (float y = 470.0f; y <= 498.0f; y += 1.0f)
+                for (float x = 614.0f; x <= 622.0f; x += 1.0f)
+                    pixels.push_back(renderer.pixel({x, y}));
+            return pixels;
+        };
+        const std::vector<uint32_t> readout = strip();
+        view.mouseMove({600.0f, 160.0f}, {}); // off the points: the hint
+        const bool hintShot = renderer.save(view, dir / "8c-clip-curve-hint.png");
+        check(hintShot && strip() == readout,
+              "a shaper's big curve editor's hint stays clear of the grid's label (read off the rendered pixels)");
+    }
+    {
+        // Snap, in its title row, snaps a dragged point to the grid without Ctrl (16 across).
+        model.layout().shapeGridX = 16;
         click(view, {742.0f, 152.0f});
         drag(view, clipAt(0.3, -0.5), clipAt(0.33, -0.45));
         const double x = model.value(shapeFieldIndex(clipCurveCountIndex(0), 1, PointField::X));
@@ -15448,6 +16301,7 @@ void run(const std::filesystem::path &dir, float scale) {
     // starts beside the first one's end, the shape jumping there. Redrawing the first keeps the next one's start,
     // and a quick second Alt+click there (a double-click) leaves it as it is, adding no point.
     {
+        model.layout().shapeGridX = 16; // columns clear of the point at 0.4
         const double column = 1.0 / model.layout().shapeGridX;
         auto roughly = [](double a, double b) { return std::abs(a - b) < 0.01; };
         auto pointIs = [&](int point, double x, double y) {
@@ -16073,6 +16927,9 @@ void run(const std::filesystem::path &dir, float scale) {
     testFxEmptyMods(dir, renderer);
     testBrowserPickRescanned(dir, renderer);
     testWideLfoCard(dir, renderer);
+    testCurveLoop(dir, renderer);
+    testOpEnvCurve(dir, renderer);
+    testShapeCopyPaste(dir, renderer);
     testFolding(dir, renderer);
     testFxGraph(dir, renderer);
     testFxListAfterUndo(dir, renderer);

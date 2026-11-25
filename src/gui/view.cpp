@@ -136,6 +136,25 @@ bool isSourcePower(int param) {
     return sourceFieldOf(param) == SourceParam::Enabled;
 }
 
+// A type list's icon (a shaper's curve, the reverb's algorithm, the amp's model, a MIDI source's input), for `value`,
+// in a box about 16 x 10 as an LFO shape's; none for the amp's cabinets, whose names say their speakers and need the
+// room.
+bool hasTypeIcon(int param) {
+    const FxParam field = fxFieldOf(param);
+    return isClipMode(param) || isMidiInput(param) || field == FxParam::ReverbType || field == FxParam::AmpModel;
+}
+void typeIcon(Canvas &c, Rect r, int param, int value, Color color) {
+    const FxParam field = fxFieldOf(param);
+    if (isClipMode(param))
+        clipModeIcon(c, r, static_cast<ClipMode>(value), color);
+    else if (isMidiInput(param))
+        midiInputIcon(c, r, static_cast<MidiInput>(value), color);
+    else if (field == FxParam::ReverbType)
+        reverbTypeIcon(c, r, static_cast<ReverbType>(value), color);
+    else if (field == FxParam::AmpModel)
+        ampModelIcon(c, r, static_cast<AmpModel>(value), color);
+}
+
 // An LFO shape's icon, as its list shows it, in a box about 16 x 10.
 void lfoShapeIcon(Canvas &c, Rect r, LfoShape shape, Color color) {
     const std::vector<Point> points = shapeIcon(shape, r);
@@ -467,10 +486,12 @@ Color View::listColor(int param) const {
         return kAccent;
     if (routeModeFrom(param) >= 0)
         return routeColor(routeModeFrom(param), routeModeTo(param));
-    if (isLfoShape(param) || isMidiInput(param))
+    if (isLfoShape(param) || isMidiInput(param) || isCurveClock(param))
         return kSourceColors[sourceOf(param)];
     if (isSplitSlope(param))
         return splitColor();
+    if (isEnvClock(param)) // an operator's, as its drawn envelope is
+        return kAccent;
     return shaperOf(param) >= 0 ? kShaperColor : fxSlotOf(param) >= 0 ? fxColor(fxSlotOf(param)) : kFilterColor;
 }
 
@@ -481,7 +502,16 @@ int View::listShown(int param) const {
     }
     if (isFilterSlope(param))
         return playedSlope(static_cast<FilterType>(std::lround(value(slopeTypeParam(param)))), filterSlope(value(param)));
+    if (isCurveClock(param)) // the mode the Curve's switches make
+        return static_cast<int>(lfoClockOf(sourceOf(param)));
     return static_cast<int>(std::lround(value(param)));
+}
+
+void View::pickListValue(int param, int to) {
+    if (isCurveClock(param))
+        setLfoClock(sourceOf(param), static_cast<LfoClock>(to));
+    else
+        edit(param, to);
 }
 
 bool View::listItemFits(int param, int item) const {
@@ -491,7 +521,7 @@ bool View::listItemFits(int param, int item) const {
 }
 
 bool View::listOpenFor(const Widget &w) const {
-    return listMenu_ == w.param && listModel_ == isModelList(w);
+    return listMenu_ == w.param && listModel_ == isModelList(w) && listEditor_ == (w.a == kEditorList);
 }
 
 void View::stepList(int param, int dir, bool model) {
@@ -499,7 +529,7 @@ void View::stepList(int param, int dir, bool model) {
     // round its ends, as a pick from the list would: one undo step, the list closed. A filter's type steps along its
     // families, keeping the model where the family has it, and its Model list along the family's models.
     const int shown = listShown(param);
-    const int items = listCount(param, shown, model);
+    const int items = listItems(param, shown, model);
     int at = dir > 0 ? -1 : items;
     for (int item = 0; item < items; ++item)
         if (listItemValue(param, item, shown, model) == shown)
@@ -511,7 +541,7 @@ void View::stepList(int param, int dir, bool model) {
         if (!listItemFits(param, to))
             continue;
         if (to != shown)
-            edit(param, to);
+            pickListValue(param, to);
         // An LFO holding the retired Custom shape (a state can) goes back to its size as it takes another, as a pick does.
         if (isLfoShape(param))
             shapes_.narrow(sourceOf(param));
@@ -877,6 +907,8 @@ Rect View::shapeHome(int shape) const {
         return fxDisplayIn(fxCardOf(shape - kMaxSources).value_or(Rect{}), FxType::Shaper).inset(8.0f);
     if (isShaperCurve(shape)) // on its page in the inspector
         return kShaperDisplay.inset(8.0f);
+    if (isOpEnvCurve(shape)) // on its operator's ENVELOPE tab
+        return kOpEnvPlot;
     return lfoCardPlot(cardOf(shape)); // an LFO's, in its widened card
 }
 
@@ -906,28 +938,52 @@ void View::removeSource(int source) {
 
 // Snapshots come once per audio block, which can be tens of milliseconds apart;
 // in between, the phase moves on at the LFO's rate, so the dot glides. A host
-// that stopped processing doesn't send it far. A one-shot stops at the end of its cycle.
+// that stopped processing doesn't send it far. A one-shot stops at the end of its cycle, as does a Curve in Sustain
+// that has left its loop; else it comes round its loop region as the engine's does (see loopPhase()).
 double View::lfoPhaseNow(int lfo) const {
+    auto get = [this](int i) { return value(i); };
     const double age = std::clamp(static_cast<double>(telemetry_.age), 0.0, 0.1);
-    const double phase = telemetry_.lfoPhases[lfo] + telemetry_.lfoRates[lfo] * age;
-    if (lfoOneShot([this](int i) { return value(i); }, lfo))
+    const double before = telemetry_.lfoPhases[lfo];
+    double phase = before + telemetry_.lfoRates[lfo] * age;
+    if (lfoOneShot(get, lfo) || (telemetry_.lfoLeft & (1u << lfo)) != 0)
         return std::min(phase, 1.0);
-    return phase - std::floor(phase);
+    loopPhase(before, phase, lfoLoop(get, lfo));
+    return phase;
 }
 
 LfoClock View::lfoClockOf(int lfo) const {
     return lfoClock([this](int i) { return value(i); }, lfo);
 }
 
-int View::lfoClockCount(int lfo) const {
-    return mods_.lfoShapeOf(lfo) == LfoShape::Random ? kRandomClocks : kLfoModes;
+int View::listItems(int param, int shown, bool model) const {
+    return isCurveClock(param) ? lfoClockCount(sourceOf(param)) : listCount(param, shown, model);
 }
 
-// Free, Anchor and One-Shot set for `clock` alone (none for Retrigger), in one undo step.
+int View::lfoClockCount(int lfo) const {
+    return mods_.lfoShapeOf(lfo) == LfoShape::Random       ? kRandomClocks
+           : mods_.sourceTypeOf(lfo) == SourceType::Curve ? kCurveModes
+                                                           : kLfoModes;
+}
+
+void View::pickEnvMode(int op, bool curve) {
+    const int param = paramIndex(op, OpParam::EnvMode);
+    if (curve == (value(param) >= 0.5))
+        return;
+    if (curve) {
+        shapes_.drawEnvelope(op);
+        return;
+    }
+    if (shapeEditing() == opEnvCurve(op))
+        shapes_.close();
+    edit(param, 0.0);
+}
+
+// Free, Anchor, One-Shot and a Curve's Sustain set for `clock` alone (none for Retrigger), in one undo step.
 void View::setLfoClock(int lfo, LfoClock clock) {
     const std::pair<SourceParam, LfoClock> modes[] = {{SourceParam::Free, LfoClock::Free},
                                                       {SourceParam::Anchor, LfoClock::Anchor},
-                                                      {SourceParam::OneShot, LfoClock::OneShot}};
+                                                      {SourceParam::OneShot, LfoClock::OneShot},
+                                                      {SourceParam::CurveSustain, LfoClock::Sustain}};
     std::vector<std::pair<int, double>> changes;
     for (const auto &[field, mode] : modes) {
         const double to = mode == clock ? 1.0 : 0.0;
@@ -977,6 +1033,10 @@ double View::lfoValueNow(int lfo) const {
     if (shape == LfoShape::Custom)
         return shapeValue([this](int index) { return value(index); }, lfo, lfoPhaseNow(lfo));
     return lfoValue(shape, lfoPhaseNow(lfo), 0.0);
+}
+
+double View::lfoLevelNow(int lfo) const { // with what a Curve that has left its loop carries on top (see Synth::Lfo)
+    return lfoValueNow(lfo) + telemetry_.lfoOffsets[lfo];
 }
 
 void View::traceRandomLfos() {
@@ -1137,9 +1197,16 @@ bool View::poll() {
         for (int s = 0; s < kMaxSources && !everywhere; ++s)
             if (t.sources[s] != telemetry_.sources[s] || t.lfoPhases[s] != telemetry_.lfoPhases[s] ||
                 t.lfoRates[s] != telemetry_.lfoRates[s] || t.lfoFrom[s] != telemetry_.lfoFrom[s] ||
-                t.lfoTo[s] != telemetry_.lfoTo[s] || t.envPos[s] != telemetry_.envPos[s] ||
-                (t.voices > 0 && t.lfoRates[s] != 0.0f))
+                t.lfoTo[s] != telemetry_.lfoTo[s] || t.lfoOffsets[s] != telemetry_.lfoOffsets[s] ||
+                t.envPos[s] != telemetry_.envPos[s] || (t.voices > 0 && t.lfoRates[s] != 0.0f))
                 inCard(s);
+        // An operator's drawn envelope open full size: its dot and level line move across the whole of it, not only
+        // where the inspector is under it.
+        if (const int shape = shapeEditing(); isOpEnvCurve(shape)) {
+            const int op = opOfEnvCurve(shape);
+            if (t.opEnvPhase[op] != telemetry_.opEnvPhase[op] || t.opEnvLevels[op] != telemetry_.opEnvLevels[op])
+                in(shapes_.shapePanel());
+        }
     }
     // A compressor's and an amp's meters move on while a tail drives them once the notes have ended, in the FX view;
     // the host's tempo shows in the synced effects' and LFOs' captions, and the title bar, whether notes play or not.
@@ -1577,46 +1644,50 @@ std::vector<View::Widget> View::widgets() const {
         if (widened)
             shapes_.cardWidgets(list, s, card);
         if (lfo) {
-            // An LFO's shape list, or a Random or Curve card's Unipolar | Bipolar in its place, one of them lit, as the
-            // clock modes are: a Random card's sets its Bipolar, a Curve card's its Unipolar (on in the first).
+            // An LFO's shape list, and under it its clock modes, a list too; a Curve's and a Random's clock modes in
+            // the shape list's place. Every clock list keys on the source's Free switch (see isCurveClock()) and sets
+            // the clock switches together (see setLfoClock()).
             const bool random = mods_.sourceTypeOf(s) == SourceType::Random;
             const bool curve = mods_.sourceTypeOf(s) == SourceType::Curve;
-            if (random || curve) {
-                const size_t polarity = list.size();
-                for (int bipolar = 0; bipolar < 2; ++bipolar)
-                    add(Kind::Choice, randomPolaritySwitch(card, bipolar),
-                        paramIndex(s, random ? SourceParam::Bipolar : SourceParam::Unipolar), s,
-                        random ? bipolar : 1 - bipolar);
-                merge(polarity);
+            const bool clockFirst = curve || random; // no shape list: laid out as a Curve card
+            const int clock = paramIndex(s, SourceParam::Free);
+            if (clockFirst) {
+                add(Kind::ListButton, lfoShapeButton(card), clock);
+                if (listMenu_ == clock && !listEditor_) // a Curve's full-size editor's opens under its own button
+                    lfoList = lfoShapeButton(card);
             } else {
                 add(Kind::ListButton, lfoShapeButton(card), paramIndex(s, SourceParam::Shape));
                 if (listMenu_ == paramIndex(s, SourceParam::Shape))
                     lfoList = lfoShapeButton(card);
+                add(Kind::ListButton, lfoClockButton(card), clock);
+                if (listMenu_ == clock)
+                    lfoList = lfoClockButton(card);
             }
             if (!widened)
-                add(Kind::LfoDisplay, sourceDisplay(card, random), -1, s);
-            if (random) {
-                knob(paramIndex(s, SourceParam::RandomSmooth), randomKnob(card, 0), 30.0f, tr(Str::LabelSmooth));
-                knob(paramIndex(s, SourceParam::RandomChaos), randomKnob(card, 1), 30.0f, tr(Str::LabelChaos));
-            }
-            // Synced, the knob picks a note value instead of a rate and shows it as its label.
-            add(Kind::Toggle, sourceSync(card), paramIndex(s, SourceParam::Sync));
-            // Its clock modes under the shape list, one of them lit, as Poly | Mono; each sets Free, Anchor and
-            // One-Shot for it (see setLfoClock()), and stands for them all. Unipolar under the sync switch.
-            // A Random or Curve card has no Unipolar switch, which its polarity stands for, and a Random one no Phase,
-            // which it takes none of.
-            const size_t modes = list.size();
-            const int clocks = lfoClockCount(s);
-            for (int i = 0; i < clocks; ++i)
-                add(Kind::Choice, lfoModeSwitch(card, i, clocks), paramIndex(s, SourceParam::Free), s, i);
-            merge(modes);
-            if (!random && !curve)
-                add(Kind::Toggle, lfoUnipolarSwitch(card), paramIndex(s, SourceParam::Unipolar));
+                add(Kind::LfoDisplay, sourceDisplay(card), -1, s);
+            // Synced, the knob picks a note value instead of a rate and shows it as its label. An LFO's Unipolar switch
+            // between its shape list and the knobs, its sync switch under it, beside its clock list; a Curve's and a
+            // Random's two under their list's right end, Unipolar first, their three knobs alike beside it. A Random's
+            // Unipolar is its Bipolar switch, lit while it is off.
+            add(Kind::Toggle, clockFirst ? curveSyncButton(card) : lfoSyncButton(card), paramIndex(s, SourceParam::Sync));
+            add(Kind::Toggle, clockFirst ? curveUnipolarSwitch(card) : lfoUnipolarSwitch(card),
+                paramIndex(s, random ? SourceParam::Bipolar : SourceParam::Unipolar));
+            // A Curve playing its curve once from each note takes and shows a length (see shownValue()).
             const bool synced = value(paramIndex(s, SourceParam::Sync)) >= 0.5;
+            const bool length = mods_.curveRateAsLength(s);
             knob(synced ? paramIndex(s, SourceParam::Division) : paramIndex(s, SourceParam::Rate),
-                 lfoKnob(card, 0), 30.0f, synced ? nullptr : tr(Str::LabelRate));
-            if (!random)
-                knob(paramIndex(s, SourceParam::Phase), lfoKnob(card, 1), 30.0f, tr(Str::LabelPhase));
+                 clockFirst ? curveKnob(card, 0) : lfoKnob(card, 0), 30.0f,
+                 synced ? nullptr : tr(length ? Str::LabelLength : Str::LabelRate));
+            // A Random card has no Phase, which it takes none of, but Smooth and Chaos.
+            if (random) {
+                knob(paramIndex(s, SourceParam::RandomSmooth), curveKnob(card, 1), 30.0f, tr(Str::LabelSmooth));
+                knob(paramIndex(s, SourceParam::RandomChaos), curveKnob(card, 2), 30.0f, tr(Str::LabelChaos));
+            } else {
+                knob(paramIndex(s, SourceParam::Phase), curve ? curveKnob(card, 1) : lfoKnob(card, 1), 30.0f,
+                     tr(Str::LabelPhase));
+            }
+            if (curve)
+                knob(paramIndex(s, SourceParam::CurveSlew), curveKnob(card, 2), 30.0f, tr(Str::LabelSlew));
         } else if (mods_.sourceTypeOf(s) == SourceType::Env) {
             const EnvIndices e = envIndices(kOps + s);
             const int params[] = {e.attack, e.hold, e.decay, e.sustain, e.release};
@@ -1929,7 +2000,7 @@ std::vector<View::Widget> View::widgets() const {
     // An LFO's list of shapes, under its button on its card, cut off at the row's ends like the card, though
     // reaching past its bottom.
     if (lfoList.w > 0.0f) {
-        const int items = listCount(listMenu_);
+        const int items = listItems(listMenu_);
         add(Kind::ListMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
         add(Kind::ListMenu, listMenu(lfoList, items), -1, 1);
         list.back().clip = sourceListClip();
@@ -2570,8 +2641,8 @@ void View::paintPanels(Canvas &c) {
     std::vector<Rect> panels;
     if (sourcesHidden()) // the SEQ view, over the routing panel's place and the modulation panel's
         panels = {keyboard, kSeqPanel};
-    else if (shapeEditing() >= 0 && isClipCurve(shapeEditing()))
-        panels = {kModPanel, keyboard, shapes_.shapePanel()}; // the shaper curve's editor, narrower than the effects
+    else if (shapeEditing() >= 0 && !isShaperCurve(shapeEditing())) // a full-size editor, narrower than the row
+        panels = {kModPanel, keyboard, shapes_.shapePanel()};             // (a voice shaper's has the inspector beside)
     else // the effects or the modulations across it, or the routing panel with the inspector floating over it
         panels = {kModPanel, keyboard, kFxPanel};
     // A theme with soft shadows lifts its panels off the background with one, instead of an outline.
@@ -4081,6 +4152,13 @@ void View::paintLfo(Canvas &c, Rect r, int lfo) {
     plotLine(c, points.data(), points.size(), color, 2.0f);
 
     if (lfoRunning(lfo) && (sweep || holding || shape != LfoShape::Random)) {
+        // A Curve's dot keeps to its curve, as an envelope's does, and a line across shows the level it puts out, which
+        // a release in Sustain takes off the curve for a while (see Synth::Lfo).
+        if (mods_.sourceTypeOf(lfo) == SourceType::Curve) {
+            const double level = std::clamp(lfoLevelNow(lfo), -1.0, 1.0);
+            const float y = inner.center().y - static_cast<float>(level) * inner.h * 0.5f;
+            c.line({inner.x, y}, {inner.right(), y}, color.alpha(0.35f), 1.0f, true);
+        }
         const Point dot = sweep || holding ? points.back()
                                 : Point{inner.x + static_cast<float>(lfoPhaseNow(lfo)) * inner.w,
                                         inner.center().y - static_cast<float>(lfoValueNow(lfo)) * inner.h * 0.5f};
@@ -4153,7 +4231,7 @@ void View::paintSource(Canvas &c, float card, int s) {
     if (s == wideLfo()) {
         shapes_.paintLfoCard(c, card, s);
     } else if (lfo) {
-        paintLfo(c, sourceDisplay(card, mods_.lfoShapeOf(s) == LfoShape::Random), s);
+        paintLfo(c, sourceDisplay(card), s);
     } else if (mods_.sourceTypeOf(s) == SourceType::Env) {
         paintEnvelope(c, sourceDisplay(card), kOps + s, color, true);
     } else {
@@ -4190,7 +4268,8 @@ void View::paintButtonFace(Canvas &c, const Widget &w, bool lit, bool hot, Color
             return;
         }
         // Its part of the row's well, lit to its edges (the well's outer corners rounded), as the well is.
-        c.pushClip({w.partLeft, w.group.y, w.partRight - w.partLeft, w.group.h});
+        c.pushClip(w.stacked ? Rect{w.group.x, w.partLeft, w.group.w, w.partRight - w.partLeft}
+                             : Rect{w.partLeft, w.group.y, w.partRight - w.partLeft, w.group.h});
         c.fillRect(w.group, face, radius);
         c.popClip();
         lastPartLit_ = lit;
@@ -4206,22 +4285,32 @@ void View::paintButtonFace(Canvas &c, const Widget &w, bool lit, bool hot, Color
     // Its part of the pill: the pill painted within it, so only the pill's outer corners are rounded. The outline is
     // drawn inside the pill, and the lines between parts (round-capped) stop half a pixel short of its top and bottom,
     // so nothing reaches past it.
-    const bool first = w.partLeft <= w.group.x, last = w.partRight >= w.group.right();
+    // A column's (stacked) the same turned on its side: its parts from top to bottom, the lines between them across.
+    const bool first = w.partLeft <= (w.stacked ? w.group.y : w.group.x);
+    const bool last = w.partRight >= (w.stacked ? w.group.bottom() : w.group.right());
     if (first)
         lastPartLit_ = false;
-    c.pushClip({w.partLeft, w.group.y, w.partRight - w.partLeft, w.group.h});
-    const float top = w.group.y + 0.5f, bottom = w.group.bottom() - 0.5f;
+    c.pushClip(w.stacked ? Rect{w.group.x, w.partLeft, w.group.w, w.partRight - w.partLeft}
+                         : Rect{w.partLeft, w.group.y, w.partRight - w.partLeft, w.group.h});
+    const float top = (w.stacked ? w.group.x : w.group.y) + 0.5f;
+    const float bottom = (w.stacked ? w.group.right() : w.group.bottom()) - 0.5f;
+    auto between = [&](float at, float from, float to, Color ink) { // a line between two parts
+        if (w.stacked)
+            c.line({from, at}, {to, at}, ink, 1.0f);
+        else
+            c.line({at, from}, {at, to}, ink, 1.0f);
+    };
     if (fill.a < 1.0f) // a lit part's tint goes over the pill's own fill
         c.fillRect(w.group, kRaised, radius);
     c.fillRect(w.group, fill, radius);
     c.strokeRect(w.group, lit ? color : kTrack, 1.0f, radius);
     if (lit) {
         if (!first)
-            c.line({w.partLeft + 0.5f, top}, {w.partLeft + 0.5f, bottom}, color, 1.0f);
+            between(w.partLeft + 0.5f, top, bottom, color);
         if (!last)
-            c.line({w.partRight - 0.5f, top}, {w.partRight - 0.5f, bottom}, color, 1.0f);
+            between(w.partRight - 0.5f, top, bottom, color);
     } else if (!first && !lastPartLit_) {
-        c.line({w.partLeft, top + 1.0f}, {w.partLeft, bottom - 1.0f}, kTrack, 1.0f);
+        between(w.partLeft, top + 1.0f, bottom - 1.0f, kTrack);
     }
     c.popClip();
     lastPartLit_ = lit;
@@ -4244,10 +4333,15 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break;
     case Kind::Choice:
     case Kind::Toggle: {
-        const bool clockMode = isLfoClockChoice(w);
-        const bool on = clockMode                ? static_cast<int>(lfoClockOf(w.a)) == w.b
+        // An operator's drawn envelope's One-Shot | Sustain, as a Curve's clock modes.
+        const bool envClock = w.kind == Kind::Choice && opOfField(w.param, OpParam::EnvSustain) >= 0;
+        const bool clockMode = isLfoClockChoice(w) || envClock;
+        const int clock = envClock ? static_cast<int>(w.b == 1 ? LfoClock::Sustain : LfoClock::OneShot) : w.b;
+        // A Random card's Unipolar switch is its Bipolar param's, lit while it is off.
+        const bool inverted = w.kind == Kind::Toggle && sourceFieldOf(w.param) == SourceParam::Bipolar;
+        const bool on = isLfoClockChoice(w)                ? static_cast<int>(lfoClockOf(w.a)) == w.b
                         : w.kind == Kind::Choice ? std::lround(value(w.param)) == w.b
-                                                 : value(w.param) >= 0.5;
+                                                 : (value(w.param) >= 0.5) != inverted;
         const Str clipModes[] = {Str::SwitchHard, Str::SwitchSoft, Str::SwitchAsym};
         constexpr Str kMicShortNames[] = {Str::MicDynamicShort, Str::MicCondenserShort, Str::MicRibbonShort};
         static_assert(std::size(kMicShortNames) == static_cast<size_t>(AmpMic::Count));
@@ -4291,6 +4385,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         else if (opOfField(w.param, OpParam::Warp) >= 0) // a sine as the warp reads it
             warpIcon(c, {w.rect.center().x - 9.0f, w.rect.center().y - 5.0f, 18.0f, 10.0f}, static_cast<OpWarp>(w.b),
                      on ? litInk(color) : (hovered ? kText : kDim));
+        else if (opOfField(w.param, OpParam::EnvMode) >= 0) // an AHDSR's shape, or a curve through its points
+            envModeIcon(c, w.rect.center(), w.b == 1, on ? litInk(color) : (hovered ? kText : kDim), switchIconScale());
         else if (opOfField(w.param, OpParam::UnisonCurve) >= 0) // where five copies' pitches go
             uniCurveIcon(c, w.rect.center(), static_cast<UniCurve>(w.b), on ? litInk(color) : (hovered ? kText : kDim));
         else if (opOfField(w.param, OpParam::UnisonPan) >= 0) // and where they sit
@@ -4305,17 +4401,24 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             polaritySign(c, w.rect.center(), w.b == 1, on ? litInk(color) : (hovered ? kText : kDim));
         else if (isFxIconSwitch(field))
             fxSwitchIcon(c, w.rect.center(), field, on ? litInk(color) : (hovered ? kText : kDim));
-        else if (isLfoSync(w.param)) // an LFO's SYNC, the effects' metronome
+        else if (isLfoSync(w.param) || opOfField(w.param, OpParam::EnvSync) >= 0) // SYNC, the effects' metronome
             fxSwitchIcon(c, w.rect.center(), FxParam::DelaySync, on ? litInk(color) : (hovered ? kText : kDim));
-        else if (clockMode)
-            lfoClockIcon(c, w.rect.center(), static_cast<LfoClock>(w.b), on ? litInk(color) : (hovered ? kText : kDim),
+        else if (clockMode && w.label) { // a Curve's full-size editor's: its icon, then its name
+            const Color ink = on ? litInk(kText) : (hovered ? kText : kDim);
+            const float textW = c.textWidth(w.label, kTextLabel, on);
+            const float left = w.rect.center().x - (26.0f + textW) * 0.5f;
+            lfoClockIcon(c, {left + 10.0f, w.rect.center().y}, static_cast<LfoClock>(clock), on ? litInk(color) : ink,
+                         switchIconScale());
+            c.text({left + 26.0f, w.rect.y, textW + 2.0f, w.rect.h}, w.label, kTextLabel, ink, Align::Left, on);
+        } else if (clockMode)
+            lfoClockIcon(c, w.rect.center(), static_cast<LfoClock>(clock), on ? litInk(color) : (hovered ? kText : kDim),
                          switchIconScale());
         else if (sourceFieldOf(w.param) == SourceParam::Unipolar) // humps on a baseline, as a MODS row's; a Curve
                                                                    // card's choice either one
             polarityIcon(c, w.rect.center(), w.kind == Kind::Choice && w.b == 0,
                          on ? litInk(color) : (hovered ? kText : kDim), switchIconScale());
-        else if (sourceFieldOf(w.param) == SourceParam::Bipolar) // a Random card's: either one, as a MODS row's
-            polarityIcon(c, w.rect.center(), w.b == 1, on ? litInk(color) : (hovered ? kText : kDim), switchIconScale());
+        else if (sourceFieldOf(w.param) == SourceParam::Bipolar) // a Random card's Unipolar, as an LFO's
+            polarityIcon(c, w.rect.center(), false, on ? litInk(color) : (hovered ? kText : kDim), switchIconScale());
         else if (field == FxParam::PhaserStereo || field == FxParam::FlangerStereo || field == FxParam::AmpStereo)
             stereoIcon(c, w.rect.center(), on ? litInk(color) : (hovered ? kText : kDim)); // named in its tooltip
         else if (opOfField(w.param, OpParam::Sync) >= 0) // NOTE, named in its tooltip
@@ -4452,21 +4555,14 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break;
     }
     case Kind::SourceMods: {
-        // A link, without a face: how many modulations the source has, dim, and MODS with a chevron at the right in
-        // the accent; with none, No modulations alone. Both light up under the mouse, the whole row taking the click.
+        // A link, without a face: how many modulations the source has (No modulations with none), dim, lit under
+        // the mouse.
         const size_t count = usedSlots(w.a).size();
-        const Color ink = hovered ? kText : kDim;
-        if (count == 0) {
-            c.text(w.rect, tr(Str::CardNoModulations), kTextLabel, ink, Align::Left);
-            break;
-        }
-        const Color link = hovered ? kText : kAccent;
-        paintChevron(c, {w.rect.right() - 4.0f, w.rect.center().y}, link, ChevronWay::Right);
-        c.text({w.rect.x, w.rect.y, w.rect.w - 80.0f, w.rect.h},
-               count == 1 ? tr(Str::ModsCountOne) : trf(Str::ModsCount, {std::to_string(count)}), kTextLabel, ink,
-               Align::Left);
-        c.text({w.rect.right() - 80.0f, w.rect.y, 68.0f, w.rect.h}, tr(Str::ViewMods), kTextLabel, link, Align::Right,
-               true);
+        c.text(w.rect,
+               count == 0   ? tr(Str::CardNoModulations)
+               : count == 1 ? tr(Str::ModsCountOne)
+                            : trf(Str::ModsCount, {std::to_string(count)}),
+               kTextLabel, hovered ? kText : kDim, Align::Left);
         break;
     }
     case Kind::ValueText:
@@ -4661,12 +4757,20 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // Model list its model's (but on the filter effect's card, where it shows the model's short name alone).
         const bool model = isModelList(w), plain = w.a == kModelListPlain;
         const bool filterType = isFilterTypeList(w.param) && !plain;
-        const float indent = isLfoShape(w.param) ? 24.0f : filterType ? 30.0f : 0.0f;
+        const bool clockList = isCurveClock(w.param) || isEnvClock(w.param);
+        const bool typed = hasTypeIcon(w.param) && !plain;
+        const float indent = isLfoShape(w.param) || clockList || typed ? 24.0f : filterType ? 30.0f : 0.0f;
         // A list with arrows has them at its ends (see the ListStep widgets), and no chevron.
         const bool steps = isSteppableList(w.param) && !plain;
         const float left = w.rect.x + (steps ? kListStepW + 2.0f : 10.0f);
         if (isLfoShape(w.param))
             lfoShapeIcon(c, {left, w.rect.center().y - 5.0f, 16.0f, 10.0f}, static_cast<LfoShape>(shown), color);
+        if (typed)
+            typeIcon(c, {left, w.rect.center().y - 5.0f, 16.0f, 10.0f}, w.param, shown, color);
+        if (clockList) // a Curve's clock mode (an envelope's One-Shot or Sustain), by its icon, as its buttons have it
+            lfoClockIcon(c, {left + 9.0f, w.rect.center().y},
+                         isEnvClock(w.param) ? envClockOf(shown) : static_cast<LfoClock>(shown), color,
+                         switchIconScale());
         if (filterType) {
             const Rect icon = filterTypeIconRect(w.rect);
             const FilterType type = filterTypeAt(shown);
@@ -4759,10 +4863,19 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         paintMenuRow(c, w.rect, hovered && fits, selected);
         const bool modeChoice = routeModeFrom(w.param) >= 0;
         const bool filterType = isFilterTypeList(w.param);
-        const float indent = isLfoShape(w.param) || modeChoice ? 24.0f : filterType ? 30.0f : 0.0f;
+        const bool clockList = isCurveClock(w.param) || isEnvClock(w.param);
+        const bool iconed = isLfoShape(w.param) || clockList || modeChoice || hasTypeIcon(w.param);
+        const float indent = iconed ? 24.0f : filterType ? 30.0f : 0.0f;
         if (isLfoShape(w.param))
             lfoShapeIcon(c, {w.rect.x + 10.0f, w.rect.center().y - 5.0f, 16.0f, 10.0f}, static_cast<LfoShape>(w.b),
                          selected ? listColor(w.param) : kDim);
+        if (hasTypeIcon(w.param))
+            typeIcon(c, {w.rect.x + 10.0f, w.rect.center().y - 5.0f, 16.0f, 10.0f}, w.param, w.b,
+                     selected ? listColor(w.param) : kDim);
+        if (clockList)
+            lfoClockIcon(c, {w.rect.x + 19.0f, w.rect.center().y},
+                         isEnvClock(w.param) ? envClockOf(w.b) : static_cast<LfoClock>(w.b),
+                         selected ? listColor(w.param) : kDim, switchIconScale());
         if (filterType) // a family's icon, or on a Model list the model's
             filterIcon(c, filterTypeIconRect(w.rect),
                        isModelList(w) ? filterTypeAt(w.b) : filterFamilyTypes(filterTypeAt(w.b)).types[0],
@@ -5247,9 +5360,7 @@ void View::paintKnob(Canvas &c, const Widget &w) {
     if (offset != 0.0f)
         c.fillCircle(Canvas::onCircle(center, radius - 2.0f, knobAngle(n + offset / (def.max - def.min))), 2.5f, kText);
 
-    char text[64];
-    formatParam(w.param, value(w.param), text, sizeof(text));
-    std::string shown = text;
+    std::string shown = shownValue(w.param, value(w.param));
     if (def.kind == ParamKind::Ratio)
         shown = "\xC3\x97" + shown;
     if (w.compact) {
@@ -5662,11 +5773,18 @@ void View::paintTooltip(Canvas &c) {
         text = tr(value(param) >= 0.5 ? Str::TipFxOn : Str::TipFxOff);
     else if (isLfoSync(param))
         text = tr(Str::TipLfoSync);
+    else if (opOfField(param, OpParam::EnvMode) >= 0)
+        text = tr(hover_->b == 0 ? Str::TipEnvAdsr : Str::TipEnvCurve);
+    else if (hover_->kind == Kind::Choice && opOfField(param, OpParam::EnvSustain) >= 0)
+        text = tr(hover_->b == 1 ? Str::TipSustain : Str::TipEnvOneShot);
+    else if (opOfField(param, OpParam::EnvSync) >= 0)
+        text = tr(Str::TipEnvSync);
     else if (hover_->kind == Kind::ListStep) {
         const bool next = hover_->b > 0;
         text = tr(isModelList(*hover_)              ? (next ? Str::TipNextModel : Str::TipPrevModel)
                   : isClipMode(param)               ? (next ? Str::TipNextCurve : Str::TipPrevCurve)
                   : isLfoShape(param)               ? (next ? Str::TipNextShape : Str::TipPrevShape)
+                  : isCurveClock(param) || isEnvClock(param) ? (next ? Str::TipNextClock : Str::TipPrevClock)
                   : field == FxParam::ReverbType    ? (next ? Str::TipNextAlgorithm : Str::TipPrevAlgorithm)
                   : field == FxParam::AmpModel      ? (next ? Str::TipNextModel : Str::TipPrevModel)
                   : field == FxParam::AmpCab        ? (next ? Str::TipNextCabinet : Str::TipPrevCabinet)
@@ -5680,13 +5798,14 @@ void View::paintTooltip(Canvas &c) {
         text = tr(slopeFits(static_cast<FilterType>(std::lround(value(slopeTypeParam(param)))), 0) ? Str::TipSlope
                                                                                                   : Str::TipSlopeBand);
     else if (isLfoClockChoice(*hover_)) {
-        const Str tips[] = {Str::TipRetrigger, Str::TipFree, Str::TipAnchor, Str::TipOneShot};
-        text = tr(tips[std::clamp(hover_->b, 0, kLfoModes - 1)]);
+        const Str tips[] = {Str::TipRetrigger, Str::TipFree, Str::TipAnchor, Str::TipOneShot, Str::TipSustain};
+        static_assert(std::size(tips) == static_cast<size_t>(kCurveModes));
+        text = tr(tips[std::clamp(hover_->b, 0, kCurveModes - 1)]);
     }
     else if (sourceFieldOf(param) == SourceParam::Unipolar) // the LFO's switch, or a Curve card's Unipolar | Bipolar
         text = tr(hover_->kind == Kind::Choice && hover_->b == 0 ? Str::TipBipolar : Str::TipUnipolar);
-    else if (sourceFieldOf(param) == SourceParam::Bipolar) // a Random card's Unipolar | Bipolar
-        text = tr(hover_->b == 1 ? Str::TipBipolar : Str::TipUnipolar);
+    else if (sourceFieldOf(param) == SourceParam::Bipolar) // a Random card's Unipolar switch
+        text = tr(Str::TipUnipolar);
     else if (field == FxParam::DelaySync)
         text = tr(Str::TipDelaySync);
     else if (field == FxParam::PhaserSync || field == FxParam::FlangerSync)
@@ -6678,6 +6797,8 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::Choice:
         if (isLfoClockChoice(w))
             setLfoClock(w.a, static_cast<LfoClock>(w.b));
+        else if (const int op = opOfField(w.param, OpParam::EnvMode); op >= 0)
+            pickEnvMode(op, w.b == 1);
         else
             edit(w.param, w.b);
         break;
@@ -6694,9 +6815,10 @@ void View::mouseDown(Point p, Modifiers mods) {
             break; // a comb has no slope: its list stays shut
         if (listOpenFor(w)) {
             listMenu_ = -1;
-        } else { // a filter's Model list and its type's are each their own, on the one param
-            listMenu_ = w.param;
+        } else { // a filter's Model list and its type's are each their own, on the one param, as are a Curve's
+            listMenu_ = w.param; // clock lists on its card and in its full-size editor
             listModel_ = isModelList(w);
+            listEditor_ = w.a == kEditorList;
         }
         break;
     case Kind::ListStep:
@@ -6710,7 +6832,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         if (!listItemFits(w.param, w.b))
             break; // the list stays open for another pick
         listMenu_ = -1;
-        edit(w.param, w.b); // a drawn curve is edited in the card, or the big editor
+        pickListValue(w.param, w.b); // a drawn curve is edited in the card, or the big editor
         // An LFO holding the retired Custom shape (a state can) goes back to its size as it takes another.
         if (isLfoShape(w.param))
             shapes_.narrow(sourceOf(w.param));
@@ -7624,15 +7746,30 @@ void View::wheel(Point p, float steps, Modifiers mods) {
         return;
     // A switch and the partial counts move as a click on them does: a switch on upward and off downward, with what
     // the symmetric switches bring along (the Fixed switch's, the inspector's), and a count to the next one offered.
+    if (const int op = opOfField(hit->param, OpParam::EnvMode); op >= 0) { // ADSR | Curve, as a click picks them
+        if (whole != 0)
+            pickEnvMode(op, whole > 0);
+        return;
+    }
     if (hit->kind == Kind::Toggle) {
-        if (whole != 0 && (whole > 0) != (value(hit->param) >= 0.5))
+        // On upward as it shows: a Random's Unipolar switch, on its Bipolar, is lit while that is off.
+        const bool inverted = sourceFieldOf(hit->param) == SourceParam::Bipolar;
+        if (whole != 0 && (whole > 0) != ((value(hit->param) >= 0.5) != inverted))
             flipSwitch(hit->param);
         return;
     }
-    if (isLfoClockChoice(*hit)) { // to the next mode along, as the wheel turns, from the one lit
-        const int to = std::clamp(static_cast<int>(lfoClockOf(hit->a)) + whole, 0, lfoClockCount(hit->a) - 1);
+    if (hit->kind == Kind::ListButton && isEnvClock(hit->param)) { // One-Shot, then Sustain, held at either
+        const int to = std::clamp(static_cast<int>(std::lround(value(hit->param))) + whole, 0, 1);
+        if (whole != 0 && to != std::lround(value(hit->param)))
+            edit(hit->param, to);
+        return;
+    }
+    if (isLfoClockChoice(*hit) || (hit->kind == Kind::ListButton && isCurveClock(hit->param))) {
+        // To the next mode along, as the wheel turns, from the one lit (a Curve's list's, from the one it shows).
+        const int lfo = sourceOf(hit->param);
+        const int to = std::clamp(static_cast<int>(lfoClockOf(lfo)) + whole, 0, lfoClockCount(lfo) - 1);
         if (whole != 0)
-            setLfoClock(hit->a, static_cast<LfoClock>(to));
+            setLfoClock(lfo, static_cast<LfoClock>(to));
         return;
     }
     if (const int split = splitOf(hit->param); split >= 0 && hit->param == paramIndex(split, SplitParam::Slope)) {
@@ -7648,7 +7785,7 @@ void View::wheel(Point p, float steps, Modifiers mods) {
     if (isFilterTypeList(hit->param)) { // to the next family along its list, or over its Model list the next model,
         const bool model = isModelList(*hit); // held at the list's ends, a run of notches one undo step
         const int shown = listShown(hit->param);
-        const int items = listCount(hit->param, shown, model);
+        const int items = listItems(hit->param, shown, model);
         int at = 0;
         for (int item = 0; item < items; ++item)
             if (listItemValue(hit->param, item, shown, model) == shown)
@@ -7946,10 +8083,53 @@ void View::startTyping(const Widget &w) {
         caretTicks_ = 0;
         return;
     }
-    char text[64];
-    formatParam(w.param, value(w.param), text, sizeof(text));
-    typing_ = Typing{w, text, std::string_view(text).size(), true};
+    const std::string text = shownValue(w.param, value(w.param));
+    typing_ = Typing{w, text, text.size(), true};
     caretTicks_ = 0;
+}
+
+namespace {
+// Whether a Curve's Rate param reads as its curve's length now.
+bool rateAsLength(const ModulationModel &mods, int index) {
+    return sourceFieldOf(index) == SourceParam::Rate && mods.curveRateAsLength(sourceOf(index));
+}
+} // namespace
+
+std::string View::shownValue(int index, double v) const {
+    if (rateAsLength(mods_, index) && v > 0.0) { // as times are shown, ms up to a second
+        const double seconds = 1.0 / sweepRateHz(v);
+        const double ms = std::round(seconds * 10000.0) / 10.0;
+        char text[32];
+        if (ms < 1000.0)
+            std::snprintf(text, sizeof(text), "%.1f ms", ms);
+        else
+            std::snprintf(text, sizeof(text), "%.2f s", seconds);
+        return text;
+    }
+    char text[64];
+    formatParam(index, v, text, sizeof(text));
+    return text;
+}
+
+bool View::parseShown(int index, const std::string &text, double *out) const {
+    std::string lower = text;
+    std::transform(lower.begin(), lower.end(), lower.begin(),
+                   [](char ch) { return static_cast<char>(std::tolower(static_cast<unsigned char>(ch))); });
+    if (!rateAsLength(mods_, index) || lower.find("hz") != std::string::npos)
+        return parseParam(index, text.c_str(), out);
+    // "s" means seconds, anything else (a bare number too) milliseconds, as for the times; at most the fastest rate's
+    // length, at least the slowest's.
+    char *end = nullptr;
+    const double number = std::strtod(text.c_str(), &end);
+    if (end == text.c_str() || !std::isfinite(number))
+        return false;
+    while (*end == ' ')
+        ++end;
+    const double seconds = *end == 's' || *end == 'S' ? number : number / 1000.0;
+    if (!(seconds > 0.0))
+        return false;
+    *out = std::max(normFromRate(std::clamp(1.0 / seconds, kMinRate, kMaxRate)), kLeastNorm);
+    return true;
 }
 
 void View::typeChar(char32_t c) {
@@ -8136,13 +8316,12 @@ void View::endTyping(bool commit) {
     // Spaces around it don't count. Left as it was shown, or emptied, the value stays as it is,
     // rather than being rounded to what the text says.
     const size_t first = t.text.find_first_not_of(' ');
-    char shown[64];
-    formatParam(t.widget.param, value(t.widget.param), shown, sizeof(shown));
+    const std::string shown = shownValue(t.widget.param, value(t.widget.param));
     if (!commit || first == std::string::npos || t.text == shown)
         return;
     const std::string text = t.text.substr(first, t.text.find_last_not_of(' ') - first + 1);
     double v = 0.0;
-    if (parseParam(t.widget.param, text.c_str(), &v))
+    if (parseShown(t.widget.param, text, &v))
         edit(t.widget.param, v);
     else
         flash(trf(Str::MsgBadValue, {text, mods_.paramName(t.widget.param)}));

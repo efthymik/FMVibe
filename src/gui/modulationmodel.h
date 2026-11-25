@@ -45,6 +45,11 @@ constexpr int emptyModOf(int slot) {
     return slot <= -2 ? -2 - slot : -1;
 }
 
+// A place along a drawn shape (0..1) as it reads (see ModulationModel::curvePlace()): `length` its whole time in
+// seconds, or in beats.
+enum class ShapeTime { Share, Seconds, Beats };
+std::string shapePlaceText(ShapeTime time, double length, double x, bool brief);
+
 class ModulationModel : public PatchEdits {
 public:
     using PatchEdits::PatchEdits;
@@ -64,6 +69,19 @@ public:
     bool sourceOn(int source) const;
     // Whether a source swings its targets both ways (see fmvibe::sourceBipolar()).
     bool sourceBipolar(int source) const;
+    // How a place along a Curve source's curve reads, in its readouts and on its ruler: a time while it is unsynced and
+    // moving (the curve as long as a cycle of its Rate, looped or not); in bars and beats while it is synced; else, at
+    // 0 Hz, as a share of the cycle (and for any other source).
+    using CurveTime = ShapeTime;
+    CurveTime curveTime(int source) const;
+    // Whether its Rate reads as the curve's length: while it plays its curve once from each note (One-Shot or Sustain),
+    // its places reading as times.
+    bool curveRateAsLength(int source) const;
+    // The curve's length in seconds while its places read as times, else 0.
+    double curveLength(int source) const;
+    // `x` (0..1) along it as it reads: "0.37 s", "1.2.1" (bar, beat, sixteenth), or "31.0 %"; `brief` for a ruler's
+    // labels ("0.3 s", "1.2", "25 %").
+    std::string curvePlace(int source, double x, bool brief) const;
     // What a double-click or Reset sets a param to: its default, or a bipolar macro's middle.
     double resetValue(int param) const;
 

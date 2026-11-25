@@ -35,6 +35,22 @@ What the plugin does and how its editor works, in full. Building and installing 
     The knob's stretch from 0 to 1 ms lies below where it used to stop, so patches saved before it (state version 3
     and earlier) keep their times, and their modulation depths on these times load scaled to swing them as far as
     before);
+  - **Drawn envelopes** (EnvMode, ADSR to begin with): an operator's envelope can be a drawn curve instead of its
+    AHDSR, a shape of up to 64 points (`opEnvShapeIndex()`, ids 81000 + 200·op) whose level goes from 0 at its
+    bottom to full at its top, played over its **Length** (1 ms to 10 s, about a second to begin with), or synced to
+    a note value at the tempo. **One-Shot** plays it once from each note and holds its end while the key is down;
+    **Sustain** (to begin with) loops its loop region, the whole curve to begin with, while the key is down. Let go,
+    it goes on at once from the level it is at to the curve's end, as a Curve source's Sustain does (an offset fading
+    by the next point, or a 5 ms glide where the loop ends on a drop or at the curve's end), and a curve ending above
+    0 fades out over 5 ms there, so the voice can end. It is stepped per sample (`DrawnEnvelope` in
+    `src/drawnenvelope.h`, which `Envelope` follows in a stage of its own, so the voices' loop calls it as before):
+    each segment's bend kept as an exponential multiplied each sample, not worked out again. **Slew** (Off to begin
+    with, up to 1 s) lags what it puts out behind its shape, a one-pole lag a sample at a time, so a jump drawn in it
+    or its loop wrapping from one level to another doesn't click; slewed, once its end has faded out, what it still
+    puts out runs down to nothing in a straight line, as steeply as the lag was taking it, so within the Slew's time,
+    and its voice ends then. Until it first reaches its curve's highest point it counts, for voice stealing, at its
+    top, as an attack does. Its fields and shape are the editor's alone (hidden from hosts); Length and Slew can be
+    modulated, at the control rate. An operator on its AHDSR costs what it did;
   - **Fixed** pitch (off by default): the operator plays at **Freq** (1 Hz–2 kHz on a log curve) times **Mult**
     (×0.001, ×0.01, ×0.1, ×1 or ×10), so 1 mHz to 20 kHz, whatever the note. The note, pitch bend, glide, the
     global Pitch and the note's tuning don't move it, nor do its ratio, Pitch and Detune, or modulation on them;
@@ -269,7 +285,8 @@ What the plugin does and how its editor works, in full. Building and installing 
   operator's envelope has them), Curve sources (LFOs of a drawn shape), and two that follow what a note or the
   controller brings:
   - **Curve**: an LFO of a shape drawn from points (see below), with everything an LFO has (Rate or a synced note
-    value, the clock modes, anchoring, Phase) but the shape list. It starts unipolar, where an LFO starts bipolar.
+    value, the clock modes, anchoring, Phase) but the shape list, and a loop region and a fifth clock mode,
+    **Sustain**, of its own (see below). It starts unipolar, where an LFO starts bipolar.
     It replaces the LFO's Custom shape, which the LFOs no longer offer: a patch saved before (state version 11 and
     earlier) loads an LFO with that shape as a Curve source running as the LFO ran, its points and polarity kept.
   - **Random**: a random LFO. It runs as an LFO does, with the LFO's Rate (or, synced, a note value: it starts synced
@@ -329,9 +346,12 @@ What the plugin does and how its editor works, in full. Building and installing 
   let go, a mod envelope that modulates something runs its release out even after the operators have faded: the
   voice keeps running its modulation alone (rendering no sound) until the release is over, so what it moves, an
   effect's knob for one, follows it down instead of jumping back, and only then reports its note's end to the host.
+  A Curve source in Sustain that modulates something keeps the voice running the same way until it has played on to
+  its curve's end.
   Once the last voice has ended, its modulation of the effects (and of Volume) runs on while they ring out, so an
   LFO on a filter after a long reverb keeps sweeping the reverb's tail: a Free or Anchor LFO along its shared clock,
-  a Retrigger or One-Shot one carrying on from where the voice left it, its own params as every voice has them
+  a Retrigger or One-Shot one carrying on from where the voice left it (a Curve in Sustain, let go with its voice,
+  playing on to its curve's end), its own params as every voice has them
   (what is set, with the host's and the macros' modulation); the other sources' modulations keep what they last
   gave. Once the effects have put out silence (below -100 dB) for a second, the effects' params go back to their
   knobs, where nothing is heard, and a new note takes over from its first block. The voice itself still ends, and
@@ -416,10 +436,11 @@ What the plugin does and how its editor works, in full. Building and installing 
     all the voices together, follows the newest voice's operator, as the effects' other modulation does, and takes
     over from one note to the next over about 5 ms, so a new note doesn't click; an operator at a fixed frequency
     moves it alike whichever note is newest. The filter effect's Formant type's cutoff stays with the 32-sample blocks.
-  - An LFO runs in one of four clock modes, picked one at a time: **Retrigger** (the default), **Free**, **Anchor** or
+  - An LFO runs in one of four clock modes, picked from a list: **Retrigger** (the default), **Free**, **Anchor** or
     **One-Shot**. Retrigger restarts the LFO from its Phase with every note. Each of the other three is a switch
     hosts see; the editor turns the other two off as it picks one. Should a host turn on more than one, One-Shot
-    wins, then Anchor. A Random source has only Retrigger and Free (see Random above).
+    wins, then Anchor. A Random source has only Retrigger and Free (see Random above). A Curve source has a fifth,
+    **Sustain** (below), which wins over the other three.
   - **Free** makes an LFO run on without restarting at each note. All voices then follow one shared clock, which
     runs at the rate the newest voice hears (like the effects) and keeps going between notes.
   - **Anchor** ties an LFO to the host's transport: while it plays, the LFO stands where it would had it started at
@@ -447,7 +468,18 @@ What the plugin does and how its editor works, in full. Building and installing 
   - **One-Shot** runs an LFO through one cycle from each note and then holds it where the cycle ends (a one-shot
     is never free or anchored): for a sine, a triangle or a drawn shape that is where it started, while a saw holds
     at its top, a square low and a Random source at the value it took. A drawn shape with a point at the cycle's end
-    (100 %) holds at that point's level instead, so a ramp from 0 up to 1 there stays at 1.
+    (100 %) holds at that point's level instead, so a ramp from 0 up to 1 there stays at 1. A Curve source's
+    one-shot plays its whole curve whatever its loop region.
+  - **Sustain**, a Curve source's alone, plays it as an envelope with a sustain loop: from each note it plays from its
+    Phase on into its loop region and round the loop for as long as the key is down, or the sustain pedal holds the
+    note. As the key comes up it leaves the loop at once, wherever it is (before the loop or in it), and plays on from
+    the level it is at: it goes on from the loop's end, the step between that level and the curve there fading out
+    along the way to the next point, so it lands on that point and plays the rest of the curve, then holds at the
+    curve's end, as a one-shot does. A loop that ends at the curve's end glides there over 5 ms, and so does one that
+    ends on a point the curve drops (or jumps) from straight away, going down with the drop. The note's voice runs
+    on until the curve has ended, so what it modulates follows it down. In mono a new key struck while it plays on
+    starts it again from its Phase (legato, a key played over a held one leaves it looping where it is). It is the
+    last of a Curve card's clock modes (see below).
   - **Unipolar** makes an LFO swing from 0 to 1 instead of −1 to 1, so it only pushes its targets one way, like an
     envelope. It is the same choice the LFO's right-click menu offers, and its display then has its zero line at the
     bottom.
@@ -456,6 +488,24 @@ What the plugin does and how its editor works, in full. Building and installing 
     to easing out, and the last segment wraps around to the first point, so the cycle loops without a jump. The
     points are saved with the patch (as params of the editor's own, which hosts aren't given: see
     [CLAP and VST3](#clap-and-vst3)).
+  - Every Curve source has a **loop region**, a start and an end along its curve, the whole curve to begin with (so
+    a patch from before plays as it did). Retrigger plays from its Phase on into the loop, then round the loop alone (a
+    Phase past the loop plays on to the curve's end first); Free and Anchor cycle the loop alone, an anchored one
+    counting the loop's cycles from the song's start; One-Shot ignores it; Sustain loops it while the key is down.
+    Rate (or the synced note value) stays the whole curve's, so the loop plays at the speed it is drawn: a loop half
+    the curve long comes round twice as often. A loop of no length, which only a host or a saved state can make,
+    holds where it is. Its ends are saved with the patch, as params of the editor's own that nothing modulates, and
+    are set on the loop's bar over the shape, or from a point's right-click menu (see the shape editor).
+  - A Curve source's **Slew** (Off to begin with, up to 1 s) lags what it puts out behind its curve, from where the
+    curve is as the note starts, as a MIDI source's Slew follows its controller: a jump in the curve, or its loop
+    wrapping, glides instead of stepping. Off, it puts out its curve as it always did.
+  - In One-Shot and Sustain, unsynced, a Curve source's **Rate** reads as the curve's **length** (1.20 s rather than
+    0.83 Hz), on its knob and in its full-size editor, whose label then says Length, and a length typed into it ("1.5
+    s", "800 ms") sets it; a rate typed with "Hz" still goes. The param is still the rate, so nothing saved changes.
+    At 0 Hz it reads as a rate, as it always did. Its places along the curve (a point's readout, the ruler over its
+    full-size editor and along its widened card's plot) read as times whenever it is unsynced and moving, a looping
+    one's along a cycle of its Rate; synced, in bars and beats (1.2.1: bar, beat, sixteenth, from the cycle's start);
+    standing still at 0 Hz, as a share of the cycle.
 - **Effects**, after the voices: everything the operators and filters send to the output runs through up to 32
   effects. A new instance starts with none. Any effect can be added more than once, switched on and off, reordered and
   removed. A patch saved while the chain held 16 loads its effects in the order they had. Once nothing goes in and
@@ -1765,32 +1815,67 @@ what it started goes on.
     edit button, a pencil, in its corner), or the expand button in its title row, left of its power switch, widens its card to two card places, the cards after it moving along and the row scrolling to show it
     whole, to edit the shape right there while the panels above stay in use: the inspector's knobs, the routes and
     the other views can be turned and switched as the shape changes. The widened card keeps the source's own controls where a normal card has them,
-    with the shape tools and drawing modes where its display was (see below), and the shape's plot beside them,
-    264 px across; under the plot, the point under the mouse in numbers (its number, its place in the cycle and its
-    level) and the grid's steppers, and over it, as its tooltip, how to edit it. Its title row has, before the
-    fold, power and remove buttons, the reset button (a circular arrow), which puts back the shape it started with,
-    the collapse button (two arrows pointing in), which takes the card back to its size, and right of it the
+    with the reset button (a circular arrow, which puts back the shape it started with) and the shape tools in a row
+    where its display was, level with the plot's foot (see below), and the shape's plot beside them, 264 px across;
+    under the plot, Points | Steps and Snap as their icons alone (named in their tooltips), then the grid's
+    steppers, and over it, as its tooltip, how to edit it. Its title row has, before the fold, power and remove
+    buttons, the collapse button (two arrows pointing in), which takes the card back to its size, and right of it the
     full-size button (two arrows pointing apart); another shape, folding the card and removing it take it back to
     its size too. Every edit applies as it is
     made, so there is no done button. One card is widened at a time: widening another takes the first one back.
     The Seq view covering the modulation panel leaves the card as it was, widened or not, for when the panel shows
-    again; it isn't saved with the patch. The full-size button opens the shape over the routing panel and the inspector,
-    which it hides while it is open, the card staying widened under it with its own editor greyed out (it takes no
+    again; it isn't saved with the patch. The full-size button opens the shape in a panel as wide as the routing panel,
+    in the middle of the panels' row over the routing panel and the inspector, which it hides while it is open, the card staying widened under it with its own editor greyed out (it takes no
     input there meanwhile); the done button (a check mark, top right) closes it, as a view tab does, and the card's
-    editor is back in use.
+    editor is back in use; so does a click on the card's plot, which is dimmed while the full-size editor has its
+    shape. A Curve's full-size editor has, in its title row after its name, its clock modes' list, its Unipolar and
+    sync switches and its Rate (Length, or the note value synced), Phase and Slew as small knobs, as the card has them
+    and working as the card's do (the list opening under its own button there). An operator's drawn envelope's
+    full-size editor, the note source's curve's and velocity's are laid out the same (one panel, one title row, the
+    plot, and under it the point readout or how to edit, Points | Steps, Snap and the grid).
+    A Curve source's **loop** (see the modulation above) shows as a bar in its color on a strip over the shape: in
+    the full-size editor over the plot, with the ruler's labels under the bar (times, beats or shares, as its places
+    read, on round values), and in the widened card along the top of the plot, with the ruler's labels at the plot's
+    foot. It is set as the Seq view's loop is: drag an end to size it, its middle to move it, or across the strip
+    outside it to draw a new one, on the grid's columns, its ends staying a column apart; a double-click loops the
+    whole curve again. With Shift or Ctrl held, a drag goes off the columns, where the mouse is (an end, the loop
+    moved as far as the mouse goes, or a new loop), its ends still a 256th of the curve apart; pressed or let go
+    mid-drag, from there on. Each drag is one undo step. Over the loop the mouse shows a move cursor, elsewhere a left-right
+    one. Its ends are dashed across the plot, and what the clock mode doesn't play is dimmed: past the loop in
+    Retrigger, either side of it in Free and Anchor, nothing in Sustain. One-Shot, which plays the whole curve, shows
+    no bar. A point's right-click menu has **Set as Loop Start** and **Set as Loop End**, which put that end exactly
+    at the point, on the grid or not, each one undo step (an entry that would put an end at or past the other is left
+    out), before Delete point.
     The **shape tools**, a row of icons (named on hover), each change the whole shape in one undo step, a quick
     second click being another: **Invert** flips it upside down; **Reverse** plays it back to front, the first point
     staying first and each segment bent the other way; **Shift left** and **Shift right** move it a column of the
     grid earlier or later, round the cycle (where the new start falls, a point is put on the curve if there is none
-    there, splitting its segment without changing its course); **Copy** keeps the shape, and **Paste** puts it into
-    another Curve source (faint until a shape is copied; for now Curve sources' shapes only). Under them, **Points | Steps** picks what a
-    click on the shape does, in the card and in every big editor below, which has them too (left of its GRID, or in
+    there, splitting its segment without changing its course); **Copy** and **Paste** copy the shape and paste the one
+    copied, as Copy Shape and Paste Shape do (Paste faint until a shape is copied). **Copy Shape** and **Paste Shape**
+    are in the right-click menu over every drawn shape (after a point's or a bend's own entries; Paste Shape only once
+    one is copied), and **Ctrl+C** and **Ctrl+V** with the mouse over it do the same: a Curve source's, an operator's
+    drawn envelope, a voice shaper's or a shaper effect's Custom curve, the note source's and velocity's curves, and a
+    sequencer lane's curve (BEND, MOD WHEEL and the macros', over the lane, where Ctrl+C and Ctrl+V over the roll still
+    copy notes). The clipboard (`src/gui/shapeclip.h`) holds the shape as it is drawn, whatever it came from: its points
+    along it, their levels, their bends, whether it runs on round its end (an LFO's, a lane's) and its loop region (a
+    Curve source's, an operator envelope's); a symmetric curve as it sounds, its left half its right half turned round
+    the middle; a lane across its pattern, up its range, a point put at its start where its way round passes it. A
+    paste is one undo step and fits the shape to where it goes: as it is into a Curve source or an operator's envelope,
+    with its loop region if it has one (else the target's stays); into a shaper curve with its first and last points
+    at its ends (a shape that runs round its end getting a point at the end at its first point's level), a symmetric
+    curve staying symmetric with a point in its middle (put on the curve); into the note source's or velocity's curve
+    thinned to its 16 points, keeping its ends (one at a time, the point whose going changes the shape least, the
+    segment left across its place bent as near it as it can be), saying "Pasted 16 of its 41 points"; into a lane
+    across the pattern's length in steps and up the lane's range. Each says where it went ("Shape pasted into Op A
+    Envelope"), Ctrl+V with nothing copied "Copy a shape first". **Points | Steps** picks what a
+    click on the shape does, in the card (under its plot) and in every big editor below, which has them too (left of its GRID, or in
     a shaper effect's narrower editor in its title row, left of the reset button): with Points, as below; with
     Steps, a click draws a step, as Alt+click does with Points, and Alt+click works with points. **Snap** snaps
     points and steps to the grid without Ctrl, which then lets them go (a shaper's curve drawn right in its card or on
     its page, which show no grid, snaps with Ctrl only). Both belong to the editor, like the grid, and go for every
-    shape and curve. How to edit a shape, as they have it, shows in each editor's title row (a shaper effect's under
-    its plot) and as a widened card's plot's tooltip.
+    shape and curve. How to edit a shape, as they have it, shows under each full-size editor's plot, where the point
+    under the mouse is shown in numbers, on two lines in smaller type where one doesn't fit, and as a widened card's
+    plot's tooltip.
     Drag points to move them; the point under the mouse is shown in numbers, its level as the LFO puts it out (0 to 1 for a
     unipolar one). A point stays between its neighbors, but can reach a neighbor's time: points at one time make a
     line straight up or down (a spike, say), and at that moment the LFO takes the last of them in order, the one
@@ -1818,7 +1903,7 @@ what it started goes on.
     hold 64 points, so every column can hold a step even on the finest grid, 32 across; the note source's curve
     and velocity's hold 16. The small dots halfway along each segment bend it (a jump has none): drag them up or down,
     double-click to straighten. **GRID**, under the
-    editor, sets how many lines run across (2–32, thirds included) and up and down (2–16), with its − and +
+    editor, sets how many lines run across (2–32, thirds included) and up and down (2–16), 8 and 8 to begin with, with its − and +
     buttons or the mouse wheel; hold Ctrl to snap points to them. The grid belongs to the editor: it is saved with
     the project, and presets leave it alone (so do Points | Steps and Snap). The first point always sits at the start of the cycle. A shaper
     effect's Custom curve opens the same editor from the edit button (a pencil) beside its card's curve list, in a panel in the middle of the
@@ -1829,14 +1914,14 @@ what it started goes on.
     point added, no step drawn; a step held across the middle stays where it last was on the right). The editor has
     its own **SYM** switch, left of Points | Steps (in the title row for a shaper effect, under the plot for a voice
     shaper), as the card and the shaper's page do. Switching Symmetric on gives the curve a point in the middle if it has none,
-    which then stays there: it only moves up and down, and can't be deleted (a step drawn across it keeps it, at the step's height). The note source's curve opens over the routing panel from its display in the
+    which then stays there: it only moves up and down, and can't be deleted (a step drawn across it keeps it, at the step's height). The note source's curve opens in the full-size editors' panel from its display in the
     keyboard strip (a second click closes it): the notes from Low to High across, the Cs among them named under
     the plot, and what the source puts out up, from nothing at the bottom to all of it at the top, with a dot
     where the newest voice is while notes play. A dashed line shows, for the range set, what would take a cutoff
     at 0 by 100 % onto the note. **Low** and **High** are knobs side by side in its title row, dragged in whole
     notes (or typed, as `C4`, `F#2 -20` or a MIDI note number); its ends stay at the ends too, and the reset button
-    brings back every MIDI note and the curve along the dashed line. Velocity's curve opens over the routing panel
-    the same way, from its display (see Velocity, under the keyboard strip).
+    brings back every MIDI note and the curve along the dashed line. Velocity's curve opens in the same panel the
+    same way, from its display (see Velocity, under the keyboard strip).
 - **Header**: two rows. The **title bar** holds the name at its left, the preset bar in its middle, and undo and
   redo, Init, Load, Save, Save As and the settings cog at its right (see Presets and Settings, below). Between the
   name and the preset bar sits the **tempo** every synced LFO, delay and sweep follows: a switch, **H** ("Sync to
@@ -1931,7 +2016,24 @@ what it started goes on.
     opens none), so its knobs can take the drop:
     - **Envelope** (to begin with): the operator's envelope, and its knobs. While notes play, a dashed line across
       it shows the newest voice's envelope level, with a dot where it meets the curve, as a mod envelope's card
-      does.
+      does. The curve has the whole display; its controls are in the row under the well, which starts with **ADSR**
+      over **Curve**, one pill of two icons (an AHDSR's shape, and a curve through its points, named in their
+      tooltips), then the AHDSR's five knobs, a little closer together for it; with Curve, One-Shot | Sustain (the
+      Curve source's icons), its sync switch (the metronome), Length, Slew and, at the right, a pencil. Switched to Curve
+      the first time (its shape still
+      as a new patch has it), the curve is drawn from the AHDSR in the same undo step: the attack, hold and decay, a
+      flat stretch at the sustain level as Sustain's loop (a quarter of the other times, at least 50 ms), then the
+      release, the segments' curves bent alike, in their proportions, Length 1 s. The display then shows the drawn curve, edited in
+      place as a voice shaper's curve is on its page (points, bends, Points | Steps and Snap from the grid's
+      settings), with its loop's bar along its top in Sustain and the ruler's times under it, clear of the curve's
+      foot; Length is a note value while synced. While notes play, a dashed line across shows the newest
+      voice's level and a dot where it is on the curve. The pencil opens its full-size editor, laid out as a Curve
+      source's: in the same panel, over the routing panel and the inspector, with its name, One-Shot | Sustain as a list (as a Curve's
+      clock modes, with their icons, opening under its button; the wheel and its arrows step it), sync, Length and
+      Slew in its title row where a Curve's has its clock list, sync, Rate and Slew (it has no Unipolar switch and no
+      Phase), the loop's strip and ruler over the plot, Points | Steps, Snap and the grid under it, the point under
+      the mouse in numbers, and the point menu's Set as Loop Start and Set as Loop End; Done or a view's tab closes
+      it.
     - **Unison**: a display of where the copies sit (left/right by spread, up/down by detune, each drawn as large
       and as strong as Blend leaves it; a Random mode as one note might spread them), with a row of buttons along
       its bottom, each an icon named in its tooltip: the four Unison Curves (five copies' pitches as ticks), then,
@@ -2013,9 +2115,10 @@ what it started goes on.
   covers it), then **+ Source**,
   shaped like + Effect (a drawn plus, the word and a chevron), which opens the list of source types under it to add
   one, and beside it how many of the 32 places are taken, as in 4/32 (with every
-  place taken it is dimmed, and a click says so). Random and Curve cards are laid out as an LFO's (see below), but
-  have **Unipolar** | **Bipolar** (as icons) where an LFO's shape list is, one of them lit, which sets which way their
-  depths swing, as the polarity in its title's menu does, and no Unipolar switch; a Random card has no Phase knob. A MIDI card has its input's list (CC,
+  place taken it is dimmed, and a click says so). Random and Curve cards are laid out as an LFO's (see below), with
+  their clock modes' list where an LFO's shape list is, their Unipolar and sync switches under it and three knobs
+  beside it. A Random card's Unipolar switch sets which way its depths swing, as the polarity in its title's menu
+  does (it starts bipolar, the switch off); it has no Phase knob. A MIDI card has its input's list (CC,
   Pressure or Slide, where an LFO's shape is; its tooltip says what the input follows), and right of it its CC stepper
   (while its input is a controller) and Slew; under them, both cards'
   display is a bar of what the newest voice gets now (from the middle while the source is bipolar), with its value.
@@ -2061,12 +2164,12 @@ what it started goes on.
     A source that is another modulation's aux (see below) also gets a dotted line, in its color and bowed the
     other way, to that modulation's depth handle on screen, which is ringed with dots.
   - A card doesn't list its modulations, and ends with a link under its display, words without a button's face:
-    it counts them in dim text, with **Mods ›** at its right in the accent (both lit under the mouse, the whole row
-    taking the click), and shows them in the Mods view, scrolled to the source's first row. While the source
+    it counts them in dim text ("1 modulation", "3 modulations"), the words themselves the link, lit under the mouse,
+    and shows them in the Mods view, scrolled to the source's first row. While the source
     modulates nothing, it reads **No modulations** alone and adds an empty modulation from the source there (see the
     Mods view), with its target's menu open.
     A Random
-    card has **Smooth** and **Chaos** knobs beside its display, which shows four made-up cycles of what they do;
+    card has **Smooth** and **Chaos** knobs beside its Rate, and its display shows four made-up cycles of what they do;
     while notes play it shows the source's own last four cycles instead, as one line scrolling left with the live dot
     at its right end (at the end of a cycle, it waits there until the next one comes in). Standing still at 0 Hz,
     it shows four made-up notes' values, and while notes play a line across at the value the newest voice holds,
@@ -2077,19 +2180,28 @@ what it started goes on.
     is open with one switched on, the CLAP plugin keeps processing with nothing sounding, where a host would let it
     sleep and the clock would stand still. An LFO picks its shape from a list, like a
     shaper's curve, its button and each entry showing the shape's icon before its name (the wheel over it steps
-    along them). Under the shape list, as
-    wide as it, are its clock modes side by side, as Poly | Mono are, the one it runs in lit, each drawn as an icon
-    (named on hover): a rise that starts again at each dot for **Retrigger**, an infinity sign for **Free**, an
-    anchor for **Anchor** and a single cycle that ends in a dot for **One-Shot** (a Random card's two, Retrigger and
-    Free, each twice as wide). A click picks one (a click on the
-    one lit leaves it), and the wheel over them steps to the next one. Right of those two rows, centered
-    on them, are the Rate and Phase knobs (a Random card's Rate alone),
-    over a Random card's Smooth and Chaos, with the sync switch between the shape list and Rate, level with the list: a small square button
-    with the metronome the effects' SYNC has, which turns the Rate knob into a note-value knob (as it starts, on).
-    Under it, level with the clock modes, is the **Unipolar** switch, a hump on a baseline as a Mods row's
-    polarity switch has.
+    along them). Under the shape list, as wide as it, is its clock modes' list: its
+    button shows the mode it runs in, its icon and name, with arrows that step along the list, round its ends, and the
+    wheel over it steps along it too; its list shows the modes with their icons, the one in force checked (the button
+    shows no tooltip, as the shape list doesn't). Its icons: a rise that starts again at each dot for **Retrigger**,
+    an infinity sign for **Free**, an anchor for **Anchor** and a single cycle that ends in a dot for **One-Shot**. An
+    LFO has those four, a Random source the first two and a Curve card five, with **Sustain** last (a rise, a level
+    between two ticks and a fall); a Random's and a Curve's list is where an LFO's shape list is. Each pick, step or
+    wheel notch is one undo step. Right of the two rows, centered on them, are an LFO's Rate and Phase knobs.
+    Between an LFO's shape list and Rate, level with the list, is the
+    **Unipolar** switch, a hump on a baseline as a Mods row's polarity switch has, and under it, level with the clock
+    list, the sync switch: a small square button with the metronome the effects' SYNC has, which turns the Rate knob
+    into a note-value knob (as it starts, on). A Curve card and a Random card have their Unipolar and sync switches
+    under their clock list instead, at its right end before the Rate knob, and right of the list three knobs alike,
+    side by side: a Curve's Rate (labeled Length while it reads as one), Phase and **Slew**, a Random's Rate,
+    **Smooth** and **Chaos**.
     The Phase knob is faint while it does nothing (on a free LFO that isn't anchored), and otherwise
-    a thin line on the display marks where notes start the LFO (or where the song starts an anchored one). A
+    a thin line on the display marks where notes start the LFO (or where the song starts an anchored one). A widened
+    card's plot and the full-size editor show it as a faint dashed line (none at 0 or 100 %), drawn solid while the
+    Phase knob is held. A Curve's
+    dot keeps to its curve, as an envelope's does, and a dashed line across, while it runs, shows the level it puts
+    out, which a release in Sustain takes off the curve until the next point (in its widened card and full-size
+    editor alike). A
     unipolar LFO's display has its zero line at the bottom. A Curve source's
     display, or the expand button in its title row, widens its card, to edit the shape there (see the shape editor);
     a new one starts widened.
@@ -2224,7 +2336,13 @@ what it started goes on.
   label, OUT label or matrix cell types a value on Ctrl+Click, since its double-click removes or toggles the route.
 - **Menus and lists**: every list and menu (the effects', the source types', the waves', a list button's, a Param EQ
   band's shapes, the Mods view's cascading menus) marks the row under the mouse, and the one picked, in the same
-  neutral tones; only a row's icon takes a color (the effect's, the band's, the source's).
+  neutral tones; only a row's icon takes a color (the effect's, the band's, the source's). The type lists show an icon
+  before each entry's name, on their button and in the list: an LFO's shape, a clock mode, a filter's type, a route's
+  mode, a shaper's curve (its transfer curve, a drawn curve's points, Stack three layers stacked), the reverb's algorithm
+  (a hall's columns, a room as a box, a plate on its wires, a shimmer's sparkles), the amp's model (Clean a gem, Blues
+  two notes, Crunch a crackle, Lead a flame, Heavy an anvil, Bass a bass clef, Fuzz a spiky ball) and a MIDI
+  source's input (CC a knob, Pressure a key pressed down, Slide an arrow up and down); the amp's cabinets show their
+  names alone, which say their speakers.
 - **Stepping lists**: a voice filter's and the filter effect's type, a voice shaper's and the shaper effect's curve, the
   amp's model and cabinet, the reverb's algorithm and an LFO's shape (its icon and name between the arrows) have an arrow at each end of their list's button, in place of the chevron: ‹ steps to
   the entry before the one shown and › to the one after, in the list's order, round its ends (from the last on to the
@@ -2611,12 +2729,12 @@ switched off and on again, say) allocates the voices again and ends the notes pl
 next block. A VST3 host stopping processing ends them too, unless a restart was asked for: then they end only if
 processing starts again without it.
 
-Hosts are given 2,027 of FMVibe's 50,808 parameters: the globals, the operators, the matrix and the routes' modes,
+Hosts are given 2,027 of FMVibe's 52,142 parameters: the globals, the operators, the matrix and the routes' modes,
 the filters, the shapers, the macros' knobs, the note source's, the mod wheel's, velocity's, the pitch bend's and the
 operators' own as sources, and every modulation's depth and Amount (16 slots for each of the 50 sources, used or not). The rest are set in the editor only:
 the effects, the LFOs', envelopes' and other sources' own knobs, what each modulation targets and its aux, curve and
-bypass, the Curve sources' drawn shapes, the shaper curves and the note source's curve, the Custom waves' partials and their
-counts, the effects graph (its splits, joins and wires), the chain's retired order, the feedback's route modes and the
+bypass, the Curve sources' drawn shapes and loop regions, the shaper curves and the note source's curve, the Custom
+waves' partials and their counts, the effects graph (its splits, joins and wires), the chain's retired order, the feedback's route modes and the
 retired fields. They are
 saved with the project and in presets like the others, the editor's sources modulate them and its history undoes
 them, but hosts can't automate them and don't record their edits: an edit of one marks the project changed

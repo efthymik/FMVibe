@@ -42,6 +42,27 @@ inline bool isLfoShape(int param) {
     return sourceFieldOf(param) == SourceParam::Shape;
 }
 
+// A source card's list of clock modes (an LFO's, a Random's and a Curve's), which its button keys on the source's
+// Free switch, as the Curve's full-size editor's clock buttons do (see View::isLfoClockChoice()): its entries are the
+// modes (LfoClock) the source has, each its icon and name (a Curve's five, an LFO's first four, a Random's first two,
+// see View::lfoClockCount()), and what it picks it sets through View::setLfoClock(), the switches together, never by
+// editing that param.
+inline bool isCurveClock(int param) {
+    return sourceFieldOf(param) == SourceParam::Free;
+}
+constexpr Str kCurveClockNames[] = {Str::SwitchRetrigger, Str::SwitchFree, Str::SwitchAnchor, Str::SwitchOneShot,
+                                    Str::SwitchSustain};
+static_assert(std::size(kCurveClockNames) == static_cast<size_t>(kCurveModes));
+
+// An operator's drawn envelope's One-Shot | Sustain as a list, in its full-size editor's title row where a Curve's
+// clock list is: its two entries (0 One-Shot, 1 Sustain) named and drawn as those clock modes are.
+inline bool isEnvClock(int param) {
+    return opOfField(param, OpParam::EnvSustain) >= 0;
+}
+inline LfoClock envClockOf(int value) {
+    return value == 1 ? LfoClock::Sustain : LfoClock::OneShot;
+}
+
 inline bool isClipMode(int param) {
     return fxFieldOf(param) == FxParam::ShaperMode || shaperFieldOf(param) == ShaperParam::Mode;
 }
@@ -170,6 +191,9 @@ inline const char *filterModelShortName(FilterType type) {
 // list is, with arrows (on a filter's page) or without (on the filter effect's card, which has the room for neither
 // them nor the model's icon).
 constexpr int kModelList = 1, kModelListPlain = 2;
+// A list button's `a` (and its arrows') in a full-size shape editor's title row: a Curve's clock list there, on the
+// param its card's list is on, its list opening under that button rather than the card's.
+constexpr int kEditorList = -2;
 inline bool isModelList(const Widget &w) {
     return (w.kind == WidgetKind::ListButton || w.kind == WidgetKind::ListStep || w.kind == WidgetKind::ListItem) &&
            w.a >= kModelList;
@@ -180,7 +204,7 @@ inline bool isModelList(const Widget &w) {
 inline bool isSteppableList(int param) {
     const FxParam field = fxFieldOf(param);
     return isFilterTypeList(param) || isClipMode(param) || field == FxParam::AmpModel || field == FxParam::AmpCab ||
-           field == FxParam::ReverbType || isLfoShape(param);
+           field == FxParam::ReverbType || isLfoShape(param) || isCurveClock(param) || isEnvClock(param);
 }
 
 // Adds widgets to a list: `add(kind, rect, param, a, b)`. A list button whose list has arrows gets them, over it.
@@ -234,6 +258,8 @@ inline int listCount(int param, int shown = 0, bool model = false) {
            : isFilterTypeList(param)                  ? (model ? filterFamilyTypes(filterTypeAt(shown)).count
                                                                : kFilterFamilies)
            : isLfoShape(param)                        ? kLfoShapeItems
+           : isCurveClock(param)                      ? kCurveModes
+           : isEnvClock(param)                        ? 2
            : isMidiInput(param)                       ? static_cast<int>(MidiInput::Count)
            : fxFieldOf(param) == FxParam::ReverbType ? static_cast<int>(ReverbType::Count)
            : fxFieldOf(param) == FxParam::AmpModel   ? static_cast<int>(AmpModel::Count)
@@ -251,6 +277,10 @@ inline std::string listItemName(int param, int value, bool model = false) {
         return model ? filterModelName(filterTypeAt(value)) : filterFamilyName(filterTypeAt(value));
     if (isLfoShape(param))
         return lfoShapeName(static_cast<LfoShape>(value));
+    if (isCurveClock(param))
+        return tr(kCurveClockNames[std::clamp(value, 0, kCurveModes - 1)]);
+    if (isEnvClock(param))
+        return tr(kCurveClockNames[static_cast<int>(envClockOf(value))]);
     if (isMidiInput(param))
         return midiInputName(static_cast<MidiInput>(value));
     if (fxFieldOf(param) == FxParam::AmpModel)

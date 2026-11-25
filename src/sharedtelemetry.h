@@ -23,9 +23,12 @@ struct SharedTelemetry {
     std::array<std::atomic<float>, kMaxSources> lfoRates{};
     std::array<std::atomic<float>, kMaxSources> lfoFrom{};
     std::array<std::atomic<float>, kMaxSources> lfoTo{};
+    std::array<std::atomic<float>, kMaxSources> lfoOffsets{};
+    std::atomic<uint32_t> lfoLeft{0};
     std::array<std::atomic<float>, kOps> opLevels{};
     std::array<std::atomic<float>, kOps> opEnvLevels{};
     std::array<std::atomic<float>, kOps> opEnvPos{};
+    std::array<std::atomic<float>, kOps> opEnvPhase{};
     std::array<std::atomic<float>, kMaxSources> envPos{};
     std::atomic<float> notePitch{0.0f};
     std::atomic<float> noteVelocity{0.0f};
@@ -74,12 +77,14 @@ struct SharedTelemetry {
             lfoRates[i].store(t.lfoRates[i], std::memory_order_relaxed);
             lfoFrom[i].store(t.lfoFrom[i], std::memory_order_relaxed);
             lfoTo[i].store(t.lfoTo[i], std::memory_order_relaxed);
+            lfoOffsets[i].store(t.lfoOffsets[i], std::memory_order_relaxed);
             envPos[i].store(t.envPos[i], std::memory_order_relaxed);
         }
         for (int i = 0; i < kOps; ++i) {
             opLevels[i].store(t.opLevels[i], std::memory_order_relaxed);
             opEnvLevels[i].store(t.opEnvLevels[i], std::memory_order_relaxed);
             opEnvPos[i].store(t.opEnvPos[i], std::memory_order_relaxed);
+            opEnvPhase[i].store(t.opEnvPhase[i], std::memory_order_relaxed);
         }
         notePitch.store(t.notePitch, std::memory_order_relaxed);
         noteVelocity.store(t.noteVelocity, std::memory_order_relaxed);
@@ -105,6 +110,7 @@ struct SharedTelemetry {
         voices.store(t.voices, std::memory_order_relaxed);
         fxTail.store(t.fxTail, std::memory_order_relaxed);
         fxTailLfos.store(t.fxTailLfos, std::memory_order_relaxed);
+        lfoLeft.store(t.lfoLeft, std::memory_order_relaxed);
         tempo.store(t.tempo, std::memory_order_relaxed);
         for (int i = 0; i < t.scopeBins; ++i) // only what was captured: its first scopeBins
             scope[i].store(t.scope[i], std::memory_order_relaxed);
@@ -140,12 +146,14 @@ struct SharedTelemetry {
             t.lfoRates[i] = lfoRates[i].load(std::memory_order_relaxed);
             t.lfoFrom[i] = lfoFrom[i].load(std::memory_order_relaxed);
             t.lfoTo[i] = lfoTo[i].load(std::memory_order_relaxed);
+            t.lfoOffsets[i] = lfoOffsets[i].load(std::memory_order_relaxed);
             t.envPos[i] = envPos[i].load(std::memory_order_relaxed);
         }
         for (int i = 0; i < kOps; ++i) {
             t.opLevels[i] = opLevels[i].load(std::memory_order_relaxed);
             t.opEnvLevels[i] = opEnvLevels[i].load(std::memory_order_relaxed);
             t.opEnvPos[i] = opEnvPos[i].load(std::memory_order_relaxed);
+            t.opEnvPhase[i] = opEnvPhase[i].load(std::memory_order_relaxed);
         }
         t.notePitch = notePitch.load(std::memory_order_relaxed);
         t.noteVelocity = noteVelocity.load(std::memory_order_relaxed);
@@ -171,6 +179,7 @@ struct SharedTelemetry {
         t.voices = voices.load(std::memory_order_relaxed);
         t.fxTail = fxTail.load(std::memory_order_relaxed);
         t.fxTailLfos = fxTailLfos.load(std::memory_order_relaxed);
+        t.lfoLeft = lfoLeft.load(std::memory_order_relaxed);
         t.tempo = tempo.load(std::memory_order_relaxed);
         t.scopeBins = std::clamp(scopeBins.load(std::memory_order_relaxed), 0, kScopeBins);
         for (int i = 0; i < t.scopeBins; ++i)

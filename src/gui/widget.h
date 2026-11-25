@@ -164,9 +164,12 @@ enum class WidgetKind {
     ShapeGrid,    // a = axis (0 across, 1 up and down), b = -1 or 1 steps the grid, 0 is its count (wheel)
     ShapeCollapse, // a = lfo: its widened card back to a normal one
     ShapeExpand,  // a = lfo: opens its shape in the full-size editor, over the panels
+    ShapeBack,    // a = lfo: its widened card's plot, dimmed while the full-size editor has the shape: closes the editor
     ShapeWiden,   // a = lfo: a Custom LFO's normal card widened to have its shape, as a click on its display does
     ShapeTool,    // a = lfo, b = ShapeTool: a button in its widened card that changes the whole shape
     ShapeMode,    // a = lfo, b = 0 Points, 1 Steps (what a click on its shape does), 2 Snap (to the grid)
+    ShapeLoop,    // a = a Curve's shape: the strip over its plot holding its loop's bar, dragged as the SEQ view's loop
+    OpEnvEdit,    // a = op: its drawn envelope's pencil on its ENVELOPE tab, opening its full-size editor
     UndoButton,   // a = 0 undoes, 1 redoes
     Key,          // a = key of the keyboard (0 = the lowest): drag across keys to play them
     Octave,       // a = -1 or 1: shifts the keyboard down or up an octave
@@ -299,9 +302,11 @@ struct Widget {
     Rect clip{};          // on a card that may be scrolled partly out: drawn and hit only within this
     bool popup = false;   // in the open list of a pill (its row's bypass, depth and remove): over everything else
     // One of a row of buttons drawn merged into one pill, as Poly | Mono: the pill, and from where to where this
-    // one's part of it reaches (halfway across the gaps to its neighbors). group.w is 0 for a button on its own.
+    // one's part of it reaches (halfway across the gaps to its neighbors). group.w is 0 for a button on its own. In a
+    // column of them (stacked), partLeft and partRight are its part's top and bottom.
     Rect group{};
     float partLeft = 0.0f, partRight = 0.0f;
+    bool stacked = false;
     bool modeGlyph = false; // a wire label in the graph showing its route's mode (not Phase) inside it
     // A stepper's field (see isStepper()): drawn in place of its knob, and hit as its rect is. It may reach past the
     // rect's sides, as far as the widgets beside it leave room.
@@ -311,17 +316,27 @@ struct Widget {
 };
 
 // Merges the buttons added to `list` since `from` into one pill, as Poly | Mono, each its part of it (see
-// Widget::group).
+// Widget::group); buttons one under another into a column (ADSR over Curve).
 inline void mergeButtons(std::vector<Widget> &list, size_t from) {
     if (list.size() < from + 2)
         return;
+    const bool stacked = list[from + 1].rect.y >= list[from].rect.bottom() - 0.5f;
     Rect group = list[from].rect;
-    group.w = list.back().rect.right() - group.x;
+    if (stacked)
+        group.h = list.back().rect.bottom() - group.y;
+    else
+        group.w = list.back().rect.right() - group.x;
     for (size_t i = from; i < list.size(); ++i) {
         Widget &w = list[i];
         w.group = group;
-        w.partLeft = i == from ? group.x : (list[i - 1].rect.right() + w.rect.x) * 0.5f;
-        w.partRight = i + 1 == list.size() ? group.right() : (w.rect.right() + list[i + 1].rect.x) * 0.5f;
+        w.stacked = stacked;
+        if (stacked) {
+            w.partLeft = i == from ? group.y : (list[i - 1].rect.bottom() + w.rect.y) * 0.5f;
+            w.partRight = i + 1 == list.size() ? group.bottom() : (w.rect.bottom() + list[i + 1].rect.y) * 0.5f;
+        } else {
+            w.partLeft = i == from ? group.x : (list[i - 1].rect.right() + w.rect.x) * 0.5f;
+            w.partRight = i + 1 == list.size() ? group.right() : (w.rect.right() + list[i + 1].rect.x) * 0.5f;
+        }
     }
 }
 

@@ -41,7 +41,7 @@ constexpr bool idsRoundTrip(int from, int to) {
     return true;
 }
 // (MSVC allows an expression 1,048,576 steps, fewer than GCC, so the parts are small.)
-static_assert(kParamCount == 50808 && kParamCount <= 17 * 3000);
+static_assert(kParamCount == 52142 && kParamCount <= 35 * 1500);
 static_assert(idsRoundTrip(0, 1500), "param id layout overlaps");
 static_assert(idsRoundTrip(1500, 3000), "param id layout overlaps");
 static_assert(idsRoundTrip(3000, 4500), "param id layout overlaps");
@@ -76,6 +76,7 @@ static_assert(idsRoundTrip(45000, 46500), "param id layout overlaps");
 static_assert(idsRoundTrip(46500, 48000), "param id layout overlaps");
 static_assert(idsRoundTrip(48000, 49500), "param id layout overlaps");
 static_assert(idsRoundTrip(49500, 51000), "param id layout overlaps");
+static_assert(idsRoundTrip(51000, 52500), "param id layout overlaps");
 #endif
 
 namespace {
@@ -440,6 +441,39 @@ void buildTable(ParamTable &t) {
             static_cast<double>(UniPan::Count) - 1.0, static_cast<double>(UniPan::Alternate));
         add(paramIndex(op, OpParam::UnisonBlend), name + " " + tr(Str::ParamUnisonBlend), module, ParamKind::Percent,
             0.0, 1.0, 0.0);
+        // Its drawn envelope: off (its AHDSR plays), in Sustain looping the whole shape, a second long, unsynced (on
+        // quarter notes once synced). The editor's alone, as the drawn shapes are; its Length still takes modulation.
+        auto hidden = [&](OpParam f, Str label, ParamKind kind, double min, double max, double def) {
+            add(paramIndex(op, f), name + " " + tr(label), module, kind, min, max, def);
+            t[paramIndex(op, f)].flags |= CLAP_PARAM_IS_HIDDEN;
+        };
+        hidden(OpParam::EnvMode, Str::ParamEnvMode, ParamKind::Toggle, 0.0, 1.0, 0.0);
+        hidden(OpParam::EnvSustain, Str::ParamEnvSustain, ParamKind::Toggle, 0.0, 1.0, 1.0);
+        hidden(OpParam::EnvLoopStart, Str::ParamEnvLoopStart, ParamKind::ShapePoint, 0.0, 1.0, 0.0);
+        hidden(OpParam::EnvLoopEnd, Str::ParamEnvLoopEnd, ParamKind::ShapePoint, 0.0, 1.0, 1.0);
+        hidden(OpParam::EnvLength, Str::ParamEnvLength, ParamKind::Time, 0.0, kMaxEnvNorm, normFromTime(1.0));
+        hidden(OpParam::EnvSync, Str::ParamEnvSync, ParamKind::Toggle, 0.0, 1.0, 0.0);
+        hidden(OpParam::EnvDivision, Str::ParamEnvDivision, ParamKind::SyncDivision, kSlowestDivision,
+               kDivisions - 1.0, kQuarter);
+        hidden(OpParam::EnvSlew, Str::ParamEnvSlew, ParamKind::TimeOrOff, 0.0, kMaxSlewNorm, 0.0);
+        // Its shape, as a freeform shape is laid out: up from nothing to full in a tenth of its time, then down to
+        // nothing again by its end.
+        {
+            const int base = opEnvShapeIndex(op);
+            const std::string shape = name + " " + tr(Str::ParamEnvShape);
+            add(base, shape + " " + tr(Str::ParamPoints), module, ParamKind::ShapeCount, 2.0, kMaxShapePoints, 3.0);
+            const double defaults[3][2] = {{0.0, -1.0}, {0.1, 1.0}, {1.0, -1.0}};
+            for (int point = 0; point < kMaxShapePoints; ++point) {
+                const std::string n = shape + " " + std::to_string(point + 1);
+                const bool used = point < 3;
+                add(shapeFieldIndex(base, point, PointField::X), n + " X", module, ParamKind::ShapePoint, 0.0, 1.0,
+                    used ? defaults[point][0] : 1.0);
+                add(shapeFieldIndex(base, point, PointField::Y), n + " Y", module, ParamKind::ShapePoint, -1.0, 1.0,
+                    used ? defaults[point][1] : -1.0);
+                add(shapeFieldIndex(base, point, PointField::Curve), n + " " + tr(Str::ParamCurve), module,
+                    ParamKind::ShapePoint, -1.0, 1.0, 0.0);
+            }
+        }
         // The Custom wave starts as a sine: the first partial alone, of 32.
         add(partialCountIndex(op), name + " " + tr(Str::ParamPartials), module, ParamKind::ShapeCount,
             kPartialCounts[0], kPartials, kDefaultPartials);
@@ -1038,6 +1072,12 @@ void buildTable(ParamTable &t) {
         field(SourceParam::MidiInput, tr(Str::ParamInput), ParamKind::MidiInput, 0.0,
               static_cast<double>(MidiInput::Count) - 1.0, 0.0);
         field(SourceParam::Anchor, tr(Str::ParamAnchor), ParamKind::Toggle, 0.0, 1.0, 0.0);
+        // A Curve's Sustain, off, and its loop region, the whole curve, so it plays as it did before it had them. The
+        // region's ends are drawn in the editor, as the shape's points are: hidden, and never modulated.
+        field(SourceParam::CurveSustain, tr(Str::ParamCurveSustain), ParamKind::Toggle, 0.0, 1.0, 0.0);
+        field(SourceParam::LoopStart, tr(Str::ParamCurveLoopStart), ParamKind::ShapePoint, 0.0, 1.0, 0.0);
+        field(SourceParam::LoopEnd, tr(Str::ParamCurveLoopEnd), ParamKind::ShapePoint, 0.0, 1.0, 1.0);
+        field(SourceParam::CurveSlew, tr(Str::ParamSlew), ParamKind::TimeOrOff, 0.0, kMaxSlewNorm, 0.0); // Off
 
         // Freeform shapes start as a triangle: up from the bottom to the top at the middle of the
         // cycle, and down again as the last segment wraps around.

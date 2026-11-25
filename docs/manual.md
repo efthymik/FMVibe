@@ -276,6 +276,22 @@ Drag the small dot halfway along a segment up or down to bend it; double-click i
 
 The display zooms to fit the whole envelope. While notes play, a dashed line and a dot show the most recent voice's envelope level and position.
 
+#### Drawn envelopes
+
+The two buttons at the left of the row under the display switch between the **ADSR** envelope (the upper button)
+and a **drawn envelope** (the lower one).
+
+- Double-click to add or delete a point, drag points, and drag the small dots between them to bend a segment.
+- **Length** sets how long the whole curve takes. With the metronome switch on, it is a note value at the tempo.
+- **Slew** smooths the envelope. Turn it up a little when a jump in the curve, or the loop coming round from one level
+  to another, clicks. It is off to begin with.
+- **One-Shot** plays the curve once from each note and holds its last level while the key is down.
+- **Sustain** loops part of the curve while the key is down. Drag the bar along the top of the display to set the
+  loop: its ends size it and its middle moves it. Hold Shift or Ctrl to move it off the grid.
+- When you let go of the key, the envelope goes on from where it is to the end of the curve, so the curve's last
+  part is the release.
+- The pencil opens a large editor for the curve. Click the check mark, or a view tab, to close it.
+
 ### Unison tab
 
 **Unison** sets how many copies of the operator play (up to 16) and how they spread:
@@ -662,8 +678,8 @@ right. The fold chevron shows while the mouse is over the card (on a touchscreen
 - **Right-click** the title or handle to duplicate the source (without its targets), clear its targets, set
   Unipolar or Bipolar, or remove it.
 
-A card ends with a link that counts its modulations and opens them in the Mods view (**Mods ›**). With none, it
-reads **No modulations**; clicking it adds an empty modulation from the source.
+A card ends with a link that counts its modulations ("3 modulations"); click it to see them in the Mods view. With
+none, it reads **No modulations**; clicking it adds an empty modulation from the source.
 
 ### LFO
 
@@ -676,7 +692,7 @@ An LFO produces a repeating shape.
   Modulating a synced rate steps it through the note values. Without a host tempo, 120 BPM is assumed.
 - **Phase**: where each note starts the LFO in its cycle (25 % starts a sine at its peak).
 - **Unipolar**: swings 0 to 1 instead of −1 to 1.
-- **Clock mode**, one of four:
+- **Clock mode**, picked from the list under the shape list, one of four:
   - **Retrigger** (default): restarts from Phase with every note.
   - **Free**: runs continuously, all voices sharing one clock.
   - **Anchor**: locked to the host's song position, so it is at the same point of its cycle at the same place in
@@ -700,18 +716,50 @@ A Curve source is an LFO whose shape you draw. It has all of an LFO's controls e
 unipolar. Its shape is drawn from 2 to 64 points, starting as a triangle; the last segment wraps around to the first
 point, so the cycle loops seamlessly.
 
-A new Curve source opens **widened** to twice a card's width, with the shape editor in the card. To widen it later,
-click its display or the expand button in its title row. Only one card is widened at a time. Its title row adds
-**reset** (back to the starting shape), **collapse** and **full size**, which opens the shape over the routing panel.
+A new Curve source opens **widened**, with the shape editor in the card. To widen it later, click its display or the
+expand button in its title row. Only one card is widened at a time. Its title row adds **collapse** and **full size**,
+which opens a large editor for the shape.
 
-The **shape tools**, each one undo step:
+The **shape tools**, in a row beside the shape:
 
+- **Reset**: back to the starting shape.
 - **Invert**: flips the shape upside down.
 - **Reverse**: plays it back to front.
 - **Shift left** / **Shift right**: moves it one grid column, around the cycle.
-- **Copy** and **Paste**: copies the shape into another Curve source.
+- **Copy** and **Paste**: copies the shape, and pastes a copied shape into this one (see
+  [Shape editors](#shape-editors)).
 
-For editing points, see [Shape editors](#shape-editors). **Unipolar | Bipolar** buttons replace the LFO's shape list.
+For editing points, see [Shape editors](#shape-editors). A Curve source has a **clock mode** list. Under its right
+end are the **Unipolar** and sync switches, and beside it three knobs: Rate (Length), Phase and **Slew**, which
+smooths what the curve puts out, so its jumps glide instead of stepping.
+
+A Curve source has a fifth clock mode, **Sustain**, after One-Shot. It works like an envelope with a sustain loop:
+
+- Each note plays the curve from Phase, then loops the **loop** while the key is down (or the sustain pedal holds it).
+- When you let go, it leaves the loop at once and plays on from the level it is at to the end of the curve, then
+  holds there.
+
+The **loop** is a part of the curve. A new Curve source loops the whole curve. In the other clock modes:
+
+- **Retrigger** plays from Phase into the loop, then repeats the loop.
+- **Free** and **Anchor** repeat only the loop.
+- **One-Shot** ignores the loop and plays the whole curve once.
+
+The loop shows as a bar over the shape, in the widened card and the full-size editor. To set it:
+
+- Drag an end of the bar to resize the loop, or its middle to move it.
+- Drag outside the bar to draw a new loop.
+- Hold Shift or Ctrl while dragging to place the loop off the grid.
+- Double-click the bar to loop the whole curve again.
+- Right-click a point and choose **Set as Loop Start** or **Set as Loop End** to put that end exactly on the point.
+
+The parts of the curve the clock mode never plays are dimmed.
+
+In One-Shot and Sustain, with Sync off, the **Rate** knob shows the curve's **length** instead (for example 1.20 s).
+You can type a length too, such as "1.5 s" or "800 ms". With Sync off, the point readout and the ruler show times in
+every clock mode (one cycle's worth when the curve loops). With Sync on they show bars and beats.
+
+While it is open, the card's shape is dimmed; click it to close the full-size editor.
 
 ### Random
 
@@ -722,7 +770,7 @@ A Random source is a random LFO: it takes a new value every cycle.
   anywhere, like sample and hold.
 - **Smooth**: glides to each new value over that share of the cycle instead of jumping (0 % steps).
 - **Retrigger** or **Free** clock modes only.
-- **Unipolar | Bipolar** (bipolar by default).
+- **Unipolar**: swings 0 to 1 instead of −1 to 1 (off by default).
 
 At **0 Hz** (unsynced, Rate at its bottom) a Random source stands still: each note takes a random value as it starts
 and holds it, so every note detunes, brightens or pans a little differently.
@@ -838,7 +886,8 @@ Right-click any cell of a row for its menu (Edit depth, Bypass, Remove).
 
 ### Shape editors
 
-The same editor is used for Curve source shapes, Custom shaper curves, and the Note and Velocity curves.
+The same editor is used for Curve source shapes, operators' drawn envelopes, Custom shaper curves, and the Note and
+Velocity curves.
 
 **Points and segments**
 
@@ -846,7 +895,6 @@ The same editor is used for Curve source shapes, Custom shaper curves, and the N
   jump.
 - Double-click empty space to add a point; double-click a point (or right-click it) to delete it.
 - Drag the small dot halfway along a segment up or down to bend it; double-click it to straighten it.
-- The point under the mouse is shown in numbers.
 
 **Steps**
 
@@ -857,7 +905,8 @@ The same editor is used for Curve source shapes, Custom shaper curves, and the N
 
 **Grid and snapping**
 
-- **GRID** sets the number of vertical (2–32) and horizontal (2–16) grid lines, with its − and + buttons or the wheel.
+- **GRID** sets the number of vertical (2–32) and horizontal (2–16) grid lines, 8 of each to begin with, with its − and +
+  buttons or the wheel.
 - Hold **Ctrl** to snap points and steps to the grid. With **Snap** on, they snap without Ctrl, and Ctrl frees them.
 - Points | Steps, Snap and the grid apply to every shape editor.
 
@@ -873,6 +922,15 @@ it. A point in the middle is added and stays there.
 
 Curve source shapes and shaper curves hold up to 64 points; the Note and Velocity curves up to 16. The full-size
 editors close with the **check mark** or a view tab.
+
+**Copy and paste**: right-click any drawn shape for **Copy Shape** and **Paste Shape**, or press **Ctrl+C** and
+**Ctrl+V** with the mouse over it. This works between every kind of shape: Curve sources, operator envelopes, shaper
+curves, the Note and Velocity curves and the sequencer's curve lanes. A pasted shape is fitted to where it goes:
+
+- A Curve source or an operator envelope takes it as it is, with its loop if it has one.
+- A shaper curve keeps its ends at the left and right edges.
+- The Note and Velocity curves hold 16 points, so a longer shape keeps the 16 that matter most.
+- A sequencer lane takes it across the whole pattern.
 
 ## 11. Effects
 
@@ -1741,6 +1799,7 @@ the main CPU costs.
 | Drag from empty space | Select points with a box |
 | Shift+click | Add or remove a point from the selection |
 | Ctrl+A / Delete | Select all / delete selected points |
+| Ctrl+C / Ctrl+V over a shape | Copy the shape / paste the copied one |
 
 ### Sequencer
 

@@ -427,8 +427,8 @@ private:
     // editor and widened card the place had let go.
     int addSource(SourceType type, int copyOf = -1); // the place it fills, or -1 with none free
     void removeSource(int source);
-    // Where an LFO of the newest voice is now, and its output there; with no voice, a free or anchored one's shared
-    // clock.
+    // Where an LFO of the newest voice is now, and its shape there; with no voice, a free or anchored one's shared
+    // clock. What it puts out is lfoLevelNow() (see PanelHost).
     double lfoPhaseNow(int lfo) const;
     double lfoValueNow(int lfo) const;
     // Whether an LFO's dot shows where it is: while a note plays, or, free or anchored, while none does too, and
@@ -443,7 +443,15 @@ private:
     LfoClock lfoClockOf(int lfo) const;
     // How many clock modes its card offers: a random one only Retrigger and Free.
     int lfoClockCount(int lfo) const;
+    // How many entries a list offers: a clock list as many as its source's clock modes (see lfoClockCount()).
+    int listItems(int param, int shown = 0, bool model = false) const;
     void setLfoClock(int lfo, LfoClock clock);
+    // An operator's ADSR | Curve, picked by a click or the wheel: its Curve drawn from its AHDSR the first time (see
+    // ShapeEditor::drawEnvelope()), its AHDSR shutting its drawn envelope's editor.
+    void pickEnvMode(int op, bool curve);
+    // What a list's entry (or its arrows, or the wheel) picks: its param's value, or a Curve's clock mode through
+    // setLfoClock() (see detail::isCurveClock()).
+    void pickListValue(int param, int to);
     // Whether a widget is one of an LFO's clock modes (a Choice on its Free, a = the LFO, b = the mode).
     static bool isLfoClockChoice(const Widget &w) {
         return w.kind == Kind::Choice && sourceFieldOf(w.param) == SourceParam::Free;
@@ -475,6 +483,11 @@ private:
     // Whether `p` is on the number widget `w` shows, where a double-click starts typing.
     static bool onValue(const Widget &w, Point p);
     void startTyping(const Widget &w);
+    // A param's value as the editor shows it, formatParam()'s, but a Curve's Rate as its curve's length while its
+    // places read as times (see ModulationModel::curveTime()); and what typing it takes back: a length there ("1.2 s",
+    // "800 ms", or a rate given in Hz), else what parseParam() takes.
+    std::string shownValue(int index, double v) const;
+    bool parseShown(int index, const std::string &text, double *out) const;
     // Where the value being typed shows, over the number it replaces.
     Rect typingField() const;
     // Pixels per unit of normalized time: what fills the display, or while its zoom is held (see envZoom_), the held
@@ -670,14 +683,18 @@ private:
     Rect shapeHome(int shape) const override;
     void revealCard(int card) override { revealSource(card); }
     std::optional<std::pair<double, double>> lfoNow(int lfo) const override;
+    double lfoLevelNow(int lfo) const override;
     std::vector<Widget> listedWidgets() const override { return widgets(); }
     int openList() const override { return listMenu_; }
     bool openListModel() const override { return listMenu_ >= 0 && listModel_; }
+    bool openListInEditor() const override { return listMenu_ >= 0 && listEditor_; }
     void showList(int param) override {
         listMenu_ = param;
         listModel_ = false;
+        listEditor_ = false;
     }
-    // Whether `w` (a list's button, arrow or entry) is of the list open: a filter's Model list or its type's.
+    // Whether `w` (a list's button or arrow) is of the list open: a filter's Model list or its type's, a Curve's clock
+    // list on its card or in its full-size editor.
     bool listOpenFor(const Widget &w) const;
 
     Controller &controller_;
@@ -763,6 +780,7 @@ private:
     float sourceScroll_ = 0.0f;              // how many source cards are scrolled past, before clamping
     int listMenu_ = -1;                      // the param whose list (ListButton) is open, or -1
     bool listModel_ = false;                 // and whether it is a filter's Model list (see kModelList)
+    bool listEditor_ = false;                // or opened from a full-size shape editor's title row (see kEditorList)
     int peqMenu_ = -1;                       // the band type param whose list of shapes is open, or -1
     bool sourceMenuOpen_ = false;            // the list of source types, opened from the dashed card after the sources
     Point sourceMenuAt_{0.0f, 0.0f};         // its top left: where the mouse clicked that card; x < 0 under + SOURCE

@@ -159,6 +159,69 @@ double lfoOutput(const Get &get, const ParamValues &params, int source, const Lf
                : lfoValue(shape, lfo.phase, lfo.held);
 }
 
+// How long a Curve in Sustain whose loop ends at the curve's end takes, let go, to glide from the level it was at to
+// where the curve ends, rather than jumping there.
+constexpr double kCurveGlide = 0.005; // seconds
+
+// A Curve in Sustain whose key has gone up leaves its loop at once, wherever it is (before the loop or in it): it goes
+// on from the loop's end, what it put out carried along on top of the curve as an offset that fades out by the next
+// point after the loop (or over kCurveGlide where the loop ends at the curve's end), so it plays on from the level it
+// was at and lands on that point. One past its loop's end already (a note started it there) plays on as it is. Its
+// points are read from `params`, as lfoOutput() reads them.
+template <class Lfo, class Release>
+FMVIBE_NOINLINE void leaveLoop(const ParamValues &params, int source, Lfo &lfo, Release &release, LfoLoop loop) {
+    lfo.left = true;
+    release = {};
+    if (lfo.phase >= loop.end)
+        return;
+    auto get = [&params](int i) { return params[i]; };
+    const double level = shapeValue(get, source, lfo.phase);
+    lfo.phase = loop.end;
+    release.offset = level - shapeValue(get, source, loop.end);
+    release.fadeFrom = loop.end;
+    // It fades out by the next point after the loop's end, the end of the segment the curve goes on along: the point
+    // after it, where the loop ends between two; where it ends on a point, the one after that (the curve's end, back
+    // at its first point, after the last), and at once, over kCurveGlide, where that one sits there too (the curve
+    // jumping straight up or down as the loop ends), or the loop ends at the curve's end.
+    const int count = shapePointCount(params[shapeCountIndex(source)]);
+    auto x = [&](int point) { return point == 0 ? 0.0 : params[shapePointIndex(source, point, PointField::X)]; };
+    release.fadeTo = 1.0;
+    for (int point = 0; point < count; ++point) {
+        if (x(point) > loop.end + kShapeSameTime) {
+            release.fadeTo = std::min(x(point), 1.0);
+            break;
+        }
+        if (x(point) >= loop.end - kShapeSameTime) { // on the loop's end
+            const double next = point + 1 < count ? std::min(x(point + 1), 1.0) : 1.0;
+            release.fadeTo = next > loop.end + kShapeSameTime ? next : loop.end;
+            break;
+        }
+    }
+    release.glide = 1.0;
+}
+
+// What a Curve that has left its loop adds to its curve where it stands now (see leaveLoop()); 0 for any other.
+template <class Lfo, class Release>
+double leftOffset(const Lfo &lfo, const Release &release) {
+    if (!lfo.left || release.offset == 0.0)
+        return 0.0;
+    if (release.fadeTo > release.fadeFrom)
+        return release.offset *
+               std::clamp((release.fadeTo - lfo.phase) / (release.fadeTo - release.fadeFrom), 0.0, 1.0);
+    return release.offset * release.glide;
+}
+
+// Whether a Curve that has left its loop is still on its way to its curve's end, or its offset gliding out there.
+// Standing still (at 0 Hz) short of it, it never gets there: it counts as there.
+template <class Lfo, class Release>
+bool leftGoing(const Lfo &lfo, const Release &release) {
+    if (!lfo.left)
+        return false;
+    if (release.fadeTo <= release.fadeFrom && leftOffset(lfo, release) != 0.0) // gliding, whatever its rate
+        return true;
+    return lfo.phase < 1.0 && lfo.hz > 0.0;
+}
+
 } // namespace
 
 double lfoValue(LfoShape shape, double phase, double held) {
@@ -407,14 +470,26 @@ void Synth::reset() {
     outScope_ = {};
 }
 
-void Synth::advanceLfo(Lfo &lfo, double hz, uint32_t frames, uint32_t &rng, bool oneShot, double chaos) const {
+void Synth::advanceLfo(Lfo &lfo, double hz, uint32_t frames, uint32_t &rng, bool oneShot, double chaos,
+                       LfoLoop loop, CurveRelease *release) const {
     lfo.hz = hz;
+    const double before = lfo.phase;
     lfo.phase += hz * frames / sampleRate_;
-    if (oneShot && lfo.phase >= 1.0) { // stays at the end of its one cycle
-        lfo.phase = 1.0;
-        lfo.hz = 0.0;
-    } else if (lfo.phase >= 1.0) {
-        lfo.phase -= std::floor(lfo.phase);
+    if (lfo.left) { // a Curve let go in Sustain: on to its curve's end, where it stays, its offset fading
+        if (release && release->fadeTo <= release->fadeFrom)
+            release->glide = std::max(release->glide - frames / (kCurveGlide * sampleRate_), 0.0);
+        if (lfo.phase >= 1.0) {
+            lfo.phase = 1.0;
+            lfo.hz = 0.0;
+        }
+    } else if (oneShot) { // its whole cycle once, whatever its loop, staying at its end
+        if (lfo.phase >= 1.0) {
+            lfo.phase = 1.0;
+            lfo.hz = 0.0;
+        }
+    } else if (loopPhase(before, lfo.phase, loop)) {
+        if (!(loop.end > loop.start)) // a loop of no length: it stays at its start
+            lfo.hz = 0.0;
         lfo.from = lfo.held; // Random takes a new value each cycle
         lfo.held = randomStep(lfo.held, chaos, rng);
     }
@@ -468,6 +543,7 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
     // voice is stolen for it, which may be that one.
     struct Joined {
         std::array<Envelope, kOps> ops;
+        std::array<DrawnEnvelope, kOps> drawn;
         std::array<Envelope, kMaxSources> modEnvs;
         std::array<Lfo, kMaxSources> lfos;
     };
@@ -484,6 +560,7 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
             joined.emplace();
             for (int op = 0; op < kOps; ++op)
                 joined->ops[op] = with->ops[op].env;
+            joined->drawn = with->drawn; // its Envelopes follow these from its first block on
             joined->modEnvs = with->modEnvs;
             joined->lfos = with->lfos;
         }
@@ -515,6 +592,7 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
     if (joined) { // fading in, since its envelopes may start well above nothing
         for (int op = 0; op < kOps; ++op)
             v.ops[op].env = joined->ops[op];
+        v.drawn = joined->drawn;
         v.modEnvs = joined->modEnvs;
         v.lfos = joined->lfos;
         v.keepLfos = true;
@@ -523,6 +601,8 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
     }
     for (Operator &op : v.ops)
         op.env.start();
+    for (DrawnEnvelope &drawn : v.drawn)
+        drawn.start();
     for (Envelope &env : v.modEnvs)
         env.start();
     // The first step and the start phase come in the voice's first block. The places past the first kFirstSources draw
@@ -752,12 +832,15 @@ void Synth::moveVoice(Voice &v, const HeldNote &to, bool retrigger, bool glide) 
         // Envelopes restart from their current level, so there's no click.
         for (Operator &op : v.ops)
             op.env.start();
+        for (DrawnEnvelope &drawn : v.drawn)
+            drawn.start();
         for (Envelope &env : v.modEnvs)
             env.start();
         for (Lfo &lfo : v.lfos) { // Random carries on from the value it holds (standing still, takes a new one)
             lfo.phase = 0.0;
             lfo.from = lfo.held;
             lfo.restart = true;
+            lfo.letGo = lfo.left = false; // a Curve in Sustain loops again
         }
     }
 }
@@ -775,8 +858,12 @@ void Synth::releaseVoice(Voice &v) {
     v.released = true;
     for (Operator &op : v.ops)
         op.env.release();
+    for (DrawnEnvelope &drawn : v.drawn)
+        drawn.release();
     for (Envelope &env : v.modEnvs)
         env.release();
+    for (Lfo &lfo : v.lfos) // a Curve in Sustain leaves its loop in its next block (see leaveLoop())
+        lfo.letGo = true;
 }
 
 Synth::Voice *Synth::newestVoice() {
@@ -1318,6 +1405,7 @@ void Synth::startFxTail(const Voice &v, const ParamValues &params) {
     fxTail_.on = true;
     fxTail_.silent = 0.0;
     fxTail_.lfos = v.lfos;
+    fxTail_.curveReleases = v.curveReleases;
     fxTail_.auxOut = v.auxOut;
     std::fill_n(fxTail_.auxOut.begin() + kOpSource, kOps, 0.0); // the voice's operators have stopped
     fxTail_.rng = v.rng;
@@ -1351,12 +1439,20 @@ int Synth::fxTailBlock(const ParamValues &params, uint32_t frames) {
     for (int s = 0; s < kMaxSources; ++s) {
         if (!runsLfo(sourceType(params[paramIndex(s, SourceParam::Type)])) || params[sourceEnabledIndex(s)] < 0.5)
             continue;
-        // A free or anchored LFO goes on along its shared clock, as a voice's would; another from where it stood.
+        // A free or anchored LFO goes on along its shared clock, as a voice's would; another from where it stood. A
+        // Curve in Sustain was let go with its voice, and goes on to its curve's end.
         Lfo &lfo = fxTail_.lfos[s];
         const bool free = lfoShared(get, s);
+        const LfoLoop loop = lfoLoop(get, s);
         if (free)
             lfo = freeLfos_[s];
-        const double value = lfoOutput(get, params, s, lfo);
+        else if (!lfoSustain(get, s))
+            lfo.left = false;
+        else if (!lfo.left)
+            leaveLoop(params, s, lfo, fxTail_.curveReleases[s], loop);
+        const double curve = lfoOutput(get, params, s, lfo);
+        const double value =
+            lfo.left ? std::clamp(curve + leftOffset(lfo, fxTail_.curveReleases[s]), -1.0, 1.0) : curve;
         const bool bipolar = sourceBipolar(get, s);
         fxTail_.auxOut[s] = 0.5 * (value + 1.0);
         const double swing = bipolar ? 0.5 * value : 0.5 * (value + 1.0);
@@ -1374,8 +1470,8 @@ int Synth::fxTailBlock(const ParamValues &params, uint32_t frames) {
             fxTail_.lfoMask |= 1u << s;
         }
         if (!free)
-            advanceLfo(lfo, lfoHz(get, s, tempo_), frames, fxTail_.rng,
-                       lfoOneShot(get, s), get(paramIndex(s, SourceParam::RandomChaos)));
+            advanceLfo(lfo, lfoHz(get, s, tempo_), frames, fxTail_.rng, lfoOneShot(get, s),
+                       get(paramIndex(s, SourceParam::RandomChaos)), loop, &fxTail_.curveReleases[s]);
     }
     return count;
 }
@@ -1403,9 +1499,10 @@ void Synth::runSharedLfos(const ParamValues &params, const Voice *newest, uint32
             continue;
         Lfo &lfo = freeLfos_[s];
         const double chaos = shared(paramIndex(s, SourceParam::RandomChaos));
+        const LfoLoop loop = lfoLoop(shared, s); // a Curve's cycles only its loop region
         if (!playing_ || !lfoAnchored(shared, s)) {
             if (frames > 0)
-                advanceLfo(lfo, lfoHz(shared, s, tempo_), frames, freeRng_, false, chaos);
+                advanceLfo(lfo, lfoHz(shared, s, tempo_), frames, freeRng_, false, chaos, loop);
             continue;
         }
         // The cycles it has run since the song's start: synced, a note value's beats each, else at its rate. Its
@@ -1416,9 +1513,8 @@ void Synth::runSharedLfos(const ParamValues &params, const Voice *newest, uint32
                 ? (songBeats_ + seconds * tempo_ / 60.0) /
                       divisionBeats(static_cast<int>(std::lround(shared(paramIndex(s, SourceParam::Division)))))
                 : (songSeconds_ + seconds) * sweepRateHz(shared(paramIndex(s, SourceParam::Rate)));
-        const double at = cycles + shared(paramIndex(s, SourceParam::Phase));
         lfo.hz = lfoHz(shared, s, tempo_);
-        lfo.phase = at - std::floor(at);
+        lfo.phase = anchoredPhase(cycles, shared(paramIndex(s, SourceParam::Phase)), loop);
     }
 }
 
@@ -1733,6 +1829,9 @@ void Synth::telemetry(Telemetry &out) const {
                 out.lfoRates[s] = static_cast<float>(lfo.hz);
                 out.lfoFrom[s] = static_cast<float>(lfo.from);
                 out.lfoTo[s] = static_cast<float>(lfo.held);
+                out.lfoOffsets[s] = static_cast<float>(leftOffset(lfo, fxTail_.curveReleases[s]));
+                if (lfo.left)
+                    out.lfoLeft |= 1u << s;
             }
             for (int m = 0; m < fxTailModCount_; ++m) {
                 const SlotMod &mod = fxTailMods_[m];
@@ -1763,12 +1862,16 @@ void Synth::telemetry(Telemetry &out) const {
         out.lfoRates[s] = static_cast<float>(newest->lfos[s].hz);
         out.lfoFrom[s] = static_cast<float>(newest->lfos[s].from);
         out.lfoTo[s] = static_cast<float>(newest->lfos[s].held);
+        out.lfoOffsets[s] = static_cast<float>(leftOffset(newest->lfos[s], newest->curveReleases[s]));
+        if (newest->lfos[s].left)
+            out.lfoLeft |= 1u << s;
         out.envPos[s] = static_cast<float>(newest->modEnvs[s].position(newest->modEnvRates[s].last()));
     }
     for (int i = 0; i < kOps; ++i) {
         out.opLevels[i] = static_cast<float>(newest->ops[i].env.level());
         out.opEnvLevels[i] = static_cast<float>(newest->ops[i].env.level());
         out.opEnvPos[i] = static_cast<float>(newest->ops[i].env.position(newest->ops[i].rates.last()));
+        out.opEnvPhase[i] = newest->ops[i].env.following() ? static_cast<float>(newest->drawn[i].phase()) : -1.0f;
     }
     out.notePitch = static_cast<float>(newest->pitch);
     out.noteVelocity = static_cast<float>(newest->velocity);
@@ -2824,6 +2927,82 @@ Synth::OpSample Synth::warpedSample(Operator &op, const float *table, double off
     return out;
 }
 
+// What the voice's LFO in place `s` (an LFO, a Random source or a Curve) puts out this block (-1..1), as the block
+// starts, moving it on by the block's `hostFrames`; `p` are the voice's params. Out of renderBlock(), whose code MSVC
+// builds worse the more goes into it.
+FMVIBE_NOINLINE double Synth::voiceLfo(Voice &v, int s, const double *p, const ParamValues &params,
+                                       uint32_t hostFrames) const {
+    auto get = [p](int i) { return p[i]; };
+    Lfo &lfo = v.lfos[s];
+    // A free LFO takes the shared clock, which render() moves on; switched
+    // back to retrigger, it carries on from there. A one-shot is never free.
+    // So does an anchored one, which render() moves to where the transport stands.
+    const bool oneShot = lfoOneShot(get, s);
+    const bool free = lfoShared(get, s);
+    const LfoLoop loop = lfoLoop(get, s);
+    const double chaos = p[paramIndex(s, SourceParam::RandomChaos)];
+    // A note takes a new value for it to glide to; so does a note retriggering it in mono while it stands
+    // still, where one running carries on from the value it holds. A joined voice's Random carries on with
+    // the held one's step.
+    if (free)
+        lfo = freeLfos_[s];
+    else if (v.newRandom && !v.keepLfos && (v.fresh || lfoHeld(get, s)))
+        lfo.held = randomStep(lfo.from, chaos, v.rng);
+    const LfoShape shape = lfoShape(get, s);
+    // A note starts it at its Phase (100 % is 0 % again), read here so that host modulation sent with the
+    // note applies. A free one keeps the shared clock, and Random its steps.
+    if (lfo.restart && shape != LfoShape::Random) {
+        const double start = p[paramIndex(s, SourceParam::Phase)];
+        lfo.phase = start - std::floor(start);
+    }
+    lfo.restart = false;
+    // A Curve in Sustain let go leaves its loop (see leaveLoop()); out of Sustain, it loops again.
+    if (!lfoSustain(get, s))
+        lfo.left = false;
+    else if (lfo.letGo && !lfo.left)
+        leaveLoop(params, s, lfo, v.curveReleases[s], loop);
+    // Left in Sustain, the level it was at carried on top of the curve, within the curve's reach.
+    const double curve = lfoOutput(get, params, s, lfo);
+    const double value = lfo.left ? std::clamp(curve + leftOffset(lfo, v.curveReleases[s]), -1.0, 1.0) : curve;
+    if (!free)
+        advanceLfo(lfo, lfoHz(get, s, tempo_), hostFrames, v.rng, oneShot, chaos, loop, &v.curveReleases[s]);
+    return value;
+}
+
+// A Curve's Slew: what it puts out lags behind its curve, as a MIDI source's follows its controller, from where the curve
+// is as the note starts. Off, it is the curve's value, which it keeps, so turned on it glides from there.
+FMVIBE_NOINLINE double Synth::curveSlew(Voice &v, int s, double in, const double *p, uint32_t hostFrames) const {
+    double &out = v.follow[s];
+    const double slew = p[paramIndex(s, SourceParam::CurveSlew)];
+    if (slew <= 0.0 || v.fresh)
+        out = in;
+    else
+        out = in + (out - in) * std::exp(-static_cast<double>(hostFrames) / (timeFromNorm(slew) * sampleRate_));
+    return out;
+}
+
+// Out of renderBlock(), as only some patches play a drawn envelope.
+FMVIBE_NOINLINE void Synth::followDrawn(Voice &v, int op, const double *p, const ParamValues &params) {
+    Envelope &env = v.ops[op].env;
+    DrawnEnvelope &drawn = v.drawn[op];
+    if (p[paramIndex(op, OpParam::EnvMode)] < 0.5) { // switched back to its AHDSR, which goes on from where it is
+        drawn.stop();
+        env.unfollow(drawn.held());
+        return;
+    }
+    const double seconds = p[paramIndex(op, OpParam::EnvSync)] >= 0.5
+                               ? divisionSeconds(p[paramIndex(op, OpParam::EnvDivision)], tempo_)
+                               : timeFromNorm(p[paramIndex(op, OpParam::EnvLength)]);
+    double start = p[paramIndex(op, OpParam::EnvLoopStart)], end = p[paramIndex(op, OpParam::EnvLoopEnd)];
+    start = std::isfinite(start) ? std::clamp(start, 0.0, 1.0) : 0.0;
+    end = std::isfinite(end) ? std::clamp(end, 0.0, 1.0) : 1.0;
+    const double slew = p[paramIndex(op, OpParam::EnvSlew)];
+    drawn.prepare(&params[opEnvShapeIndex(op)], seconds * rate_, std::min(start, end), std::max(start, end),
+                  p[paramIndex(op, OpParam::EnvSustain)] >= 0.5, env.level(), rate_,
+                  slew > 0.0 ? timeFromNorm(slew) * rate_ : 0.0);
+    env.follow(drawn);
+}
+
 void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFrames, const ParamValues &params) {
     // This voice's param values before LFOs and envelopes: automation plus host modulation, global and per voice.
     // Freeform shapes are read from `params`; slot modulation of the effects reaches them in render(). What every
@@ -2958,33 +3137,11 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             continue;
         }
         if (runsLfo(type)) { // an LFO, or Random, a random one
-            Lfo &lfo = v.lfos[s];
-            // A free LFO takes the shared clock, which render() moves on; switched
-            // back to retrigger, it carries on from there. A one-shot is never free.
-            // So does an anchored one, which render() moves to where the transport stands.
-            const bool oneShot = lfoOneShot(get, s);
-            const bool free = lfoShared(get, s);
-            const double chaos = p[paramIndex(s, SourceParam::RandomChaos)];
-            // A note takes a new value for it to glide to; so does a note retriggering it in mono while it stands
-            // still, where one running carries on from the value it holds. A joined voice's Random carries on with
-            // the held one's step.
-            if (free)
-                lfo = freeLfos_[s];
-            else if (v.newRandom && !v.keepLfos && (v.fresh || lfoHeld(get, s)))
-                lfo.held = randomStep(lfo.from, chaos, v.rng);
-            const LfoShape shape = lfoShape(get, s);
-            // A note starts it at its Phase (100 % is 0 % again), read here so that host modulation sent with the
-            // note applies. A free one keeps the shared clock, and Random its steps.
-            if (lfo.restart && shape != LfoShape::Random) {
-                const double start = p[paramIndex(s, SourceParam::Phase)];
-                lfo.phase = start - std::floor(start);
-            }
-            lfo.restart = false;
-            const double value = lfoOutput(get, params, s, lfo);
+            double value = voiceLfo(v, s, p, params, hostFrames);
+            if (type == SourceType::Curve)
+                value = curveSlew(v, s, value, p, hostFrames);
             const bool lfoUnipolar = !sourceBipolar(get, s);
             collectSlots(s, lfoUnipolar ? 0.5 * (value + 1.0) : value, 0.5 * (value + 1.0), 0.5 * value, !lfoUnipolar);
-            if (!free)
-                advanceLfo(lfo, lfoHz(get, s, tempo_), hostFrames, v.rng, oneShot, chaos);
             continue;
         }
         if (type == SourceType::Midi) {
@@ -3175,14 +3332,15 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     if (v.slotModCount > noteModsStart)
         pitch = pitchNow();
 
-    // A released voice whose sound is over runs on only while a mod envelope that modulates something releases,
-    // so what it modulates (an effect's knob, which follows the newest voice, and what the editor shows) follows
-    // the release down rather than jumping back; it renders nothing meanwhile, and ends once they have.
+    // A released voice whose sound is over runs on only while a mod envelope that modulates something releases, or a
+    // Curve in Sustain let go plays on to its end (see modulationReleasing()), so what it modulates (an effect's knob,
+    // which follows the newest voice, and what the editor shows) follows the release down rather than jumping back;
+    // it renders nothing meanwhile, and ends once they have.
     if (v.silent) {
         v.peak = 0.0;
         v.opMean.fill(0.0); // its operators play no more
         v.opLevel.fill(0.0);
-        if (v.fading || !modEnvReleasing(v, params))
+        if (v.fading || !modulationReleasing(v, params))
             endVoice(v);
         return;
     }
@@ -3285,6 +3443,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
 
         const std::array<double, 8> times = opEnvFields(p, i);
         rates[i] = op.rates.get(times, [&] { return envRatesOf(times, rate_); });
+        if (p[paramIndex(i, OpParam::EnvMode)] >= 0.5 || op.env.following()) // its drawn envelope instead
+            followDrawn(v, i, p, params);
         target.out[i] = p[paramIndex(i, OpParam::Out)];
         // Its Pan, equal-power and unity at the center, as the voice's (above): on what it puts out, to the output,
         // the filters and the shapers; what other operators hear of it stays mono.
@@ -4094,17 +4254,20 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     if (v.fading && v.fade <= 0.0)
         endVoice(v);
     else if (v.released && !sounding && blockPeak < kVoiceQuietFloor && !filtersHeard) {
-        if (modEnvReleasing(v, params))
+        if (modulationReleasing(v, params))
             v.silent = true; // its sound is over, but not its modulation
         else
             endVoice(v);
     }
 }
 
-bool Synth::modEnvReleasing(const Voice &v, const ParamValues &params) const {
+bool Synth::modulationReleasing(const Voice &v, const ParamValues &params) const {
     for (int s = 0; s < kMaxSources; ++s) {
-        if (v.modEnvs[s].idle() || sourceType(params[paramIndex(s, SourceParam::Type)]) != SourceType::Env ||
-            params[sourceEnabledIndex(s)] < 0.5)
+        const SourceType type = sourceType(params[paramIndex(s, SourceParam::Type)]);
+        const bool going = type == SourceType::Env ? !v.modEnvs[s].idle()
+                                                   : type == SourceType::Curve &&
+                                                         leftGoing(v.lfos[s], v.curveReleases[s]);
+        if (!going || params[sourceEnabledIndex(s)] < 0.5)
             continue;
         for (int slot = 0; slot < kSlots; ++slot)
             if (slotTarget(params[slotTargetIndex(s, slot)]) >= 0 && params[slotAmountIndex(s, slot)] != 0.0 &&

@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -135,6 +136,70 @@ bool ModulationModel::sourceOn(int source) const {
 
 bool ModulationModel::sourceBipolar(int source) const {
     return fmvibe::sourceBipolar([this](int index) { return value(index); }, source);
+}
+
+ModulationModel::CurveTime ModulationModel::curveTime(int source) const {
+    if (source < 0 || source >= kMaxSources || sourceTypeOf(source) != SourceType::Curve)
+        return CurveTime::Share;
+    auto get = [this](int index) { return value(index); };
+    if (value(paramIndex(source, SourceParam::Sync)) >= 0.5)
+        return CurveTime::Beats;
+    return lfoHeld(get, source) ? CurveTime::Share : CurveTime::Seconds;
+}
+
+bool ModulationModel::curveRateAsLength(int source) const {
+    if (curveTime(source) != CurveTime::Seconds)
+        return false;
+    const LfoClock clock = lfoClock([this](int index) { return value(index); }, source);
+    return clock == LfoClock::OneShot || clock == LfoClock::Sustain;
+}
+
+double ModulationModel::curveLength(int source) const {
+    return curveTime(source) == CurveTime::Seconds ? 1.0 / sweepRateHz(value(paramIndex(source, SourceParam::Rate)))
+                                                   : 0.0;
+}
+
+std::string ModulationModel::curvePlace(int source, double x, bool brief) const {
+    const CurveTime time = curveTime(source);
+    const int division = static_cast<int>(std::lround(value(paramIndex(source, SourceParam::Division))));
+    return shapePlaceText(time,
+                          time == CurveTime::Seconds ? curveLength(source)
+                          : time == CurveTime::Beats ? divisionBeats(division)
+                                                     : 1.0,
+                          x, brief);
+}
+
+std::string shapePlaceText(ShapeTime time, double length, double x, bool brief) {
+    char text[48];
+    switch (time) {
+    case ShapeTime::Seconds: {
+        const double seconds = x * length;
+        if (brief) // as few figures as tell the ruler's places apart
+            std::snprintf(text, sizeof(text), "%.3g s", seconds);
+        else
+            std::snprintf(text, sizeof(text), "%.2f s", seconds);
+        break;
+    }
+    case ShapeTime::Beats: {
+        // Bars of four beats from 1, as the sequencer counts them; on a ruler, a bar or a beat goes without the rest.
+        const double beats = x * length;
+        const double sixteenths = std::floor(beats * 4.0 + 1e-6);
+        const int bar = static_cast<int>(sixteenths / 16.0) + 1;
+        const int beat = static_cast<int>(std::fmod(sixteenths, 16.0) / 4.0) + 1;
+        const int sixteenth = static_cast<int>(std::fmod(sixteenths, 4.0)) + 1;
+        if (brief && beat == 1 && sixteenth == 1)
+            std::snprintf(text, sizeof(text), "%d", bar);
+        else if (brief && sixteenth == 1)
+            std::snprintf(text, sizeof(text), "%d.%d", bar, beat);
+        else
+            std::snprintf(text, sizeof(text), "%d.%d.%d", bar, beat, sixteenth);
+        break;
+    }
+    case ShapeTime::Share:
+        std::snprintf(text, sizeof(text), brief ? "%.0f %%" : "%.1f %%", x * 100.0);
+        break;
+    }
+    return text;
 }
 
 double ModulationModel::resetValue(int param) const {

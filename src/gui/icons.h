@@ -79,6 +79,7 @@ PointCache &curveCache();
 enum class Curve {
     Filter = 1, ParamEq, Sweep, Driven, Drawn, Shaper, LfoEditor, ClipEditor, NoteEditor, NoteExact, Partials, Lfo,
     Envelope, Eq, LfoIcon, WaveIcon, ModeIcon, FilterIcon, PeqIcon, PolarityIcon, VelocityEditor, RouteIcon, WarpIcon,
+    TypeIcon,
 };
 inline std::vector<double> curveKey(Curve curve, Rect r) {
     return {static_cast<double>(curve), r.x, r.y, r.w, r.h};
@@ -112,6 +113,9 @@ void filterIcon(Canvas &c, Rect r, FilterType type, Color color);
 bool isFxIconSwitch(FxParam field);
 void fxSwitchIcon(Canvas &c, Point m, FxParam field, Color color);
 void lfoClockIcon(Canvas &c, Point m, LfoClock clock, Color color, float scale = 1.0f);
+// An operator's envelope's two kinds, about 16 x 10 around `m`: an AHDSR's shape (attack, hold, decay, sustain and
+// release), or a curve through its points (a drawn one).
+void envModeIcon(Canvas &c, Point m, bool curve, Color color, float scale = 1.0f);
 // A modulation's polarity, about 10 x 8 around `m`: a wave about a middle line for bipolar, humps up from a
 // baseline for unipolar, like the LFO's UNIPOLAR switch.
 void polarityIcon(Canvas &c, Point m, bool bipolar, Color color, float scale = 1.0f);
@@ -141,6 +145,13 @@ void binIcon(Canvas &c, Point m, Color color);
 // The FX panel's switch between the chain (cards in a row) and the graph (nodes and wires).
 void fxModeIcon(Canvas &c, Point m, bool graph, Color color);
 void peqIcon(Canvas &c, Rect r, PeqType type, Color color);
+// The type lists' icons, before an entry's name on a list's button and in its list, in a box about 16 x 10 as an LFO
+// shape's: a shaper's curve (its transfer curve, a drawn one's points, Stack's layers), the reverb's algorithm and the
+// amp's model (pictures of what they sound like), and a MIDI source's input.
+void clipModeIcon(Canvas &c, Rect r, ClipMode mode, Color color);
+void reverbTypeIcon(Canvas &c, Rect r, ReverbType type, Color color);
+void ampModelIcon(Canvas &c, Rect r, AmpModel model, Color color);
+void midiInputIcon(Canvas &c, Rect r, MidiInput input, Color color);
 
 // Wave icons, one cycle across r.
 std::vector<Point> lfoPoints(LfoShape shape, Rect r);

@@ -342,6 +342,18 @@ STR(ParamFree, "Free")
 STR(ParamUnipolar, "Unipolar")
 STR(ParamOneShot, "One-Shot")
 STR(ParamAnchor, "Anchor") // an LFO's: tied to the host's transport
+STR(ParamCurveSustain, "Sustain Mode") // a Curve's clock mode: loops while the key is down (not an envelope's level)
+STR(ParamCurveLoopStart, "Loop Start") // a Curve's loop region along its shape
+STR(ParamCurveLoopEnd, "Loop End")
+STR(ParamEnvMode, "Envelope Mode") // an operator's: its AHDSR, or its drawn envelope (Curve)
+STR(ParamEnvSustain, "Envelope Sustain Mode") // its drawn envelope's: loop while held, or One-Shot
+STR(ParamEnvLoopStart, "Envelope Loop Start")
+STR(ParamEnvLoopEnd, "Envelope Loop End")
+STR(ParamEnvLength, "Envelope Length")
+STR(ParamEnvSync, "Envelope Sync")
+STR(ParamEnvDivision, "Envelope Division")
+STR(ParamEnvSlew, "Envelope Slew")
+STR(ParamEnvShape, "Envelope Shape")
 STR(ParamSmooth, "Smooth")
 STR(ParamChaos, "Chaos")
 
@@ -673,6 +685,7 @@ STR(FxTitleLoFi, "Lo-Fi")
 
 // The big editors' titles.
 STR(TitleShape, "{1} SHAPE")
+STR(TitleOpEnvelope, "{1} ENVELOPE") // an operator's drawn envelope's full-size editor, by its letter
 STR(TitleFxShaperCurve, "FX {1} SHAPER CURVE")
 STR(TitleShaperCurve, "SHAPER {1} CURVE")
 STR(TitleNoteCurve, "NOTE CURVE")
@@ -786,6 +799,11 @@ STR(CaptionNoteSync, "NOTE SYNC") // on the WARP display, while the operator is 
 STR(SwitchPoints, "Points") // what a click on an LFO's shape does
 STR(SwitchSteps, "Steps")
 STR(SwitchSnap, "Snap") // an LFO's shape points to the grid
+STR(SwitchRetrigger, "Retrigger") // a Curve's clock modes, named beside their icons in its full-size editor
+STR(SwitchFree, "Free")
+STR(SwitchAnchor, "Anchor")
+STR(SwitchOneShot, "One-Shot")
+STR(SwitchSustain, "Sustain")
 STR(SwitchHard, "HARD") // the shaper effect's first three curves
 STR(SwitchSoft, "SOFT")
 STR(SwitchAsym, "ASYM")
@@ -828,8 +846,6 @@ STR(TabBandHigh, "High")
 STR(TabBandMid, "Mid") // a three-band split's middle band
 STR(ButtonAddToBand, "Add to") // over the band's name (TabBandLow or TabBandHigh)
 // What the note source's and velocity's curves show:
-STR(HintNoteAxes, "across: notes from Low to High  ·  up: output")
-STR(HintVelocityAxes, "across: velocity  ·  up: output")
 // A shape or curve, by how a click works on it and whether its points snap:
 STR(HintShape, "{1}  ·  dots: bend  ·  Ctrl: {2}")
 STR(HintShapePoints, "double-click: add/delete  ·  Alt+click: step")
@@ -1004,10 +1020,8 @@ STR(ButtonSplitDelete, "Delete") // the split goes with its bands' effects
 
 // Readouts in the displays, with the numbers filled in.
 STR(CaptionShapePoint, "point {1}  ·  {2} % of the cycle  ·  {3}")
-// In a widened LFO card, under its shape: the point under the mouse, its place in the cycle and its level.
-STR(CaptionCardPointNumber, "#{1}")
-STR(CaptionCardPoint, "{1} %  ·  {2}")
-STR(HintCardPoint, "Hover a point")
+// Where a Curve's place reads as a time or in bars and beats (its readouts, as its ruler's), not a share.
+STR(CaptionShapePointAt, "point {1}  ·  {2}  ·  {3}")
 STR(CaptionCurvePoint, "point {1}  ·  in {2}  ·  out {3}")
 STR(CaptionNotePoint, "point {1}  ·  {2}  ·  out {3} %")
 STR(CaptionVelocityPoint, "point {1}  ·  velocity {2}  ·  out {3} %")
@@ -1209,6 +1223,10 @@ STR(TipLegato, "Overlapping notes don't retrigger envelopes")
 STR(TipFxOn, "Click to turn off, drag to move")
 STR(TipFxOff, "Click to turn on, drag to move")
 STR(TipLfoSync, "Sync rate to tempo")
+STR(TipEnvAdsr, "Attack, hold, decay, sustain and release") // an operator's ENVELOPE tab's ADSR | Curve
+STR(TipEnvCurve, "Custom curve")
+STR(TipEnvOneShot, "One-Shot: Play the envelope once")
+STR(TipEnvSync, "Sync length to tempo")
 STR(TipSlope, "Filter slope")
 STR(TipSlopeBand, "Filter slope")
 STR(TipFilterModel, "Filter model") // the Model list beside the slope
@@ -1222,12 +1240,15 @@ STR(TipPrevCabinet, "Previous cabinet")
 STR(TipNextCabinet, "Next cabinet")
 STR(TipPrevShape, "Previous shape")
 STR(TipNextShape, "Next shape")
+STR(TipPrevClock, "Previous clock mode") // the arrows of a Curve card's list of clock modes
+STR(TipNextClock, "Next clock mode")
 STR(TipPrevAlgorithm, "Previous algorithm")
 STR(TipNextAlgorithm, "Next algorithm")
 STR(TipRetrigger, "Restart with each note") // an LFO's clock modes
 STR(TipFree, "Free")
 STR(TipOneShot, "One shot")
 STR(TipAnchor, "Anchor to song position") // an LFO's switch: its phase follows the host's transport
+STR(TipSustain, "Loop while the key is down, then play on") // a Curve's fifth clock mode
 STR(TipUnipolar, "Unipolar")
 STR(TipBipolar, "Bipolar") // a Random card's switch, beside Unipolar
 STR(TipDelaySync, "Sync times to tempo")
@@ -1294,6 +1315,10 @@ STR(MenuEditAuxDepth, "Edit aux depth…") // how far down the aux can take the 
 STR(MenuRemoveAll, "Remove all modulation")
 STR(MenuDeletePoint, "Delete point")
 STR(MenuStraighten, "Straighten")
+STR(MenuCopyShape, "Copy Shape") // over any drawn shape
+STR(MenuPasteShape, "Paste Shape")
+STR(MenuSetLoopStart, "Set as Loop Start") // a Curve's point: its loop starts there
+STR(MenuSetLoopEnd, "Set as Loop End")
 STR(MenuSwitchOff, "Switch off {1}")
 STR(MenuDisconnect, "Disconnect")
 STR(MenuEditValue, "Edit value…")
@@ -1341,6 +1366,13 @@ STR(MsgSeqPatternCopied, "Pattern {1} copied")
 STR(MsgSeqPatternPasted, "Pattern pasted into {1}")
 STR(MsgShapeCopied, "{1} shape copied")
 STR(MsgNothingCopied, "Copy a shape first")
+STR(MsgShapePasted, "Shape pasted into {1}")
+STR(MsgShapeThinned, "Pasted {1} of its {2} points") // into a curve that holds fewer
+STR(MsgCurveEmpty, "Draw a curve first") // Copy Shape on a sequencer lane without one
+STR(NameOpEnvelope, "Op {1} Envelope") // a drawn shape's name, in the messages copying and pasting it
+STR(NameShaper, "Shaper {1}")
+STR(NameShaperEffect, "Shaper effect")
+STR(NameSeqLane, "{1} lane") // a sequencer lane's curve, by the lane's name
 STR(MsgNoteCurveEnds, "End points can't be deleted")
 STR(MsgCurveEnds, "End points can't be deleted")
 STR(MsgCurveMiddle, "Symmetric curves keep their middle point")
