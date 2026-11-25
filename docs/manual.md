@@ -718,7 +718,7 @@ point, so the cycle loops seamlessly.
 
 A new Curve source opens **widened**, with the shape editor in the card. To widen it later, click its display or the
 expand button in its title row. Only one card is widened at a time. Its title row adds **collapse** and **full size**,
-which opens the shape over the routing panel.
+which opens a large editor for the shape.
 
 The **shape tools**, in a row beside the shape:
 

@@ -843,8 +843,6 @@ STR(TabBandHigh, "High")
 STR(TabBandMid, "Mid") // a three-band split's middle band
 STR(ButtonAddToBand, "Add to") // over the band's name (TabBandLow or TabBandHigh)
 // What the note source's and velocity's curves show:
-STR(HintNoteAxes, "across: notes from Low to High  ·  up: output")
-STR(HintVelocityAxes, "across: velocity  ·  up: output")
 // A shape or curve, by how a click works on it and whether its points snap:
 STR(HintShape, "{1}  ·  dots: bend  ·  Ctrl: {2}")
 STR(HintShapePoints, "double-click: add/delete  ·  Alt+click: step")

@@ -1735,14 +1735,15 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     its size too. Every edit applies as it is
     made, so there is no done button. One card is widened at a time: widening another takes the first one back.
     The Seq view covering the modulation panel leaves the card as it was, widened or not, for when the panel shows
-    again; it isn't saved with the patch. The full-size button opens the shape over the routing panel and the inspector,
-    which it hides while it is open, the card staying widened under it with its own editor greyed out (it takes no
+    again; it isn't saved with the patch. The full-size button opens the shape in a panel as wide as the routing panel,
+    in the middle of the panels' row over the routing panel and the inspector, which it hides while it is open, the card staying widened under it with its own editor greyed out (it takes no
     input there meanwhile); the done button (a check mark, top right) closes it, as a view tab does, and the card's
     editor is back in use; so does a click on the card's plot, which is dimmed while the full-size editor has its
     shape. A Curve's full-size editor has, in its title row after its name, its clock modes' list, its Unipolar and
     sync switches and its Rate (Length, or the note value synced), Phase and Slew as small knobs, as the card has them
-    and working as the card's do (the list opening under its own button there); the hint goes after them. An
-    operator's drawn envelope's full-size editor is laid out the same (see the inspector's Envelope tab).
+    and working as the card's do (the list opening under its own button there). An operator's drawn envelope's
+    full-size editor, the note source's curve's and velocity's are laid out the same (one panel, one title row, the
+    plot, and under it the point readout or how to edit, Points | Steps, Snap and the grid).
     A Curve source's **loop** (see the modulation above) shows as a bar in its color on a strip over the shape: in
     the full-size editor over the plot, with the ruler's labels under the bar (times, beats or shares, as its places
     read, on round values), and in the widened card along the top of the plot, with the ruler's labels at the plot's
@@ -1783,8 +1784,9 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     Steps, a click draws a step, as Alt+click does with Points, and Alt+click works with points. **Snap** snaps
     points and steps to the grid without Ctrl, which then lets them go (a shaper's curve drawn right in its card or on
     its page, which show no grid, snaps with Ctrl only). Both belong to the editor, like the grid, and go for every
-    shape and curve. How to edit a shape, as they have it, shows in each editor's title row (a shaper effect's under
-    its plot) and as a widened card's plot's tooltip.
+    shape and curve. How to edit a shape, as they have it, shows under each full-size editor's plot, where the point
+    under the mouse is shown in numbers, on two lines in smaller type where one doesn't fit, and as a widened card's
+    plot's tooltip.
     Drag points to move them; the point under the mouse is shown in numbers, its level as the LFO puts it out (0 to 1 for a
     unipolar one). A point stays between its neighbors, but can reach a neighbor's time: points at one time make a
     line straight up or down (a spike, say), and at that moment the LFO takes the last of them in order, the one
@@ -1823,14 +1825,14 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     point added, no step drawn; a step held across the middle stays where it last was on the right). The editor has
     its own **SYM** switch, left of Points | Steps (in the title row for a shaper effect, under the plot for a voice
     shaper), as the card and the shaper's page do. Switching Symmetric on gives the curve a point in the middle if it has none,
-    which then stays there: it only moves up and down, and can't be deleted (a step drawn across it keeps it, at the step's height). The note source's curve opens over the routing panel from its display in the
+    which then stays there: it only moves up and down, and can't be deleted (a step drawn across it keeps it, at the step's height). The note source's curve opens in the full-size editors' panel from its display in the
     keyboard strip (a second click closes it): the notes from Low to High across, the Cs among them named under
     the plot, and what the source puts out up, from nothing at the bottom to all of it at the top, with a dot
     where the newest voice is while notes play. A dashed line shows, for the range set, what would take a cutoff
     at 0 by 100 % onto the note. **Low** and **High** are knobs side by side in its title row, dragged in whole
     notes (or typed, as `C4`, `F#2 -20` or a MIDI note number); its ends stay at the ends too, and the reset button
-    brings back every MIDI note and the curve along the dashed line. Velocity's curve opens over the routing panel
-    the same way, from its display (see Velocity, under the keyboard strip).
+    brings back every MIDI note and the curve along the dashed line. Velocity's curve opens in the same panel the
+    same way, from its display (see Velocity, under the keyboard strip).
 - **Header**: two rows. The **title bar** holds the name at its left, the preset bar in its middle, and undo and
   redo, Init, Load, Save, Save As and the settings cog at its right (see Presets and Settings, below). Between the
   name and the preset bar sits the **tempo** every synced LFO, delay and sweep follows: a switch, **H** ("Sync to
@@ -1937,7 +1939,7 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
       settings), with its loop's bar along its top in Sustain and the ruler's times under it, clear of the curve's
       foot; Length is a note value while synced. While notes play, a dashed line across shows the newest
       voice's level and a dot where it is on the curve. The pencil opens its full-size editor, laid out as a Curve
-      source's: over the routing panel and the inspector, with its name, One-Shot | Sustain as a list (as a Curve's
+      source's: in the same panel, over the routing panel and the inspector, with its name, One-Shot | Sustain as a list (as a Curve's
       clock modes, with their icons, opening under its button; the wheel and its arrows step it), sync, Length and
       Slew in its title row where a Curve's has its clock list, sync, Rate and Slew (it has no Unipolar switch and no
       Phase), the loop's strip and ruler over the plot, Points | Steps, Snap and the grid under it, the point under

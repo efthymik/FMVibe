@@ -378,6 +378,9 @@ inline Rect algorithmSetButton(int count, int set) {
 // The FX view covers the routing panel and the inspector: one card per effect,
 // left to right in processing order, then a card to add one; kVisibleFx at a time.
 constexpr Rect kFxPanel{16.0f, kPanelsTop, kRouting.x + kRouting.w - 16.0f, kRouting.h};
+// The full-size shape editors (a Curve's, an operator's envelope's, the note source's and velocity's curves): as wide as
+// the routing panel, in the middle of the panels' row, over the inspector too.
+constexpr Rect kShapeEditorPanel{kFxPanel.x + 0.5f * (kFxPanel.w - kRouting.w), kPanelsTop, kRouting.w, kRouting.h};
 constexpr int kVisibleFx = 6;
 constexpr float kFxGap = 22.0f; // room for the plus that adds an effect between two cards
 // The row's first card starts a gap in from the clip it scrolls in (see fxCardClip()), for the arrow before it.

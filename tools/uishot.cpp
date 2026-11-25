@@ -872,17 +872,25 @@ Point sourceListItem(const View &view, Point click, SourceType type) {
 }
 
 
-// The freeform shape editor: x 0..1 across, y -1..1 up. An LFO's spans the routing panel and the inspector, its
-// plot 1088 wide, under the strip of a Curve's loop (12 px lower and shorter than the others'); the note source's curve,
-// like the partial editor, fills the routing panel only, 772 wide.
-Point shapeAt(double x, double y, float width = 1088.0f) {
-    return {56.0f + static_cast<float>(x) * width, 336.0f - static_cast<float>(y) * 120.0f};
+// The freeform shape editor: x 0..1 across, y -1..1 up. A Curve's, an envelope's, the note source's and velocity's
+// curves' are as wide as the routing panel, in the middle of the panels' row (detail::kShapeEditorPanel), their plot
+// 772 wide, a Curve's under the strip of its loop (12 px lower and shorter than the others'); a voice shaper's curve,
+// like the partial editor, fills the routing panel, as wide.
+constexpr float kEditorX = detail::kShapeEditorPanel.x;
+Point shapeAt(double x, double y, float width = 772.0f) {
+    return {kEditorX + 40.0f + static_cast<float>(x) * width, 336.0f - static_cast<float>(y) * 120.0f};
 }
-Point noteCurveAt(double x, double y) { // over the routing panel, right of the lens
+Point stripCurveAt(double x, double y) { // the note source's and velocity's curves
+    return {kEditorX + 40.0f + static_cast<float>(x) * 772.0f, 330.0f - static_cast<float>(y) * 126.0f};
+}
+Point noteCurveAt(double x, double y) { // over the routing panel, right of the lens: a voice shaper's curve
     return {detail::kRouting.x + 40.0f + static_cast<float>(x) * 772.0f, 330.0f - static_cast<float>(y) * 126.0f};
 }
-constexpr Point kShapeDone{1154.0f, 152.0f};
-constexpr Point kRoutingEditorDone{detail::kRouting.x + detail::kRouting.w - 30.0f, 152.0f}; // the note curve's and the partial editor's
+constexpr Point kShapeDone{detail::kShapeEditorPanel.x + detail::kShapeEditorPanel.w - 30.0f, 152.0f};
+constexpr Point kRoutingEditorDone{detail::kRouting.x + detail::kRouting.w - 30.0f, 152.0f}; // a voice shaper's and the partial editor's
+// The title row's mode list (a Curve's clock list, an envelope's One-Shot | Sustain), after the name.
+constexpr Rect kTitleList{kEditorX + 16.0f + 136.0f + 12.0f, 141.0f, 122.0f, 22.0f};
+constexpr float kTitleDx = kTitleList.x - 148.0f; // from where the list stood, left of the panels' row
 // A shaper's big curve editor is a 520 px panel in the middle of the effects' panel, its plot 440 wide.
 Point clipAt(double x, double y) {
     return {380.0f + static_cast<float>(x) * 440.0f, 330.0f - static_cast<float>(y) * 126.0f};
@@ -1129,11 +1137,12 @@ constexpr Point kUndoButton{952.0f, 18.0f};
 constexpr Point kRedoButton{986.0f, 18.0f};
 // The LFO shape editor's reset button (the note curve's further left), and its grid's buttons: per axis (0 across)
 // a step down (part 0), the count, a step up.
-constexpr Point kShapeReset{1120.0f, 152.0f};
-constexpr Point kNoteCurveReset{804.0f + kRoutingDx, 152.0f};
+constexpr Point kShapeReset{kShapeDone.x - 34.0f, 152.0f};
+constexpr Point kNoteCurveReset = kShapeReset; // the note source's and velocity's, where a Curve's is
 Point shapeGrid(int axis, int part) {
     constexpr float kParts[] = {18.0f, 28.0f, 18.0f};
-    const float x = 1144.0f - (axis == 0 ? 148.0f : 64.0f) + (part > 0 ? 18.0f : 0.0f) + (part > 1 ? 28.0f : 0.0f);
+    const float right = shapeAt(1.0, 0.0).x;
+    const float x = right - (axis == 0 ? 148.0f : 64.0f) + (part > 0 ? 18.0f : 0.0f) + (part > 1 ? 28.0f : 0.0f);
     return {x + kParts[part] * 0.5f, 486.0f};
 }
 // A Custom LFO's display, a click on which widens its card to two card places. The widened card's title row buttons:
@@ -4734,7 +4743,7 @@ void testCurveLoop(const std::filesystem::path &dir, Renderer &renderer) {
     // and sync switches and its Rate.
     click(view, lfoDisplay(0));
     click(view, wideButton(0, 2));
-    const Rect titleList{148.0f, 141.0f, 122.0f, 22.0f}; // after its name
+    const Rect titleList = kTitleList; // after its name
     auto titleClock = [&](int mode) {
         click(view, titleList.center());
         click(view, detail::listMenuItem(titleList, 5, mode).center());
@@ -4751,10 +4760,10 @@ void testCurveLoop(const std::filesystem::path &dir, Renderer &renderer) {
     const bool titleOwn = model.value(oneShot) == 0.0;
     const int titlePolarity = paramIndex(0, SourceParam::Unipolar);
     const double wasUnipolar = model.value(titlePolarity);
-    click(view, {289.0f, 152.0f}); // its Unipolar switch
+    click(view, {289.0f + kTitleDx, 152.0f}); // its Unipolar switch
     const bool titleUnipolar = model.value(titlePolarity) == 1.0 - wasUnipolar;
     view.undo();
-    click(view, {317.0f, 152.0f}); // its sync switch
+    click(view, {317.0f + kTitleDx, 152.0f}); // its sync switch
     const bool titleSync = model.value(paramIndex(0, SourceParam::Sync)) == 1.0;
     view.undo();
     // Its knobs after Rate, as on its card: Phase and Slew, each taking the wheel.
@@ -4765,8 +4774,8 @@ void testCurveLoop(const std::filesystem::path &dir, Renderer &renderer) {
         view.undo();
         return moved && model.value(param) == was;
     };
-    const bool titlePhase = wheelTakes({478.0f, 152.0f}, paramIndex(0, SourceParam::Phase));
-    const bool titleSlew = wheelTakes({574.0f, 152.0f}, paramIndex(0, SourceParam::CurveSlew));
+    const bool titlePhase = wheelTakes({478.0f + kTitleDx, 152.0f}, paramIndex(0, SourceParam::Phase));
+    const bool titleSlew = wheelTakes({574.0f + kTitleDx, 152.0f}, paramIndex(0, SourceParam::CurveSlew));
     std::printf("      title row: %d %d %d %d %d %d %d\n", titleSustain, titleRetrigger, titleOwn, titleUnipolar,
                 titleSync, titlePhase, titleSlew);
     check(titleSustain && titleRetrigger && titleOwn && titleUnipolar && titleSync && titlePhase && titleSlew,
@@ -4822,7 +4831,7 @@ void testCurveLoop(const std::filesystem::path &dir, Renderer &renderer) {
     // Its loop's strip over the plot, on 16 columns: an end dragged sizes it, the start too, its middle moves it as long
     // as it is, a drag outside it draws a new one, its ends stay a column apart, and a double-click loops the whole
     // curve again; each one undo step.
-    auto stripAt = [](double x) { return Point{56.0f + static_cast<float>(x) * 1088.0f, 180.0f}; };
+    auto stripAt = [](double x) { return Point{shapeAt(x, 0.0).x, 180.0f}; };
     drag(view, stripAt(1.0), stripAt(0.76));
     const bool end = loopIs(0.0, 0.75);
     drag(view, stripAt(0.0), stripAt(0.24));
@@ -5098,7 +5107,7 @@ void testOpEnvCurve(const std::filesystem::path &dir, Renderer &renderer) {
     // The pencil opens the full-size editor over the routing panel and the inspector, as a Curve's, the pencil under
     // it; its done button and a view tab close it. Open, its title row's Slew knob takes the wheel (its name, then the
     // mode list, sync, Length and Slew, as a Curve's title row has them).
-    const Point titleSlew{450.0f, 152.0f};
+    const Point titleSlew{450.0f + kTitleDx, 152.0f};
     auto editorOpen = [&] {
         const double was = model.value(envSlew);
         view.wheel(titleSlew, 1.0f, {});
@@ -5114,7 +5123,7 @@ void testOpEnvCurve(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, detail::opEnvEditButton().center()); // on its plot now, the inspector under it
     const bool covering = editorOpen();
     // Its mode list, where a Curve's clock list is: One-Shot picked from it, under its button, one undo step.
-    const Rect modeList{148.0f, 141.0f, 122.0f, 22.0f};
+    const Rect modeList = kTitleList;
     click(view, modeList.center());
     view.mouseMove(detail::listMenuItem(modeList, 2, 0).center(), {});
     renderer.save(view, dir / "3h-env-editor-list.png");
@@ -9558,26 +9567,27 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, {1026.0f, y});
     const int low = paramIndex(NoteParam::Low), high = paramIndex(NoteParam::High);
     const double lowFrom = model.value(low);
-    drag(view, {182.0f + kRoutingDx, 152.0f}, {182.0f + kRoutingDx, 52.0f}); // Low's knob, 100 px up: ten notes, landing on a whole one
+    constexpr float kStripDx = kEditorX - 16.0f; // the editor's x from the panels' row's left
+    drag(view, {kTitleList.x + 18.0f, 152.0f}, {kTitleList.x + 18.0f, 52.0f}); // Low's knob, 100 px up: ten notes, landing on a whole one
     const bool raised = model.value(low) == std::round(lowFrom) + 10.0;
-    view.doubleClick(noteCurveAt(0.5, 0.6), {});
+    view.doubleClick(stripCurveAt(0.5, 0.6), {});
     const bool pointAdded = model.value(paramIndex(NoteParam::Curve)) == 4.0;
     // Steps, under the plot left of the grid's controls, has a plain click draw a step here too; Points goes back.
-    click(view, {514.0f + kRoutingDx, 486.0f});
-    click(view, noteCurveAt(0.2, -0.5));
+    click(view, {514.0f + kStripDx, 486.0f});
+    click(view, stripCurveAt(0.2, -0.5));
     const bool stepped = model.layout().shapeSteps && model.value(paramIndex(NoteParam::Curve)) > 4.0;
     view.undo();
-    click(view, {446.0f + kRoutingDx, 486.0f});
-    click(view, noteCurveAt(0.2, -0.5));
+    click(view, {446.0f + kStripDx, 486.0f});
+    click(view, stripCurveAt(0.2, -0.5));
     const bool modes = stepped && !model.layout().shapeSteps && model.value(paramIndex(NoteParam::Curve)) == 4.0;
     model.live.notePitch = 72.0f;
     view.poll();
-    view.mouseMove(noteCurveAt(0.5, 0.6), {});
+    view.mouseMove(stripCurveAt(0.5, 0.6), {});
     const bool curveShot = renderer.save(view, dir / "26c-note-curve.png");
     click(view, kNoteCurveReset);
     const bool reset = model.value(low) == paramTable()[low].def && model.value(high) == paramTable()[high].def &&
                        model.value(paramIndex(NoteParam::Curve)) == 3.0;
-    click(view, kRoutingEditorDone);
+    click(view, kShapeDone);
     check(raised && pointAdded && modes && curveShot && reset,
           "the note source's display opens its curve, with its range's knobs, Points | Steps working there, and the "
           "reset button puts both back");
@@ -10134,9 +10144,9 @@ void testVelocity(const std::filesystem::path &dir, Renderer &renderer) {
     // and the reset button takes it back to the line.
     const int curve = paramIndex(VelocityParam::Curve);
     click(view, display);
-    view.doubleClick(noteCurveAt(0.5, 0.6), {});
+    view.doubleClick(stripCurveAt(0.5, 0.6), {});
     const bool pointAdded = model.value(curve) == 3.0;
-    view.mouseMove(noteCurveAt(0.5, 0.6), {});
+    view.mouseMove(stripCurveAt(0.5, 0.6), {});
     const bool curveShot = renderer.save(view, dir / "26m-velocity-curve.png");
     click(view, kNoteCurveReset);
     const bool reset = model.value(curve) == 2.0 && model.value(shapeFieldIndex(curve, 1, PointField::Y)) == 1.0;

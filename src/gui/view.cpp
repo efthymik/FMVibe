@@ -2597,8 +2597,8 @@ void View::paintPanels(Canvas &c) {
     std::vector<Rect> panels;
     if (sourcesHidden()) // the SEQ view, over the routing panel's place and the modulation panel's
         panels = {keyboard, kSeqPanel};
-    else if (shapeEditing() >= 0 && isClipCurve(shapeEditing()))
-        panels = {kModPanel, keyboard, shapes_.shapePanel()}; // the shaper curve's editor, narrower than the effects
+    else if (shapeEditing() >= 0 && !isShaperCurve(shapeEditing())) // a full-size editor, narrower than the row
+        panels = {kModPanel, keyboard, shapes_.shapePanel()};             // (a voice shaper's has the inspector beside)
     else // the effects or the modulations across it, or the routing panel with the inspector floating over it
         panels = {kModPanel, keyboard, kFxPanel};
     // A theme with soft shadows lifts its panels off the background with one, instead of an outline.

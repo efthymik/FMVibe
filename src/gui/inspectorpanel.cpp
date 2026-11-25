@@ -51,7 +51,7 @@ bool InspectorPanel::covered() const {
     const bool editor = shape >= 0 || shapes_.partialEditing() >= 0; // over the panels' row
     return (view == RoutingView::Fx && shape < 0) ||
            ((view == RoutingView::Mods || view == RoutingView::Seq) && !editor) ||
-           (shape >= 0 && !isStripCurve(shape) && !isShaperCurve(shape));
+           (shape >= 0 && !isShaperCurve(shape));
 }
 
 int InspectorPanel::scopeShown() const {

@@ -913,7 +913,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     the first time (its points, loop and Length) and kept as drawn after; One-Shot | Sustain and its sync switch, its
     Length knob setting its length or, synced, its note value, and its Slew knob its slew, Off to begin with; its loop's end dragged on the tab's display onto the
     grid, one undo step; the newest voice's dot on it (read off the rendered pixels); and its pencil opening its
-    full-size editor over the routing panel and the inspector, laid out as a Curve's, its One-Shot | Sustain a list
+    full-size editor in the panel a Curve's takes (as wide as the routing panel, in the row's middle), laid out as a Curve's, its One-Shot | Sustain a list
     there, picked from undoably, its done button and a view tab closing it;
   - Copy Shape and Paste Shape: an operator's envelope copied from its menu (Paste Shape offered only once a shape is
     copied) pasting into a Curve source by Ctrl+V as it is, with its loop region, one undo step; into a symmetric voice

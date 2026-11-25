@@ -53,7 +53,8 @@ Rect ShapeEditor::shapePanel() const {
     const int shape = shapeEditing();
     if (shape >= 0 && isClipCurve(shape))
         return {kFxPanel.x + std::round((kFxPanel.w - kClipEditorW) * 0.5f), kFxPanel.y, kClipEditorW, kFxPanel.h};
-    return shape >= 0 && (!isCurve(shape) || isOpEnvCurve(shape)) ? kFxPanel : kRouting; // an envelope's as a Curve's
+    // A Curve's, an envelope's, the note source's and velocity's alike; a voice shaper's beside the inspector.
+    return shape >= 0 && (!isCurve(shape) || isOpEnvCurve(shape) || isStripCurve(shape)) ? kShapeEditorPanel : kRouting;
 }
 
 Rect ShapeEditor::shapeArea(int shape) const {
@@ -91,14 +92,18 @@ Rect ShapeEditor::shapeReset() const {
 
 // A Curve's (an LFO's) big editor's title row and an operator's envelope's, from the left: the name, the mode list, a
 // Curve's Unipolar switch, the sync switch and the knobs, an envelope's Slew where a Curve's Phase is.
-Rect ShapeEditor::shapeTitle() const {
+Rect ShapeEditor::shapeTitle() const { // as wide as the longest title ("VELOCITY CURVE") takes
     const Rect panel = shapePanel();
-    return {panel.x + 16.0f, panel.y + 9.0f, 104.0f, 22.0f};
+    return {panel.x + 16.0f, panel.y + 9.0f, 136.0f, 22.0f};
 }
 
 Rect ShapeEditor::shapeClockList() const {
     const Rect title = shapeTitle();
     return {title.right() + 12.0f, title.y, kLfoListW, title.h};
+}
+
+Rect ShapeEditor::noteRangeKnob(int knob) const {
+    return {shapeClockList().x + knob * 96.0f, shapePanel().y, 92.0f, 40.0f};
 }
 
 Rect ShapeEditor::shapeUnipolarSwitch() const {
@@ -139,6 +144,11 @@ Rect ShapeEditor::shapeModeButton(int mode) const {
     const float right = title ? shapeReset().x - 8.0f : shapeGridButton(0, 0).x - 60.0f;
     const Rect snap{right - 64.0f, title ? shapeReset().y + 2.0f : shapeGridButton(0, 0).y, 64.0f, 18.0f};
     return mode == 2 ? snap : Rect{snap.x - 8.0f - (2 - mode) * 68.0f, snap.y, 68.0f, snap.h};
+}
+
+Rect ShapeEditor::shapeBelow() const {
+    const Rect area = shapeArea();
+    return {area.x, area.bottom() + 10.0f, shapeModeButton(0).x - 12.0f - area.x, 16.0f};
 }
 
 Rect ShapeEditor::shapeSymButton() const {
@@ -1082,9 +1092,6 @@ void ShapeEditor::paintShapeEditor(Canvas &c, int shape) {
     const Rect title = shapeTitle();
     c.fillRect(title, color.alpha(0.18f), kRadiusControl);
     c.text(title, trf(Str::TitleShape, {mods_.sourceName(lfo)}), kTextBody, color, Align::Center, true);
-    const float hint = curveShape(lfo) ? shapeTitleKnob(lfo, 2).right() : title.right(); // after a Curve's knobs
-    c.text({hint + 12.0f, title.y + 1.0f, shapeReset().x - hint - 24.0f, 22.0f}, shapeHint(), kTextLabel, kFaint,
-           Align::Right);
 
     const Rect r = shapeArea();
     c.fillRect(r.inset(-8.0f), kDisplayColor, kRadiusCard);
@@ -1124,18 +1131,21 @@ void ShapeEditor::paintShapeEditor(Canvas &c, int shape) {
     }
 
     // The point under the mouse, in numbers: where it is along the cycle (a Curve's in time or in beats, where its
-    // places read so) and what the LFO puts out there, a unipolar one mapping -1..1 onto 0..1.
+    // places read so) and what the LFO puts out there, a unipolar one mapping -1..1 onto 0..1; else how to edit.
     const Widget *focus = focused(DragKind::ShapePoint);
+    const Rect below = shapeBelow();
     if (focus && focus->kind == Kind::ShapePoint && focus->a == lfo) {
         const double x = shapePointX(lfo, focus->b);
         const double y = value(shapePointIndex(lfo, focus->b, PointField::Y));
         const std::string level = zero < 0.0 ? number("%.2f", 0.5 * (y + 1.0)) : number("%+.2f", y);
         const std::string point = std::to_string(focus->b + 1);
-        c.text({r.x, r.bottom() + 10.0f, shapeModeButton(0).x - 12.0f - r.x, 16.0f},
+        c.text(below,
                mods_.curveTime(lfo) == ModulationModel::CurveTime::Share
                    ? trf(Str::CaptionShapePoint, {point, number("%.1f", x * 100.0), level})
                    : trf(Str::CaptionShapePointAt, {point, mods_.curvePlace(lfo, x, false), level}),
                kTextLabel, kDim, Align::Left);
+    } else {
+        paintHintBelow(c, below, shapeHint());
     }
 }
 
@@ -1199,24 +1209,23 @@ void ShapeEditor::paintOpEnvEditor(Canvas &c, int shape) {
     c.fillRect(title, color.alpha(0.18f), kRadiusControl);
     c.text(title, trf(Str::TitleOpEnvelope, {std::string(1, static_cast<char>('A' + op))}), kTextBody, color,
            Align::Center, true);
-    const float hint = shapeTitleKnob(shape, 2).right();
-    c.text({hint + 12.0f, title.y + 1.0f, shapeReset().x - hint - 24.0f, 22.0f}, shapeHint(), kTextLabel, kFaint,
-           Align::Right);
     const Rect r = shapeArea();
     c.fillRect(r.inset(-8.0f), kDisplayColor, kRadiusCard);
     c.fillRect(loopStrip(shape), kDisplayColor, kRadiusControl);
     paintShapeGrid(c, r, -1.0, false);
     paintShapeGridControls(c);
     paintOpEnvCurve(c, shape, r);
-    // The point under the mouse, in numbers: its time (or place in beats) and its level.
+    // The point under the mouse, in numbers: its time (or place in beats) and its level; else how to edit.
     const Widget *focus = focused(DragKind::ShapePoint);
     if (focus && focus->kind == Kind::ShapePoint && focus->a == shape) {
         const double y = value(shapeIndex(shape, focus->b, PointField::Y));
-        c.text({r.x, r.bottom() + 10.0f, shapeModeButton(0).x - 12.0f - r.x, 16.0f},
+        c.text(shapeBelow(),
                trf(Str::CaptionShapePointAt, {std::to_string(focus->b + 1),
                                                placeText(shape, shapePointX(shape, focus->b), false),
                                                number("%.2f", 0.5 * (y + 1.0))}),
                kTextLabel, kDim, Align::Left);
+    } else {
+        paintHintBelow(c, shapeBelow(), shapeHint());
     }
 }
 
@@ -1321,12 +1330,9 @@ void ShapeEditor::paintSourceCurve(Canvas &c, int shape, detail::Curve curve, Re
 void ShapeEditor::paintNoteCurveEditor(Canvas &c) {
     const int shape = kNoteCurve;
     const Color color = shapeColor(shape);
-    const Rect title{kRouting.x + 16.0f, kRouting.y + 9.0f, 120.0f, 22.0f};
+    const Rect title = shapeTitle();
     c.fillRect(title, color.alpha(0.18f), kRadiusControl);
     c.text(title, tr(Str::TitleNoteCurve), kTextBody, color, Align::Center, true);
-    const float hintX = kRouting.x + 148.0f + 2.0f * 96.0f + 12.0f; // after Low and High
-    c.text({hintX, kRouting.y + 10.0f, shapeReset().x - 12.0f - hintX, 22.0f}, shapeHint(), kTextLabel, kFaint,
-           Align::Right);
 
     const Rect r = shapeArea();
     c.fillRect(r.inset(-8.0f), kDisplayColor, kRadiusCard);
@@ -1357,14 +1363,14 @@ void ShapeEditor::paintNoteCurveEditor(Canvas &c) {
 
     // The point under the mouse in numbers, or how to edit, under the plot left of the grid's controls.
     const Widget *focus = focused(DragKind::ShapePoint);
-    const Rect below{r.x, r.bottom() + 10.0f, shapeModeButton(0).x - 12.0f - r.x, 16.0f};
+    const Rect below = shapeBelow();
     if (focus && focus->kind == Kind::ShapePoint && focus->a == shape) {
         char note[32];
         formatParam(paramIndex(NoteParam::Low), low + shapePointX(shape, focus->b) * (high - low), note, sizeof(note));
         const std::string out = number("%.0f", 50.0 * (value(shapeIndex(shape, focus->b, PointField::Y)) + 1.0));
         c.text(below, trf(Str::CaptionNotePoint, {std::to_string(focus->b + 1), note, out}), kTextLabel, kDim, Align::Left);
     } else {
-        c.text(below, tr(Str::HintNoteAxes), kTextLabel, kFaint, Align::Left);
+        paintHintBelow(c, below, shapeHint());
     }
 }
 
@@ -1374,11 +1380,9 @@ void ShapeEditor::paintNoteCurveEditor(Canvas &c) {
 void ShapeEditor::paintVelocityCurveEditor(Canvas &c) {
     const int shape = kVelocityCurve;
     const Color color = shapeColor(shape);
-    const Rect title{kRouting.x + 16.0f, kRouting.y + 9.0f, 136.0f, 22.0f};
+    const Rect title = shapeTitle();
     c.fillRect(title, color.alpha(0.18f), kRadiusControl);
     c.text(title, tr(Str::TitleVelocityCurve), kTextBody, color, Align::Center, true);
-    c.text({title.right() + 12.0f, kRouting.y + 10.0f, shapeReset().x - title.right() - 24.0f, 22.0f}, shapeHint(),
-           kTextLabel, kFaint, Align::Right);
 
     const Rect r = shapeArea();
     c.fillRect(r.inset(-8.0f), kDisplayColor, kRadiusCard);
@@ -1397,14 +1401,14 @@ void ShapeEditor::paintVelocityCurveEditor(Canvas &c) {
 
     // The point under the mouse in numbers, or how to edit, under the plot left of the grid's controls.
     const Widget *focus = focused(DragKind::ShapePoint);
-    const Rect below{r.x, r.bottom() + 10.0f, shapeModeButton(0).x - 12.0f - r.x, 16.0f};
+    const Rect below = shapeBelow();
     if (focus && focus->kind == Kind::ShapePoint && focus->a == shape) {
         const std::string in = number("%.0f", 127.0 * shapePointX(shape, focus->b));
         const std::string out = number("%.0f", 50.0 * (value(shapeIndex(shape, focus->b, PointField::Y)) + 1.0));
         c.text(below, trf(Str::CaptionVelocityPoint, {std::to_string(focus->b + 1), in, out}), kTextLabel, kDim,
                Align::Left);
     } else {
-        c.text(below, tr(Str::HintVelocityAxes), kTextLabel, kFaint, Align::Left);
+        paintHintBelow(c, below, shapeHint());
     }
 }
 
@@ -1772,7 +1776,7 @@ void ShapeEditor::widgets(std::vector<Widget> &list) const {
             const char *const labels[] = {tr(Str::LabelLow), tr(Str::LabelHigh)};
             const int range[] = {paramIndex(NoteParam::Low), paramIndex(NoteParam::High)};
             for (int i = 0; i < 2; ++i) {
-                add(Kind::Knob, {kRouting.x + 148.0f + i * 96.0f, kRouting.y, 92.0f, 40.0f}, range[i]);
+                add(Kind::Knob, noteRangeKnob(i), range[i]);
                 list.back().label = labels[i];
                 list.back().compact = true;
             }

@@ -226,6 +226,10 @@ private:
     Rect shapeUnipolarSwitch() const;
     Rect shapeSyncButton(int shape) const;
     Rect shapeTitleKnob(int shape, int knob) const;
+    // Under the plot, left of Points | Steps: the point under the mouse in numbers, else how to edit.
+    Rect shapeBelow() const;
+    // The note curve's Low (0) and High (1) knobs, where the mode list is.
+    Rect noteRangeKnob(int knob) const;
     // Whether a widened card's Copy has kept a shape for Paste.
     static bool shapeCopied();
     // Its geometry: its buttons, and where a shape is edited (the big editor's plot, or where it shows in place while
