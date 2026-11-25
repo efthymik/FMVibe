@@ -288,9 +288,10 @@ private:
     void paintOpEnvEditor(Canvas &c, int shape);
     // An operator's drawn envelope's outline over `r`, filled from its bottom (no level), and where the newest voice is.
     void paintOpEnvCurve(Canvas &c, int shape, Rect r);
-    // Its full-size editor's title row: after its name, One-Shot | Sustain, its sync switch and its Length.
+    // Its full-size editor's title row: after its name, One-Shot | Sustain, its sync switch, its Length and its Slew.
     Rect opEnvTitleSync() const;
     Rect opEnvTitleKnob() const;
+    Rect opEnvTitleSlew() const;
     void paintNoteCurveEditor(Canvas &c);
     void paintVelocityCurveEditor(Canvas &c);
     // The note source's or velocity's curve over the plot `r`, filled under it, and a dot `dot` of the way across it (0..1,

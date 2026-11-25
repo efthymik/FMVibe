@@ -295,6 +295,7 @@ void InspectorPanel::widgets(std::vector<Widget> &list) const {
                 const bool synced = value(paramIndex(op, OpParam::EnvSync)) >= 0.5;
                 knob(paramIndex(op, synced ? OpParam::EnvDivision : OpParam::EnvLength), kOpEnvLengthKnob, kOpKnobD,
                      tr(Str::LabelLength));
+                knob(paramIndex(op, OpParam::EnvSlew), kOpEnvSlewKnob, kOpKnobD, tr(Str::LabelSlew));
                 shapes_.opEnvWidgets(list, op);
             } else {
                 const int ahdsr[] = {paramIndex(op, OpParam::Attack), paramIndex(op, OpParam::Hold),
@@ -741,7 +742,7 @@ bool InspectorPanel::opTabModulated(int op, InspectorTab tab) const {
                   paramIndex(op, OpParam::UnisonSpread), paramIndex(op, OpParam::UnisonBlend),
                   paramIndex(op, OpParam::PhaseRandom)};
     if (tab == InspectorTab::Envelope)
-        params = opEnvDrawn(op) ? std::vector<int>{paramIndex(op, OpParam::EnvLength)}
+        params = opEnvDrawn(op) ? std::vector<int>{paramIndex(op, OpParam::EnvLength), paramIndex(op, OpParam::EnvSlew)}
                                 : std::vector<int>{paramIndex(op, OpParam::Attack), paramIndex(op, OpParam::Hold),
                                                    paramIndex(op, OpParam::Decay), paramIndex(op, OpParam::Sustain),
                                                    paramIndex(op, OpParam::Release)};

@@ -4621,7 +4621,17 @@ void testCurveLoop(const std::filesystem::path &dir, Renderer &renderer) {
     const bool unipolar = model.value(paramIndex(0, SourceParam::Unipolar)) == 1.0;
     view.undo();
     const bool polarUndone = model.value(paramIndex(0, SourceParam::Unipolar)) == 0.0;
-    click(view, retriggerToggle(0)); // where an LFO's first clock button is: nothing on a Curve card
+    // Its Slew, a small knob in the row under the list (where an LFO's clock buttons are), Off to begin with: dragged
+    // up, a lag, one undo step.
+    const int slew = paramIndex(0, SourceParam::CurveSlew);
+    const Rect slewRect = detail::curveSlewKnob(0.0f);
+    const Point slewKnob{slewRect.x + 16.0f, slewRect.y + 16.0f};
+    const bool slewOff = model.value(slew) == 0.0;
+    drag(view, slewKnob, {slewKnob.x, slewKnob.y - 30.0f});
+    const bool slewed = model.value(slew) > 0.0;
+    view.undo();
+    const bool slewUndone = model.value(slew) == 0.0;
+    click(view, retriggerToggle(0)); // where an LFO's first clock button is: no clock mode on a Curve card
     const bool clear = model.value(sustain) == 0.0 && model.value(oneShot) == 0.0 &&
                        model.value(paramIndex(0, SourceParam::Free)) == 0.0;
     click(view, oneShotToggle(1));
@@ -4636,8 +4646,6 @@ void testCurveLoop(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove({600.0f, 328.0f}, {});
     renderer.save(view, dir / "10h-curve-card.png");
     const bool noTip = tip == renderer.pixel(under);
-    // In the cleared row, inside where an LFO's first clock button would be, against the card's face under it.
-    const bool rowClear = renderer.pixel({cardX(0) + 20.0f, 640.0f}) == renderer.pixel({cardX(0) + 20.0f, 658.0f});
     pickClock(view, 0, LfoClock::OneShot);
     view.mouseMove(shapeButton(0), {});
     click(view, shapeButton(0));
@@ -4646,8 +4654,8 @@ void testCurveLoop(const std::filesystem::path &dir, Renderer &renderer) {
     pickClock(view, 0, LfoClock::Retrigger);
     check(picked && sustained && undone && stepped && round && wheeled && held && retriggered,
           "a Curve card's clock modes are a list: a pick, its arrows and the wheel set the mode, each one undo step");
-    check(unipolar && polarUndone && clear && rowClear && lfoKept && noTip && listShot,
-          "a Curve card has an LFO's Unipolar switch under its sync button and the row under its list clear, its "
+    check(unipolar && polarUndone && clear && slewOff && slewed && slewUndone && lfoKept && noTip && listShot,
+          "a Curve card has an LFO's Unipolar switch under its sync button and its Slew in the row under its list, its "
           "list showing no tooltip; an LFO card keeps its clock buttons and Unipolar switch");
 
     // Its Rate, unsynced, reads as the curve's length while it plays it once from each note, and takes one typed (a rate
@@ -4958,9 +4966,15 @@ void testOpEnvCurve(const std::filesystem::path &dir, Renderer &renderer) {
     view.undo();
     view.undo();
     const bool unsynced = model.value(sync) == 0.0 && model.value(division) == divisionWas;
-    check(oneShot && sustained && longer && synced && unsynced,
+    const int envSlew = paramIndex(0, OpParam::EnvSlew);
+    const Point slewKnob = detail::kOpEnvSlewKnob;
+    const bool slewOff = model.value(envSlew) == 0.0;
+    drag(view, slewKnob, {slewKnob.x, slewKnob.y - 30.0f});
+    const bool slewed = model.value(envSlew) > 0.0;
+    view.undo();
+    check(oneShot && sustained && longer && synced && unsynced && slewOff && slewed && model.value(envSlew) == 0.0,
           "a drawn envelope's One-Shot | Sustain and sync switch set it, its Length knob its length, or synced its note "
-          "value");
+          "value, and its Slew knob its slew, Off to begin with");
 
     // Its loop's bar, along the top of the tab's display: its end dragged right, onto the grid's columns.
     const Rect plot = detail::kOpEnvPlot;

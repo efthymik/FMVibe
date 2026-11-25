@@ -441,8 +441,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - an operator's drawn envelope: playing its shape sample for sample, bends and all, and holding its end while held;
     let go at its end fading out over 5 ms; in Sustain looping its loop while held and, let go, leaving it from the
     level it was at and sliding onto its shape by its end, a loop ending on a drop going down with it over 5 ms;
-    started again going on from the level it was at; and in the synth, an operator's level and place following its
-    shape, its voice ending once it has faded out, and in Sustain looping while held and playing on to its end;
+    started again going on from the level it was at; a 5 ms Slew smoothing a jump and its loop's wrap and, let go,
+    standing idle once what it puts out has settled; and in the synth, an operator's level and place following its
+    shape, its voice ending once it has faded out, and in Sustain looping while held and playing on to its end; and a
+    Curve source's Slew lagging a square's step;
   - the scope capturing nothing until asked, then an operator's cycles from where they start (a sine's a sine, a
     square's a square), standing still from one span to the next under FM, two cycles differing under a modulator
     at half the ratio, a slow span shown as it fills, nothing again once it isn't asked for, a low note's (an A0's)
@@ -888,7 +890,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - a Curve source's loop and Sustain: its card's clock modes a list where an LFO's shape list is, a pick, its
     arrows (round its ends) and the wheel (held at its ends) setting the mode, each one undo step, no tooltip under
     it (read off the rendered pixels), the LFO's Unipolar switch under its sync button, undoably, and the row
-    under the list clear (a click there setting nothing, read off the rendered pixels), an LFO card beside it keeping
+    under the list holding its Slew, Off to begin with and dragged up undoably, an LFO card beside it keeping
     its four clock buttons and its Unipolar switch where they were; its Rate, unsynced, shown and typed as the
     curve's length in One-Shot and Sustain (a length in s or ms, or a rate in Hz) and as a rate retriggered; its
     places reading as times there, in bars and beats synced, else as a share; its full-size editor's title row
@@ -903,7 +905,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     rendered pixels);
   - an operator's ENVELOPE tab's ADSR | Curve switching to its drawn envelope in one undo step, drawn from its AHDSR
     the first time (its points, loop and Length) and kept as drawn after; One-Shot | Sustain and its sync switch, its
-    Length knob setting its length or, synced, its note value; its loop's end dragged on the tab's display onto the
+    Length knob setting its length or, synced, its note value, and its Slew knob its slew, Off to begin with; its loop's end dragged on the tab's display onto the
     grid, one undo step; the newest voice's dot on it (read off the rendered pixels); and its pencil opening and
     closing its full-size editor, a view tab and ADSR closing it too;
   - Copy Shape and Paste Shape: an operator's envelope copied from its menu (Paste Shape offered only once a shape is
@@ -1454,7 +1456,7 @@ itself.
 - Parameter ids are stored in host projects and automation. `src/params.h` derives them per section with spare
   room: globals 0+, operators 100 + 50·op (their filter and shaper sends, then Fixed, Freq, Mult, Phase, Ratio, Pan,
   Sync, Warp, Warp Amount, Unison Curve, Unison Pan and Unison Blend, then the drawn envelope's EnvMode, EnvSustain,
-  EnvLoopStart, EnvLoopEnd, EnvLength, EnvSync and EnvDivision, ids 137 to 143 + 50·op; the
+  EnvLoopStart, EnvLoopEnd, EnvLength, EnvSync, EnvDivision and EnvSlew, ids 137 to 144 + 50·op; the
   9th field, once Velocity, does nothing and is hidden, kept so the ids after it stay, as are the first two, once
   Coarse and Fine, since Ratio after Phase), matrix
   400 + 10·from + to, filter modulation
@@ -1513,7 +1515,7 @@ itself.
   a later state holds with it plays it as a Random source does; and the LFO's Custom shape (`LfoShape::Custom`),
   which the Curve source took over, a state from before version 12 loading an LFO with it as a Curve source.
 - Like an effect slot, each of the 32 source places has the fields of every type (an LFO's, an envelope's, Slew, CC,
-  Bipolar and Input for Random and MIDI, and Curve's Sustain and loop region), and a Type param (Empty, LFO, Envelope,
+  Bipolar and Input for Random and MIDI, and Curve's Sustain, loop region and Slew), and a Type param (Empty, LFO, Envelope,
   Random, MIDI or Curve) that picks which are used (`sourceFieldUsedBy()`). A Random source is a random LFO: it runs
   through the LFOs' code with the LFO's clock fields, Smooth and Chaos, as an LFO of the retired Random shape
   (`lfoShape()`), its polarity its own Bipolar. A Curve source is an LFO of a drawn shape: it runs as an LFO of the
@@ -1526,11 +1528,12 @@ itself.
   (`Synth::releaseVoice()` marks the voice's LFOs, and its next block's `leaveLoop()` acts on it), leaves the loop
   from the level it is at, an offset on top of the curve fading by the next point (or over 5 ms, `kCurveGlide`), on
   to the curve's end; `Synth::modulationReleasing()` keeps the voice until then, as it does for a releasing mod
-  envelope. Hosts are given only a place's slot depths and Amounts; its fields go by place
+  envelope. Its `CurveSlew`, after them (Off at 0, `Synth::curveSlew()`), lags what it puts out behind its curve as a
+  MIDI source's Slew does. Hosts are given only a place's slot depths and Amounts; its fields go by place
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 2,027 of the 39,304 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 2,027 of the 39,342 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 1,600 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the operators' drawn envelopes' fields, the Custom waves' partials and counts, the chain's retired order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'

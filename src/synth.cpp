@@ -2919,6 +2919,18 @@ FMVIBE_NOINLINE double Synth::voiceLfo(Voice &v, int s, const double *p, const P
     return value;
 }
 
+// A Curve's Slew: what it puts out lags behind its curve, as a MIDI source's follows its controller, from where the curve
+// is as the note starts. Off, it is the curve's value, which it keeps, so turned on it glides from there.
+FMVIBE_NOINLINE double Synth::curveSlew(Voice &v, int s, double in, const double *p, uint32_t hostFrames) const {
+    double &out = v.follow[s];
+    const double slew = p[paramIndex(s, SourceParam::CurveSlew)];
+    if (slew <= 0.0 || v.fresh)
+        out = in;
+    else
+        out = in + (out - in) * std::exp(-static_cast<double>(hostFrames) / (timeFromNorm(slew) * sampleRate_));
+    return out;
+}
+
 // Out of renderBlock(), as only some patches play a drawn envelope.
 FMVIBE_NOINLINE void Synth::followDrawn(Voice &v, int op, const double *p, const ParamValues &params) {
     Envelope &env = v.ops[op].env;
@@ -2934,8 +2946,10 @@ FMVIBE_NOINLINE void Synth::followDrawn(Voice &v, int op, const double *p, const
     double start = p[paramIndex(op, OpParam::EnvLoopStart)], end = p[paramIndex(op, OpParam::EnvLoopEnd)];
     start = std::isfinite(start) ? std::clamp(start, 0.0, 1.0) : 0.0;
     end = std::isfinite(end) ? std::clamp(end, 0.0, 1.0) : 1.0;
+    const double slew = p[paramIndex(op, OpParam::EnvSlew)];
     drawn.prepare(&params[opEnvShapeIndex(op)], seconds * rate_, std::min(start, end), std::max(start, end),
-                  p[paramIndex(op, OpParam::EnvSustain)] >= 0.5, env.level(), rate_);
+                  p[paramIndex(op, OpParam::EnvSustain)] >= 0.5, env.level(), rate_,
+                  slew > 0.0 ? timeFromNorm(slew) * rate_ : 0.0);
     env.follow(drawn);
 }
 
@@ -3073,7 +3087,9 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             continue;
         }
         if (runsLfo(type)) { // an LFO, or Random, a random one
-            const double value = voiceLfo(v, s, p, params, hostFrames);
+            double value = voiceLfo(v, s, p, params, hostFrames);
+            if (type == SourceType::Curve)
+                value = curveSlew(v, s, value, p, hostFrames);
             const bool lfoUnipolar = !sourceBipolar(get, s);
             collectSlots(s, lfoUnipolar ? 0.5 * (value + 1.0) : value, 0.5 * (value + 1.0), 0.5 * value, !lfoUnipolar);
             continue;

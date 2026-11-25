@@ -41,7 +41,7 @@ constexpr bool idsRoundTrip(int from, int to) {
     return true;
 }
 // (MSVC allows an expression 1,048,576 steps, fewer than GCC, so the parts are small.)
-static_assert(kParamCount == 39304 && kParamCount <= 27 * 1500);
+static_assert(kParamCount == 39342 && kParamCount <= 27 * 1500);
 static_assert(idsRoundTrip(0, 1500), "param id layout overlaps");
 static_assert(idsRoundTrip(1500, 3000), "param id layout overlaps");
 static_assert(idsRoundTrip(3000, 4500), "param id layout overlaps");
@@ -447,6 +447,7 @@ void buildTable(ParamTable &t) {
         hidden(OpParam::EnvSync, Str::ParamEnvSync, ParamKind::Toggle, 0.0, 1.0, 0.0);
         hidden(OpParam::EnvDivision, Str::ParamEnvDivision, ParamKind::SyncDivision, kSlowestDivision,
                kDivisions - 1.0, kQuarter);
+        hidden(OpParam::EnvSlew, Str::ParamEnvSlew, ParamKind::TimeOrOff, 0.0, kMaxSlewNorm, 0.0);
         // Its shape, as a freeform shape is laid out: up from nothing to full in a tenth of its time, then down to
         // nothing again by its end.
         {
@@ -1068,6 +1069,7 @@ void buildTable(ParamTable &t) {
         field(SourceParam::CurveSustain, tr(Str::ParamCurveSustain), ParamKind::Toggle, 0.0, 1.0, 0.0);
         field(SourceParam::LoopStart, tr(Str::ParamCurveLoopStart), ParamKind::ShapePoint, 0.0, 1.0, 0.0);
         field(SourceParam::LoopEnd, tr(Str::ParamCurveLoopEnd), ParamKind::ShapePoint, 0.0, 1.0, 1.0);
+        field(SourceParam::CurveSlew, tr(Str::ParamSlew), ParamKind::TimeOrOff, 0.0, kMaxSlewNorm, 0.0); // Off
 
         // Freeform shapes start as a triangle: up from the bottom to the top at the middle of the
         // cycle, and down again as the last segment wraps around.

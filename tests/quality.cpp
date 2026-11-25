@@ -7735,6 +7735,47 @@ int main() {
             check(samples >= 239 && samples <= 241, "a drawn envelope let go at its end fades out over 5 ms");
         }
 
+        // A Slew lags what it puts out behind its shape, a one-pole lag: a shape jumping from nothing to full at its
+        // middle, and its Sustain loop wrapping from full back to nothing, step no further than a 5 ms lag lets them
+        // (under a 200th of the way a sample), where without one they jump; let go, it stands idle only once what it puts
+        // out has settled, under -80 dB.
+        {
+            const Points points{{0.0, -1.0, 0.0}, {0.5, -1.0, 0.0}, {0.5, 1.0, 0.0}, {1.0, 1.0, 0.0}};
+            const std::vector<double> shape = shapeOf(points);
+            auto run = [&](double slew, bool sustain, int samples) {
+                DrawnEnvelope d;
+                d.start();
+                d.prepare(shape.data(), 4800.0, 0.0, 1.0, sustain, 0.0, kRate, slew);
+                std::vector<double> levels;
+                for (int n = 0; n < samples; ++n)
+                    levels.push_back(d.next());
+                return levels;
+            };
+            const double jump = mostStep(run(0.0, false, 4800), 0, 4800);
+            const double jumpSlewed = mostStep(run(240.0, false, 4800), 0, 4800);
+            const double wrap = mostStep(run(0.0, true, 14400), 4900, 14400);
+            const double wrapSlewed = mostStep(run(240.0, true, 14400), 4900, 14400);
+            DrawnEnvelope d;
+            d.start();
+            d.prepare(shape.data(), 4800.0, 0.0, 1.0, false, 0.0, kRate, 240.0);
+            for (int n = 0; n < 9600; ++n) // up to full and held there
+                d.next();
+            d.release();
+            d.prepare(shape.data(), 4800.0, 0.0, 1.0, false, d.level(), kRate, 240.0);
+            int samples = 0;
+            while (!d.idle() && samples < 48000) {
+                d.next();
+                ++samples;
+            }
+            std::printf("      a 5 ms slew: the jump's step %.4f (%.2f without), the loop's wrap %.4f (%.2f without); "
+                        "idle %d samples after it is let go, at %.1e\n",
+                        jumpSlewed, jump, wrapSlewed, wrap, samples, d.level());
+            check(jump > 0.99 && wrap > 0.99 && jumpSlewed < 1.0 / 200.0 && wrapSlewed < 1.0 / 200.0,
+                  "a drawn envelope's Slew smooths its shape's jumps and its loop's wrap");
+            check(samples > 1500 && samples < 4000 && d.level() < 1e-4,
+                  "a slewed drawn envelope let go stands idle once what it puts out has settled");
+        }
+
         // Sustain, its loop [0.25, 0.5] of a rise to 1 at a quarter and a fall to 0.5 by the half, flat after: held, it
         // rises once, then comes round its loop; let go mid-loop, it goes on from the level it was at, sliding onto the
         // shape by its end, no step past the shape's own, and fades out from there.
@@ -8942,6 +8983,42 @@ int main() {
         const float full = clipped(0.0), down = clipped(-12.0);
         std::printf("      clipped sine: peak %.3f at 0 dB, %.3f at -12 dB (x%.3f)\n", full, down, down / full);
         check(std::abs(down / full - 0.2512f) < 0.005f, "Volume sets the level after the effects");
+    }
+
+    // --- A Curve source's Slew lags what it puts out behind its curve: a square at 1 Hz, 10 ms after it steps up, has
+    // gone all the way without one and about a tenth of it with a 100 ms slew (from where it was), as a MIDI source's
+    // Slew follows its controller.
+    std::printf("curve slew:\n");
+    {
+        auto at = [](double slew) {
+            Engine e(2);
+            e.p[paramIndex(0, SourceParam::Type)] = static_cast<double>(SourceType::Curve);
+            e.p[paramIndex(0, SourceParam::Sync)] = 0.0;
+            e.p[paramIndex(0, SourceParam::Rate)] = normFromRate(1.0);
+            e.p[paramIndex(0, SourceParam::CurveSlew)] = slew;
+            e.p[shapeCountIndex(0)] = 4.0;
+            const double square[4][3] = {{0.0, -1.0, 0.0}, {0.5, -1.0, 0.0}, {0.5, 1.0, 0.0}, {1.0, 1.0, 0.0}};
+            for (int i = 0; i < 4; ++i)
+                for (int f = 0; f < 3; ++f)
+                    e.p[shapePointIndex(0, i, static_cast<PointField>(f))] = square[i][f];
+            e.p[slotTargetIndex(0, 0)] = slotTargetValue(paramIndex(GlobalParam::FmAmount));
+            e.p[slotAmountIndex(0, 0)] = 0.1;
+            e.noteOn(60);
+            Telemetry t;
+            e.render(19200); // 0.4 s: low
+            e.synth().telemetry(t);
+            const float low = t.sources[0];
+            e.render(4800 + 480); // 10 ms after the step up
+            e.synth().telemetry(t);
+            return std::pair{low, t.sources[0]};
+        };
+        const auto [low, plain] = at(0.0);
+        const auto [lowSlewed, slewed] = at(normFromTime(0.1));
+        const float share = (slewed - lowSlewed) / (plain - low);
+        std::printf("      10 ms after the step: %.3f of the way with a 100 ms slew (from %.3f to %.3f without)\n", share,
+                    low, plain);
+        check(plain - low > 0.4f && std::abs(lowSlewed - low) < 1e-6f && share > 0.04f && share < 0.25f,
+              "a Curve source's Slew lags what it puts out behind its curve");
     }
 
     // --- A mod envelope releases after its key is let go, its voice running on (silently, once its operators have

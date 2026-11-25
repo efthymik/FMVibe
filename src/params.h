@@ -114,8 +114,9 @@ enum class OpParam {
     // start and its last at the end), y -1..1 for a level of 0..1. EnvSustain (on to begin with) loops the loop
     // region, EnvLoopStart to EnvLoopEnd (the whole shape to begin with), while the key is down; off (One-Shot) it
     // plays the shape once and holds where it ends. Let go, it plays on to its end from the level it is at, and fades
-    // out there. EnvLength is the whole shape's time, a Time, or synced (EnvSync), EnvDivision's note value. Hidden
-    // from hosts, as the drawn shapes are; EnvLength takes modulation.
+    // out there. EnvLength is the whole shape's time, a Time, or synced (EnvSync), EnvDivision's note value. EnvSlew
+    // lags what it puts out behind its shape (Off at 0), smoothing its jumps and its loop's wrap. Hidden from hosts, as
+    // the drawn shapes are; EnvLength and EnvSlew take modulation.
     EnvMode,
     EnvSustain,
     EnvLoopStart,
@@ -123,6 +124,7 @@ enum class OpParam {
     EnvLength,
     EnvSync,
     EnvDivision,
+    EnvSlew,
     Count
 };
 // Slope: 6, 12, 18 or 24 dB per octave, for the types that have one (see hasSlope() and filterSlope()).
@@ -244,6 +246,7 @@ enum class SourceParam {
     CurveSustain,
     LoopStart,
     LoopEnd,
+    CurveSlew, // a Curve's: what it puts out lags behind its curve, Off at 0 (see Synth::curveSlew())
     Count
 };
 // A freeform LFO shape, one per source: PointCount points, then
@@ -1221,6 +1224,7 @@ constexpr bool sourceFieldUsedBy(SourceParam f, SourceType t) {
     case SourceParam::CurveSustain:
     case SourceParam::LoopStart:
     case SourceParam::LoopEnd:
+    case SourceParam::CurveSlew:
         return t == SourceType::Curve;
     default:
         return f < SourceParam::Attack ? t == SourceType::Lfo : t == SourceType::Env;
@@ -1948,7 +1952,8 @@ static_assert(idOfIndex(paramIndex(0, OpParam::RetiredCoarse)) == 100 && idOfInd
                   idOfIndex(paramIndex(0, OpParam::UnisonCurve)) == 134 &&
                   idOfIndex(paramIndex(kOps - 1, OpParam::UnisonBlend)) == 386 && kOpParamCount <= 50 &&
                   idOfIndex(paramIndex(0, OpParam::EnvMode)) == 137 &&
-                  idOfIndex(paramIndex(kOps - 1, OpParam::EnvDivision)) == 393,
+                  idOfIndex(paramIndex(kOps - 1, OpParam::EnvDivision)) == 393 &&
+                  idOfIndex(paramIndex(kOps - 1, OpParam::EnvSlew)) == 394,
               "operator param ids moved");
 static_assert(idOfIndex(matrixIndex(0, 0)) == 400 && idOfIndex(matrixIndex(kOps - 1, kOps - 1)) == 455,
               "matrix param ids moved");
@@ -1983,6 +1988,8 @@ static_assert(idOfIndex(paramIndex(0, SourceParam::Type)) == 2800 &&
                   idOfIndex(paramIndex(kFirstSources - 1, SourceParam::Anchor)) == 3433 &&
                   idOfIndex(paramIndex(0, SourceParam::CurveSustain)) == 2834 &&
                   idOfIndex(paramIndex(kFirstSources - 1, SourceParam::LoopEnd)) == 3436 &&
+                  idOfIndex(paramIndex(0, SourceParam::CurveSlew)) == 2837 &&
+                  idOfIndex(paramIndex(kFirstSources - 1, SourceParam::CurveSlew)) == 3437 &&
                   idOfIndex(slotTargetIndex(0, kFirstSlots)) == 6000 &&
                   idOfIndex(slotAmountIndex(kFirstSources - 1, kSlots - 1)) == 6473,
               "source param ids moved");
@@ -2108,6 +2115,7 @@ static_assert(idOfIndex(paramIndex(kFirstSources, SourceParam::Type)) == 58000 &
                   idOfIndex(paramIndex(kMaxSources - 1, SourceParam::Anchor)) == 59557 &&
                   idOfIndex(paramIndex(kFirstSources, SourceParam::CurveSustain)) == 58058 &&
                   idOfIndex(paramIndex(kMaxSources - 1, SourceParam::LoopEnd)) == 59560 &&
+                  idOfIndex(paramIndex(kMaxSources - 1, SourceParam::CurveSlew)) == 59561 &&
                   kSourceParamCount <= 100 && idOfIndex(shapeCountIndex(kFirstSources)) == 60000 &&
                   idOfIndex(shapePointIndex(kMaxSources - 1, kMaxShapePoints - 1, PointField::Curve)) == 63192 &&
                   kShapeParamCount <= 200 && idOfIndex(slotBypassIndex(kFirstSources, 0)) == 9680 &&
@@ -2262,6 +2270,9 @@ inline double timeFromNorm(double x) { return kMinTime * std::pow(kMaxTime / kMi
 inline double normFromTime(double seconds) { return std::log(seconds / kMinTime) / std::log(kMaxTime / kMinTime); }
 // Where kMaxEnvTime sits on that curve: the top of the envelopes' attack, hold, decay and release.
 inline const double kMaxEnvNorm = normFromTime(kMaxEnvTime);
+// A drawn envelope's and a Curve's Slew, Off up to a second (a voice runs on until its lag has settled).
+constexpr double kMaxSlewTime = 1.0;
+inline const double kMaxSlewNorm = normFromTime(kMaxSlewTime);
 // The longest glide, on the same curve; a state or preset with a longer one loads it as this.
 constexpr double kMaxGlideTime = 6.0;
 inline const double kMaxGlideNorm = normFromTime(kMaxGlideTime);

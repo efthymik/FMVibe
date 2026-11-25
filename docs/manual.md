@@ -285,6 +285,8 @@ about the same; switching back to ADSR keeps the curve for later.
 - Draw it on the display as you would a shaper's curve: double-click to add or delete a point, drag points, and
   drag the small dots between them to bend a segment.
 - **Length** sets how long the whole curve takes. With the metronome switch on, it is a note value at the tempo.
+- **Slew** smooths the envelope: it can't jump faster than the time you set. Turn it up a little when a jump in the
+  curve, or the loop coming round from one level to another, clicks. It is off to begin with.
 - **One-Shot** plays the curve once from each note and holds its last level while the key is down.
 - **Sustain** loops part of the curve while the key is down. Drag the bar along the top of the display to set the
   loop: its ends size it and its middle moves it. Hold Shift or Ctrl to move it off the grid.
@@ -731,7 +733,8 @@ The **shape tools**, each one undo step:
 
 For editing points, see [Shape editors](#shape-editors). Where an LFO has its shape list, a Curve source has its
 **clock mode** as a list; its arrows and the mouse wheel step through the modes. The **Unipolar** switch sits under the
-sync button, as on an LFO.
+sync button, as on an LFO. Under the list, **Slew** smooths what the curve puts out, so its jumps glide instead of
+stepping; it is off to begin with.
 
 A Curve source has a fifth clock mode, **Sustain**, after One-Shot. It works like an envelope with a sustain loop:
 

@@ -44,9 +44,11 @@ What the plugin does and how its editor works, in full. Building and installing 
     by the next point, or a 5 ms glide where the loop ends on a drop or at the curve's end), and a curve ending above
     0 fades out over 5 ms there, so the voice can end. It is stepped per sample (`DrawnEnvelope` in
     `src/drawnenvelope.h`, which `Envelope` follows in a stage of its own, so the voices' loop calls it as before):
-    each segment's bend kept as an exponential multiplied each sample, not worked out again. Its fields and shape are
-    the editor's alone (hidden from hosts); Length can be modulated, at the control rate. An operator on its AHDSR
-    costs what it did;
+    each segment's bend kept as an exponential multiplied each sample, not worked out again. **Slew** (Off to begin
+    with, up to 1 s) lags what it puts out behind its shape, a one-pole lag a sample at a time, so a jump drawn in it
+    or its loop wrapping from one level to another doesn't click; slewed, its voice ends only once what it puts out has
+    settled under -80 dB. Its fields and shape are the editor's alone (hidden from hosts); Length and Slew can be
+    modulated, at the control rate. An operator on its AHDSR costs what it did;
   - **Fixed** pitch (off by default): the operator plays at **Freq** (1 Hz–2 kHz on a log curve) times **Mult**
     (×0.001, ×0.01, ×0.1, ×1 or ×10), so 1 mHz to 20 kHz, whatever the note. The note, pitch bend, glide, the
     global Pitch and the note's tuning don't move it, nor do its ratio, Pitch and Detune, or modulation on them;
@@ -492,6 +494,9 @@ What the plugin does and how its editor works, in full. Building and installing 
     the curve long comes round twice as often. A loop of no length, which only a host or a saved state can make,
     holds where it is. Its ends are saved with the patch, as params of the editor's own that nothing modulates, and
     are set on the loop's bar over the shape, or from a point's right-click menu (see the shape editor).
+  - A Curve source's **Slew** (Off to begin with, up to 1 s) lags what it puts out behind its curve, from where the
+    curve is as the note starts, as a MIDI source's Slew follows its controller: a jump in the curve, or its loop
+    wrapping, glides instead of stepping. Off, it puts out its curve as it always did.
   - In One-Shot and Sustain, unsynced, a Curve source's **Rate** reads as the curve's **length** (1.20 s rather than
     0.83 Hz), on its knob and in its full-size editor, whose label then says Length, and a length typed into it ("1.5
     s", "800 ms") sets it; a rate typed with "Hz" still goes. The param is still the rate, so nothing saved changes.
@@ -1921,7 +1926,7 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
       does. The curve has the whole display; its controls are in the row under the well, which starts with **ADSR**
       over **Curve**, one pill of two icons (an AHDSR's shape, and a curve through its points, named in their
       tooltips), then the AHDSR's five knobs, a little closer together for it; with Curve, One-Shot | Sustain (the
-      Curve source's icons), its sync switch (the metronome), Length and, at the right, a pencil. Switched to Curve
+      Curve source's icons), its sync switch (the metronome), Length, Slew and, at the right, a pencil. Switched to Curve
       the first time (its shape still
       as a new patch has it), the curve is drawn from the AHDSR in the same undo step: the attack, hold and decay, a
       flat stretch at the sustain level as Sustain's loop (a quarter of the other times, at least 50 ms), then the
@@ -1930,8 +1935,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
       settings), with its loop's bar along its top in Sustain and the ruler's times under it, clear of the curve's
       foot; Length is a note value while synced. While notes play, a dashed line across shows the newest
       voice's level and a dot where it is on the curve. The pencil opens its full-size editor over the routing panel,
-      the inspector staying beside it (the tab's display greyed out meanwhile), with One-Shot | Sustain, sync and
-      Length in its title row, the loop's strip and ruler over the plot as a Curve source's has them, and the point
+      the inspector staying beside it (the tab's display greyed out meanwhile), with One-Shot | Sustain, sync, Length
+      and Slew in its title row, the loop's strip and ruler over the plot as a Curve source's has them, and the point
       menu's Set as Loop Start and Set as Loop End; the pencil again, Done, a view's tab or ADSR closes it.
     - **Unison**: a display of where the copies sit (left/right by spread, up/down by detune, each drawn as large
       and as strong as Blend leaves it; a Random mode as one note might spread them), with a row of buttons along
@@ -2088,8 +2093,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     last (a rise, a level between two ticks and a fall), as a list where an LFO's shape list is: its button shows the
     mode it runs in, its icon and name, with arrows that step along the list, round its ends, and the wheel over it
     steps along it too; its list shows the five with their icons, the one in force checked (the button shows no
-    tooltip, as an LFO's shape list doesn't). Each pick, step or wheel notch is one undo step. The row under it, where an LFO's clock buttons are, is
-    clear but for the Unipolar switch. Right of those two rows, centered
+    tooltip, as an LFO's shape list doesn't). Each pick, step or wheel notch is one undo step. The row under it, where an LFO's clock buttons are,
+    holds its **Slew**, a small knob with its name and value beside it, and the Unipolar switch. Right of those two rows, centered
     on them, are the Rate and Phase knobs (a Random card's Rate alone; a Curve's Rate labeled Length while it reads as
     one),
     over a Random card's Smooth and Chaos, with the sync switch between the shape list and Rate, level with the list: a small square button

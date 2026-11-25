@@ -1614,6 +1614,11 @@ std::vector<View::Widget> View::widgets() const {
                 add(Kind::ListButton, lfoShapeButton(card), clock);
                 if (listMenu_ == clock)
                     lfoList = lfoShapeButton(card);
+                // Its Slew in the row under the list, small, its name and value beside it.
+                add(Kind::Knob, curveSlewKnob(card), paramIndex(s, SourceParam::CurveSlew));
+                list.back().label = tr(Str::LabelSlew);
+                list.back().compact = true;
+                list.back().shrunk = true;
             } else {
                 add(Kind::ListButton, lfoShapeButton(card), paramIndex(s, SourceParam::Shape));
                 if (listMenu_ == paramIndex(s, SourceParam::Shape))
@@ -1628,8 +1633,8 @@ std::vector<View::Widget> View::widgets() const {
             // Synced, the knob picks a note value instead of a rate and shows it as its label.
             add(Kind::Toggle, sourceSync(card), paramIndex(s, SourceParam::Sync));
             // Its clock modes under the shape list, one of them lit, as Poly | Mono; each sets Free, Anchor and
-            // One-Shot for it (see setLfoClock()), and stands for them all (a Curve's are its list, that row left
-            // clear). Unipolar under the sync switch. A Random card has no Unipolar switch, which its polarity stands
+            // One-Shot for it (see setLfoClock()), and stands for them all (a Curve's are its list, its Slew in that
+            // row). Unipolar under the sync switch. A Random card has no Unipolar switch, which its polarity stands
             // for, and no Phase, which it takes none of.
             if (!curve) {
                 const size_t modes = list.size();

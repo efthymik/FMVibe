@@ -479,7 +479,7 @@ private:
         double pressure = -1.0; // its note's aftertouch, 0..1, or -1 while none came: the channel's stands in
         double slide = 0.5;     // its note's slide, 0..1, resting in the middle
         bool newRandom = false; // (re)started: its random LFOs take a new value in its next block
-        std::array<double, kMaxSources> follow{}; // what Midi sources put out, 0..1
+        std::array<double, kMaxSources> follow{}; // what Midi sources put out, 0..1, and Curves through their Slew
         double fmScale = 0.0;   // ramped, like the output gains and levels
         Levels levels{};
         double gainL = 0.0;
@@ -627,6 +627,7 @@ private:
     void advanceLfo(Lfo &lfo, double hz, uint32_t frames, uint32_t &rng, bool oneShot, double chaos,
                     LfoLoop loop = {}, CurveRelease *release = nullptr) const;
     double voiceLfo(Voice &v, int s, const double *p, const ParamValues &params, uint32_t hostFrames) const;
+    double curveSlew(Voice &v, int s, double in, const double *p, uint32_t hostFrames) const;
     // An operator's drawn envelope for this block, its Envelope following it, or its AHDSR again once it is switched
     // back (see OpParam::EnvMode); `p` are the voice's params.
     void followDrawn(Voice &v, int op, const double *p, const ParamValues &params);

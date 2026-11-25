@@ -1099,6 +1099,11 @@ Rect ShapeEditor::opEnvTitleKnob() const {
     return {opEnvTitleSync().right() + 8.0f, shapePanel().y, 92.0f, 40.0f};
 }
 
+Rect ShapeEditor::opEnvTitleSlew() const {
+    const Rect length = opEnvTitleKnob();
+    return {length.right() + 4.0f, length.y, length.w, length.h};
+}
+
 // An operator's drawn envelope: its level up from the bottom, its time across, filled from the bottom as a unipolar
 // shape is; a line across at the newest voice's level and a dot on the shape where it is, as an envelope's.
 void ShapeEditor::paintOpEnvCurve(Canvas &c, int shape, Rect r) {
@@ -1159,7 +1164,7 @@ void ShapeEditor::paintOpEnvEditor(Canvas &c, int shape) {
     c.fillRect(title, color.alpha(0.18f), kRadiusControl);
     c.text(title, trf(Str::TitleOpEnvelope, {std::string(1, static_cast<char>('A' + op))}), kTextBody, color,
            Align::Center, true);
-    const float hint = opEnvTitleKnob().right();
+    const float hint = opEnvTitleSlew().right();
     c.text({hint + 12.0f, title.y + 1.0f, shapeReset().x - hint - 24.0f, 22.0f}, shapeHint(), kTextLabel, kFaint,
            Align::Right);
     const Rect r = shapeArea();
@@ -1753,6 +1758,9 @@ void ShapeEditor::widgets(std::vector<Widget> &list) const {
             const bool synced = value(paramIndex(op, OpParam::EnvSync)) >= 0.5;
             add(Kind::Knob, opEnvTitleKnob(), paramIndex(op, synced ? OpParam::EnvDivision : OpParam::EnvLength));
             list.back().label = tr(Str::LabelLength);
+            list.back().compact = true;
+            add(Kind::Knob, opEnvTitleSlew(), paramIndex(op, OpParam::EnvSlew));
+            list.back().label = tr(Str::LabelSlew);
             list.back().compact = true;
             if (loopShown(editing))
                 add(Kind::ShapeLoop, loopStrip(editing), -1, editing);

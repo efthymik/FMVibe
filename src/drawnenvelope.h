@@ -21,6 +21,9 @@ namespace fmvibe {
 // end reached once let go, it fades out over fadeSeconds, and stands idle: an operator that is done. A note starting
 // it again, or a first note on a shape that starts above nothing, starts from the level it was at, the same way.
 //
+// With a slew, what it puts out lags behind all that, a one-pole lag, smoothing the shape's jumps and its loop's wrap;
+// it stands idle only once that has settled. Without, it puts out its level as it is.
+//
 // start() and release() only note what happened: prepare(), before each block's samples, takes them up, as it has the
 // shape and its time then.
 class DrawnEnvelope {
@@ -40,23 +43,22 @@ public:
     // Stops at once, keeping what start() asked if it hasn't been taken up (a note held as the editor switches the
     // operator back to its AHDSR: switched back again, it starts from where the operator is then).
     void stop() {
-        stage_ = Stage::Idle;
-        level_ = 0.0;
-        startAsked_ = held_;
-        releaseAsked_ = false;
+        end();
+        out_ = 0.0;
     }
 
-    bool idle() const { return stage_ == Stage::Idle && !startAsked_; }
+    bool idle() const { return stage_ == Stage::Idle && !startAsked_ && out_ < kSettled; }
     bool held() const { return held_; }
-    double level() const { return level_; }
+    double level() const { return out_; } // what it puts out
     // Where it is along its shape, 0..1, for the editor; -1 while idle.
     double phase() const { return stage_ == Stage::Idle ? -1.0 : x_; }
 
     // The shape (its point count, then its points), how many samples the whole of it lasts, its loop region (0..1,
-    // start no later than end) and whether it loops it while held; and `from`, the level an operator is at, which a
-    // start goes on from.
+    // start no later than end) and whether it loops it while held; `from`, the level an operator is at, which a start
+    // goes on from; and its slew's time constant in samples (0 for none).
     void prepare(const double *shape, double samples, double loopStart, double loopEnd, bool sustain, double from,
-                 double sampleRate) {
+                 double sampleRate, double slewSamples = 0.0) {
+        slew_ = slewSamples > 0.0 ? -std::expm1(-1.0 / slewSamples) : 0.0;
         shape_ = shape;
         count_ = shapePointCount(shape[0]);
         samples_ = std::max(samples, 1.0);
@@ -85,13 +87,26 @@ public:
     }
 
     double next() {
+        const double level = step();
+        if (slew_ > 0.0)
+            out_ += (level - out_) * slew_;
+        else
+            out_ = level;
+        return out_;
+    }
+
+private:
+    enum class Stage { Idle, Play, Hold, Fade };
+    static constexpr double kSettled = 1e-4; // -80 dB: a slewed level this near nothing is done
+
+    double step() {
         switch (stage_) {
         case Stage::Play:
             return play();
         case Stage::Fade:
             level_ -= fadeFrom_ * fadeStep_;
             if (level_ <= 0.0)
-                stop();
+                end();
             return level_;
         case Stage::Hold:
         case Stage::Idle:
@@ -99,9 +114,14 @@ public:
         }
         return level_;
     }
-
-private:
-    enum class Stage { Idle, Play, Hold, Fade };
+    // At its end, done (what it puts out still settling, with a slew), keeping what start() asked if it hasn't been
+    // taken up.
+    void end() {
+        stage_ = Stage::Idle;
+        level_ = 0.0;
+        startAsked_ = held_;
+        releaseAsked_ = false;
+    }
 
     double pointX(int point) const {
         return point <= 0 ? 0.0 : point >= count_ - 1 ? 1.0 : shape_[shapeFieldIndex(0, point, PointField::X)];
@@ -181,7 +201,7 @@ private:
         fadeFrom_ = level_;
         stage_ = level_ > 0.0 ? Stage::Fade : Stage::Idle;
         if (stage_ == Stage::Idle)
-            stop();
+            end();
     }
 
     double play() {
@@ -219,7 +239,9 @@ private:
     bool held_ = false;
     bool startAsked_ = false;
     bool releaseAsked_ = false;
-    double level_ = 0.0;
+    double level_ = 0.0; // along its shape, before its slew
+    double out_ = 0.0;   // what it puts out
+    double slew_ = 0.0;  // a sample's share of the way to its level, 0 for none
     double x_ = 0.0;
     // The segment it is in: its index, its start and length along the shape, its first level and its rise, how far
     // along it is (t_) and by how much a sample (dt_), and for a bent one exp(8 curve t) (e_), its step and scale.

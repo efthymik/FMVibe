@@ -206,7 +206,7 @@ inline Rect inputsModeName(float y) { return {kOpWell.x + 146.0f, y, 66.0f, 18.0
 inline Rect inputsDepth(float y) { return {kOpWell.right() - 12.0f - 48.0f, y, 48.0f, 18.0f}; }
 // Envelope: the curve on the whole display; in the row under the well, at its left, ADSR over Curve (their icons, one
 // pill), then the AHDSR's five knobs, or for a drawn envelope One-Shot | Sustain, its sync switch, its Length and, at
-// the right, the pencil that opens its full-size editor.
+// the right, the pencil that opens its full-size editor, with its Slew between them.
 constexpr Rect kOpEnvRect = kOpDisplay;
 inline Rect opEnvModeButton(int curve) { // 0 ADSR, over 1 Curve
     return {kOpDisplay.x, kOpControlsY - 20.0f + curve * 20.0f, 26.0f, 20.0f};
@@ -220,6 +220,7 @@ inline Rect opEnvSustainButton(int sustain) { // 0 One-Shot, 1 Sustain, as the C
 }
 inline Rect opEnvSyncButton() { return {kInspector.x + 148.0f, kOpControlsY - 11.0f, 24.0f, 22.0f}; }
 constexpr Point kOpEnvLengthKnob{kInspector.x + 196.0f, kOpControlsY};
+constexpr Point kOpEnvSlewKnob{kInspector.x + 236.0f, kOpControlsY};
 inline Rect opEnvEditButton() { return {kOpDisplay.right() - 26.0f, kOpControlsY - 11.0f, 26.0f, 22.0f}; }
 // A drawn envelope's plot in the display: room above it for its loop's strip, and under it for the ruler's times.
 constexpr Rect kOpEnvPlot{kOpDisplay.x + 10.0f, kOpDisplay.y + 16.0f, kOpDisplay.w - 20.0f, 80.0f};
@@ -919,6 +920,13 @@ inline Rect sourceSync(float card) {
     const Point rate = lfoKnob(card, 0);
     const float x = (lfoModeSwitch(card, kLfoModes - 1).right() + rate.x - 15.0f) * 0.5f;
     return {x - 10.0f, lfoShapeButton(card).center().y - 10.0f, 20.0f, 20.0f};
+}
+
+// A Curve card's Slew, a small knob with its name and value beside it, in the row under its clock modes' list (where
+// an LFO's clock buttons are), between the list and the display.
+inline Rect curveSlewKnob(float card) {
+    const Rect list = lfoShapeButton(card);
+    return {list.x, list.bottom() + 1.0f, list.w, sourceDisplay(card).y - list.bottom() - 2.0f};
 }
 
 // Under it, level with the clock modes, the Unipolar switch.
