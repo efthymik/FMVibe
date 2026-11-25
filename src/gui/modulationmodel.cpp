@@ -144,9 +144,14 @@ ModulationModel::CurveTime ModulationModel::curveTime(int source) const {
     auto get = [this](int index) { return value(index); };
     if (value(paramIndex(source, SourceParam::Sync)) >= 0.5)
         return CurveTime::Beats;
-    const LfoClock clock = lfoClock(get, source);
-    return (clock == LfoClock::OneShot || clock == LfoClock::Sustain) && !lfoHeld(get, source) ? CurveTime::Seconds
-                                                                                               : CurveTime::Share;
+    return lfoHeld(get, source) ? CurveTime::Share : CurveTime::Seconds;
+}
+
+bool ModulationModel::curveRateAsLength(int source) const {
+    if (curveTime(source) != CurveTime::Seconds)
+        return false;
+    const LfoClock clock = lfoClock([this](int index) { return value(index); }, source);
+    return clock == LfoClock::OneShot || clock == LfoClock::Sustain;
 }
 
 double ModulationModel::curveLength(int source) const {

@@ -4703,7 +4703,8 @@ void testCurveLoop(const std::filesystem::path &dir, Renderer &renderer) {
               std::abs(typedMs - 1.25) < 1e-6 && std::abs(typedHz - 2.0) < 1e-6 && oneShotShown == "500.0 ms",
           "a Curve's Rate reads and takes a length in One-Shot and Sustain, unsynced, and a rate otherwise");
 
-    // Its places read as times there, in bars and beats synced, else as a share of the cycle.
+    // Its places read as times unsynced, looped too (along a cycle of its Rate), in bars and beats synced, and as a
+    // share of the cycle standing still at 0 Hz.
     {
         ModulationModel mods(model);
         model.set(paramIndex(0, SourceParam::Rate), normFromRate(1.0 / 1.2));
@@ -4717,11 +4718,14 @@ void testCurveLoop(const std::filesystem::path &dir, Renderer &renderer) {
         const std::string beats = mods.curvePlace(0, 0.3125, false), beat = mods.curvePlace(0, 0.25, true);
         model.set(paramIndex(0, SourceParam::Sync), 0.0);
         model.set(oneShot, 0.0);
+        const std::string looped = mods.curvePlace(0, 0.31, false);
+        model.set(paramIndex(0, SourceParam::Rate), 0.0);
         const std::string share = mods.curvePlace(0, 0.31, false);
-        std::printf("      a Curve's places: %s (%s), %s (%s), %s\n", seconds.c_str(), secondsBrief.c_str(),
-                    beats.c_str(), beat.c_str(), share.c_str());
-        check(seconds == "0.30 s" && secondsBrief == "0.3 s" && beats == "1.2.2" && beat == "1.2" && share == "31.0 %",
-              "a Curve's places read as times in One-Shot and Sustain, in bars and beats synced, else as a share");
+        std::printf("      a Curve's places: %s (%s), %s (%s), %s, %s\n", seconds.c_str(), secondsBrief.c_str(),
+                    beats.c_str(), beat.c_str(), looped.c_str(), share.c_str());
+        check(seconds == "0.30 s" && secondsBrief == "0.3 s" && beats == "1.2.2" && beat == "1.2" &&
+                  looped == "0.37 s" && share == "31.0 %",
+              "a Curve's places read as times unsynced, looped too, in bars and beats synced, and as a share at 0 Hz");
     }
     model.set(paramIndex(0, SourceParam::Rate), normFromRate(1.0 / 1.2));
     view.poll();
@@ -15319,6 +15323,23 @@ void run(const std::filesystem::path &dir, float scale) {
           "the pencil opens the big curve editor, which adds points too");
     view.mouseMove(clipAt(0.3, -0.5), {});
     check(renderer.save(view, dir / "8c-clip-curve.png"), "render the shaper's big curve editor");
+    {
+        // Under its plot, left of the grid's controls, how to edit it, in two lines where one doesn't fit, clear of
+        // GRID: the strip before that label (x 614 to 622, the hint ending at 612) as bare as with a point's readout,
+        // which is short (read off the rendered pixels).
+        auto strip = [&] {
+            std::vector<uint32_t> pixels;
+            for (float y = 470.0f; y <= 498.0f; y += 1.0f)
+                for (float x = 614.0f; x <= 622.0f; x += 1.0f)
+                    pixels.push_back(renderer.pixel({x, y}));
+            return pixels;
+        };
+        const std::vector<uint32_t> readout = strip();
+        view.mouseMove({600.0f, 160.0f}, {}); // off the points: the hint
+        const bool hintShot = renderer.save(view, dir / "8c-clip-curve-hint.png");
+        check(hintShot && strip() == readout,
+              "a shaper's big curve editor's hint stays clear of the grid's label (read off the rendered pixels)");
+    }
     {
         // Snap, in its title row, snaps a dragged point to the grid without Ctrl (16 across).
         model.layout().shapeGridX = 16;

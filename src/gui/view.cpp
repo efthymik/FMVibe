@@ -1635,7 +1635,7 @@ std::vector<View::Widget> View::widgets() const {
                 paramIndex(s, random ? SourceParam::Bipolar : SourceParam::Unipolar));
             // A Curve playing its curve once from each note takes and shows a length (see shownValue()).
             const bool synced = value(paramIndex(s, SourceParam::Sync)) >= 0.5;
-            const bool length = mods_.curveTime(s) == ModulationModel::CurveTime::Seconds;
+            const bool length = mods_.curveRateAsLength(s);
             knob(synced ? paramIndex(s, SourceParam::Division) : paramIndex(s, SourceParam::Rate),
                  clockFirst ? curveKnob(card, 0) : lfoKnob(card, 0), 30.0f,
                  synced ? nullptr : tr(length ? Str::LabelLength : Str::LabelRate));
@@ -8044,8 +8044,7 @@ void View::startTyping(const Widget &w) {
 namespace {
 // Whether a Curve's Rate param reads as its curve's length now.
 bool rateAsLength(const ModulationModel &mods, int index) {
-    return sourceFieldOf(index) == SourceParam::Rate &&
-           mods.curveTime(sourceOf(index)) == ModulationModel::CurveTime::Seconds;
+    return sourceFieldOf(index) == SourceParam::Rate && mods.curveRateAsLength(sourceOf(index));
 }
 } // namespace
 

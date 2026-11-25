@@ -501,8 +501,9 @@ What the plugin does and how its editor works, in full. Building and installing 
     0.83 Hz), on its knob and in its full-size editor, whose label then says Length, and a length typed into it ("1.5
     s", "800 ms") sets it; a rate typed with "Hz" still goes. The param is still the rate, so nothing saved changes.
     At 0 Hz it reads as a rate, as it always did. Its places along the curve (a point's readout, the ruler over its
-    full-size editor) read likewise as times there; synced, in bars and beats (1.2.1: bar, beat, sixteenth, from
-    the cycle's start); otherwise as a share of the cycle.
+    full-size editor and along its widened card's plot) read as times whenever it is unsynced and moving, a looping
+    one's along a cycle of its Rate; synced, in bars and beats (1.2.1: bar, beat, sixteenth, from the cycle's start);
+    standing still at 0 Hz, as a share of the cycle.
 - **Effects**, after the voices: everything the operators and filters send to the output runs through up to 32
   effects. A new instance starts with none. Any effect can be added more than once, switched on and off, reordered and
   removed. A patch saved while the chain held 16 loads its effects in the order they had. Once nothing goes in and

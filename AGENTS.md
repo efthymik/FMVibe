@@ -895,7 +895,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     Phase and Slew knobs alike beside it, Slew Off to begin with and dragged up undoably, an LFO card beside it
     picking its clock mode from a list of its own, its Unipolar switch beside it; its Rate, unsynced, shown and typed as the
     curve's length in One-Shot and Sustain (a length in s or ms, or a rate in Hz) and as a rate retriggered; its
-    places reading as times there, in bars and beats synced, else as a share; its full-size editor's title row
+    places reading as times unsynced (looped too), in bars and beats synced, else as a share at 0 Hz; its full-size editor's title row
     setting its clock mode from a list of its own (opening under its button, not the card's), its Unipolar and its sync,
     and its Phase and Slew knobs taking the wheel;
     its Phase knob held drawing a line where notes would start it, there and in the widened card, and not once let go

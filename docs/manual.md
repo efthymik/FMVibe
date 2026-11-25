@@ -764,8 +764,9 @@ The bar snaps to the grid's columns unless Shift or Ctrl is held. One-Shot shows
 dimmed.
 
 In One-Shot and Sustain, with Sync off, the **Rate** knob shows the curve's **length** instead (for example 1.20 s).
-You can type a length too, such as "1.5 s" or "800 ms". The point readout and the ruler then show times. With Sync on
-they show bars and beats, otherwise a percentage of the cycle.
+You can type a length too, such as "1.5 s" or "800 ms". With Sync off, the point readout and the ruler show times in
+every clock mode (one cycle's worth when the curve loops). With Sync on they show bars and beats. At 0 Hz they show a
+percentage of the curve.
 
 The full-size editor's title row has the clock mode list, the Unipolar and sync switches, and Rate, Phase and Slew,
 as on the card.

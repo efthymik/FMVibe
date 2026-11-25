@@ -15,6 +15,7 @@
 #include <numbers>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace fmvibe::gui {
@@ -143,6 +144,31 @@ Rect ShapeEditor::shapeModeButton(int mode) const {
 Rect ShapeEditor::shapeSymButton() const {
     const Rect points = shapeModeButton(0);
     return {points.x - 8.0f - 44.0f, points.y, 44.0f, points.h};
+}
+
+// How to edit, under a narrow editor's plot in `box`, left: on one line where it fits, else in smaller type over two,
+// broken between its parts (at the dots between them).
+static void paintHintBelow(Canvas &c, Rect box, const std::string &hint) {
+    if (c.textWidth(hint, kTextLabel) <= box.w) {
+        c.text(box, hint, kTextLabel, kFaint, Align::Left);
+        return;
+    }
+    constexpr std::string_view kDot = "  \xC2\xB7  ";
+    std::string lines[2];
+    for (size_t from = 0, line = 0; from <= hint.size();) {
+        const size_t at = std::min(hint.find(kDot, from), hint.size());
+        const std::string part = hint.substr(from, at - from);
+        const std::string joined = lines[line].empty() ? part : lines[line] + std::string(kDot) + part;
+        if (line == 0 && !lines[0].empty() && c.textWidth(joined, kTextSmall) > box.w)
+            lines[line = 1] = part;
+        else
+            lines[line] = joined;
+        from = at + kDot.size();
+    }
+    constexpr float kLine = 11.0f;
+    for (int line = 0; line < 2; ++line)
+        c.text({box.x, box.center().y - kLine + line * kLine, box.w, kLine}, lines[line], kTextSmall, kFaint,
+               Align::Left);
 }
 
 // A little room above and below the full swing, so its points can be grabbed: 12 px, less in a card.
@@ -1254,15 +1280,15 @@ void ShapeEditor::paintClipCurveEditor(Canvas &c, int shape) {
 
     // The point under the mouse in numbers, or how to edit, under the plot left of the grid's controls.
     const Widget *focus = focused(DragKind::ShapePoint);
-    // (A voice shaper's editor has its switches there too, left of the grid's controls.)
-    const float end = isClipCurve(shape) ? shapeGridButton(0, 0).x : shapeSymButton().x;
+    // (A voice shaper's editor has its switches there too, left of the grid's controls and their label.)
+    const float end = isClipCurve(shape) ? shapeGridButton(0, 0).x - 48.0f : shapeSymButton().x;
     const Rect below{r.x, r.bottom() + 10.0f, end - 12.0f - r.x, 16.0f};
     if (focus && focus->kind == Kind::ShapePoint && focus->a == shape) {
         const std::string in = number("%+.2f", 2.0 * shapePointX(shape, focus->b) - 1.0);
         const std::string out = number("%+.2f", value(shapeIndex(shape, focus->b, PointField::Y)));
         c.text(below, trf(Str::CaptionCurvePoint, {std::to_string(focus->b + 1), in, out}), kTextLabel, kDim, Align::Left);
     } else {
-        c.text(below, shapeHint(), kTextLabel, kFaint, Align::Left);
+        paintHintBelow(c, below, shapeHint());
     }
 }
 
@@ -1729,7 +1755,7 @@ void ShapeEditor::widgets(std::vector<Widget> &list) const {
                 knob(0, paramIndex(op, synced ? OpParam::EnvDivision : OpParam::EnvLength), Str::LabelLength);
                 knob(2, paramIndex(op, OpParam::EnvSlew), Str::LabelSlew);
             } else {
-                const bool length = mods_.curveTime(editing) == ModulationModel::CurveTime::Seconds;
+                const bool length = mods_.curveRateAsLength(editing);
                 knob(0, paramIndex(editing, synced ? SourceParam::Division : SourceParam::Rate),
                      length ? Str::LabelLength : Str::LabelRate);
                 knob(1, paramIndex(editing, SourceParam::Phase), Str::LabelPhase);
