@@ -1932,7 +1932,7 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
       the first time (its shape still
       as a new patch has it), the curve is drawn from the AHDSR in the same undo step: the attack, hold and decay, a
       flat stretch at the sustain level as Sustain's loop (a quarter of the other times, at least 50 ms), then the
-      release, the segments' curves bent alike, Length their sum. The display then shows the drawn curve, edited in
+      release, the segments' curves bent alike, in their proportions, Length 1 s. The display then shows the drawn curve, edited in
       place as a voice shaper's curve is on its page (points, bends, Points | Steps and Snap from the grid's
       settings), with its loop's bar along its top in Sustain and the ruler's times under it, clear of the curve's
       foot; Length is a note value while synced. While notes play, a dashed line across shows the newest

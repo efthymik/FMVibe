@@ -1848,7 +1848,6 @@ void ShapeEditor::drawEnvelope(int op) {
         const double release = time(OpParam::Release);
         const double sustain = std::clamp(value(paramIndex(op, OpParam::Sustain)), 0.0, 1.0);
         const double column = std::max(0.25 * (attack + hold + decay + release), 0.05); // the loop: some room to see
-        const double total = std::min(attack + hold + decay + column + release, kMaxEnvTime);
         const double scale = 1.0 / (attack + hold + decay + column + release);
         struct Point {
             double x, y, curve;
@@ -1877,7 +1876,7 @@ void ShapeEditor::drawEnvelope(int op) {
         changes.push_back({paramIndex(op, OpParam::EnvSustain), 1.0});
         changes.push_back({paramIndex(op, OpParam::EnvLoopStart), loopStart});
         changes.push_back({paramIndex(op, OpParam::EnvLoopEnd), loopEnd});
-        changes.push_back({paramIndex(op, OpParam::EnvLength), normFromTime(std::max(total, kMinTime))});
+        changes.push_back({paramIndex(op, OpParam::EnvLength), normFromTime(1.0)}); // its proportions, a second long
     }
     editMany(changes);
 }

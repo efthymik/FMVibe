@@ -5004,7 +5004,7 @@ void testOpEnvCurve(const std::filesystem::path &dir, Renderer &renderer) {
     const double total = 0.1 + hold + 0.3 + column + 0.4;
     const int count = static_cast<int>(model.value(shape));
     const bool filled = model.value(mode) == 1.0 && model.value(sustain) == 1.0 && count == (hold > 0.0 ? 6 : 5) &&
-                        std::abs(timeFromNorm(model.value(length)) - total) < 1e-6 * total &&
+                        std::abs(timeFromNorm(model.value(length)) - 1.0) < 1e-6 &&
                         std::abs(point(1, PointField::X) - 0.1 / total) < 1e-9 && point(1, PointField::Y) == 1.0 &&
                         point(count - 3, PointField::X) == model.value(loopStart) &&
                         point(count - 2, PointField::X) == model.value(loopEnd) &&
