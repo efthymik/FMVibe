@@ -139,6 +139,7 @@ public:
 
     void forgetScoped() override;
     void widgets(std::vector<Widget> &list) const override; // a full-size editor's, while one is open
+    void popups(std::vector<Widget> &list) const override;  // a Curve's clock list, open under its title row's button
     void paintBack(Canvas &c) override;                      // a full-size editor, while one is open
     bool paintWidget(Canvas &c, const Widget &w, bool hovered) override;
     std::string tooltip(const Widget &w) const override;
@@ -213,10 +214,13 @@ private:
     void paintLoop(Canvas &c, int shape, Rect r, bool card);
     // The ruler's labels along a plot `width` wide, at least `gap` apart: where each is (0..1) and what it reads.
     std::vector<std::pair<double, std::string>> rulerMarks(int shape, float width, float gap) const;
-    // A Curve's big editor's title row: its name, then its clock modes (named beside their icons), its sync switch and
-    // its Rate (or note value), before the hint.
+    // A Curve's big editor's title row: its name, then its clock list, its Unipolar and sync switches and its Rate (or
+    // note value), before the hint, as its card has them; an operator's envelope's has One-Shot | Sustain, named beside
+    // their icons, where the list is (shapeClockButton()).
     Rect shapeTitle() const;
+    Rect shapeClockList() const;
     Rect shapeClockButton(int mode) const;
+    Rect shapeUnipolarSwitch() const;
     Rect shapeSyncButton() const;
     Rect shapeRateKnob() const;
     // Whether a widened card's Copy has kept a shape for Paste.

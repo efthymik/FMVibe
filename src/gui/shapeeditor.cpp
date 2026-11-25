@@ -47,7 +47,7 @@ ShapeEditor::ShapeEditor(PanelHost &host)
 // inspector still covered; the note source's curve and velocity's fill the routing panel.
 constexpr float kClipEditorW = 520.0f;
 constexpr float kShapeRulerRoom = 12.0f; // what an LFO's plot gives up for its loop's strip
-constexpr float kTitleClockW = 88.0f;    // a clock mode's button in a Curve's title row, its icon and name
+constexpr float kTitleClockW = 88.0f;    // One-Shot's and Sustain's buttons in an envelope's title row
 constexpr double kLoopApart = 1.0 / 256.0; // how near a loop's ends come, dragged off the grid's columns
 Rect ShapeEditor::shapePanel() const {
     const int shape = shapeEditing();
@@ -89,10 +89,16 @@ Rect ShapeEditor::shapeReset() const {
     return {done.x - 6.0f - 28.0f, done.y, 28.0f, 22.0f};
 }
 
-// A Curve's (an LFO's) big editor's title row, from the left: its name, its clock modes, its sync switch and its Rate.
+// A Curve's (an LFO's) big editor's title row, from the left: its name, its clock list, its Unipolar and sync switches
+// and its Rate.
 Rect ShapeEditor::shapeTitle() const {
     const Rect panel = shapePanel();
     return {panel.x + 16.0f, panel.y + 9.0f, 104.0f, 22.0f};
+}
+
+Rect ShapeEditor::shapeClockList() const {
+    const Rect title = shapeTitle();
+    return {title.right() + 12.0f, title.y, kLfoListW, title.h};
 }
 
 Rect ShapeEditor::shapeClockButton(int mode) const {
@@ -100,9 +106,14 @@ Rect ShapeEditor::shapeClockButton(int mode) const {
     return {title.right() + 12.0f + mode * kTitleClockW, title.y, kTitleClockW, title.h};
 }
 
+Rect ShapeEditor::shapeUnipolarSwitch() const {
+    const Rect list = shapeClockList();
+    return {list.right() + 8.0f, list.y, 22.0f, 22.0f};
+}
+
 Rect ShapeEditor::shapeSyncButton() const {
-    const Rect last = shapeClockButton(kCurveModes - 1);
-    return {last.right() + 8.0f, last.y, 22.0f, 22.0f};
+    const Rect unipolar = shapeUnipolarSwitch();
+    return {unipolar.right() + 6.0f, unipolar.y, 22.0f, 22.0f};
 }
 
 Rect ShapeEditor::shapeRateKnob() const {
@@ -1631,6 +1642,9 @@ void ShapeEditor::paintClipCurveCard(Canvas &c, Rect r, int unit) {
 void ShapeEditor::paintLfoCard(Canvas &c, float card, int lfo) {
     const Color color = kSourceColors[lfo];
     const Rect r = lfoCardPlot(card);
+    const bool elsewhere = shapeEditing() == lfo; // the big editor has it: dimmed, as its card's controls are
+    if (elsewhere)
+        c.pushLayer({0.0f, 0.0f}, kDimOpacity, r.inset(-8.0f));
     c.fillRect(r.inset(-8.0f), kDisplayColor, kRadiusCard);
     // The zero line: in the middle, or at the bottom for a unipolar LFO, which only swings up from it.
     const double zero = value(paramIndex(lfo, SourceParam::Unipolar)) >= 0.5 ? -1.0 : 0.0;
@@ -1648,7 +1662,7 @@ void ShapeEditor::paintLfoCard(Canvas &c, float card, int lfo) {
     area.push_back(areaAt(r, 0.0, zero));
     c.fillPolygon(area.data(), area.size(), color.alpha(0.12f));
     plotLine(c, points.data(), points.size(), color, 2.0f);
-    if (curveShape(lfo) && shapeEditing() != lfo) // the big editor has it, and shows it
+    if (curveShape(lfo) && !elsewhere) // the big editor has it, and shows it
         paintLoop(c, lfo, r, true);
     if (const auto now = host_.lfoNow(lfo)) {
         if (curveShape(lfo)) { // and a line across at the level it puts out, as in the big editor
@@ -1659,10 +1673,12 @@ void ShapeEditor::paintLfoCard(Canvas &c, float card, int lfo) {
         c.fillCircle(dot, 7.0f, color.alpha(0.25f));
         c.fillCircle(dot, 3.5f, kText);
     }
+    if (elsewhere)
+        c.popLayer();
 
     for (int axis = 0; axis < 2; ++axis) {
         const Rect down = lfoCardGridButton(card, axis, 0);
-        axisIcon(c, {down.x - 8.0f, down.center().y}, axis, shapeEditing() == lfo ? kFaint.alpha(kDimOpacity) : kFaint);
+        axisIcon(c, {down.x - 8.0f, down.center().y}, axis, elsewhere ? kFaint.alpha(kDimOpacity) : kFaint);
     }
 }
 
@@ -1694,17 +1710,10 @@ void ShapeEditor::widgets(std::vector<Widget> &list) const {
                 add(Kind::ShapeGrid, shapeGridButton(axis, part), -1, axis, part - 1);
         add(Kind::ShapeArea, shapeArea().inset(-8.0f), -1, editing);
         if (curveShape(editing)) {
-            // Its clock modes, named, one of them lit, as on its card (see View::setLfoClock()); its sync switch and its
-            // Rate, or the note value it is synced to, as a compact knob.
-            const Str names[] = {Str::SwitchRetrigger, Str::SwitchFree, Str::SwitchAnchor, Str::SwitchOneShot,
-                                 Str::SwitchSustain};
-            static_assert(std::size(names) == static_cast<size_t>(kCurveModes));
-            const size_t clocks = list.size();
-            for (int mode = 0; mode < kCurveModes; ++mode) {
-                add(Kind::Choice, shapeClockButton(mode), paramIndex(editing, SourceParam::Free), editing, mode);
-                list.back().label = tr(names[mode]);
-            }
-            merge(clocks);
+            // Its clock list, as on its card (see View::setLfoClock()), opening under this button (see popups()); its
+            // Unipolar and sync switches and its Rate, or the note value it is synced to, as a compact knob.
+            add(Kind::ListButton, shapeClockList(), paramIndex(editing, SourceParam::Free), kEditorList);
+            add(Kind::Toggle, shapeUnipolarSwitch(), paramIndex(editing, SourceParam::Unipolar));
             add(Kind::Toggle, shapeSyncButton(), paramIndex(editing, SourceParam::Sync));
             const bool synced = value(paramIndex(editing, SourceParam::Sync)) >= 0.5;
             const bool length = mods_.curveTime(editing) == ModulationModel::CurveTime::Seconds;
@@ -1879,13 +1888,28 @@ void ShapeEditor::opEnvWidgets(std::vector<Widget> &list, int op) const {
     }
 }
 
+void ShapeEditor::popups(std::vector<Widget> &list) const {
+    // A Curve's clock list, opened from its title row's button: under it, a click anywhere else closing it, its entries
+    // picked as its card's are (see View::pickListValue()).
+    const int editing = shapeEditing();
+    if (editing < 0 || !curveShape(editing) || !host_.openListInEditor() ||
+        host_.openList() != paramIndex(editing, SourceParam::Free))
+        return;
+    const WidgetAdder add{list};
+    const Rect button = shapeClockList();
+    add(Kind::ListMenu, {0.0f, 0.0f, View::kWidth, host_.height()}, -1, 0);
+    add(Kind::ListMenu, listMenu(button, kCurveModes), -1, 1);
+    for (int item = 0; item < kCurveModes; ++item)
+        add(Kind::ListItem, listMenuItem(button, kCurveModes, item), host_.openList(), -1, item);
+}
+
 void ShapeEditor::cardWidgets(std::vector<Widget> &list, int lfo, float card) const {
     const WidgetAdder add{list};
     auto merge = [&list](size_t from) { mergeButtons(list, from); };
     const int s = lfo;
     // Its shape in the card: the title row's buttons, the reset and tools where a normal card's display is, Points |
     // Steps, Snap and the grid's steppers under the plot, and the plot with its points; greyed out, taking no input and
-    // without its points, while the full-size editor has the shape.
+    // without its points, while the full-size editor has the shape, but for a click on the plot, which closes it.
     const bool elsewhere = shapeEditing() == s;
     const size_t editorStart = list.size();
     add(Kind::ShapeCollapse, lfoCardButton(card, 0), -1, s);
@@ -1907,6 +1931,8 @@ void ShapeEditor::cardWidgets(std::vector<Widget> &list, int lfo, float card) co
         add(Kind::ShapeLoop, loopStrip(s), -1, s);
     for (size_t i = editorStart; i < list.size(); ++i)
         list[i].disabled = elsewhere;
+    if (elsewhere)
+        add(Kind::ShapeBack, lfoCardPlot(card).inset(-8.0f), -1, s);
     if (!elsewhere) {
         const int count = shapePointCount(s);
         for (int point = 0; point < count; ++point) {
@@ -2022,6 +2048,7 @@ bool ShapeEditor::paintWidget(Canvas &c, const Widget &w, bool hovered) {
     }
     case Kind::PartialArea:
     case Kind::ShapeLoop:
+    case Kind::ShapeBack:
         break; // drawn with its editor or card
     case Kind::ShapeDone:
         paintActionFace(c, w.rect, hovered);
@@ -2048,9 +2075,10 @@ bool ShapeEditor::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         const Color ink = on ? litInk(kText) : (hovered ? kText : kDim);
         const Str names[] = {Str::SwitchPoints, Str::SwitchSteps, Str::SwitchSnap};
         const char *name = tr(names[w.b]);
-        const float textW = w.compact ? -16.0f : c.textWidth(name, kTextLabel, on); // a widened card's: the icon alone
+        const float textW = c.textWidth(name, kTextLabel, on);
         const float left = w.rect.center().x - (16.0f + textW) * 0.5f;
-        const Point icon{left + 6.0f, w.rect.center().y};
+        // A widened card's are their icons alone, in their middles.
+        const Point icon = w.compact ? w.rect.center() : Point{left + 6.0f, w.rect.center().y};
         if (w.b == 0)
             pointsIcon(c, icon, on ? litInk(color) : ink);
         else if (w.b == 1)
@@ -2129,6 +2157,7 @@ std::optional<CursorKind> ShapeEditor::cursor(const Widget &w) const {
     case Kind::ShapeGrid:
     case Kind::ShapeCollapse:
     case Kind::ShapeExpand:
+    case Kind::ShapeBack:
     case Kind::ShapeWiden:
     case Kind::ShapeTool:
     case Kind::ShapeMode:
@@ -2206,6 +2235,10 @@ bool ShapeEditor::press(const Widget &w, Point p, Modifiers mods) {
     case Kind::ShapeExpand:
         shapeEditor_ = w.a;
         partialEditor_ = -1;
+        host_.resetHover();
+        return true;
+    case Kind::ShapeBack: // the card's plot, dimmed: the shape back into the card, as the editor's done button does
+        shapeEditor_ = -1;
         host_.resetHover();
         return true;
     case Kind::ShapeTool:

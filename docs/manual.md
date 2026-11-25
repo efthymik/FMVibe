@@ -735,8 +735,8 @@ The **shape tools**, in a row beside the shape, each one undo step:
   [Shape editors](#shape-editors)).
 
 For editing points, see [Shape editors](#shape-editors). Where an LFO has its shape list, a Curve source has its
-**clock mode** list; its arrows and the mouse wheel step through the modes. Under it are the sync and **Unipolar**
-switches, and beside it three knobs: Rate (Length), Phase and **Slew**, which smooths what the curve puts out, so its
+**clock mode** list; its arrows and the mouse wheel step through the modes. Under its right end are the **Unipolar**
+and sync switches, and beside it three knobs: Rate (Length), Phase and **Slew**, which smooths what the curve puts out, so its
 jumps glide instead of stepping. Slew is off to begin with.
 
 A Curve source has a fifth clock mode, **Sustain**, after One-Shot. It works like an envelope with a sustain loop:
@@ -766,7 +766,8 @@ In One-Shot and Sustain, with Sync off, the **Rate** knob shows the curve's **le
 You can type a length too, such as "1.5 s" or "800 ms". The point readout and the ruler then show times. With Sync on
 they show bars and beats, otherwise a percentage of the cycle.
 
-The full-size editor's title row has the clock modes, the sync button and Rate, as on the card.
+The full-size editor's title row has the clock mode list, the Unipolar and sync switches and Rate, as on the card.
+While it is open, the card's shape is dimmed; click it to close the full-size editor.
 
 ### Random
 

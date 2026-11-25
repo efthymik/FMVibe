@@ -680,7 +680,7 @@ inline Rect lfoCardPlot(float card) {
 inline Rect lfoCardGridButton(float card, int axis, int part) {
     constexpr float kX[] = {14.0f, 32.0f, 54.0f}, kW[] = {18.0f, 22.0f, 18.0f};
     const Rect plot = lfoCardPlot(card);
-    return {plot.x + 98.0f + axis * 88.0f + kX[part], plot.bottom() + 18.0f, kW[part], 18.0f};
+    return {plot.x + 90.0f + axis * 88.0f + kX[part], plot.bottom() + 18.0f, kW[part], 18.0f};
 }
 // Its title row's buttons, by what they do: back to a normal card (0) and the full-size editor (2), beside the power
 // switch (cardTool()), left to right. The shape's reset (1) is the first of its tools (see lfoToolButton()).
@@ -847,9 +847,9 @@ inline Rect lfoToolSlot(float card, int slot) { // 0 the reset, then the tools
 }
 inline Rect lfoToolButton(float card, int tool) { return lfoToolSlot(card, tool + 1); }
 inline Rect lfoResetButton(float card) { return lfoToolSlot(card, 0); }
-inline Rect lfoModeButton(float card, int mode) { // Points and Steps in one pill, then Snap
+inline Rect lfoModeButton(float card, int mode) { // Points and Steps in one pill, then Snap, from the plot's frame's edge
     const Rect plot = lfoCardPlot(card);
-    return {plot.x + mode * 26.0f + (mode == 2 ? 6.0f : 0.0f), plot.bottom() + 16.0f, 26.0f, 22.0f};
+    return {plot.x - 8.0f + mode * 26.0f + (mode == 2 ? 6.0f : 0.0f), plot.bottom() + 16.0f, 26.0f, 22.0f};
 }
 
 // A source card's title row, as every card's is (cardClose()): handle and name (the row drags the card), then the fold
@@ -899,7 +899,8 @@ inline Rect randomPolaritySwitch(float card, int bipolar) {
 }
 
 // Right of those two rows, the Rate (0) and Phase (1) knobs with their labels, each over a random LFO's Smooth and
-// Chaos; Rate's sync switch, a small square, sits between the shape list and the knob, level with the list.
+// Chaos; a small square sits between the shape list and the knob, level with the list: a Random's sync switch, an
+// LFO's Unipolar (see lfoUnipolarSwitch()).
 inline Point lfoKnob(float card, int knob) {
     return {randomKnob(card, knob).x, lfoShapeButton(card).y + 14.0f}; // the label takes 18 px under the knob
 }
@@ -917,21 +918,25 @@ inline Rect lfoClockButton(float card) {
     return {list.x, list.bottom() + 6.0f, list.w, list.h};
 }
 
-// Under the sync switch, level with the clock list, an LFO's Unipolar switch.
+// An LFO's Unipolar switch, beside its shape list where a Random source's sync switch is, and its sync switch under it,
+// level with the clock list.
 inline Rect lfoUnipolarSwitch(float card) {
-    const Rect sync = sourceSync(card);
-    return {sync.x, lfoClockButton(card).center().y - sync.h * 0.5f, sync.w, sync.h};
+    return sourceSync(card);
+}
+inline Rect lfoSyncButton(float card) {
+    const Rect unipolar = lfoUnipolarSwitch(card);
+    return {unipolar.x, lfoClockButton(card).center().y - unipolar.h * 0.5f, unipolar.w, unipolar.h};
 }
 
-// A Curve card: under its clock list, its sync and Unipolar switches; right of the list its Rate (or Length), Phase and
-// Slew knobs (0 to 2), alike and side by side, their labels under them.
+// A Curve card: under its clock list, at its right end before the Rate knob, its Unipolar and sync switches; right of
+// the list its Rate (or Length), Phase and Slew knobs (0 to 2), alike and side by side, their labels under them.
 inline Rect curveSyncButton(float card) {
     const Rect clocks = lfoClockButton(card);
-    return {clocks.x, clocks.center().y - 10.0f, 20.0f, 20.0f};
+    return {clocks.right() - 20.0f, clocks.center().y - 10.0f, 20.0f, 20.0f};
 }
 inline Rect curveUnipolarSwitch(float card) {
     const Rect sync = curveSyncButton(card);
-    return {sync.right() + 6.0f, sync.y, sync.w, sync.h};
+    return {sync.x - 6.0f - sync.w, sync.y, sync.w, sync.h};
 }
 inline Point curveKnob(float card, int knob) {
     const Rect p = sourceCard(card);

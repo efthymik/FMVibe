@@ -182,6 +182,9 @@ inline const char *filterModelShortName(FilterType type) {
 // list is, with arrows (on a filter's page) or without (on the filter effect's card, which has the room for neither
 // them nor the model's icon).
 constexpr int kModelList = 1, kModelListPlain = 2;
+// A list button's `a` (and its arrows') in a full-size shape editor's title row: a Curve's clock list there, on the
+// param its card's list is on, its list opening under that button rather than the card's.
+constexpr int kEditorList = -2;
 inline bool isModelList(const Widget &w) {
     return (w.kind == WidgetKind::ListButton || w.kind == WidgetKind::ListStep || w.kind == WidgetKind::ListItem) &&
            w.a >= kModelList;

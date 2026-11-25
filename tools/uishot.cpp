@@ -645,9 +645,9 @@ Point sourceHandle(float card) {
     return detail::sourceHandleRect(detail::sourceCard(card)).center();
 }
 
-// An LFO's sync switch, a square left of its Rate knob.
+// An LFO's sync switch, a square beside its clock list.
 Point sourceSync(float card) {
-    return {cardX(card) + 155.0f, 620.0f};
+    return detail::lfoSyncButton(card).center();
 }
 
 Point sourcePower(float card) {
@@ -687,7 +687,7 @@ Point lfoClockPoint(float card) {
 }
 void pickLfoClock(View &view, float card, LfoClock clock, int modes = 4);
 
-// The Unipolar switch under an LFO's sync switch.
+// The Unipolar switch beside an LFO's shape list.
 Point unipolarToggle(float card) {
     return detail::lfoUnipolarSwitch(card).center();
 }
@@ -4719,18 +4719,37 @@ void testCurveLoop(const std::filesystem::path &dir, Renderer &renderer) {
     model.set(paramIndex(0, SourceParam::Rate), normFromRate(1.0 / 1.2));
     view.poll();
 
-    // The full-size editor: its title row's clock modes, named, and its sync switch and Rate.
+    // The full-size editor: its title row's clock list, as its card's but opening under its own button, its Unipolar
+    // and sync switches and its Rate.
     click(view, lfoDisplay(0));
     click(view, wideButton(0, 2));
-    auto titleClock = [](int mode) { return Point{148.0f + 44.0f + 88.0f * static_cast<float>(mode), 152.0f}; };
-    click(view, titleClock(4));
+    const Rect titleList{148.0f, 141.0f, 122.0f, 22.0f}; // after its name
+    auto titleClock = [&](int mode) {
+        click(view, titleList.center());
+        click(view, detail::listMenuItem(titleList, 5, mode).center());
+        view.mouseMove({600.0f, 500.0f}, {});
+    };
+    titleClock(4);
     const bool titleSustain = model.value(sustain) == 1.0;
-    click(view, titleClock(0));
+    titleClock(0);
     const bool titleRetrigger = model.value(sustain) == 0.0 && model.value(oneShot) == 0.0;
-    click(view, {607.0f, 152.0f}); // its sync switch
+    // Its list alone opens, not its card's too: One-Shot's place in the card's list takes nothing.
+    click(view, titleList.center());
+    const Rect cardList = detail::lfoShapeButton(0);
+    click(view, detail::listMenuItem(cardList, 5, static_cast<int>(LfoClock::OneShot)).center());
+    const bool titleOwn = model.value(oneShot) == 0.0;
+    const int titlePolarity = paramIndex(0, SourceParam::Unipolar);
+    const double wasUnipolar = model.value(titlePolarity);
+    click(view, {289.0f, 152.0f}); // its Unipolar switch
+    const bool titleUnipolar = model.value(titlePolarity) == 1.0 - wasUnipolar;
+    view.undo();
+    click(view, {317.0f, 152.0f}); // its sync switch
     const bool titleSync = model.value(paramIndex(0, SourceParam::Sync)) == 1.0;
     view.undo();
-    check(titleSustain && titleRetrigger && titleSync, "a Curve's full-size editor's title row sets its clock and sync");
+    std::printf("      title row: %d %d %d %d %d\n", titleSustain, titleRetrigger, titleOwn, titleUnipolar, titleSync);
+    check(titleSustain && titleRetrigger && titleOwn && titleUnipolar && titleSync,
+          "a Curve's full-size editor's title row sets its clock from its list, opening under it, and its Unipolar "
+          "and sync");
 
     // Its loop's strip over the plot, on 16 columns: an end dragged sizes it, the start too, its middle moves it as long
     // as it is, a drag outside it draws a new one, its ends stay a column apart, and a double-click loops the whole
@@ -4803,18 +4822,19 @@ void testCurveLoop(const std::filesystem::path &dir, Renderer &renderer) {
 
     // What the mode doesn't play dimmed (read off the rendered pixels): past the loop retriggered, either side of it
     // free, nothing in Sustain; no bar one-shot, whose drag on the strip sets nothing.
-    const Point after = shapeAt(0.8, 0.7), before = shapeAt(0.1, 0.7), bar = stripAt(0.375);
+    const Point after = shapeAt(0.8, 0.7), before = shapeAt(0.1, 0.7);
+    const Point bar{stripAt(0.375).x, 177.0f}; // on the bar, along the strip's top
     view.mouseMove({600.0f, 500.0f}, {});
     renderer.save(view, dir / "10h-curve-loop-retrigger.png");
     const uint32_t retriggerAfter = renderer.pixel(after), retriggerBefore = renderer.pixel(before),
                    retriggerBar = renderer.pixel(bar);
-    click(view, titleClock(1));
+    titleClock(1);
     renderer.save(view, dir / "10h-curve-loop-free.png");
     const uint32_t freeBefore = renderer.pixel(before);
-    click(view, titleClock(4));
+    titleClock(4);
     renderer.save(view, dir / "10h-curve-loop-sustain.png");
     const uint32_t sustainAfter = renderer.pixel(after), sustainBefore = renderer.pixel(before);
-    click(view, titleClock(3));
+    titleClock(3);
     renderer.save(view, dir / "10h-curve-loop-one-shot.png");
     const uint32_t oneShotAfter = renderer.pixel(after), oneShotBar = renderer.pixel(bar);
     drag(view, stripAt(0.5), stripAt(0.75));
@@ -4826,7 +4846,7 @@ void testCurveLoop(const std::filesystem::path &dir, Renderer &renderer) {
 
     // A point's menu: Set as Loop Start and End, exactly at the point (off the grid too), each one undo step, left out
     // where that end would cross the other; Delete point as before.
-    click(view, titleClock(4)); // Sustain
+    titleClock(4); // Sustain
     view.doubleClick(shapeAt(0.37, 0.0), {}); // a point off the grid, the second of three
     const double pointX = model.value(shapePointIndex(0, 1, PointField::X));
     auto labels = [&](Point at) {
@@ -5303,6 +5323,9 @@ void testWideLfoCard(const std::filesystem::path &dir, Renderer &renderer) {
     const bool greyed = pointValue(2, 0, PointField::Y) == firstLevel;
     view.mouseMove({400.0f, 728.0f}, {});
     const bool bigShot = renderer.save(view, dir / "10g-lfo-full-size.png");
+    // Its plot dimmed meanwhile (read off the rendered pixels): inside its display, left of the plot.
+    const Point margin{cardShapeAt(wideCard, 0.0, 0.6).x - 4.0f, cardShapeAt(wideCard, 0.0, 0.6).y};
+    const uint32_t dimmedPlot = renderer.pixel(margin);
     click(view, kShapeDone);
     const bool back = switches(powerAt(2, 2.0f), 2);
     // Closed by a view tab too, the card's editor is back in use.
@@ -5311,13 +5334,23 @@ void testWideLfoCard(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, lfoTool(wideCard, 0));
     const bool restored = pointValue(2, 0, PointField::Y) == -firstLevel;
     view.undo();
+    // And by a click on the card's dimmed plot, its editor taking clicks again, undimmed.
+    click(view, wideButton(wideCard, 2));
+    click(view, cardShapeAt(wideCard, 0.5, 0.0));
+    click(view, lfoTool(wideCard, 0));
+    const bool plotCloses = pointValue(2, 0, PointField::Y) == -firstLevel;
+    view.undo();
+    renderer.save(view, dir / "10g-lfo-full-size-closed.png");
+    const uint32_t plainPlot = renderer.pixel(margin);
+    std::printf("      the card's plot: %08x dimmed, %08x plain\n", dimmedPlot, plainPlot);
     // The SEQ view covering the modulation panel and going again leaves the card widened.
     click(view, detail::kViewTabs[static_cast<int>(RoutingView::Seq)].center());
     click(view, kRoutingTab);
     const bool kept = switches(powerAt(2, 2.0f), 2);
-    check(covered && greyed && bigShot && back && restored && kept,
-          "the full-size editor greys the widened card's editor out until it closes, by its done button or a tab, "
-          "and the card stays widened while the SEQ view covers it");
+    check(covered && greyed && bigShot && back && restored && plotCloses && dimmedPlot != plainPlot && kept,
+          "the full-size editor greys the widened card's editor out, its plot dimmed (read off the rendered pixels), "
+          "until it closes, by its done button, a tab or a click on that plot, and the card stays widened while the "
+          "SEQ view covers it");
     // Back to its size by its collapse button; its display widens it again.
     click(view, wideButton(wideCard, 0));
     const bool collapsed = switches(sourcePower(2), 2);

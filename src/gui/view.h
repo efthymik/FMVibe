@@ -683,11 +683,14 @@ private:
     std::vector<Widget> listedWidgets() const override { return widgets(); }
     int openList() const override { return listMenu_; }
     bool openListModel() const override { return listMenu_ >= 0 && listModel_; }
+    bool openListInEditor() const override { return listMenu_ >= 0 && listEditor_; }
     void showList(int param) override {
         listMenu_ = param;
         listModel_ = false;
+        listEditor_ = false;
     }
-    // Whether `w` (a list's button, arrow or entry) is of the list open: a filter's Model list or its type's.
+    // Whether `w` (a list's button or arrow) is of the list open: a filter's Model list or its type's, a Curve's clock
+    // list on its card or in its full-size editor.
     bool listOpenFor(const Widget &w) const;
 
     Controller &controller_;
@@ -773,6 +776,7 @@ private:
     float sourceScroll_ = 0.0f;              // how many source cards are scrolled past, before clamping
     int listMenu_ = -1;                      // the param whose list (ListButton) is open, or -1
     bool listModel_ = false;                 // and whether it is a filter's Model list (see kModelList)
+    bool listEditor_ = false;                // or opened from a full-size shape editor's title row (see kEditorList)
     int peqMenu_ = -1;                       // the band type param whose list of shapes is open, or -1
     bool sourceMenuOpen_ = false;            // the list of source types, opened from the dashed card after the sources
     Point sourceMenuAt_{0.0f, 0.0f};         // its top left: where the mouse clicked that card; x < 0 under + SOURCE

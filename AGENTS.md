@@ -774,7 +774,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - an LFO starting synced in quarter notes, and its sync switch freeing it; its Phase knob, marked on its display
     and faint while the LFO is free, and lit while it is anchored (read off the rendered pixels); its clock modes a
     list under its shape list, a pick undoable, the mode in force picked again leaving it, the wheel over it stepping
-    along them and held at One-Shot, and its Unipolar switch standing apart; a Random source's list Retrigger and Free
+    along them and held at One-Shot, and its Unipolar switch beside its shape list, apart; a Random source's list Retrigger and Free
     alone;
   - the three-band dynamics' card: a band's row picking the band its knobs set, its threshold lines dragged
     across (Above stopping at Below) undoably, Alt-dragged for the ratio and double-clicked back, a line on another
@@ -885,17 +885,19 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - a Curve source's card: a click on its display widening it (the next card moving along), the inspector's knobs turning meanwhile, its shape's points added and dragged in the card, its
     tools inverting, reversing and shifting the shape (each one undo step) and copying it into another Curve source (one card
     widened at a time), its title row's expand button widening it as a click on its display does, Steps drawing a step with a plain click and Snap snapping a point unless Ctrl is held, its
-    full-size editor greying the card's editor out (taking no clicks) until it closes, by its done button or a view
-    tab, the card staying widened, also while the SEQ view covers the modulation panel, and the
+    full-size editor greying the card's editor out (taking no clicks), its plot dimmed (read off the rendered pixels),
+    until it closes, by its done button, a view tab or a click on that plot, the card staying widened, also while the
+    SEQ view covers the modulation panel, and the
     card back to its size by its collapse button;
   - a Curve source's loop and Sustain: its card's clock modes a list where an LFO's shape list is, a pick, its
     arrows (round its ends) and the wheel (held at its ends) setting the mode, each one undo step, no tooltip under
-    it (read off the rendered pixels), its sync and Unipolar switches under the list, undoably, and its Length,
+    it (read off the rendered pixels), its Unipolar and sync switches under the list's right end, undoably, and its Length,
     Phase and Slew knobs alike beside it, Slew Off to begin with and dragged up undoably, an LFO card beside it
     picking its clock mode from a list of its own, its Unipolar switch beside it; its Rate, unsynced, shown and typed as the
     curve's length in One-Shot and Sustain (a length in s or ms, or a rate in Hz) and as a rate retriggered; its
     places reading as times there, in bars and beats synced, else as a share; its full-size editor's title row
-    setting its clock mode and sync; its loop's strip over the full-size plot, on the grid's columns: an end dragged
+    setting its clock mode from a list of its own (opening under its button, not the card's), its Unipolar and its sync;
+    its loop's strip over the full-size plot, on the grid's columns: an end dragged
     sizing it, the start too, its middle moving it, a drag outside it drawing a new one, its ends a column apart and
     a double-click looping the whole curve, each one undo step, with the move cursor over it and the left-right one
     elsewhere; with Shift and with Ctrl, an end, the loop's middle and a new loop dragged off the columns, where the

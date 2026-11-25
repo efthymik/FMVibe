@@ -500,7 +500,7 @@ bool View::listItemFits(int param, int item) const {
 }
 
 bool View::listOpenFor(const Widget &w) const {
-    return listMenu_ == w.param && listModel_ == isModelList(w);
+    return listMenu_ == w.param && listModel_ == isModelList(w) && listEditor_ == (w.a == kEditorList);
 }
 
 void View::stepList(int param, int dir, bool model) {
@@ -1618,7 +1618,7 @@ std::vector<View::Widget> View::widgets() const {
                 merge(polarity);
             } else if (curve) {
                 add(Kind::ListButton, lfoShapeButton(card), clock);
-                if (listMenu_ == clock)
+                if (listMenu_ == clock && !listEditor_) // the full-size editor's opens under its own button
                     lfoList = lfoShapeButton(card);
             } else {
                 add(Kind::ListButton, lfoShapeButton(card), paramIndex(s, SourceParam::Shape));
@@ -1636,10 +1636,13 @@ std::vector<View::Widget> View::widgets() const {
                 knob(paramIndex(s, SourceParam::RandomSmooth), randomKnob(card, 0), 30.0f, tr(Str::LabelSmooth));
                 knob(paramIndex(s, SourceParam::RandomChaos), randomKnob(card, 1), 30.0f, tr(Str::LabelChaos));
             }
-            // Synced, the knob picks a note value instead of a rate and shows it as its label. The sync switch between
-            // the list and the knobs, Unipolar under it; a Curve's two under its list, its three knobs alike beside it.
+            // Synced, the knob picks a note value instead of a rate and shows it as its label. An LFO's Unipolar switch
+            // between its shape list and the knobs, its sync switch under it, beside its clock list; a Random's sync
+            // where an LFO's Unipolar is; a Curve's two under its list's right end, Unipolar first, its three knobs
+            // alike beside it.
             // A Random card has no Unipolar switch, which its polarity stands for, and no Phase, which it takes none of.
-            add(Kind::Toggle, curve ? curveSyncButton(card) : sourceSync(card), paramIndex(s, SourceParam::Sync));
+            add(Kind::Toggle, curve ? curveSyncButton(card) : random ? sourceSync(card) : lfoSyncButton(card),
+                paramIndex(s, SourceParam::Sync));
             if (!random)
                 add(Kind::Toggle, curve ? curveUnipolarSwitch(card) : lfoUnipolarSwitch(card),
                     paramIndex(s, SourceParam::Unipolar));
@@ -6773,9 +6776,10 @@ void View::mouseDown(Point p, Modifiers mods) {
             break; // a comb has no slope: its list stays shut
         if (listOpenFor(w)) {
             listMenu_ = -1;
-        } else { // a filter's Model list and its type's are each their own, on the one param
-            listMenu_ = w.param;
+        } else { // a filter's Model list and its type's are each their own, on the one param, as are a Curve's
+            listMenu_ = w.param; // clock lists on its card and in its full-size editor
             listModel_ = isModelList(w);
+            listEditor_ = w.a == kEditorList;
         }
         break;
     case Kind::ListStep:
