@@ -2150,8 +2150,6 @@ std::string ShapeEditor::tooltip(const Widget &w) const {
     }
     case Kind::ShapeMode:
         return tr(w.b == 0 ? Str::TipShapePoints : w.b == 1 ? Str::TipShapeSteps : Str::TipShapeSnap);
-    case Kind::ShapeLoop:
-        return tr(Str::TipShapeLoop);
     case Kind::ShapeGrid:
         return w.b != 0 ? tr(w.a == 0 ? Str::TipGridAcross : Str::TipGridUpDown) : std::string();
     default:

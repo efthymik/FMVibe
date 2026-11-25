@@ -1201,7 +1201,6 @@ STR(TipShapeShiftLeft, "Shift left")
 STR(TipShapeShiftRight, "Shift right")
 STR(TipShapeCopy, "Copy shape")
 STR(TipShapePaste, "Paste copied shape")
-STR(TipShapeLoop, "Drag to set the loop (Shift: off the grid), double-click for the whole curve") // a Curve's loop bar
 STR(TipShapePoints, "Double click to add and move points")
 STR(TipShapeSteps, "Click to draw steps, Alt+click for points")
 STR(TipShapeSnap, "Snap to grid")
