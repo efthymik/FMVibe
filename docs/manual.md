@@ -1638,9 +1638,11 @@ click outside).
 An open list or menu, such as a filter's type list, the list of effects or the list of sources, closes when you press
 **Escape**, without picking anything.
 
-On Linux, the file dialogs (Load, Save to File…) and warnings open in separate windows through `zenity` or
-`kdialog`; install one of them to use these. While one is open, the plugin window is dimmed: **Alt+Tab** shows the
-dialog, **Escape** closes it. The preset browser's own Save dialog works without either.
+On Linux, the file dialogs (Load, Save to File…) and warnings open in separate windows through the desktop's own
+tool: `kdialog` on KDE, `zenity` elsewhere, and the other one where that is missing; install one of them to use
+these. While one is open, the plugin window is dimmed: **Alt+Tab** shows the dialog, **Escape** closes it. The
+preset browser's own Save dialog works without either.
+
 
 ## 17. FMVibe in your DAW
 

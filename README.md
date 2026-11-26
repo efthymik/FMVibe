@@ -97,8 +97,9 @@ sudo apt-get install -y cmake ninja-build g++ pkg-config git libcairo2-dev libx1
 ```
 
 The editor is an X11 window (XWayland included) drawn through Cairo; it links no GTK and no Wayland, and asks the
-desktop for its file and warning dialogs (`zenity`, else `kdialog`) as separate programs, so nothing but X11, Cairo and
-fontconfig is loaded into the DAW. See [AGENTS.md](AGENTS.md#linux-development-build).
+desktop for its file and warning dialogs (`kdialog` on KDE, `zenity` elsewhere, or the other one where it is the only
+one installed) as separate programs, so nothing but X11, Cairo and fontconfig is loaded into the DAW. See
+[AGENTS.md](AGENTS.md#linux-development-build).
 
 ## Documentation
 

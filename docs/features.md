@@ -2779,7 +2779,8 @@ What the VST3 plugin does its own way:
 Both plugins build on Linux too (`./build.sh`): the same engine, parameters and state, the editor an X11 child window
 of the host's drawn through Cairo (XWayland included; no Wayland and no GTK is linked). What differs from Windows:
 
-- **File and warning dialogs** are the desktop's own — `zenity`, else `kdialog` — run as separate programs beside the
+- **File and warning dialogs** are the desktop's own — `kdialog` on KDE, `zenity` on other desktops, and the other
+  one where that is missing — run as separate programs beside the
   host, never inside it. While one is open the editor dims under a veil that says where it went ("A dialog is open",
   "Alt+Tab to show it, Esc to close it"); Escape closes it. With neither tool installed the editor says so for a moment
   ("install zenity or kdialog for file dialogs") and nothing opens; the preset browser's own Save dialog still works.

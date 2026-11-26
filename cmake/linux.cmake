@@ -1,5 +1,5 @@
 # The Linux build: the engine and the editor over Cairo, the CLAP and VST3 plugins (the editor embedded in the host's
-# X11 window, the dialogs the desktop's: zenity, else kdialog), the audio quality test, the UI snapshots and a small
+# X11 window, the dialogs the desktop's: kdialog on KDE, else zenity), the audio quality test, the UI snapshots and a small
 # test host. The plugins' Windows halves are CMakeLists.txt's (Win32, Direct2D); this builds what runs without them.
 # See "Linux development build" in AGENTS.md, and `./build.sh`.
 
@@ -17,6 +17,8 @@ if (NOT VST3_PLUGINTERFACES_DIR OR NOT EXISTS "${VST3_PLUGINTERFACES_DIR}/base/f
             ${archive}
             EXPECTED_HASH SHA256=19e88e225b6ecb4a3c429d3ff2fd511be9c6c8b8b1c7e86b05949b45c0553e2d)
         file(ARCHIVE_EXTRACT INPUT ${archive} DESTINATION ${FETCHCONTENT_BASE_DIR}/vst3_extract)
+        file(MAKE_DIRECTORY ${FETCHCONTENT_BASE_DIR}/vst3sdk) # the rename's destination folder, which may not be there yet
+        file(REMOVE_RECURSE ${VST3_PLUGINTERFACES_DIR})       # what an interrupted run left
         file(RENAME ${FETCHCONTENT_BASE_DIR}/vst3_extract/vst3_pluginterfaces-3.8.1_build_84
              ${VST3_PLUGINTERFACES_DIR})
     endif()
@@ -108,6 +110,7 @@ add_library(fmvibe-plugin STATIC
     src/presets.h
     src/usersettings.cpp
     src/usersettings.h
+    src/gui/dialogtool.h
     src/gui/editor.h
     src/gui/editor_x11.cpp
 )

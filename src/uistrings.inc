@@ -1394,7 +1394,7 @@ STR(DialogAllFiles, "All files (*.*)")
 STR(DialogWriteFailed, "Could not save the preset.")
 STR(DialogNotPreset, "Not an FMVibe preset.")
 
-// --- The editor on Linux, where the dialogs are the desktop's (zenity, else kdialog)
+// --- The editor on Linux, where the dialogs are the desktop's (kdialog on KDE, zenity elsewhere)
 
 STR(LinuxDialogOpen, "A dialog is open")
 STR(LinuxDialogHint, "Alt+Tab to show it, Esc to close it")

@@ -4,6 +4,8 @@
 
 #include <clap/clap.h>
 
+#include "gui/dialogtool.h"
+
 #include <pluginterfaces/base/ibstream.h>
 #include <pluginterfaces/base/ipluginbase.h>
 #include <pluginterfaces/gui/iplugview.h>
@@ -817,6 +819,24 @@ int main(int argc, char **argv) {
         std::fprintf(stderr, "usage: %s <FMVibe.clap> <FMVibe.so>\n", argv[0]);
         return 2;
     }
+    std::printf("== dialogs\n");
+    using fmvibe::gui::chooseDialogTool;
+    using fmvibe::gui::desktopNameIsKde;
+    using fmvibe::gui::DialogTool;
+    using fmvibe::gui::sessionIsKde;
+    check(desktopNameIsKde("KDE") && desktopNameIsKde("ubuntu:KDE") && desktopNameIsKde("plasma") &&
+              !desktopNameIsKde("ubuntu:GNOME") && !desktopNameIsKde("XFCE"),
+          "a desktop's name says KDE's or not");
+    check(sessionIsKde("", "", "", true) && sessionIsKde("plasma", "", "", false) &&
+              !sessionIsKde("ubuntu:GNOME", "gnome", "gnome", false),
+          "the session's variables say KDE's or not");
+    check(chooseDialogTool(true, true, true) == DialogTool::KDialog,
+          "a KDE desktop picks kdialog with zenity installed too");
+    check(chooseDialogTool(true, true, false) == DialogTool::Zenity, "a KDE desktop without kdialog picks zenity");
+    check(chooseDialogTool(false, true, true) == DialogTool::Zenity,
+          "another desktop picks zenity with kdialog installed too");
+    check(chooseDialogTool(false, false, true) == DialogTool::KDialog, "a desktop without zenity picks kdialog");
+    check(chooseDialogTool(false, false, false) == DialogTool::Missing, "neither dialog program leaves none");
     std::printf("== CLAP\n");
     testClap(argv[1]);
     std::printf("== VST3\n");

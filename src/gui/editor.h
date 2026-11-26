@@ -2,7 +2,7 @@
 
 // The editor window: a child window of the host's, hosting the View. On Windows it is a Win32 child drawn through
 // Direct2D (editor.cpp); on Linux an X11 child drawn through Cairo (editor_x11.cpp), with the dialogs the desktop
-// offers (zenity, else kdialog). Either draws the view at a uniform scale, so the editor keeps its aspect ratio.
+// offers (kdialog on KDE, else zenity). Either draws the view at a uniform scale, so the editor keeps its aspect ratio.
 //
 // Text the editor shows itself, rather than through the View, is worded in src/uistrings.inc.
 
@@ -130,7 +130,7 @@ private:
     // False once the editor is gone, for code that ran a modal loop meanwhile (see ModalGuard in editor.cpp).
     std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
 #else
-    class Dialogs; // the zenity/kdialog jobs, answered from the poll (editor_x11.cpp)
+    class Dialogs; // the desktop's dialog jobs, answered from the poll (editor_x11.cpp)
     class Menu;    // a context menu, grabbing the pointer until it is done
 
     void pumpEvents();

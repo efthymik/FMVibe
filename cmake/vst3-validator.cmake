@@ -15,6 +15,7 @@ if (NOT EXISTS "${_fmvibe_sdk_root}/public.sdk/samples/vst-hosting/validator/CMa
         ${_fmvibe_archive}
         EXPECTED_HASH SHA256=f683db0c831dd6603a1bb8c7747a6e1dd223ac3423e288b08c5706cf30b76ae8)
     file(ARCHIVE_EXTRACT INPUT ${_fmvibe_archive} DESTINATION ${_fmvibe_sdk_root}/.extract)
+    file(REMOVE_RECURSE ${_fmvibe_sdk_root}/public.sdk) # what an interrupted run left
     file(RENAME ${_fmvibe_sdk_root}/.extract/vst3_public_sdk-3.8.1_build_84 ${_fmvibe_sdk_root}/public.sdk)
 endif()
 
@@ -26,6 +27,7 @@ if (NOT EXISTS "${_fmvibe_sdk_root}/base/source/baseiids.cpp")
         ${_fmvibe_archive}
         EXPECTED_HASH SHA256=3ac62b2e271b87863ce50399b40549c204fc21065134247f87d8b84381692ced)
     file(ARCHIVE_EXTRACT INPUT ${_fmvibe_archive} DESTINATION ${_fmvibe_sdk_root}/.extract)
+    file(REMOVE_RECURSE ${_fmvibe_sdk_root}/base) # what an interrupted run left
     file(RENAME ${_fmvibe_sdk_root}/.extract/vst3_base-3.8.1_build_84 ${_fmvibe_sdk_root}/base)
 endif()
 

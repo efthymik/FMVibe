@@ -1,10 +1,12 @@
 // The editor on Linux: an X11 child window of the host's, drawn through Cairo (the Canvas of canvas_cairo.cpp),
-// with the desktop's dialogs (zenity, else kdialog, run beside the host's UI thread and never waiting on it) and a
-// popup menu of our own. The panel itself, and what it does, is the View, as on Windows (editor.cpp).
+// with the desktop's dialogs (kdialog on KDE, zenity elsewhere, else the other one, run beside the host's UI thread
+// and never waiting on it) and a popup menu of our own. The panel itself, and what it does, is the View, as on
+// Windows (editor.cpp).
 
 #include "editor.h"
 
 #include "../presets.h"
+#include "dialogtool.h"
 #include "theme.h"
 #include "../uistrings.h"
 #include "../usersettings.h"
@@ -29,6 +31,7 @@
 #include <functional>
 #include <spawn.h>
 #include <string>
+#include <string_view>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -57,7 +60,7 @@ const char *uiFont() {
     return family.c_str();
 }
 
-// Whether a program the desktop offers (zenity, kdialog) is on the PATH.
+// Whether a program the desktop offers (kdialog, zenity) is on the PATH.
 bool onPath(const char *tool) {
     const char *path = std::getenv("PATH");
     const std::string dirs = path ? path : "/usr/bin:/bin";
@@ -71,6 +74,16 @@ bool onPath(const char *tool) {
         start = end + 1;
     }
     return false;
+}
+
+// Whether the session is KDE's, as the variables the desktop starts set say.
+bool sessionIsKde() {
+    auto name = [](const char *variable) {
+        const char *value = std::getenv(variable);
+        return std::string_view(value ? value : "");
+    };
+    return gui::sessionIsKde(name("XDG_CURRENT_DESKTOP"), name("XDG_SESSION_DESKTOP"), name("DESKTOP_SESSION"),
+                             std::getenv("KDE_FULL_SESSION") != nullptr);
 }
 
 constexpr int kScreenMargin = 16; // room around the editor for the window frame
@@ -346,10 +359,9 @@ constexpr long kWindowEvents = ExposureMask | ButtonPressMask | ButtonReleaseMas
 
 class Editor::Dialogs {
 public:
-    enum class Tool { Missing, Zenity, KDialog };
-
-    // Which tool the desktop offers, asked as a dialog opens: one installed since the last is taken up at once.
-    static Tool which() { return onPath("zenity") ? Tool::Zenity : onPath("kdialog") ? Tool::KDialog : Tool::Missing; }
+    // Which tool the desktop offers, asked as a dialog opens: one installed since the last is taken up at once. A KDE
+    // desktop takes kdialog, whose windows look as its own do; the other desktops zenity.
+    static DialogTool which() { return chooseDialogTool(sessionIsKde(), onPath("zenity"), onPath("kdialog")); }
 
     using Then = std::function<void(const std::string &)>;
 
@@ -360,12 +372,12 @@ public:
                 then(status == 0);
         };
         switch (which()) {
-        case Tool::Zenity:
+        case DialogTool::Zenity:
             start({"zenity", yesNo ? "--question" : warning ? "--warning" : "--info", "--title=" + title,
                    "--text=" + text, "--no-markup", "--width=380"},
                   answer);
             break;
-        case Tool::KDialog:
+        case DialogTool::KDialog:
             start({"kdialog", "--title", title, yesNo ? "--warningyesno" : warning ? "--sorry" : "--msgbox", text},
                   answer);
             break;
@@ -380,11 +392,11 @@ public:
 
     void openFile(const std::string &title, const std::string &folder, Then then) {
         auto answer = pathThen(std::move(then));
-        if (which() == Tool::Zenity)
+        if (which() == DialogTool::Zenity)
             start({"zenity", "--file-selection", "--title=" + title, "--file-filter=" + presetFilter(),
                    "--file-filter=All files | *", "--filename=" + startFolder(folder)},
                   answer);
-        else if (which() == Tool::KDialog)
+        else if (which() == DialogTool::KDialog)
             start({"kdialog", "--title", title, "--getopenfilename", startFolder(folder), "*.fmv|" + presetFilter()},
                   answer);
         else
@@ -397,11 +409,11 @@ public:
                 then(withExtension(chosen, ".fmv"));
         });
         const std::string suggestion = startFolder(folder) + name;
-        if (which() == Tool::Zenity)
+        if (which() == DialogTool::Zenity)
             start({"zenity", "--file-selection", "--save", "--confirm-overwrite", "--title=" + title,
                    "--file-filter=" + presetFilter(), "--file-filter=All files | *", "--filename=" + suggestion},
                   answer);
-        else if (which() == Tool::KDialog)
+        else if (which() == DialogTool::KDialog)
             start({"kdialog", "--title", title, "--getsavefilename", suggestion, "*.fmv|" + presetFilter()}, answer);
         else
             noTool();
@@ -488,7 +500,7 @@ private:
         };
     }
 
-    // No zenity, no kdialog: the panel says so a moment (oxo synth2's fallback), and nothing opens.
+    // Neither dialog program: the panel says so a moment (oxo synth2's fallback), and nothing opens.
     void noTool() {
         if (fallback)
             fallback(tr(Str::LinuxNoDialogTool));

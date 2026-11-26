@@ -52,7 +52,8 @@ which is correct: the engine is 32-bit samples.)
   `bz2`, `brotli`, `Xau`, `Xdmcp`. No `libgtk*`, `libgdk*`, `libglib*`, `libwayland*`, `libGL*`, `libdl`.
 - **No `dlopen` in the plugins.** The only `dlopen` is `tests/linux_host.cpp`, whose job is to load the plugins.
   `nm -D --undefined-only` on both plugins has no `dl*` symbols.
-- **Dialogs are external programs**: `zenity`, else `kdialog`; `xdg-open` for folders and the manual. They are spawned
+- **Dialogs are external programs**: `kdialog` on KDE, `zenity` on other desktops (or the other one where that is
+  all there is); `xdg-open` for folders and the manual. They are spawned
   as separate processes (`posix_spawnp`), so GTK/Qt lives in them, never in the DAW. With neither installed, the
   editor shows "install zenity or kdialog for file dialogs" for 5 s and nothing opens; everything else, including the
   preset browser's own Save dialog, still works.
@@ -68,7 +69,7 @@ in a new Linux file.
 | Editor window | `src/gui/editor.cpp` (Win32, Direct2D) | `src/gui/editor_x11.cpp` (X11, Cairo) |
 | Drawing | `src/gui/canvas.cpp` (D2D/DWrite) | `src/gui/canvas_cairo.cpp` (unchanged) |
 | Editor's clock | `WM_TIMER` | CLAP `clap_plugin_timer_support`; VST3 `Linux::IRunLoop` timer |
-| Dialogs | `IFileDialog` / `OPENFILENAME`, `MessageBox` | zenity/kdialog, async, polled |
+| Dialogs | `IFileDialog` / `OPENFILENAME`, `MessageBox` | kdialog or zenity, async, polled |
 | Menus | `TrackPopupMenu` | own override-redirect X11 windows with pointer/keyboard grab |
 | Clipboard | Win32 clipboard | X11 `CLIPBOARD` selection |
 | Settings lock | named mutex | `flock` on `settings.txt.lock` |
@@ -140,7 +141,8 @@ the run loop's `onFDIsSet()` drains the pipe and calls `woken()`, which runs `on
 
 ### 3.4 Dialog runner (`Editor::Dialogs`, in `editor_x11.cpp`)
 
-Async, never modal: `zenity` if on PATH else `kdialog`, else the fallback notice. The child's stdout is a non-blocking
+Async, never modal: `kdialog` on a KDE desktop, `zenity` on the rest, whichever is on the PATH, else the fallback
+notice. The child's stdout is a non-blocking
 pipe; `poll()` (from the editor's pump) collects output and status. One dialog at a time, queued. Escape kills the
 child and reports cancel. Calls used:
 
@@ -430,7 +432,7 @@ works without a display; only `linux-host`'s editor section needs `DISPLAY` (it 
 ## 11. Open items
 
 - Done since handoff: `docs/features.md` ("On Linux" under CLAP and VST3) and `docs/manual.md` (Installation, Dialogs,
-  What is saved where) describe the Linux behaviour (zenity/kdialog dialogs, the veil, the notice, the XDG paths).
+  What is saved where) describe the Linux behaviour (the desktop's dialogs, the veil, the notice, the XDG paths).
 - Optionally make the validator's `-selftest` run in CI, and/or a `validate-clap` on Linux via a Linux build of
   clap-validator (today only the Windows binary is pinned).
 - Wayland is deliberately out of scope; if it is ever added, it is a second window backend (`Editor` platform split

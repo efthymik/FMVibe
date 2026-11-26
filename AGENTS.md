@@ -1177,7 +1177,8 @@ Linux builds both plugins: `./build.sh` makes `FMVibe.clap` and the `FMVibe.vst3
 through Cairo in `src/gui/canvas_cairo.cpp`), the audio quality test, the UI snapshots, the preset tool and a small
 test host (`cmake/linux.cmake`, which `CMakeLists.txt` takes in on any system but Windows). The editor is an X11 child
 window of the host's (`src/gui/editor_x11.cpp`), on XWayland too: no Wayland and no GTK is linked. The file and
-warning dialogs are the desktop's (`zenity`, else `kdialog`), run as separate programs beside the host's UI thread, so
+warning dialogs are the desktop's (`kdialog` on KDE, `zenity` on the other desktops, and the other one where that is
+all there is), run as separate programs beside the host's UI thread, so
 only X11, Cairo and fontconfig are loaded into the DAW; without either program the editor says so for a moment and
 nothing opens. It needs CMake, Ninja, a C++20 compiler (GCC 13 or Clang 18), pkg-config, git, Cairo (`libcairo2-dev`)
 and X11 (`libx11-dev`), and fetches the CLAP SDK and the VST3 interfaces with git clones of the tags `CMakeLists.txt`
@@ -1479,7 +1480,8 @@ breakpoints in `src/` then hit.
 | `src/gui/canvas_web.cpp` | The same drawing layer over the browser's 2D context, for the demo |
 | `src/gui/canvas_cairo.cpp` | The same drawing layer over Cairo, for the Linux development build |
 | `src/gui/editor.cpp` | Win32 child window that hosts the view in the plugin window |
-| `src/gui/editor_x11.cpp` | The same on Linux: an X11 child window over Cairo, the zenity/kdialog dialogs, the popup menus, the clipboard |
+| `src/gui/dialogtool.h` | Which of the desktop's dialog programs the Linux editor runs, by what the session says its desktop is |
+| `src/gui/editor_x11.cpp` | The same on Linux: an X11 child window over Cairo, the desktop's dialogs (kdialog or zenity), the popup menus, the clipboard |
 | `src/gui/controller.h` | What the editor needs from the plugin: the `Controller` (values, edits, telemetry, layout, settings), the `PresetStore` it reaches the preset library through (`NoPresetFiles` for a host without files), the user's `EditorSettings` and the `UndoHistory` each `Controller` keeps |
 | `src/gui/controller.cpp` | The undo history, which each `Controller` keeps for the editor |
 | `src/factory.cpp` | The factory presets' loading; the presets themselves are `presets/Factory/*.fmv`, built in by `cmake/embed_presets.cmake` (see [Factory presets](#factory-presets)) |
