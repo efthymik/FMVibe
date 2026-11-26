@@ -1356,13 +1356,20 @@ the browser demo on Linux, with the Emscripten version `build-web.ps1` pins, and
 manual online is the released version's, as the download is. Nothing goes out unless the plugins on both systems and
 the demo build.
 
-`.\release.ps1` does all of it: it needs `main`, a clean working tree, `main` level with origin and a free tag. It
-raises the minor version in `project()` at the top of `CMakeLists.txt` (`-Version 1.0` picks another), runs
+`.\release.ps1` does all of it: it needs `main`, a clean working tree, the branch level with origin and a free tag. It
+raises the minor version in `project()` at the top of `CMakeLists.txt` (`-Patch` the third number, 0.17 to 0.17.1 and
+0.17.1 to 0.17.2, and `-Version 1.0` or `-Version 0.14.1` picks another, above the one there), runs
 `build.ps1 -Validate` (every test and both validators), and copies the snapshots the tests render, in the Spectrum theme, over the README's:
 Screamer's routing view over `docs/editor.png`, Crystal Motion's effects' panel as a chain over `docs/fx-chain.png`, and
 Neon Pluck's effects' panel, a graph split low and high, over `docs/fx-graph.png`, and Future Plucks' SEQ view over `docs/seq.png`. It then lists what it would do and asks; only an answer of `yes` commits
 `CMakeLists.txt` and the four screenshots as "Version X.Y" on `main`, tags it `vX.Y` and pushes `main` and the tag.
-Any other answer puts those files back as they were. `.\release.ps1 -Screenshots` does only the screenshots, on any
+Any other answer puts those files back as they were. A patch release (a third number above 0) may also be made from
+another branch: to fix an older version while `main` has moved on, branch from its tag (`git switch -c release/0.14
+v0.14`), commit the fix there and run `.\release.ps1 -Patch` on that branch, which commits, tags and pushes it (the
+branch too, new on origin or not). The workflow marks a release Latest and deploys its demo and manual to GitHub Pages
+only when its tag is the newest version among the repository's version tags (its `newest` job), so `v0.14.1` after
+`v0.17` gets its release and leaves Latest and the site on 0.17. A fix wanted on `main` as well is merged or
+cherry-picked there. `.\release.ps1 -Screenshots` does only the screenshots, on any
 branch: it builds and runs `fmvibe-uishot` and copies its renders over the four, leaving the version, the other tests
 and git alone.
 
@@ -1370,7 +1377,8 @@ By hand, instead:
 
 1. Set the new version in `project()` at the top of `CMakeLists.txt` (and where `docs/features.md` names it), and
    commit.
-2. Tag that commit with the same version and a `v` before it, and push the tag:
+2. Tag that commit with the same version and a `v` before it (`v0.2`, or `v0.2.1` for a patch release), and push
+   the tag:
 
    ```powershell
    git tag v0.2

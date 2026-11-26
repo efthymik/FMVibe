@@ -6,15 +6,22 @@ does).
 
 .EXAMPLE
 .\release.ps1                # 0.6 -> 0.7: on "yes", commit "Version 0.7" on main, tag v0.7, push both
-.\release.ps1 -Version 1.0   # a version of your choosing (major.minor)
+.\release.ps1 -Patch         # 0.6 -> 0.6.1 (0.6.1 -> 0.6.2): a patch release, on main or a branch of its own
+.\release.ps1 -Version 1.0   # a version of your choosing (major.minor, or major.minor.patch)
 .\release.ps1 -Screenshots   # only render the README's screenshots into docs, on any branch, committing nothing
 
-Steps: check we are on main, with a clean tree, level with origin and the tag free; set the version in
+A release with a new major or minor version is made from main. A patch release (a third number) may also be made
+from another branch, such as release/0.14 branched from the tag v0.14 to fix an older version while main has moved
+on: it is committed on that branch, and the branch and the tag are pushed. The workflow marks a release Latest and
+puts its demo on GitHub Pages only when its tag is the newest version, so a fix to an older version leaves them be.
+
+Steps: check the branch (main, or any for a patch release), a clean tree, the branch level with origin, the tag free
+and the version above the current one; set the version in
 CMakeLists.txt; build, run every test and both validators (build.ps1 -Validate, which also renders the editor's snapshots offscreen); copy the
 snapshots the tests render over the README's, in the Spectrum theme: the Screamer preset's editor over docs\editor.png, the
 Crystal Motion preset's effects' panel as a chain over docs\fx-chain.png, the Neon Pluck preset's effects' panel, a graph, over
-docs\fx-graph.png, and the Future Plucks preset's SEQ view, at its full height, over docs\seq.png; ask; on "yes", commit them all, tag vX.Y, and
-push main and the tag. The tag makes GitHub Actions build the release and the browser demo (see AGENTS.md,
+docs\fx-graph.png, and the Future Plucks preset's SEQ view, at its full height, over docs\seq.png; ask; on "yes", commit them all, tag vX.Y (or vX.Y.Z), and
+push the branch and the tag. The tag makes GitHub Actions build the release and the browser demo (see AGENTS.md,
 "Releasing").
 
 On anything but "yes", CMakeLists.txt and the screenshots go back as they were afterwards (so the script can run
@@ -25,7 +32,8 @@ release build and copies its renders over docs\editor.png, docs\fx-chain.png, do
 version, the other tests and git alone.
 #>
 param(
-    [ValidatePattern('^\d+\.\d+$')] [string] $Version,
+    [ValidatePattern('^\d+\.\d+(\.\d+)?$')] [string] $Version,
+    [switch] $Patch,
     [switch] $Screenshots
 )
 $ErrorActionPreference = 'Stop'
@@ -79,27 +87,46 @@ try {
         return
     }
 
-    # --- Checks first, before anything is touched.
-    $branch = (& git branch --show-current).Trim()
-    if ($branch -ne 'main') { throw "Releases are made from main; this is '$branch'." }
-    if (& git status --porcelain) { throw 'The working tree has uncommitted changes; commit or stash them first.' }
-    Invoke-Git fetch origin main --tags --quiet
-    if ((& git rev-list --count 'HEAD..origin/main') -ne '0') { throw 'main is behind origin/main; pull first.' }
+    if ($Patch -and $Version) { throw 'Give -Patch or -Version, not both.' }
 
-    # --- The version: CMakeLists.txt's project(), one minor step up unless -Version says otherwise.
+    # --- The version: CMakeLists.txt's project() (major.minor, or major.minor.patch), one minor step up unless
+    # -Patch or -Version says otherwise.
     $cmake = Get-Content CMakeLists.txt -Raw
-    $pattern = '(?m)^(project\(FMVibe VERSION )(\d+)\.(\d+)( LANGUAGES)'
+    $pattern = '(?m)^(project\(FMVibe VERSION )(\d+)\.(\d+)(?:\.(\d+))?( LANGUAGES)'
     $m = [regex]::Match($cmake, $pattern)
     if (-not $m.Success) { throw 'Could not find the version in project() in CMakeLists.txt.' }
-    $current = "$($m.Groups[2].Value).$($m.Groups[3].Value)"
-    if (-not $Version) { $Version = "$($m.Groups[2].Value).$([int]$m.Groups[3].Value + 1)" }
+    $major = [int]$m.Groups[2].Value
+    $minor = [int]$m.Groups[3].Value
+    $patchNumber = if ($m.Groups[4].Success) { [int]$m.Groups[4].Value } else { 0 }
+    $current = if ($m.Groups[4].Success) { "$major.$minor.$patchNumber" } else { "$major.$minor" }
+    if ($Patch) { $Version = "$major.$minor.$($patchNumber + 1)" }
+    elseif (-not $Version) { $Version = "$major.$($minor + 1)" }
+    # [version] counts a missing third number as below any (0.14 < 0.14.0 < 0.14.1).
+    if ([version]$Version -le [version]$current) { throw "The version $Version isn't above the current $current." }
+    # A patch release names a third number above 0; X.Y.0 is a minor release like X.Y.
+    $parts = $Version.Split('.')
+    $isPatch = $parts.Count -eq 3 -and [int]$parts[2] -gt 0
     $tag = "v$Version"
+
+    # --- Checks, before anything is touched.
+    $branch = "$(& git branch --show-current)".Trim()
+    if (-not $branch) { throw 'HEAD is detached; check out the branch to release from.' }
+    if ($branch -ne 'main' -and -not $isPatch) {
+        throw "Releases with a new major or minor version are made from main; this is '$branch'. A patch release (-Patch, or -Version X.Y.Z with Z above 0) may be made from another branch."
+    }
+    if (& git status --porcelain) { throw 'The working tree has uncommitted changes; commit or stash them first.' }
+    Invoke-Git fetch origin --tags --quiet
+    # A branch not on origin yet (a new release branch) is pushed with the tag.
+    & git rev-parse --verify --quiet "refs/remotes/origin/$branch" | Out-Null
+    if (-not $LASTEXITCODE -and (& git rev-list --count "HEAD..origin/$branch") -ne '0') {
+        throw "$branch is behind origin/$branch; pull first."
+    }
     if (& git tag --list $tag) { throw "The tag $tag exists already." }
-    Write-Host "== version $current -> $Version" -ForegroundColor Cyan
+    Write-Host "== version $current -> $Version on $branch" -ForegroundColor Cyan
 
     try {
         $utf8 = New-Object System.Text.UTF8Encoding($false)
-        [IO.File]::WriteAllText("$PSScriptRoot\CMakeLists.txt", [regex]::Replace($cmake, $pattern, "`${1}$Version`$4"), $utf8)
+        [IO.File]::WriteAllText("$PSScriptRoot\CMakeLists.txt", [regex]::Replace($cmake, $pattern, "`${1}$Version`$5"), $utf8)
 
         # --- Build and test with the new version (the tests render the editor's snapshots as they go).
         & "$PSScriptRoot\build.ps1" -Validate
@@ -111,7 +138,7 @@ try {
         Write-Host "   git add CMakeLists.txt docs/editor.png docs/fx-chain.png docs/fx-graph.png docs/seq.png"
         Write-Host "   git commit -m `"Version $Version`""
         Write-Host "   git tag $tag"
-        Write-Host "   git push origin main $tag"
+        Write-Host "   git push origin $branch $tag"
         if ((Read-Host "Release $tag now? Type 'yes' to commit, tag and push") -ne 'yes') {
             Write-Host "== not released; CMakeLists.txt and the screenshots are put back as they were." -ForegroundColor Yellow
             return
@@ -122,7 +149,7 @@ try {
         Invoke-Git add CMakeLists.txt docs/editor.png docs/fx-chain.png docs/fx-graph.png docs/seq.png
         Invoke-Git commit -m "Version $Version"
         Invoke-Git tag $tag
-        Invoke-Git push origin main $tag
+        Invoke-Git push origin $branch $tag
         Write-Host "== released $tag" -ForegroundColor Green
     }
     finally {
