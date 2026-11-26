@@ -527,7 +527,12 @@ the plain CMake commands and installing into a host are in the [README](README.m
     the carrier as J1 against J0 at the DX7's index (within 1 dB), feedback 5's 2nd harmonic where feedback FM puts it,
     a decay at rate 50 falling 40 dB in the DX7's 0.62 s, velocity sensitivity 7 taking a note at 64 16 dB under one at
     127, keyboard level scaling at depth 99 (-LIN an octave out, -EXP two and three) within 1 dB of the DX7's and +LIN
-    on an operator at full level lifting nothing, the pitch envelope at 74 playing 9 semitones up, the LFO at speed 35 at 5.6 Hz, and a bank's presets named
+    on an operator at full level lifting nothing, the pitch envelope at 74 playing 9 semitones up, velocity sensitivity
+    7 still lifting a carrier at full output level about 6 dB from 100 to 127, waits at the level an envelope holds
+    (rates 2 and 3 at 0) leaving its release at rate 60 40 dB down in the DX7's 0.21 s, feedback round algorithm 4's
+    loop of operators at a quarter of a lone operator's, each LFO wave starting where the DX7's does with key sync on,
+    on the pitch and turned over on the levels, a route at nothing taking no velocity slot, the LFO at speed 35 at
+    5.6 Hz, and a bank's presets named
     for their voices in order and reading back as made;
   - the CPU cost of each factor.
 - **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`, in Midnight,

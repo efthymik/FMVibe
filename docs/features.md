@@ -2660,9 +2660,11 @@ what it started goes on.
       Amount** at 200 % so that a modulator at the DX7's full level, two cycles (4 pi) of phase into its carrier, fits
       a route's 8 radians; a route's amount is then the square root of its share, from the operator's output level on
       the DX7's level curve (0.75 dB a step from 20 up, steeper below). **Feedback** 1-7 moves an operator's phase by
-      2^(feedback - 8) of its last two samples' average, as the DX7's does (the feedback up a stack in algorithms 4 and
-      6 a route from D into F); a carrier's Out is its gain at full envelope, and Volume comes down by as much as its
-      carriers add up past one at full level;
+      2^(feedback - 8) of its last two samples' average, as the DX7's does (round a loop of operators in algorithms 4
+      and 6, a route from D or E into F, a quarter of that: provisional, `kLoopFeedback` in `dx7.cpp`, until compared
+      by ear); a carrier's Out is half its gain at full envelope, room for velocity to lift it as the DX7's does
+      (`kCarrierHeadroom`), and Volume 6 dB up for that and down by as much as its carriers add up past one at full
+      level;
     - each operator's **pitch**: its coarse (0 for 0.5) and fine ratio, or a fixed Freq of 10^(coarse mod 4 + fine /
       100) Hz (on Mult x10 above 2 kHz), its detune at 1.2 cents a step (the DX7's steps near C4) and Transpose on
       Pitch (24 in tune); with oscillator key sync off, Rnd Phase at 100 %;
@@ -2670,7 +2672,8 @@ what it started goes on.
       silence to L1, L2 and L3, held there by a loop of no length, then on to L4 once let go): a decay falling evenly
       in dB at its rate's speed (doubling every four of its 64 speeds), cut off 80 dB down; an attack jumping up and
       then rising as the DX7's does, fast and slowing toward full level; a segment that stays at its level waiting as
-      long as its rate says. Each segment is drawn as up to four pieces whose bends follow the trace (a decay's exact,
+      long as its rate says, but for one at the level the envelope then holds (L2 and L3 alike, say), left out as it is
+      heard as that hold. Each segment is drawn as up to four pieces whose bends follow the trace (a decay's exact,
       an exponential in dB). One longer than 10 s, the Length's top, is shortened to fit;
     - **velocity sensitivity** as a slot of the velocity source on each of the operator's levels (its Out, or the
       amounts of its routes), the level at velocity 0, the slot's depth and curve fitted to the DX7's velocity curve
@@ -2679,10 +2682,13 @@ what it started goes on.
       scaled operator's envelope Length, shortening it by 2^(-scaling x 31/32) at the top as the DX7 speeds its
       rates;
     - the **LFO** as an LFO (or, for sample and hold, a Random source) at the DX7's speed (0.06 Hz at 0, 5.6 Hz at 35,
-      49 Hz at 99), free unless its key sync is on: one, bipolar, on Pitch by the pitch mod depth and sensitivity (up
-      to an octave), and one, unipolar, turning each operator with amp mod sensitivity down at the LFO's trough by a
-      model of ours (at full depth 4 and 8 dB at sensitivities 1 and 2, down to silence at 3); its delay a one-shot Curve source, silent and then fading in, as the aux of
-      both;
+      49 Hz at 99), free unless its key sync is on, each wave then starting where the DX7 starts it (the triangle at its
+      top, the saws at their ends, the square low, the sine at its middle going down): one, bipolar, on Pitch by the
+      pitch mod depth and sensitivity (up to an octave), and one, unipolar, turning each operator with amp mod
+      sensitivity down at the LFO's trough by a model of ours (at full depth 4 and 8 dB at sensitivities 1 and 2, down
+      to silence at 3), as the LFO turned over (a saw up a Curve source falling from its top); a level or route at
+      nothing takes no slot of velocity's or the LFO's; its delay a one-shot Curve source, silent and then fading in,
+      as the aux of both;
     - the **pitch envelope** as a Curve source in Sustain on Pitch (bipolar), its levels on the DX7's curve (3/8 of a
       semitone a step about 50, out to four octaves either way) and its segments straight at its rates' speeds.
 

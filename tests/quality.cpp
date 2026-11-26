@@ -6731,6 +6731,131 @@ void dx7Checks() {
         check(at(bent, hz) - at(bent, 440.0) > 40.0, "a DX7 voice's pitch envelope bends its pitch");
     }
 
+    // Velocity sensitivity 7 on a carrier at the DX7's full output level, where its Out alone would leave no room: a
+    // note at 127 still about 6 dB over one at 100, as the DX7's velocity curve has it.
+    {
+        const dx7::Voice v = patch(32, [&](dx7::Voice &voice) { set(voice, 1, dx7::VelocitySens, 7); });
+        const double loud = at(play(v, 1.0), 440.0), firm = at(play(v, 100.0 / 127.0), 440.0);
+        const double want =
+            7.0 * 261.0 * (std::pow(127.0 / 126.0, 0.3) - std::pow(100.0 / 126.0, 0.3)) / 128.0 * 6.0206;
+        std::printf("      velocity 127 against 100 at sensitivity 7, full output level: %+.1f dB, %+.1f wanted\n",
+                    loud - firm, want);
+        check(std::abs(loud - firm - want) < 1.5, "velocity lifts a DX7 carrier at full output level as the DX7 does");
+    }
+
+    // Waits at the level an envelope then holds (L1, L2 and L3 alike, rates 2 and 3 at 0: 40 s each on the DX7) leave
+    // the rest of it as it is: let go after half a second, rate 60 takes it 40 dB down in the DX7's 0.21 s.
+    {
+        const dx7::Voice v = patch(1, [&](dx7::Voice &voice) {
+            set(voice, 1, dx7::Rate1 + 1, 0);
+            set(voice, 1, dx7::Rate1 + 2, 0);
+            set(voice, 1, dx7::Rate1 + 3, 60);
+        });
+        Engine e(2);
+        gui::UiLayout layout;
+        dx7::toPatch(v, e.p, layout);
+        e.noteOn(69);
+        const std::vector<float> held = e.render(24000);
+        e.noteOff(69);
+        const std::vector<float> after = e.render(48000);
+        auto windowDb = [](const std::vector<float> &x, size_t from) {
+            double sum = 0.0;
+            for (size_t i = from; i < from + 480; ++i)
+                sum += static_cast<double>(x[i]) * x[i];
+            return 10.0 * std::log10(sum / 480.0 + 1e-30);
+        };
+        const double before = windowDb(held, held.size() - 480);
+        size_t down = 0;
+        while (down + 960 < after.size() && windowDb(after, down) > before - 40.0)
+            down += 48;
+        const double seconds = down / kSampleRate, want = 40.0 / (12.0 / (64.0 / 44100.0) * 6.0206 / 256.0);
+        std::printf("      waits at the held level left out: let go, 40 dB down in %.3f s, %.3f wanted\n", seconds,
+                    want);
+        check(std::abs(seconds / want - 1.0) < 0.1,
+              "a DX7 envelope's waits at the level it holds don't shorten the rest of it");
+    }
+
+    // Feedback round a loop of operators (algorithm 4, D into F): a quarter of a lone operator's at the same setting
+    // (kLoopFeedback in dx7.cpp), so at 7 and D at full level 2^(7 - 8) / 4 of its two cycles, as phase into F.
+    {
+        const dx7::Voice v = patch(4, [&](dx7::Voice &voice) {
+            set(voice, 4, dx7::OutputLevel, 99);
+            voice.data[dx7::kVoiceFields + dx7::Feedback] = 7;
+        });
+        const auto values = std::make_unique<ParamValues>();
+        gui::UiLayout layout;
+        dx7::toPatch(v, *values, layout);
+        const double amount = (*values)[matrixIndex(3, 5)];
+        const double cycles =
+            amount * amount * 8.0 / (2.0 * std::numbers::pi) * (*values)[paramIndex(GlobalParam::FmAmount)];
+        std::printf("      feedback 7 round algorithm 4's loop: %.3f cycles of phase at full level, 0.250 wanted\n",
+                    cycles);
+        check(std::abs(cycles - 0.25) < 1e-3,
+              "feedback round a DX7 algorithm's loop of operators runs at a quarter of a lone operator's");
+    }
+
+    // The LFO with its key sync on starting each wave where the DX7 starts it, a while after a note (in cycles of it):
+    // on the pitch (-1..1, the DX7's LFO about its middle), and on the levels (0..1, how far it turns them down: the
+    // DX7's LFO turned over). And an operator with velocity sensitivity whose route is at nothing (its output level 0)
+    // taking no slot of velocity's.
+    {
+        // The DX7's LFO, 0..1, `t` cycles after a key with sync on started it half way round its cycle.
+        auto dx7Lfo = [](int wave, double t) {
+            const double c = 0.5 + t - std::floor(0.5 + t);
+            switch (wave) {
+            case 0: // triangle
+                return c < 0.5 ? 2.0 * c : 2.0 - 2.0 * c;
+            case 1: // saw down
+                return 1.5 - c - std::floor(1.5 - c);
+            case 2: // saw up
+                return c + 0.5 - std::floor(c + 0.5);
+            case 3: // square
+                return c < 0.5 ? 1.0 : 0.0;
+            default: // sine
+                return 0.5 + 0.5 * std::sin(2.0 * std::numbers::pi * c);
+            }
+        };
+        double worst = 0.0;
+        int sources = 0, velocitySlots = 0;
+        for (int wave = 0; wave < 5; ++wave) {
+            dx7::Voice v = dx7::initVoice();
+            v.data[dx7::kVoiceFields + dx7::LfoWave] = static_cast<uint8_t>(wave);
+            v.data[dx7::kVoiceFields + dx7::LfoPitchDepth] = 50;
+            v.data[dx7::kVoiceFields + dx7::LfoAmpDepth] = 50;
+            set(v, 1, dx7::AmpModSens, 3);
+            set(v, 2, dx7::VelocitySens, 7);
+            const auto values = std::make_unique<ParamValues>();
+            gui::UiLayout layout;
+            dx7::toPatch(v, *values, layout);
+            const ParamValues &made = *values;
+            auto get = [&](int index) { return made[index]; };
+            for (int s = 0; s < kMaxSources; ++s) {
+                const auto type = static_cast<SourceType>(std::lround(made[paramIndex(s, SourceParam::Type)]));
+                if (type != SourceType::Lfo && type != SourceType::Curve)
+                    continue;
+                ++sources;
+                const bool onLevels = made[paramIndex(s, SourceParam::Unipolar)] >= 0.5;
+                const double phase = made[paramIndex(s, SourceParam::Phase)];
+                const double sign = made[slotAmountIndex(s, 0)] < 0.0 ? -1.0 : 1.0;
+                const auto shape = static_cast<LfoShape>(std::lround(made[paramIndex(s, SourceParam::Shape)]));
+                for (double t : {0.02, 0.1, 0.3, 0.45, 0.6, 0.85}) {
+                    const double where = t + phase - std::floor(t + phase);
+                    const double x = type == SourceType::Curve ? shapeValue(get, s, where) : lfoValue(shape, where, 0.0);
+                    const double got = onLevels ? 0.5 * (x + 1.0) : sign * x;
+                    const double want = onLevels ? 1.0 - dx7Lfo(wave, t) : 2.0 * dx7Lfo(wave, t) - 1.0;
+                    worst = std::max(worst, std::abs(got - want));
+                }
+            }
+            for (int slot = 0; slot < kSlots; ++slot)
+                velocitySlots += made[slotTargetIndex(kVelocitySource, slot)] > 0.0 ? 1 : 0;
+        }
+        std::printf("      LFO waves started as the DX7 starts them: %d sources, %.3f off at most; velocity slots on a "
+                    "route at nothing: %d\n",
+                    sources, worst, velocitySlots);
+        check(sources == 10 && worst < 0.02 && velocitySlots == 0,
+              "a DX7 voice's LFO starts each wave where the DX7 starts it, and a route at nothing takes no velocity slot");
+    }
+
     // The LFO at speed 35 runs at about 5.6 Hz (5.62 on the DX7), its pitch depth on Pitch; and the presets made of a
     // bank are named for their voices, in order, and read back as made.
     {

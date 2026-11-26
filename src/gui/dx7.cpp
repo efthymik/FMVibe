@@ -141,6 +141,21 @@ constexpr double kDetuneCents = 1.2;
 // FM Amount, at its top: so a modulator at the DX7's full level, 4 pi, fits a route's 8 radians.
 constexpr double kFmAmount = 2.0;
 
+// --- Values to tune by ear against a DX7.
+
+// Feedback round a loop of operators (algorithms 4 and 6, D into F and E into F): a quarter of a lone operator's at the
+// same setting. Provisional: not yet compared by ear.
+constexpr double kLoopFeedback = 0.25;
+// How far under its gain a carrier's Out is set, Volume making it up: room for velocity to lift a carrier at the DX7's
+// full output level as the DX7's does (about 6 dB from 100 to 127 at sensitivity 7), where Out stops at 100 %.
+constexpr double kCarrierHeadroom = 2.0;
+// Where each wave (triangle, saw down, saw up, square, sine) starts, its Phase, so that with key sync on it starts as
+// the DX7's LFO does: the triangle at its top, the saws at their ends, the square low and the sine at its middle going
+// down. On the pitch, as the LFO swings; on the levels, turned over, as the DX7 turns them down (a saw up there a Curve
+// falling from its top, which no LFO shape does).
+constexpr double kPitchLfoPhase[5] = {0.25, 0.0, 0.0, 0.5, 0.5};
+constexpr double kLevelLfoPhase[5] = {0.75, 0.0, 0.0, 0.0, 0.0};
+
 // --- An operator's envelope, traced as the DX7 runs it and drawn as points.
 
 struct EnvPoint {
@@ -180,6 +195,13 @@ DrawnEnv traceEnvelope(const Voice &voice, int dxOp) {
     };
     DrawnEnv env;
     double units = 0.0, t = 0.0;
+    // Whether every level after segment `ix` up to L3 is where the envelope stands.
+    auto flatToHold = [&](int ix) {
+        for (int j = ix + 1; j < 3; ++j)
+            if (std::abs(envUnits(voice.op(dxOp, static_cast<OpField>(Level1 + j)), out) - units) >= 0.5)
+                return false;
+        return true;
+    };
     env.points.push_back({0.0, 0.0, 0.0});
     for (int ix = 0; ix < 4; ++ix) {
         if (ix == 3)
@@ -189,6 +211,11 @@ DrawnEnv traceEnvelope(const Voice &voice, int dxOp) {
         const double target = envUnits(to, out);
         std::vector<std::pair<double, double>> trace{{0.0, units}};
         const bool still = std::abs(target - units) < 0.5 || (ix == 0 && to == 0);
+        // A wait at the level the envelope then holds at is heard as that hold: held, nothing moves, and let go, it
+        // releases from that level either way. Left out, it doesn't lengthen the envelope, which a Length past its top
+        // would shorten as a whole. (The wait after L3 stays: it is how long a note let go before its hold fades.)
+        if (still && (ix == 1 || ix == 2) && flatToHold(ix))
+            continue;
         bool rising = false;
         if (still) {
             trace.push_back({staticSeconds(rate) / (ix == 0 && to == 0 && rate < 77 ? 20.0 : 1.0), units});
@@ -530,7 +557,7 @@ void toPatch(const Voice &dxVoice, ParamValues &p, UiLayout &layout) {
         full[op] = voice.op(dxOp, OutputLevel) > 0 ? unitGain(envUnits(99, out)) : 0.0;
         if (algorithm.carriers >> op & 1) {
             const double level = full[op] / 2.0;
-            levels[op].push_back({outParam(op), level});
+            levels[op].push_back({outParam(op), level / kCarrierHeadroom});
             heard += level * level;
         }
         for (int to = 0; to < kOps; ++to) {
@@ -539,8 +566,9 @@ void toPatch(const Voice &dxVoice, ParamValues &p, UiLayout &layout) {
             double amount = 0.0;
             if (feedback && to == op) // phase from the average of its last two samples, 2^(fb - 8) of it
                 amount = fb > 0 ? std::sqrt(std::exp2(fb - 7.0) * full[op] / kFmAmount) : 0.0;
-            else if (feedback) // the same, into an operator up its stack
-                amount = fb > 0 ? std::sqrt(2.0 * std::numbers::pi * std::exp2(fb - 8.0) * full[op] / (8.0 * kFmAmount))
+            else if (feedback) // round a loop, into an operator up its stack: kLoopFeedback of the same
+                amount = fb > 0 ? std::sqrt(2.0 * std::numbers::pi * kLoopFeedback * std::exp2(fb - 8.0) * full[op] /
+                                            (8.0 * kFmAmount))
                                 : 0.0;
             else if (algorithm.mods[to] >> op & 1) // its gain, in cycles of phase, into a route's 8 radians
                 amount = std::sqrt(2.0 * std::numbers::pi * full[op] / (8.0 * kFmAmount));
@@ -619,9 +647,11 @@ void toPatch(const Voice &dxVoice, ParamValues &p, UiLayout &layout) {
         p[paramIndex(op, OpParam::EnvSync)] = 0.0;
         p[paramIndex(op, OpParam::EnvLength)] = std::clamp(normFromTime(length), 0.0, kMaxEnvNorm);
     }
-    // The carriers together about as loud as one at full level.
-    p[paramIndex(GlobalParam::Volume)] = table[paramIndex(GlobalParam::Volume)].def -
-                                          10.0 * std::log10(std::max(heard, 1.0));
+    // The carriers together about as loud as one at full level, and their headroom made up.
+    const ParamDef &volume = table[paramIndex(GlobalParam::Volume)];
+    p[paramIndex(GlobalParam::Volume)] =
+        std::clamp(volume.def + 20.0 * std::log10(kCarrierHeadroom) - 10.0 * std::log10(std::max(heard, 1.0)),
+                   volume.min, volume.max);
 
     // Velocity: each operator's levels fitted to the DX7's velocity curve, through a slot of the velocity source each.
     for (int op = 0; op < kOps; ++op) {
@@ -629,6 +659,8 @@ void toPatch(const Voice &dxVoice, ParamValues &p, UiLayout &layout) {
         if (sens == 0)
             continue;
         for (auto &[param, value] : levels[op]) {
+            if (value <= 0.0) // a route at nothing: nothing to scale
+                continue;
             const bool out = param == outParam(op);
             const double at = value; // a route's amount goes as the square root of its depth
             const auto fit = fitVelocity([&](int v) {
@@ -684,9 +716,11 @@ void toPatch(const Voice &dxVoice, ParamValues &p, UiLayout &layout) {
             setPoint(p, shape, 2, 1.0, 1.0, 0.0);
         }
     }
+    // The DX7's LFO as two sources: one on the pitch, swinging it both ways, and one, unipolar, turning the levels
+    // down as the DX7's turns them down, at its trough. Each wave starts where the DX7 starts it (see kPitchLfoPhase).
     auto lfo = [&](bool bipolar) {
-        const bool random = wave == 5;
-        const int s = modulation.addSource(random ? SourceType::Random : SourceType::Lfo);
+        const bool random = wave == 5, falling = !bipolar && wave == 2;
+        const int s = modulation.addSource(random ? SourceType::Random : falling ? SourceType::Curve : SourceType::Lfo);
         if (s < 0)
             return s;
         static constexpr LfoShape kShapes[5] = {LfoShape::Triangle, LfoShape::Saw, LfoShape::Saw, LfoShape::Square,
@@ -699,11 +733,16 @@ void toPatch(const Voice &dxVoice, ParamValues &p, UiLayout &layout) {
             p[paramIndex(s, SourceParam::RandomSmooth)] = 0.0;
             p[paramIndex(s, SourceParam::Bipolar)] = bipolar ? 1.0 : 0.0;
         } else {
-            p[paramIndex(s, SourceParam::Shape)] = static_cast<double>(kShapes[wave]);
+            if (falling) { // from its top down to its bottom over the cycle
+                const int shape = shapeCountIndex(s);
+                p[shape] = 2.0;
+                setPoint(p, shape, 0, 0.0, 1.0, 0.0);
+                setPoint(p, shape, 1, 1.0, -1.0, 0.0);
+            } else {
+                p[paramIndex(s, SourceParam::Shape)] = static_cast<double>(kShapes[wave]);
+            }
             p[paramIndex(s, SourceParam::Unipolar)] = bipolar ? 0.0 : 1.0;
-            // The level's LFO turns an operator down as the pitch's falls: half a cycle on, where that is the same.
-            if (!bipolar && wave != 1 && wave != 2)
-                p[paramIndex(s, SourceParam::Phase)] = 0.5;
+            p[paramIndex(s, SourceParam::Phase)] = bipolar ? kPitchLfoPhase[wave] : kLevelLfoPhase[wave];
         }
         return s;
     };
@@ -717,6 +756,8 @@ void toPatch(const Voice &dxVoice, ParamValues &p, UiLayout &layout) {
                 if (gain >= 1.0)
                     continue;
                 for (const auto &[param, value] : levels[op]) {
+                    if (value <= 0.0)
+                        continue;
                     const bool out = param == outParam(op);
                     modulate(p, s, param, -(1.0 - (out ? gain : std::sqrt(gain))) * value, 0.0, delay);
                 }
