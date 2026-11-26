@@ -21,9 +21,12 @@ puts its demo on GitHub Pages only when its tag is the newest version, so a fix 
 other switches pick: CMakeLists.txt's FMVIBE_PRERELEASE takes the label, the plugins report X.Y-label, and the tag is
 vX.Y-label. The workflow publishes it as a pre-release on GitHub, never Latest, and leaves GitHub Pages alone. From a
 pre-release, the version stays where it is unless -Patch or -Version moves it on: another -Prerelease makes the next
-pre-release of it, and the script without one the release itself, clearing the label.
+pre-release of it, and the script without one the release itself, clearing the label. A pre-release may be made
+from any branch, such as a feature branch to hand out a test build: it is committed there, and the branch and the tag
+are pushed. Its tag keeps those commits, so a branch rebased or squash-merged later leaves the tag on commits no
+branch holds.
 
-Steps: check the branch (main, or any for a patch release), a clean tree, the branch level with origin, the tag free
+Steps: check the branch (main, or any for a patch release or a pre-release), a clean tree, the branch level with origin, the tag free
 and the version above the current one (or the current one, from a pre-release of it); set the version and label in
 CMakeLists.txt; build, run every test and both validators (build.ps1 -Validate, which also renders the editor's snapshots offscreen); copy the
 snapshots the tests render over the README's, in the Spectrum theme: the Screamer preset's editor over docs\editor.png, the
@@ -130,8 +133,8 @@ try {
     # --- Checks, before anything is touched.
     $branch = "$(& git branch --show-current)".Trim()
     if (-not $branch) { throw 'HEAD is detached; check out the branch to release from.' }
-    if ($branch -ne 'main' -and -not $isPatch) {
-        throw "Releases with a new major or minor version are made from main; this is '$branch'. A patch release (-Patch, or -Version X.Y.Z with Z above 0) may be made from another branch."
+    if ($branch -ne 'main' -and -not $isPatch -and -not $Prerelease) {
+        throw "Releases with a new major or minor version are made from main; this is '$branch'. A patch release (-Patch, or -Version X.Y.Z with Z above 0) or a pre-release (-Prerelease) may be made from another branch."
     }
     if (& git status --porcelain) { throw 'The working tree has uncommitted changes; commit or stash them first.' }
     Invoke-Git fetch origin --tags --quiet

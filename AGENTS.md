@@ -1377,7 +1377,10 @@ cherry-picked there.
 `v0.18-beta.1`. From a pre-release the version stays where it is unless `-Patch` or `-Version` moves it on: another
 `-Prerelease rc.1` makes `v0.18-rc.1`, and `.\release.ps1` alone the release `v0.18`, clearing the label. The
 workflow's `tag` job tells a pre-release by its dash, and starts every release's notes at the release below its
-version, so `v0.18` after its betas lists everything since `v0.17`. `.\release.ps1 -Screenshots` does only the screenshots, on any
+version, so `v0.18` after its betas lists everything since `v0.17`. A pre-release may be made from any branch (a
+feature branch, to hand out a test build): the script commits the version there and pushes the branch and the tag.
+The tag keeps those commits, so a branch rebased or squash-merged afterwards leaves the tag on commits no branch holds;
+the release that follows is made from `main` (or, for a patch, its release branch) as ever. `.\release.ps1 -Screenshots` does only the screenshots, on any
 branch: it builds and runs `fmvibe-uishot` and copies its renders over the four, leaving the version, the other tests
 and git alone.
 
