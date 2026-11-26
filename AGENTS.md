@@ -1354,7 +1354,8 @@ the tag with the zips, the tarballs and notes generated from the commits since t
 the browser demo on Linux, with the Emscripten version `build-web.ps1` pins, and publishes it on GitHub Pages
 (`https://pcdlin.github.io/FMVibe/`), with the manual beside it as `manual.html`, which the README links to: the
 manual online is the released version's, as the download is. Nothing goes out unless the plugins on both systems and
-the demo build.
+the demo build. A pre-release, whose tag has a label after a dash (`v0.18-beta.1`), is published on GitHub as a
+pre-release, never Latest, and leaves GitHub Pages alone, so the demo and the manual online stay the last release's.
 
 `.\release.ps1` does all of it: it needs `main`, a clean working tree, the branch level with origin and a free tag. It
 raises the minor version in `project()` at the top of `CMakeLists.txt` (`-Patch` the third number, 0.17 to 0.17.1 and
@@ -1369,7 +1370,14 @@ v0.14`), commit the fix there and run `.\release.ps1 -Patch` on that branch, whi
 branch too, new on origin or not). The workflow marks a release Latest and deploys its demo and manual to GitHub Pages
 only when its tag is the newest version among the repository's version tags (its `newest` job), so `v0.14.1` after
 `v0.17` gets its release and leaves Latest and the site on 0.17. A fix wanted on `main` as well is merged or
-cherry-picked there. `.\release.ps1 -Screenshots` does only the screenshots, on any
+cherry-picked there.
+
+`.\release.ps1 -Prerelease beta.1` makes a pre-release: the version as the script would pick it otherwise (0.17 to
+0.18), with the label in `FMVIBE_PRERELEASE` in `CMakeLists.txt`, so the plugins report `0.18-beta.1` and the tag is
+`v0.18-beta.1`. From a pre-release the version stays where it is unless `-Patch` or `-Version` moves it on: another
+`-Prerelease rc.1` makes `v0.18-rc.1`, and `.\release.ps1` alone the release `v0.18`, clearing the label. The
+workflow's `tag` job tells a pre-release by its dash, and starts every release's notes at the release below its
+version, so `v0.18` after its betas lists everything since `v0.17`. `.\release.ps1 -Screenshots` does only the screenshots, on any
 branch: it builds and runs `fmvibe-uishot` and copies its renders over the four, leaving the version, the other tests
 and git alone.
 
@@ -1377,8 +1385,8 @@ By hand, instead:
 
 1. Set the new version in `project()` at the top of `CMakeLists.txt` (and where `docs/features.md` names it), and
    commit.
-2. Tag that commit with the same version and a `v` before it (`v0.2`, or `v0.2.1` for a patch release), and push
-   the tag:
+2. Tag that commit with the same version and a `v` before it (`v0.2`, `v0.2.1` for a patch release, or
+   `v0.2-beta.1` for a pre-release, with `beta.1` in `FMVIBE_PRERELEASE`), and push the tag:
 
    ```powershell
    git tag v0.2
@@ -1511,8 +1519,10 @@ itself.
   changes first; past the first 4096 (`kMaxChanges`), the rest apply after them, in the host's order. While
   processing, the host's values reach the params through `process()` only: its copy for the controller
   (`setParamNormalized()`) may come late, and is taken only while not processing.
-- The version number is set once, in `project()` at the top of `CMakeLists.txt`. It reaches the code as
-  `FMVIBE_VERSION`: the plugin descriptor reports it to hosts and the settings dialog shows it. FMVibe is released
+- The version number is set once, in `project()` at the top of `CMakeLists.txt`, with a pre-release's label
+  (`beta.1`) in `FMVIBE_PRERELEASE` below it, empty for a release. It reaches the code as `FMVIBE_VERSION`
+  (`0.18`, or `0.18-beta.1`): the plugin descriptor and the Linux bundle's `moduleinfo.json` report it to hosts and
+  the settings dialog shows it. FMVibe is released
   under the MIT license (`LICENSE`).
 - Parameter ids are stored in host projects and automation. `src/params.h` derives them per section with spare
   room: globals 0+, operators 100 + 50·op (their filter and shaper sends, then Fixed, Freq, Mult, Phase, Ratio, Pan,
